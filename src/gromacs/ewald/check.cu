@@ -6,7 +6,7 @@
 #include "gromacs/timing/wallcycle.h"
 
 #include "thread_mpi/mutex.h"
-#ifdef DEBUG_PME_GPU
+
 struct gpu_events {
   bool created;
   cudaEvent_t event_start, event_stop;
@@ -102,4 +102,3 @@ void print_lock() {
 void print_unlock() {
   print_mutex.lock();
 }
-#endif
