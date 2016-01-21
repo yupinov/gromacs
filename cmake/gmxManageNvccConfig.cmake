@@ -218,7 +218,7 @@ macro(GMX_SET_CUDA_NVCC_FLAGS)
 
         # CUDA versions prior to 7.5 come with a header (math_functions.h) which uses the _MSC_VER macro
         # unconditionally, so we strip -Wundef from the propagatest flags for earlier CUDA versions.
-        if (CUDA_VERSION VERSION_LESS "7.5")
+        if (CUDA_VERSION VERSION_LESS "70.5")
             string(REGEX REPLACE "-Wundef" "" _CMAKE_CXX_FLAGS_SANITIZED "${_CMAKE_CXX_FLAGS_SANITIZED}")
         endif()
 
