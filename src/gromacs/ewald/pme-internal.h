@@ -252,6 +252,8 @@ typedef struct gmx_pme_t {
     int        pme_order;
     real       epsilon_r;
 
+    gmx_bool   bGPU; /* Are we using the GPU acceleration for PME purposes? */ //yupinov init me!
+
     int        ljpme_combination_rule;  /* Type of combination rule in LJ-PME */
 
     int        ngrids;                  /* number of grids we maintain for pmegrid, (c)fftgrid and pfft_setups*/
@@ -377,5 +379,14 @@ void gmx_pme_send_force_vir_ener(struct gmx_pme_pp *pme_pp,
                                  matrix vir_lj, real energy_lj,
                                  real dvdlambda_q, real dvdlambda_lj,
                                  float cycles);
+
+void calc_interpolation_idx_gpu_core
+(int nx, int ny, int nz,
+ real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
+ int *g2tx, int *g2ty, int *g2tz,
+ real *fshx, real *fshy,
+ int *nnx, int *nny, int *nnz,
+ rvec *xptr_v, ivec *idxptr_v, rvec *fptr_v,
+ int start, int end, int thread);
 
 #endif

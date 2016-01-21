@@ -67,6 +67,13 @@ struct gmx_wallclock_gpu_t
     int     pl_h2d_c;                                  /**< pair search step  host to device transfer call count */
 };
 
+struct gmx_wallclock_gpu_pme_t
+{
+  struct gmx_nbnxn_kernel_timing_data_t pme_time[7][7];
+};
+
+extern struct gmx_wallclock_gpu_pme_t gmx_wallclock_gpu_pme;
+
 #ifdef __cplusplus
 }
 #endif

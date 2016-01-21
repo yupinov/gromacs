@@ -55,6 +55,8 @@
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/snprintf.h"
 
+struct gmx_wallclock_gpu_pme_t gmx_wallclock_gpu_pme; //yupinov [Zalenski: HACK] not all changes copied
+
 static const bool useCycleSubcounters = GMX_CYCLE_SUBCOUNTERS;
 
 /* DEBUG_WCYCLE adds consistency checking for the counters.
@@ -124,6 +126,13 @@ static const char *wcsn[ewcsNR] =
     "Ewald F correction",
     "NB X buffer ops.",
     "NB F buffer ops.",
+    "PME interpol",
+    "PME spline",
+    "PME spread",
+    "PME fft r2c",
+    "PME solve",
+    "PME fft c2r",
+    "PME gather",
 };
 
 gmx_bool wallcycle_have_counter(void)
