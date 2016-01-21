@@ -87,6 +87,12 @@ static void calc_interpolation_idx(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     g2ty = pme->pmegrid[grid_index].g2t[YY];
     g2tz = pme->pmegrid[grid_index].g2t[ZZ];
 
+    real *fshx = pme->fshx;
+    real *fshy = pme->fshy;
+    int *nnx = pme->nnx;
+    int *nny = pme->nny;
+    int *nnz = pme->nnz;
+
     bThreads = (atc->nthread > 1);
     if (bThreads)
     {
@@ -100,48 +106,56 @@ static void calc_interpolation_idx(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
         }
     }
 
-    for (i = start; i < end; i++)
-    {
-        xptr   = atc->x[i];
-        idxptr = atc->idx[i];
-        fptr   = atc->fractx[i];
-
-        /* Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes */
-        tx = nx * ( xptr[XX] * rxx + xptr[YY] * ryx + xptr[ZZ] * rzx + 2.0 );
-        ty = ny * (                  xptr[YY] * ryy + xptr[ZZ] * rzy + 2.0 );
-        tz = nz * (                                   xptr[ZZ] * rzz + 2.0 );
-
-        tix = (int)(tx);
-        tiy = (int)(ty);
-        tiz = (int)(tz);
-
-        /* Because decomposition only occurs in x and y,
-         * we never have a fraction correction in z.
-         */
-        fptr[XX] = tx - tix + pme->fshx[tix];
-        fptr[YY] = ty - tiy + pme->fshy[tiy];
-        fptr[ZZ] = tz - tiz;
-
-        idxptr[XX] = pme->nnx[tix];
-        idxptr[YY] = pme->nny[tiy];
-        idxptr[ZZ] = pme->nnz[tiz];
-
-#ifdef DEBUG
-        range_check(idxptr[XX], 0, pme->pmegrid_nx);
-        range_check(idxptr[YY], 0, pme->pmegrid_ny);
-        range_check(idxptr[ZZ], 0, pme->pmegrid_nz);
-#endif
-
-        if (bThreads)
+    if (pme->bGPU)
+        calc_interpolation_idx_gpu_core(nx, ny, nz,
+				 rxx, ryx, ryy, rzx, rzy, rzz,
+				 g2tz, g2ty, g2tz,
+				 fshx, fshy,
+				 nnx, nny, nnz,
+				 atc->x, atc->idx, atc->fractx,
+				 start, end, thread);
+    else
+        for (i = start; i < end; i++)
         {
-            thread_i      = g2tx[idxptr[XX]] + g2ty[idxptr[YY]] + g2tz[idxptr[ZZ]];
-            thread_idx[i] = thread_i;
-            tpl_n[thread_i]++;
+            xptr   = atc->x[i];
+            idxptr = atc->idx[i];
+            fptr   = atc->fractx[i];
+
+            /* Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes */
+            tx = nx * ( xptr[XX] * rxx + xptr[YY] * ryx + xptr[ZZ] * rzx + 2.0 );
+            ty = ny * (                  xptr[YY] * ryy + xptr[ZZ] * rzy + 2.0 );
+            tz = nz * (                                   xptr[ZZ] * rzz + 2.0 );
+
+            tix = (int)(tx);
+            tiy = (int)(ty);
+            tiz = (int)(tz);
+
+            /* Because decomposition only occurs in x and y,
+             * we never have a fraction correction in z.
+             */
+            fptr[XX] = tx - tix + fshx[tix];
+            fptr[YY] = ty - tiy + fshy[tiy];
+            fptr[ZZ] = tz - tiz;
+
+            idxptr[XX] = nnx[tix];
+            idxptr[YY] = nny[tiy];
+            idxptr[ZZ] = nnz[tiz];
         }
-    }
 
     if (bThreads)
     {
+        for (i = start; i < end; i++)
+        {
+            idxptr = atc->idx[i];
+#ifdef DEBUG
+            range_check(idxptr[XX], 0, pme->pmegrid_nx);
+            range_check(idxptr[YY], 0, pme->pmegrid_ny);
+            range_check(idxptr[ZZ], 0, pme->pmegrid_nz);
+#endif
+            thread_i      = g2tx[idxptr[XX]] + g2ty[idxptr[YY]] + g2tz[idxptr[ZZ]];
+            thread_idx[i] = thread_i;
+            tpl_n[thread_i]++;    
+        }   
         /* Make a list of particle indices sorted on thread */
 
         /* Get the cumulative count */
@@ -884,7 +898,13 @@ void spread_on_grid(struct gmx_pme_t *pme,
                 /* Compute fftgrid index for all atoms,
                  * with help of some extra variables.
                  */
+                pme->bGPU = false;
+                //wallcycle_sub_start(wcycle, ewcsPME_INTERPOL_IDX);
                 calc_interpolation_idx(pme, atc, start, grid_index, end, thread);
+                pme->bGPU = true;
+                //wallcycle_sub_start(wcycle, ewcsPME_INTERPOL_IDX);
+                calc_interpolation_idx(pme, atc, start, grid_index, end, thread);
+                //wallcycle_sub_stop(wcycle, ewcsPME_INTERPOL_IDX);
             }
             GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
         }
