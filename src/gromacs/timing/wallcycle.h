@@ -53,16 +53,16 @@ enum {
     ewcMOVEX, ewcGB, ewcFORCE, ewcMOVEF, ewcPMEMESH,
     ewcPME_REDISTXF, ewcPME_SPREADGATHER, ewcPME_FFT, ewcPME_FFTCOMM, ewcLJPME, ewcPME_SOLVE,
     ewcPMEWAITCOMM,
-#ifdef DEBUG_PME_GPU //yupinov unused
-    ewcPMEMESH_CPU,
-    ewcPME_REDISTXF_CPU, ewcPME_SPREADGATHER_CPU, ewcPME_FFT_CPU, ewcPME_FFTCOMM_CPU, ewcLJPME_CPU, ewcPME_SOLVE_CPU,
-    ewcPMEWAITCOMM_CPU,
-#endif
+    /*ewcPMEMESH_GPU,
+    ewcPME_REDISTXF_GPU, ewcPME_SPREADGATHER_GPU, ewcPME_FFT_GPU, ewcPME_FFTCOMM_GPU, ewcLJPME_GPU, ewcPME_SOLVE_GPU,
+    ewcPMEWAITCOMM_GPU, */
     ewcPP_PMEWAITRECVF, ewcWAIT_GPU_NB_NL, ewcWAIT_GPU_NB_L, ewcNB_XF_BUF_OPS,
     ewcVSITESPREAD, ewcPULLPOT,
     ewcTRAJ, ewcUPDATE, ewcCONSTR, ewcMoveE, ewcROT, ewcROTadd, ewcSWAP, ewcIMD,
     ewcTEST, ewcNR
 };
+
+#define GetPMEwc(ewcPMEflag) (ewcPMEflag + pme->bUseGPU ? (ewcPMEMESH_GPU - ewcPMEMESH) : 0)
 
 
 enum {
@@ -78,6 +78,8 @@ enum {
     ewcsEWALD_CORRECTION,
     ewcsNB_X_BUF_OPS,
     ewcsNB_F_BUF_OPS,
+    //yupinov: these 7 were added by Mattias; let's see if they have any use
+    //remove the 7 lines in the cpp as well!
     ewcsPME_INTERPOL_IDX,
     ewcsPME_CALCSPLINE,
     ewcsPME_SPREAD,
@@ -85,6 +87,7 @@ enum {
     ewcsPME_SOLVE,
     ewcsPME_FFT_C2R,
     ewcsPME_GATHER,
+    //
     ewcsNR
 };
 

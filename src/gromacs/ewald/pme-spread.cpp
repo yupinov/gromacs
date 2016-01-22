@@ -898,13 +898,9 @@ void spread_on_grid(struct gmx_pme_t *pme,
                 /* Compute fftgrid index for all atoms,
                  * with help of some extra variables.
                  */
-                pme->bGPU = false;
-                //wallcycle_sub_start(wcycle, ewcsPME_INTERPOL_IDX);
+                wallcycle_sub_start(wcycle, ewcsPME_INTERPOL_IDX);
                 calc_interpolation_idx(pme, atc, start, grid_index, end, thread);
-                pme->bGPU = true;
-                //wallcycle_sub_start(wcycle, ewcsPME_INTERPOL_IDX);
-                calc_interpolation_idx(pme, atc, start, grid_index, end, thread);
-                //wallcycle_sub_stop(wcycle, ewcsPME_INTERPOL_IDX);
+                wallcycle_sub_stop(wcycle, ewcsPME_INTERPOL_IDX);
             }
             GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
         }
