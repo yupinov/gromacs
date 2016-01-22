@@ -599,6 +599,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     pme->nkz         = ir->nkz;
     pme->bP3M        = (ir->coulombtype == eelP3M_AD || getenv("GMX_PME_P3M") != NULL);
     pme->pme_order   = ir->pme_order;
+    pme->bGPU        = false;
 
     /* Always constant electrostatics coefficients */
     pme->epsilon_r   = ir->epsilon_r;
@@ -860,7 +861,7 @@ void gmx_pme_calc_energy(struct gmx_pme_t *pme, int n, rvec *x, real *q, real *V
     grid = &pme->pmegrid[PME_GRID_QA];
 
     /* Only calculate the spline coefficients, don't actually spread */
-    spread_on_grid(pme, atc, NULL, TRUE, FALSE, pme->fftgrid[PME_GRID_QA], FALSE, PME_GRID_QA);
+    spread_on_grid(pme, atc, NULL, TRUE, FALSE, pme->fftgrid[PME_GRID_QA], FALSE, PME_GRID_QA, NULL); //yupinov
 
     *V = gather_energy_bsplines(pme, grid->grid.grid, atc);
 }
@@ -1050,7 +1051,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
             wallcycle_start(wcycle, ewcPME_SPREADGATHER);
 
             /* Spread the coefficients on a grid */
-            spread_on_grid(pme, &pme->atc[0], pmegrid, bFirst, TRUE, fftgrid, bDoSplines, grid_index);
+            spread_on_grid(pme, &pme->atc[0], pmegrid, bFirst, TRUE, fftgrid, bDoSplines, grid_index, wcycle);
 
             if (bFirst)
             {
@@ -1332,7 +1333,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                 {
                     wallcycle_start(wcycle, ewcPME_SPREADGATHER);
                     /* Spread the c6 on a grid */
-                    spread_on_grid(pme, &pme->atc[0], pmegrid, bFirst, TRUE, fftgrid, bDoSplines, grid_index);
+                    spread_on_grid(pme, &pme->atc[0], pmegrid, bFirst, TRUE, fftgrid, bDoSplines, grid_index, wcycle);
 
                     if (bFirst)
                     {

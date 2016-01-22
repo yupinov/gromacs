@@ -867,7 +867,7 @@ static void sum_fftgrid_dd(struct gmx_pme_t *pme, real *fftgrid, int grid_index)
 void spread_on_grid(struct gmx_pme_t *pme,
                     pme_atomcomm_t *atc, pmegrids_t *grids,
                     gmx_bool bCalcSplines, gmx_bool bSpread,
-                    real *fftgrid, gmx_bool bDoSplines, int grid_index)
+                    real *fftgrid, gmx_bool bDoSplines, int grid_index, gmx_wallcycle_t wcycle)
 {
     int nthread, thread;
 #ifdef PME_TIME_THREADS
@@ -898,13 +898,9 @@ void spread_on_grid(struct gmx_pme_t *pme,
                 /* Compute fftgrid index for all atoms,
                  * with help of some extra variables.
                  */
-                pme->bGPU = false;
-                //wallcycle_sub_start(wcycle, ewcsPME_INTERPOL_IDX);
+                wallcycle_sub_start(wcycle, ewcsPME_INTERPOL_IDX);
                 calc_interpolation_idx(pme, atc, start, grid_index, end, thread);
-                pme->bGPU = true;
-                //wallcycle_sub_start(wcycle, ewcsPME_INTERPOL_IDX);
-                calc_interpolation_idx(pme, atc, start, grid_index, end, thread);
-                //wallcycle_sub_stop(wcycle, ewcsPME_INTERPOL_IDX);
+                wallcycle_sub_stop(wcycle, ewcsPME_INTERPOL_IDX);
             }
             GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
         }

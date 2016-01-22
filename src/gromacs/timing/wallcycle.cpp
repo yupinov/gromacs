@@ -871,12 +871,22 @@ void wallcycle_print(FILE *fplog, const gmx::MDLogger &mdlog, int nnodes, int np
     {
         fprintf(fplog, " Breakdown of PP computation\n");
         fprintf(fplog, "%s\n", hline);
-        for (i = 0; i < ewcsNR; i++)
+        for (i = 0; i < ewcsPME_INTERPOL_IDX; i++)
         {
             print_cycles(fplog, c2t_pp, wcsn[i],
                          npp, nth_pp,
                          wc->wcsc[i].n, cyc_sum[ewcNR+i], tot);
         }
+        fprintf(fplog, "%s\n", hline);
+        fprintf(fplog, " Additional breakdown of PME computation\n");
+        fprintf(fplog, "%s\n", hline);
+        for (i = ewcsPME_INTERPOL_IDX; i < ewcsNR; i++)
+        {
+            print_cycles(fplog, c2t_pp, wcsn[i],
+                         npp, nth_pp,
+                         wc->wcsc[i].n, cyc_sum[ewcNR+i], tot);
+        }
+        //yupinov - what about percentage?
         fprintf(fplog, "%s\n", hline);
     }
 
@@ -933,7 +943,7 @@ void wallcycle_print(FILE *fplog, const gmx::MDLogger &mdlog, int nnodes, int np
         print_gputimes(fplog, "Total ", gpu_t->nb_c, tot_gpu, tot_gpu);
         fprintf(fplog, "%s\n", hline);
 
-        gpu_cpu_ratio = tot_gpu/tot_cpu_overlap;
+        gpu_cpu_ratio = tot_gpu/tot_cpu_overlap; //yupinov outdated!
         if (gpu_t->nb_c > 0 && wc->wcc[ewcFORCE].n > 0)
         {
             fprintf(fplog, "\nAverage per-step force GPU/CPU evaluation time ratio: %.3f ms/%.3f ms = %.3f\n",
