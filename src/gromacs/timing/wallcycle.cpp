@@ -107,7 +107,13 @@ static const char *wcn[ewcNR] =
     "DD comm. bounds", "Vsite constr.", "Send X to PME", "Neighbor search", "Launch GPU ops.",
     "Comm. coord.", "Born radii", "Force", "Wait + Comm. F", "PME mesh",
     "PME redist. X/F", "PME spread/gather", "PME 3D-FFT", "PME 3D-FFT Comm.", "PME solve LJ", "PME solve Elec",
-    "PME wait for PP", "Wait + Recv. PME F", "Wait GPU nonlocal", "Wait GPU local", "NB X/F buffer ops.",
+    "PME wait for PP",
+#ifdef DEBUG_PME_GPU
+    "PME mesh [CPU]",
+        "PME redist. X/F [CPU]", "PME spread/gather [CPU]", "PME 3D-FFT [CPU]", "PME 3D-FFT Comm. [CPU]", "PME solve LJ [CPU]", "PME solve Elec [CPU]",
+        "PME wait for PP [CPU]",
+#endif
+    "Wait + Recv. PME F", "Wait GPU nonlocal", "Wait GPU local", "NB X/F buffer ops.",
     "Vsite spread", "COM pull force",
     "Write traj.", "Update", "Constraints", "Comm. energies",
     "Enforced rotation", "Add rot. forces", "Position swapping", "IMD", "Test"
@@ -133,6 +139,15 @@ static const char *wcsn[ewcsNR] =
     "PME solve",
     "PME fft c2r",
     "PME gather",
+#ifdef DEBUG_PME_GPU
+    "PME interpol [CPU]",
+    "PME spline [CPU]",
+    "PME spread [CPU]",
+    "PME fft r2c [CPU]",
+    "PME solve [CPU]",
+    "PME fft c2r [CPU]",
+    "PME gather [CPU]",
+#endif
 };
 
 gmx_bool wallcycle_have_counter(void)
