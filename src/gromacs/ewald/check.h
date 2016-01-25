@@ -3,6 +3,7 @@
 
 #include "gromacs/timing/wallcycle.h"
 
+#ifdef DEBUG_PME_GPU
 struct gpu_flags;
 struct gpu_events;
 
@@ -17,7 +18,11 @@ void events_record_stop(gpu_events &events, int ewcsn, int j);
 
 void check_int(const char *name, int *data, int *expected, int size, gmx_bool bDevice);
 void check_real(const char *name, real *data, real *expected, int size, gmx_bool bDevice);
+
 void print_lock();
 void print_unlock();
+#else
+
+#endif
 
 #endif // GMX_EWALD_CHECK_H
