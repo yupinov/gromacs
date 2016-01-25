@@ -139,6 +139,15 @@ static const char *wcsn[ewcsNR] =
     "PME solve",
     "PME fft c2r",
     "PME gather",
+#ifdef DEBUG_PME_GPU
+    "PME interpol [CPU]",
+    "PME spline [CPU]",
+    "PME spread [CPU]",
+    "PME fft r2c [CPU]",
+    "PME solve [CPU]",
+    "PME fft c2r [CPU]",
+    "PME gather [CPU]",
+#endif
 };
 
 gmx_bool wallcycle_have_counter(void)
