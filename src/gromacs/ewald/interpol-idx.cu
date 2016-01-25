@@ -87,7 +87,7 @@ void calc_interpolation_idx_gpu_core
 
     int block_size = 32;
     int n_blocks = (n + block_size - 1) / block_size;
-#ifdef DEBUG_PME_GPU
+#ifdef DEBUG_PME_GPU_TIMING
     events_record_start(gpu_events_interpol_idx);
 #endif
     calc_interpolation_idx_gpu_kernel<<<n_blocks, block_size>>>
@@ -117,7 +117,7 @@ void calc_interpolation_idx_gpu_core
             thrust::raw_pointer_cast(&fptr_d[2 * n32]),
 
             n);
-#ifdef DEBUG_PME_GPU
+#ifdef DEBUG_PME_GPU_TIMING //yupinov
     events_record_stop(gpu_events_interpol_idx, ewcsPME_INTERPOL_IDX, 0);
 #endif
     idxptr_h = idxptr_d;

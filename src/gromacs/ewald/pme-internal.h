@@ -379,7 +379,7 @@ void gmx_pme_send_force_vir_ener(struct gmx_pme_pp *pme_pp,
                                  matrix vir_lj, real energy_lj,
                                  real dvdlambda_q, real dvdlambda_lj,
                                  float cycles);
-
+//yupinov gpu part
 void calc_interpolation_idx_gpu_core
 (int nx, int ny, int nz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
@@ -388,5 +388,9 @@ void calc_interpolation_idx_gpu_core
  int *nnx, int *nny, int *nnz,
  rvec *xptr_v, ivec *idxptr_v, rvec *fptr_v,
  int start, int end, int thread);
+
+void make_bsplines_gpu(splinevec theta_v, splinevec dtheta_v, int order,
+               rvec fractx_v[], int nr, int ind[], real coefficient[],
+               gmx_bool bDoSplines, int thread); //yupinov why thread?!
 
 #endif
