@@ -18,10 +18,10 @@ enum TH_V_ID {
 };
 
 static thread_vectors TH_V(32, ID_END);
-
+#ifdef DEBUG_PME_GPU
 extern gpu_flags interpol_gpu_flags;
 extern gpu_events gpu_events_interpol_idx;
-
+#endif
 template <typename T>
 static T *raw_off(device_vector<T> &v, int off) {
   return thrust::raw_pointer_cast(&v[off]);
@@ -87,8 +87,9 @@ void calc_interpolation_idx_gpu_core
 
     int block_size = 32;
     int n_blocks = (n + block_size - 1) / block_size;
-
+#ifdef DEBUG_PME_GPU
     events_record_start(gpu_events_interpol_idx);
+#endif
     calc_interpolation_idx_gpu_kernel<<<n_blocks, block_size>>>
                                                               (nx, ny, nz, rxx, ryx, ryy, rzx, rzy, rzz,
 
@@ -116,8 +117,9 @@ void calc_interpolation_idx_gpu_core
             thrust::raw_pointer_cast(&fptr_d[2 * n32]),
 
             n);
-
+#ifdef DEBUG_PME_GPU
     events_record_stop(gpu_events_interpol_idx, ewcsPME_INTERPOL_IDX, 0);
+#endif
     idxptr_h = idxptr_d;
     fptr_h = fptr_d;
     {
@@ -126,7 +128,7 @@ void calc_interpolation_idx_gpu_core
         {
             int *idxptr = idxptr_v[i];
             real *fptr   = fptr_v[i];
-
+#ifdef DEBUG_PME_GPU
             if (check_vs_cpu(interpol_gpu_flags))
             {
                 check_int("calc:idxx", &idxptr_h[ix], &idxptr[XX], 1, false);
@@ -136,7 +138,7 @@ void calc_interpolation_idx_gpu_core
                 check_real("calc:fy", &fptr_h[iy], &fptr[YY], 1, false);
                 check_real("calc:fz", &fptr_h[iz], &fptr[ZZ], 1, false);
             }
-
+#endif
             idxptr[XX] = idxptr_h[ix];
             idxptr[YY] = idxptr_h[iy];
             idxptr[ZZ] = idxptr_h[iz];

@@ -53,16 +53,16 @@ enum {
     ewcMOVEX, ewcGB, ewcFORCE, ewcMOVEF, ewcPMEMESH,
     ewcPME_REDISTXF, ewcPME_SPREADGATHER, ewcPME_FFT, ewcPME_FFTCOMM, ewcLJPME, ewcPME_SOLVE,
     ewcPMEWAITCOMM,
-    /*ewcPMEMESH_GPU,
-    ewcPME_REDISTXF_GPU, ewcPME_SPREADGATHER_GPU, ewcPME_FFT_GPU, ewcPME_FFTCOMM_GPU, ewcLJPME_GPU, ewcPME_SOLVE_GPU,
-    ewcPMEWAITCOMM_GPU, */
+#ifdef DEBUG_PME_GPU //yupinov unused
+    ewcPMEMESH_CPU,
+    ewcPME_REDISTXF_CPU, ewcPME_SPREADGATHER_CPU, ewcPME_FFT_CPU, ewcPME_FFTCOMM_CPU, ewcLJPME_CPU, ewcPME_SOLVE_CPU,
+    ewcPMEWAITCOMM_CPU,
+#endif
     ewcPP_PMEWAITRECVF, ewcWAIT_GPU_NB_NL, ewcWAIT_GPU_NB_L, ewcNB_XF_BUF_OPS,
     ewcVSITESPREAD, ewcPULLPOT,
     ewcTRAJ, ewcUPDATE, ewcCONSTR, ewcMoveE, ewcROT, ewcROTadd, ewcSWAP, ewcIMD,
     ewcTEST, ewcNR
 };
-
-#define GetPMEwc(ewcPMEflag) (ewcPMEflag + pme->bUseGPU ? (ewcPMEMESH_GPU - ewcPMEMESH) : 0)
 
 
 enum {
@@ -87,6 +87,16 @@ enum {
     ewcsPME_SOLVE,
     ewcsPME_FFT_C2R,
     ewcsPME_GATHER,
+#ifdef DEBUG_PME_GPU
+    ewcsPME_INTERPOL_IDX_CPU,
+    ewcsPME_CALCSPLINE_CPU,
+    ewcsPME_SPREAD_CPU,
+    ewcsPME_FFT_R2C_CPU,
+    ewcsPME_SOLVE_CPU,
+    ewcsPME_FFT_C2R_CPU,
+    ewcsPME_GATHER_CPU,
+#endif
+
     //
     ewcsNR
 };
