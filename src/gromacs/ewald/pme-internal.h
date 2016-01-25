@@ -393,13 +393,4 @@ void make_bsplines_gpu(splinevec theta_v, splinevec dtheta_v, int order,
                rvec fractx_v[], int nr, int ind[], real coefficient[],
                gmx_bool bDoSplines, int thread); //yupinov why thread?!
 
-void calc_interpolation_idx_gpu_core
-(int nx, int ny, int nz,
- real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
- int *g2tx, int *g2ty, int *g2tz,
- real *fshx, real *fshy,
- int *nnx, int *nny, int *nnz,
- rvec *xptr_v, ivec *idxptr_v, rvec *fptr_v,
- int start, int end, int thread);
-
 #endif
