@@ -961,8 +961,19 @@ void spread_on_grid(struct gmx_pme_t *pme,
 
             if (bCalcSplines)
             {
+                #ifdef DEBUG_PME_GPU
+                pme->bGPU = false;
+                wallcycle_sub_start(wcycle, ewcsPME_CALCSPLINE_CPU);
                 make_bsplines(spline->theta, spline->dtheta, pme->pme_order,
                               atc->fractx, spline->n, spline->ind, atc->coefficient, bDoSplines);
+                wallcycle_sub_stop(wcycle, ewcsPME_CALCSPLINE_CPU);
+                pme->bGPU = true;
+                #endif
+
+                wallcycle_sub_start(wcycle, ewcsPME_CALCSPLINE);
+                make_bsplines_gpu(spline->theta, spline->dtheta, pme->pme_order,
+                              atc->fractx, spline->n, spline->ind, atc->coefficient, bDoSplines, thread);
+                wallcycle_sub_stop(wcycle, ewcsPME_CALCSPLINE);
             }
 
             if (bSpread)
