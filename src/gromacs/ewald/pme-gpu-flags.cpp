@@ -38,7 +38,7 @@ bool check_vs_cpu_verbose(const gpu_flags &flags) {
   return flags.on >= gpu_flags::BOTH_CHECK_VERBOSE;
 }
 
-#define DEFAULT_FLAGS_PME gpu_flags::BOTH
+#define DEFAULT_FLAGS_PME gpu_flags::BOTH_CHECK
 
 gpu_flags interpol_gpu_flags(DEFAULT_FLAGS_PME);
 
