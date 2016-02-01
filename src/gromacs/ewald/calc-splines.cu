@@ -38,6 +38,9 @@
 #include "pme.h"
 #include "check.h"
 
+
+#include <assert.h>
+
 #include "gromacs/utility/basedefinitions.h"
 //#include "gromacs/utility/real.h"
 typedef float real;
@@ -58,15 +61,14 @@ extern gpu_events gpu_events_calcspline;
  */
 #define CALC_SPLINE(order, max_order)		   \
     {                                              \
-        real dr, div;                               \
-        real data[max_order];                  \
-        real ddata[max_order];                 \
-                                               \
         for (int j = 0; j < DIM; j++)                     \
         {                                          \
-	    dr  = fractx[i*DIM + j];		   \
-                                               \
-            /* dr is relative offset from lower cell limit */ \
+            real data[max_order];                  \
+            /*real ddata[max_order]; */                 \
+            real dr  = fractx[i*DIM + j];		   \
+             /* dr is relative offset from lower cell limit */ \
+            real div;                               \
+                                        \
             data[order-1] = 0;                     \
             data[1]       = dr;                          \
             data[0]       = 1 - dr;                      \
@@ -85,17 +87,20 @@ extern gpu_events gpu_events_calcspline;
                 data[0] = div*(1-dr)*data[0];      \
             }                                      \
             /* differentiate */                    \
-            ddata[0] = -data[0];                   \
+            /*ddata[0] = -data[0];*/     \
+            dtheta[j*order*nr + i*order] = -data[0];              \
             _Pragma("unroll")  \
             for (int k = 1; k < order; k++)               \
             {                                      \
-                ddata[k] = data[k-1] - data[k];    \
+                dtheta[j*order*nr + i*order + k] = data[k-1] - data[k]; /* //yupinov sequiential ptr?*/\
+                /*dim organisation?*/\
+                /* ddata[k] = data[k-1] - data[k];*/    \
             }                                      \
                                                \
             div           = 1.0/(order - 1);                 \
             data[order-1] = div*dr*data[order-2];  \
             _Pragma("unroll")  \
-	    for (int l = 1; l < (order-1); l++)  \
+            for (int l = 1; l < (order-1); l++)  \
             {                                      \
                 data[order-l-1] = div*((dr+l)*data[order-l-2]+    \
                                        (order-l-dr)*data[order-l-1]); \
@@ -105,8 +110,8 @@ extern gpu_events gpu_events_calcspline;
             _Pragma("unroll")  \
             for (int k = 0; k < order; k++)                 \
             {                                      \
-	        theta[j*order*nr + i*order+k]  = data[k];  \
-                dtheta[j*order*nr + i*order+k] = ddata[k];	\
+                theta[j*order*nr + i*order + k]  = data[k];  \
+                /*dtheta[j*order*nr + i*order + k] = ddata[k];*/	\
             }                                      \
         }                                          \
     }
@@ -236,6 +241,7 @@ void make_bsplines_gpu(splinevec theta, splinevec dtheta, int order,
 #ifdef DEBUG_PME_GPU_TIMING
     events_record_start(gpu_events_calcspline);
 #endif
+    assert(order >= 4 && order <= PME_ORDER_MAX); //yupinvo just in case
     switch (order)
     {
     case 4: make_bsplines_kernel_4<<<n_blocks, block_size>>>
