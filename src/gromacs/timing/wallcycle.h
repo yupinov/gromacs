@@ -78,11 +78,12 @@ enum {
     ewcsEWALD_CORRECTION,
     ewcsNB_X_BUF_OPS,
     ewcsNB_F_BUF_OPS,
-    //yupinov: these 7 were added by Mattias; let's see if they have any use
-    //remove the 7 lines in the cpp as well!
+    //yupinov: these were added by Mattias; let's see if they have any use
+    //change in the cpp as well!
     ewcsPME_INTERPOL_IDX,
-    ewcsPME_CALCSPLINE,
-    ewcsPME_SPREAD,
+    ewcsPME_CALCSPLINE, //unused
+    ewcsPME_SPREAD,  //unused
+    ewcsPME_CALCSPLINEANDSPREAD,
     ewcsPME_FFT_R2C,
     ewcsPME_SOLVE,
     ewcsPME_FFT_C2R,
@@ -91,6 +92,7 @@ enum {
     ewcsPME_INTERPOL_IDX_CPU,
     ewcsPME_CALCSPLINE_CPU,
     ewcsPME_SPREAD_CPU,
+    ewcsPME_CALCSPLINEANDSPREAD_CPU,
     ewcsPME_FFT_R2C_CPU,
     ewcsPME_SOLVE_CPU,
     ewcsPME_FFT_C2R_CPU,
