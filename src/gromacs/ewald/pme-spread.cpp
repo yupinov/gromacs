@@ -880,11 +880,15 @@ void spread_on_grid(struct gmx_pme_t *pme,
     nthread = pme->nthread;
     assert(nthread > 0);
 
+
+#ifdef DEBUG_PME_GPU //yupinov copied 1st cycle
+    pme->bGPU = false;
 #ifdef PME_TIME_THREADS
     c1 = omp_cyc_start();
 #endif
     if (bCalcSplines)
     {
+        wallcycle_sub_start(wcycle, ewcsPME_INTERPOL_IDX_CPU);
 #pragma omp parallel for num_threads(nthread) schedule(static)
         for (thread = 0; thread < nthread; thread++)
         {
@@ -898,29 +902,62 @@ void spread_on_grid(struct gmx_pme_t *pme,
                 /* Compute fftgrid index for all atoms,
                  * with help of some extra variables.
                  */
-                #ifdef DEBUG_PME_GPU
-                pme->bGPU = false;
-                wallcycle_sub_start(wcycle, ewcsPME_INTERPOL_IDX_CPU);
-                calc_interpolation_idx(pme, atc, start, grid_index, end, thread);
-                wallcycle_sub_stop(wcycle, ewcsPME_INTERPOL_IDX_CPU);
-                pme->bGPU = true;
-                #endif
 
-                wallcycle_sub_start(wcycle, ewcsPME_INTERPOL_IDX);
+
                 calc_interpolation_idx(pme, atc, start, grid_index, end, thread);
-                wallcycle_sub_stop(wcycle, ewcsPME_INTERPOL_IDX);
+
             }
             GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
         }
+        wallcycle_sub_stop(wcycle, ewcsPME_INTERPOL_IDX_CPU);
+    }
+#ifdef PME_TIME_THREADS
+    c1   = omp_cyc_end(c1);
+    cs1 += (double)c1;
+#endif
+    pme->bGPU = true;
+#endif
+
+
+#ifdef PME_TIME_THREADS
+    c1 = omp_cyc_start();
+#endif
+    if (bCalcSplines)
+    {
+        wallcycle_sub_start(wcycle, ewcsPME_INTERPOL_IDX);
+#pragma omp parallel for num_threads(nthread) schedule(static)
+        for (thread = 0; thread < nthread; thread++)
+        {
+            try
+            {
+                int start, end;
+
+                start = atc->n* thread   /nthread;
+                end   = atc->n*(thread+1)/nthread;
+
+                /* Compute fftgrid index for all atoms,
+                 * with help of some extra variables.
+                 */
+
+
+                calc_interpolation_idx(pme, atc, start, grid_index, end, thread);
+
+            }
+            GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
+        }
+        wallcycle_sub_stop(wcycle, ewcsPME_INTERPOL_IDX);
     }
 #ifdef PME_TIME_THREADS
     c1   = omp_cyc_end(c1);
     cs1 += (double)c1;
 #endif
 
+#ifdef DEBUG_PME_GPU //yupinov copied 2nd cycle
+    pme->bGPU = false;
 #ifdef PME_TIME_THREADS
     c2 = omp_cyc_start();
 #endif
+    wallcycle_sub_start(wcycle, ewcsPME_CALCSPLINEANDSPREAD_CPU);
 #pragma omp parallel for num_threads(nthread) schedule(static)
     for (thread = 0; thread < nthread; thread++)
     {
@@ -961,19 +998,10 @@ void spread_on_grid(struct gmx_pme_t *pme,
 
             if (bCalcSplines)
             {
-                #ifdef DEBUG_PME_GPU
-                pme->bGPU = false;
-                wallcycle_sub_start(wcycle, ewcsPME_CALCSPLINE_CPU);
+                //wallcycle_sub_start(wcycle, ewcsPME_CALCSPLINE_CPU);
                 make_bsplines(spline->theta, spline->dtheta, pme->pme_order,
                               atc->fractx, spline->n, spline->ind, atc->coefficient, bDoSplines);
-                wallcycle_sub_stop(wcycle, ewcsPME_CALCSPLINE_CPU);
-                pme->bGPU = true;
-                #endif
-
-                wallcycle_sub_start(wcycle, ewcsPME_CALCSPLINE);
-                make_bsplines_gpu(spline->theta, spline->dtheta, pme->pme_order,
-                              atc->fractx, spline->n, spline->ind, atc->coefficient, bDoSplines, thread);
-                wallcycle_sub_stop(wcycle, ewcsPME_CALCSPLINE);
+                //wallcycle_sub_stop(wcycle, ewcsPME_CALCSPLINE_CPU);
             }
 
             if (bSpread)
@@ -996,6 +1024,83 @@ void spread_on_grid(struct gmx_pme_t *pme,
         }
         GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
     }
+    wallcycle_sub_stop(wcycle, ewcsPME_CALCSPLINEANDSPREAD_CPU);
+#ifdef PME_TIME_THREADS
+    c2   = omp_cyc_end(c2);
+    cs2 += (double)c2;
+#endif
+    pme->bGPU = true;
+#endif
+
+#ifdef PME_TIME_THREADS
+    c2 = omp_cyc_start();
+#endif
+    wallcycle_sub_start(wcycle, ewcsPME_CALCSPLINEANDSPREAD);
+#pragma omp parallel for num_threads(nthread) schedule(static)
+    for (thread = 0; thread < nthread; thread++)
+    {
+        try
+        {
+            splinedata_t *spline;
+            pmegrid_t *grid = NULL;
+
+            /* make local bsplines  */
+            if (grids == NULL || !pme->bUseThreads)
+            {
+                spline = &atc->spline[0];
+
+                spline->n = atc->n;
+
+                if (bSpread)
+                {
+                    grid = &grids->grid;
+                }
+            }
+            else
+            {
+                spline = &atc->spline[thread];
+
+                if (grids->nthread == 1)
+                {
+                    /* One thread, we operate on all coefficients */
+                    spline->n = atc->n;
+                }
+                else
+                {
+                    /* Get the indices our thread should operate on */
+                    make_thread_local_ind(atc, thread, spline);
+                }
+
+                grid = &grids->grid_th[thread];
+            }
+
+            if (bCalcSplines)
+            {
+                make_bsplines_gpu(spline->theta, spline->dtheta, pme->pme_order,
+                              atc->fractx, spline->n, spline->ind, atc->coefficient, bDoSplines, thread);
+            }
+
+            if (bSpread)
+            {
+                /* put local atoms on grid. */
+#ifdef PME_TIME_SPREAD
+                ct1a = omp_cyc_start();
+#endif
+                spread_coefficients_bsplines_thread(grid, atc, spline, pme->spline_work);
+
+                if (pme->bUseThreads)
+                {
+                    copy_local_grid(pme, grids, grid_index, thread, fftgrid);
+                }
+#ifdef PME_TIME_SPREAD
+                ct1a          = omp_cyc_end(ct1a);
+                cs1a[thread] += (double)ct1a;
+#endif
+            }
+        }
+        GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
+    }
+    wallcycle_sub_stop(wcycle, ewcsPME_CALCSPLINEANDSPREAD);
 #ifdef PME_TIME_THREADS
     c2   = omp_cyc_end(c2);
     cs2 += (double)c2;
