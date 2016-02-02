@@ -391,6 +391,31 @@ void calc_interpolation_idx_gpu_core
 
 void make_bsplines_gpu(splinevec theta_v, splinevec dtheta_v, int order,
                rvec fractx_v[], int nr, int ind[], real coefficient[],
-               gmx_bool bDoSplines, int thread); //yupinov why thread?!
+               gmx_bool bDoSplines, int thread); //yupinov why thread (here, and in other _gpu functions?!
+
+void spread_coefficients_bsplines_thread_gpu_2
+(int pnx, int pny, int pnz, int offx, int offy, int offz,
+ real *grid, int order, ivec *atc_idx, int *spline_ind, int spline_n,
+ real *atc_coefficient, splinevec *spline_theta, int atc_n_foo,
+ int thread);
+
+
+void spread1_coefficients_bsplines_thread_gpu_2
+(int pnx, int pny, int pnz, int offx, int offy, int offz,
+ real *grid, int order, ivec *atc_idx, int *spline_ind, int spline_n,
+ real *atc_coefficient, splinevec *spline_theta, int atc_n_foo,
+ int thread);
+
+void spread1_nvidia_coefficients_bsplines_thread_gpu_2
+(int pnx, int pny, int pnz, int offx, int offy, int offz,
+ real *grid, int order, ivec *atc_idx, int *spline_ind, int spline_n,
+ real *atc_coefficient, splinevec *spline_theta, int atc_n_foo,
+ int thread);
+
+void spread2_coefficients_bsplines_thread_gpu_2
+(int pnx, int pny, int pnz, int offx, int offy, int offz,
+ real *grid, int order, ivec *atc_idx, int *spline_ind, int spline_n,
+ real *atc_coefficie, splinevec *spline_theta, int atc_n_foo,
+ int thread);
 
 #endif
