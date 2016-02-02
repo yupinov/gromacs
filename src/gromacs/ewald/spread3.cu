@@ -34,7 +34,7 @@
  * To help us fund GROMACS development, we humbly ask that you cite
  * the research papers on the package. Check out http://www.gromacs.org.
  */
-
+//yupinov unused file!
 #include "pme.h"
 #include "pme-internal.h"
 
@@ -49,6 +49,7 @@ typedef real *splinevec[DIM];
 
 extern gpu_flags spread_gpu_flags;
 extern gpu_flags spread_bunching_gpu_flags;
+
 extern gpu_events gpu_events_spread;
 
 #include "thread_mpi/mutex.h"

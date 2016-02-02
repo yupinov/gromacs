@@ -55,7 +55,7 @@ extern gpu_events gpu_events_spread;
 
 /* This has to be a macro to enable full compiler optimization with xlC (and probably others too) */
 #define DO_BSPLINE(order)                            \
-	    if (coefficient[i] == 0) { \
+        if (coefficient[i] == 0) /*//yupinov wtf is this?*/{ \
 thx[0] = 3; \
 thy[0] = 3; \
 thz[0] = 3; \
@@ -307,39 +307,50 @@ void spread_coefficients_bsplines_thread_gpu_2
     }
   events_record_stop(gpu_events_spread, ewcsPME_SPREAD, 0);
 
-  if (check_vs_cpu(spread_gpu_flags)) {
-    print_mutex.lock();
-    fprintf(stderr, "Check %d  (%d x %d x %d)\n",
-	    thread, pnx, pny, pnz);
-    for (int i = 0; i < ndatatot; ++i) {
-      real diff = grid_check[i];
-      real cpu_v = grid_check[i];
-      cudaMemcpy(&grid_check[i], &grid_d[i], sizeof(real), cudaMemcpyDeviceToHost);
-      diff -= grid_check[i];
-      real gpu_v = grid_check[i];
-      if (diff != 0) {
-	real absdiff = fabs(diff) / fabs(cpu_v);
-	if (absdiff > .000001) {
-	  fprintf(stderr, "%dppm", (int) (absdiff * 1e6));
-	  if (absdiff > .0001) {
-	    fprintf(stderr, " value %f ", cpu_v);
-	  }
-	} else {
-	  fprintf(stderr, "~");
-	}
-	//fprintf(stderr, "(%f - %f)", cpu_v, gpu_v);
-      } else {
-	if (gpu_v == 0) {
-	  fprintf(stderr, "0");
-	} else {
-	  fprintf(stderr, "=");
-	}
+  if (check_vs_cpu(spread_gpu_flags))
+  {
+      print_mutex.lock();
+      fprintf(stderr, "Check %d  (%d x %d x %d)\n", thread, pnx, pny, pnz);
+      for (int i = 0; i < ndatatot; ++i) {
+          real diff = grid_check[i];
+          real cpu_v = grid_check[i];
+          cudaMemcpy(&grid_check[i], &grid_d[i], sizeof(real), cudaMemcpyDeviceToHost);
+          diff -= grid_check[i];
+          real gpu_v = grid_check[i];
+          if (diff != 0)
+          {
+              real absdiff = fabs(diff) / fabs(cpu_v);
+              if (absdiff > .000001)
+              {
+                  fprintf(stderr, "%dppm", (int) (absdiff * 1e6));
+                  if (absdiff > .0001)
+                  {
+                      fprintf(stderr, " value %f ", cpu_v);
+                  }
+              }
+              else
+              {
+                  fprintf(stderr, "~");
+              }
+              //fprintf(stderr, "(%f - %f)", cpu_v, gpu_v);
+          }
+          else
+          {
+              if (gpu_v == 0)
+              {
+                  fprintf(stderr, "0");
+              }
+              else
+              {
+                  fprintf(stderr, "=");
+              }
+          }
+          if ((i + 1) % pnz == 0)
+          {
+              fprintf(stderr, "\n");
+          }
       }
-      if ((i + 1) % pnz == 0) {
-	fprintf(stderr, "\n");
-      }
-    }
-    print_mutex.unlock();
+      print_mutex.unlock();
   }
   cudaMemcpy(grid, grid_d, size_grid, cudaMemcpyDeviceToHost);
 }

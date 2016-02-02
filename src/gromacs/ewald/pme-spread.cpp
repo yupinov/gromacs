@@ -404,6 +404,63 @@ static void spread_coefficients_bsplines_thread(pmegrid_t                       
     }
 }
 
+
+static void spread_coefficients_bsplines_thread_gpu(pmegrid_t                    *pmegrid,
+                            pme_atomcomm_t               *atc,
+                            splinedata_t                 *spline,
+                            struct pme_spline_work gmx_unused *work,
+                            int thread)
+{
+    int pnx = pmegrid->s[XX];
+    int pny = pmegrid->s[YY];
+    int pnz = pmegrid->s[ZZ];
+
+    int offx = pmegrid->offset[XX];
+    int offy = pmegrid->offset[YY];
+    int offz = pmegrid->offset[ZZ];
+
+    real *grid     = pmegrid->grid;
+    int order = pmegrid->order;
+    ivec *atc_idx = atc->idx;
+    int *spline_ind = spline->ind;
+    int spline_n = spline->n;
+    real *atc_coefficient = atc->coefficient;
+    splinevec *spline_theta = &spline->theta;
+    int atc_n_foo = atc->n; // for bunch testing
+
+
+    spread_coefficients_bsplines_thread_gpu_2
+      (pnx, pny, pnz, offx, offy, offz,
+       grid, order, atc_idx, spline_ind, spline_n,
+       atc_coefficient, spline_theta,
+       atc_n_foo,
+       thread);
+
+
+    spread1_coefficients_bsplines_thread_gpu_2
+      (pnx, pny, pnz, offx, offy, offz,
+       grid, order, atc_idx, spline_ind, spline_n,
+       atc_coefficient, spline_theta,
+       atc_n_foo,
+       thread);
+    /*
+    spread1_nvidia_coefficients_bsplines_thread_gpu_2
+      (pnx, pny, pnz, offx, offy, offz,
+       grid, order, atc_idx, spline_ind, spline_n,
+       atc_coefficient, spline_theta,
+       atc_n_foo,
+       thread);*/
+    spread2_coefficients_bsplines_thread_gpu_2
+      (pnx, pny, pnz, offx, offy, offz,
+       grid, order, atc_idx, spline_ind, spline_n,
+       atc_coefficient, spline_theta,
+       atc_n_foo,
+       thread);
+
+    //yupinov spread3 not called
+}
+
+
 static void copy_local_grid(struct gmx_pme_t *pme, pmegrids_t *pmegrids,
                             int grid_index, int thread, real *fftgrid)
 {
@@ -916,7 +973,7 @@ void spread_on_grid(struct gmx_pme_t *pme,
     cs1 += (double)c1;
 #endif
     pme->bGPU = true;
-#endif
+#endif //DEBUG_PME_GPU
 
 
 #ifdef PME_TIME_THREADS
@@ -938,7 +995,6 @@ void spread_on_grid(struct gmx_pme_t *pme,
                 /* Compute fftgrid index for all atoms,
                  * with help of some extra variables.
                  */
-
 
                 calc_interpolation_idx(pme, atc, start, grid_index, end, thread);
 
@@ -1030,7 +1086,7 @@ void spread_on_grid(struct gmx_pme_t *pme,
     cs2 += (double)c2;
 #endif
     pme->bGPU = true;
-#endif
+#endif //DEBUG_PME_GPU
 
 #ifdef PME_TIME_THREADS
     c2 = omp_cyc_start();
@@ -1077,7 +1133,7 @@ void spread_on_grid(struct gmx_pme_t *pme,
             if (bCalcSplines)
             {
                 make_bsplines_gpu(spline->theta, spline->dtheta, pme->pme_order,
-                              atc->fractx, spline->n, spline->ind, atc->coefficient, bDoSplines, thread);
+                              atc->fractx, spline->n, spline->ind, atc->coefficient, bDoSplines, thread); //yupinov
             }
 
             if (bSpread)
@@ -1086,8 +1142,8 @@ void spread_on_grid(struct gmx_pme_t *pme,
 #ifdef PME_TIME_SPREAD
                 ct1a = omp_cyc_start();
 #endif
-                spread_coefficients_bsplines_thread(grid, atc, spline, pme->spline_work);
-
+                //spread_coefficients_bsplines_thread(grid, atc, spline, pme->spline_work);
+                spread_coefficients_bsplines_thread_gpu(grid, atc, spline, pme->spline_work, thread);
                 if (pme->bUseThreads)
                 {
                     copy_local_grid(pme, grids, grid_index, thread, fftgrid);
