@@ -16,8 +16,8 @@ bool check_vs_cpu_verbose(const gpu_flags &flags);
 void events_record_start(gpu_events &events);
 void events_record_stop(gpu_events &events, int ewcsn, int j);
 
-void check_int(const char *name, int *data, int *expected, int size, gmx_bool bDevice);
-void check_real(const char *name, real *data, real *expected, int size, gmx_bool bDevice);
+void check_int(const char *name, int *data, int *expected, int size, gmx_bool bDevice, gmx_bool bPrintGrid = false);
+void check_real(const char *name, real *data, real *expected, int size, gmx_bool bDevice, gmx_bool bPrintGrid = false);
 
 void print_lock();
 void print_unlock();

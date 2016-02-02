@@ -46,8 +46,10 @@ const bool check_verbose = false;
 static tMPI::mutex print_mutex;
 
 template <typename T>
-void check(const char *name, T *data, T *expected, int size, gmx_bool bDevice)
+void check(const char *name, T *data, T *expected, int size, gmx_bool bDevice, gmx_bool bPrintGrid = false)
 {
+    gmx_bool print1Char = bPrintGrid;
+    gmx_bool printAlways = print1Char; //|=
     print_mutex.lock();
     bool bDiff = false;
     for (int i = 0; i < size; ++i) 
@@ -63,37 +65,54 @@ void check(const char *name, T *data, T *expected, int size, gmx_bool bDevice)
           fprintf(stderr, " %d:%f(%f)", i, (double) cpu_v, (double) diff);
         if (diff != 0) 
         {
-            if (!bDiff) 
+            if (!bDiff && name && !print1Char)
             {
-                fprintf(stderr, "%s\n", name);
+                fprintf(stderr, "%s:\n", name);
                 bDiff = true;
             }
             T absdiff = diff > 0 ? diff : -diff;
             T abscpu_v = cpu_v > 0 ? cpu_v : -cpu_v;
             T reldiff = absdiff / (abscpu_v > 1e-11 ? abscpu_v : 1e-11);
-            if (reldiff > .000001) 
+            if (reldiff > .000001)
             {
-                fprintf(stderr, "%.0fppm", (double) (reldiff * 1e6));
-                if (reldiff > .0001) 
-                    fprintf(stderr, " value %f vs %f ", (double) cpu_v, (double) gpu_v);
-            } 
-            else 
+                if (print1Char)
+                    fprintf(stderr, "&");
+                else
+                    fprintf(stderr, "%.0fppm", (double) (reldiff * 1e6));
+                if (reldiff > .0001)
+                    if (print1Char)
+                        fprintf(stderr, "!");
+                    else
+                        fprintf(stderr, " value %f vs %f ", (double) cpu_v, (double) gpu_v);
+            }
+            else
                 fprintf(stderr, "~");
         }
+        else if (printAlways)
+        {
+            if (gpu_v == 0)
+            {
+                fprintf(stderr, "0");
+            }
+            else
+            {
+                fprintf(stderr, "=");
+            }
+        }
     }
-    if (bDiff)
+    if (bDiff || printAlways)
         fprintf(stderr, "\n");
     print_mutex.unlock();
 }
 
-void check_int(const char *name, int *data, int *expected, int size, gmx_bool bDevice)
+void check_int(const char *name, int *data, int *expected, int size, gmx_bool bDevice, gmx_bool bPrintGrid)
 {
-  check(name, data, expected, size, bDevice);
+  check(name, data, expected, size, bDevice, bPrintGrid);
 }
 
-void check_real(const char *name, real *data, real *expected, int size, gmx_bool bDevice)
+void check_real(const char *name, real *data, real *expected, int size, gmx_bool bDevice, gmx_bool bPrintGrid)
 {
-  check(name, data, expected, size, bDevice);
+  check(name, data, expected, size, bDevice, bPrintGrid);
 }
 
 void print_lock() {

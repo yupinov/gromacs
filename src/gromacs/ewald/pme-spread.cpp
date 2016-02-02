@@ -428,14 +428,14 @@ static void spread_coefficients_bsplines_thread_gpu(pmegrid_t                   
     splinevec *spline_theta = &spline->theta;
     int atc_n_foo = atc->n; // for bunch testing
 
-
+/*
     spread_coefficients_bsplines_thread_gpu_2
       (pnx, pny, pnz, offx, offy, offz,
        grid, order, atc_idx, spline_ind, spline_n,
        atc_coefficient, spline_theta,
        atc_n_foo,
        thread);
-
+*/
 
     spread1_coefficients_bsplines_thread_gpu_2
       (pnx, pny, pnz, offx, offy, offz,
@@ -443,20 +443,20 @@ static void spread_coefficients_bsplines_thread_gpu(pmegrid_t                   
        atc_coefficient, spline_theta,
        atc_n_foo,
        thread);
-    /*
+/*
     spread1_nvidia_coefficients_bsplines_thread_gpu_2
       (pnx, pny, pnz, offx, offy, offz,
        grid, order, atc_idx, spline_ind, spline_n,
        atc_coefficient, spline_theta,
        atc_n_foo,
-       thread);*/
+       thread);
     spread2_coefficients_bsplines_thread_gpu_2
       (pnx, pny, pnz, offx, offy, offz,
        grid, order, atc_idx, spline_ind, spline_n,
        atc_coefficient, spline_theta,
        atc_n_foo,
        thread);
-
+*/
     //yupinov spread3 not called
 }
 
