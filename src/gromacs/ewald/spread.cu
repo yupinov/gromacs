@@ -334,6 +334,7 @@ void spread_coefficients_bsplines_thread_gpu_2
               }
               //fprintf(stderr, "(%f - %f)", cpu_v, gpu_v);
           }
+          /*
           else
           {
               if (gpu_v == 0)
@@ -345,9 +346,10 @@ void spread_coefficients_bsplines_thread_gpu_2
                   fprintf(stderr, "=");
               }
           }
+          */
           if ((i + 1) % pnz == 0)
           {
-              fprintf(stderr, "\n");
+              ;//fprintf(stderr, "\n");
           }
       }
       print_mutex.unlock();

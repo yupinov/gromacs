@@ -195,39 +195,13 @@ void spread1_coefficients_bsplines_thread_gpu_2
     }
   events_record_stop(gpu_events_spread, ewcsPME_SPREAD, 1);
 
-  if (check_vs_cpu_j(spread_gpu_flags, 1)) {
-    print_mutex.lock();
-    fprintf(stderr, "Check %d  (%d x %d x %d)\n",
-	    thread, pnx, pny, pnz);
-    for (int i = 0; i < ndatatot; ++i) {
-      real diff = grid_check[i];
-      real cpu_v = grid_check[i];
-      cudaMemcpy(&grid_check[i], &grid_d[i], sizeof(real), cudaMemcpyDeviceToHost);
-      diff -= grid_check[i];
-      real gpu_v = grid_check[i];
-      if (diff != 0) {
-	real absdiff = fabs(diff) / fabs(cpu_v);
-	if (absdiff > .000001) {
-	  fprintf(stderr, "%dppm", (int) (absdiff * 1e6));
-	  if (absdiff > .0001) {
-	    fprintf(stderr, " value %f ", cpu_v);
-	  }
-	} else {
-	  fprintf(stderr, "~");
-	}
-	//fprintf(stderr, "(%f - %f)", cpu_v, gpu_v);
-      } else {
-	if (gpu_v == 0) {
-	  fprintf(stderr, "0");
-	} else {
-	  fprintf(stderr, "=");
-	}
-      }
-      if ((i + 1) % pnz == 0) {
-	fprintf(stderr, "\n");
-      }
+    if (check_vs_cpu_j(spread_gpu_flags, 1))
+    {
+        print_mutex.lock(); //yupinov mutex - multilevel?
+        fprintf(stderr, "Check %d  (%d x %d x %d)\n", thread, pnx, pny, pnz);
+        print_mutex.unlock();
+        for (int i = 0; i < ndatatot; i+=pnz)
+            check_real(NULL, &grid_d[i], &grid_check[i], pnz, true, true);
     }
-    print_mutex.unlock();
-  }
-  cudaMemcpy(grid, grid_d, size_grid, cudaMemcpyDeviceToHost);
+    cudaMemcpy(grid, grid_d, size_grid, cudaMemcpyDeviceToHost);
 }
