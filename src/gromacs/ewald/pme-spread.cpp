@@ -457,7 +457,7 @@ static void spread_coefficients_bsplines_thread_gpu(pmegrid_t                   
        atc_n_foo,
        thread);
 */
-    //yupinov spread3 not called
+    //yupinov spread3 never called
 }
 
 

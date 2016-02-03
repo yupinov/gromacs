@@ -49,7 +49,8 @@ typedef real *splinevec[DIM];
 #ifdef DEBUG_PME_GPU
 extern gpu_flags spread_gpu_flags;
 extern gpu_flags spread_bunching_gpu_flags;
-
+#endif
+#ifdef DEBUG_PME_TIMINGS_GPU
 extern gpu_events gpu_events_spread;
 #endif
 #include "thread_mpi/mutex.h"
@@ -234,7 +235,7 @@ void spread3_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
   // GRID CHECK
   int ndatatot = nx*ny*nz;
   int size_grid = ndatatot * sizeof(real);
-  #ifdef DEBUG_PME_GPU
+#ifdef DEBUG_PME_GPU
   real *grid_check;
   if (check_vs_cpu_j(spread_gpu_flags, 3)) {
     grid_check = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_HOST);
@@ -295,7 +296,7 @@ void spread3_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     }
   real *grid_d = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_CUDA);
   cudaMemcpy(grid_d, grid, size_grid, cudaMemcpyHostToDevice);
-#ifdef DEBUG_PME_GPU
+#ifdef DEBUG_PME_TIMINGS_GPU
   events_record_start(gpu_events_spread);
 #endif
   const int N = 256;
@@ -325,9 +326,11 @@ void spread3_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
        grid_d,
        n);
   }
-  #ifdef DEBUG_PME_GPU
-  events_record_stop(gpu_events_spread, ewcsPME_SPREAD, 3);
+#ifdef DEBUG_PME_TIMINGS_GPU
 
+  events_record_stop(gpu_events_spread, ewcsPME_SPREAD, 3);
+#endif
+#ifdef DEBUG_PME_GPU
   if (check_vs_cpu_j(spread_gpu_flags, 3)) {
     print_mutex.lock();
     fprintf(stderr, "Check %d  (%d x %d x %d)\n",

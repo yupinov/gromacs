@@ -49,6 +49,8 @@ typedef real *splinevec[DIM];
 #ifdef DEBUG_PME_GPU
 extern gpu_flags spread_gpu_flags;
 extern gpu_flags spread_bunching_gpu_flags;
+#endif
+#ifdef DEBUG_PME_TIMINGS_GPU
 extern gpu_events gpu_events_spread;
 #endif
 
@@ -183,7 +185,7 @@ void spread1_coefficients_bsplines_thread_gpu_2
   dim3 dimGrid(1, 1, n_blocks);
   dim3 dimBlockOrder(order, order, block_size);
   dim3 dimBlockOne(1, 1, block_size);
-  #ifdef DEBUG_PME_GPU
+  #ifdef DEBUG_PME_TIMINGS_GPU
   events_record_start(gpu_events_spread);
 #endif
     switch (order)
@@ -196,9 +198,10 @@ void spread1_coefficients_bsplines_thread_gpu_2
 	 coefficient_d, thx_d, thy_d, thz_d); break;
     default: /* FIXME */ break;
     }
-    #ifdef DEBUG_PME_GPU
+    #ifdef DEBUG_PME_TIMINGS_GPU
   events_record_stop(gpu_events_spread, ewcsPME_SPREAD, 1);
-
+    #endif
+    #ifdef DEBUG_PME_GPU
     if (check_vs_cpu_j(spread_gpu_flags, 1))
     {
         print_mutex.lock(); //yupinov mutex - multilevel?
