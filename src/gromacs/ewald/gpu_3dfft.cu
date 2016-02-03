@@ -324,10 +324,8 @@ int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
                 fprintf(stderr, "\n");
             }
         }
-#endif
 
 #if 0
-        #ifdef DEBUG_PME_GPU
         real sum = 0;
         for (int i = 0; i < x * y * z; ++i)
         {
@@ -349,11 +347,10 @@ int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
       check_real("FFT ci", &setup->cdata[i].y, &setup->complex_data[i].im, 1, true);
       */
         }
-    #endif
-#endif
+#endif //0
         //print_unlock();
     }
-
+#endif
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {
         cudaMemcpy(setup->complex_data, setup->cdata + x * y * (z/2+1), x * y * (z/2+1) * sizeof(t_complex), cudaMemcpyDeviceToHost);
