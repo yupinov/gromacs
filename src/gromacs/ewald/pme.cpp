@@ -932,7 +932,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
     matrix               vir_AB[4];
     real                 scale, lambda;
     gmx_bool             bClearF;
-    gmx_parallel_3dfft_t pfft_setup;
+    //gmx_parallel_3dfft_t pfft_setup;
     real              *  fftgrid;
     t_complex          * cfftgrid;
     int                  thread;
@@ -1016,7 +1016,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
         pmegrid    = &pme->pmegrid[grid_index];
         fftgrid    = pme->fftgrid[grid_index];
         cfftgrid   = pme->cfftgrid[grid_index];
-        pfft_setup = pme->pfft_setup[grid_index];
+        //pfft_setup = pme->pfft_setup[grid_index];
         switch (grid_index)
         {
             case 0: coefficient = chargeA + start; break;
@@ -1325,7 +1325,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                 /* Unpack structure */
                 pmegrid    = &pme->pmegrid[grid_index];
                 fftgrid    = pme->fftgrid[grid_index];
-                pfft_setup = pme->pfft_setup[grid_index];
+                //pfft_setup = pme->pfft_setup[grid_index];
                 calc_next_lb_coeffs(pme, local_sigma);
                 grid = pmegrid->grid.grid;
                 where();
@@ -1423,7 +1423,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     /* Unpack structure */
                     pmegrid    = &pme->pmegrid[grid_index];
                     fftgrid    = pme->fftgrid[grid_index];
-                    pfft_setup = pme->pfft_setup[grid_index];
+                    //pfft_setup = pme->pfft_setup[grid_index];
                     grid       = pmegrid->grid.grid;
                     calc_next_lb_coeffs(pme, local_sigma);
                     where();
