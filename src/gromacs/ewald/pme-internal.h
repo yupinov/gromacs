@@ -426,8 +426,6 @@ void spread3_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
          pmegrid_t *pmegrid);
 
  // FFT
-//#include "gromacs/fft/fft.h"
-//#include "gromacs/utility/gmxmpi.h"
 
 int gmx_parallel_3dfft_init_gpu   (gmx_parallel_3dfft_gpu_t *    pfft_setup,
                                ivec                      ndata,
@@ -448,6 +446,36 @@ int gmx_parallel_3dfft_complex_limits_gpu(gmx_parallel_3dfft_gpu_t      pfft_set
                                   ivec                      local_ndata,
                                   ivec                      local_offset,
                                   ivec                      local_size);
+
+inline int gmx_parallel_3dfft_real_limits_wrapper(struct gmx_pme_t *pme,
+                               int                       grid_index,
+                               ivec                      local_ndata,
+                               ivec                      local_offset,
+                               ivec                      local_size)
+{
+    int res = 0;
+    if (pme->bGPU)
+        res = gmx_parallel_3dfft_real_limits_gpu(pme->pfft_setup_gpu[grid_index], local_ndata, local_offset, local_size);
+    else
+        res = gmx_parallel_3dfft_real_limits(pme->pfft_setup[grid_index], local_ndata, local_offset, local_size);
+    return res;
+}
+
+inline int gmx_parallel_3dfft_complex_limits_wrapper(struct gmx_pme_t *pme,
+                               int                       grid_index,
+                               ivec                      complex_order,
+                               ivec                      local_ndata,
+                               ivec                      local_offset,
+                               ivec                      local_size)
+{
+    int res = 0;
+    if (pme->bGPU)
+        res = gmx_parallel_3dfft_complex_limits_gpu(pme->pfft_setup_gpu[grid_index], complex_order, local_ndata, local_offset, local_size);
+    else
+        res = gmx_parallel_3dfft_complex_limits(pme->pfft_setup[grid_index], complex_order, local_ndata, local_offset, local_size);
+    return res;
+}
+
 
 int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
                            enum gmx_fft_direction  dir,
