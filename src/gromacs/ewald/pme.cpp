@@ -1112,16 +1112,8 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     int loop_count;
 
                     /* do 3d-fft */
-                    if (thread == 0)
-                    {
-                        wallcycle_start(wcycle, ewcPME_FFT); //yupinov thread 0 timing?
-                    }
                     gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_REAL_TO_COMPLEX,
                                                thread, wcycle);
-                    if (thread == 0)
-                    {
-                        wallcycle_stop(wcycle, ewcPME_FFT);
-                    }
                     where();
 
                     /* solve in k-space for our local cells */
@@ -1160,14 +1152,11 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     if (thread == 0)
                     {
                         where();
-                        wallcycle_start(wcycle, ewcPME_FFT);
                     }
                     gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_COMPLEX_TO_REAL,
                                                thread, wcycle);
                     if (thread == 0)
                     {
-                        wallcycle_stop(wcycle, ewcPME_FFT);
-
                         where();
 
                         if (pme->nodeid == 0)
@@ -1378,17 +1367,8 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                         if (flags & GMX_PME_SOLVE)
                         {
                             /* do 3d-fft */
-                            if (thread == 0)
-                            {
-                                wallcycle_start(wcycle, ewcPME_FFT);
-                            }
-
                             gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_REAL_TO_COMPLEX,
                                                        thread, wcycle);
-                            if (thread == 0)
-                            {
-                                wallcycle_stop(wcycle, ewcPME_FFT);
-                            }
                             where();
                         }
                     }
@@ -1456,15 +1436,12 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                             if (thread == 0)
                             {
                                 where();
-                                wallcycle_start(wcycle, ewcPME_FFT);
                             }
 
                             gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_COMPLEX_TO_REAL,
                                                        thread, wcycle);
                             if (thread == 0)
                             {
-                                wallcycle_stop(wcycle, ewcPME_FFT);
-
                                 where();
 
                                 if (pme->nodeid == 0)
