@@ -319,7 +319,8 @@ int solve_pme_yzx(struct gmx_pme_t *pme, t_complex *grid,
     nz = pme->nkz;
 
     /* Dimensions should be identical for A/B grid, so we just use A here */
-    gmx_parallel_3dfft_complex_limits(pme->pfft_setup[PME_GRID_QA],
+    gmx_parallel_3dfft_complex_limits_wrapper(pme,
+                                      PME_GRID_QA,
                                       complex_order,
                                       local_ndata,
                                       local_offset,
@@ -565,7 +566,8 @@ int solve_pme_lj_yzx(struct gmx_pme_t *pme, t_complex **grid, gmx_bool bLB,
     nz = pme->nkz;
 
     /* Dimensions should be identical for A/B grid, so we just use A here */
-    gmx_parallel_3dfft_complex_limits(pme->pfft_setup[PME_GRID_C6A],
+    gmx_parallel_3dfft_complex_limits_wrapper(pme,
+                                      PME_GRID_C6A,
                                       complex_order,
                                       local_ndata,
                                       local_offset,
