@@ -170,6 +170,8 @@ int gmx_pme_destroy(FILE *log, struct gmx_pme_t **pmedata)
         sfree((*pmedata)->cfftgrid[i]);
         gmx_parallel_3dfft_destroy((*pmedata)->pfft_setup[i]);
         gmx_parallel_3dfft_destroy_gpu((*pmedata)->pfft_setup_gpu[i]);
+        //yupinov this is not called!
+        //this probably doesn't dealloc grids fully!
     }
 
     sfree((*pmedata)->lb_buf1);
@@ -601,7 +603,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     pme->bP3M        = (ir->coulombtype == eelP3M_AD || getenv("GMX_PME_P3M") != NULL);
     pme->pme_order   = ir->pme_order;
 #ifdef DEBUG_PME_GPU
-
+#error You don't really want that, do you?
 //yupinov
 #else
     pme->bGPU        = true;
