@@ -327,7 +327,6 @@ void spread3_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
        n);
   }
 #ifdef DEBUG_PME_TIMINGS_GPU
-
   events_record_stop(gpu_events_spread, ewcsPME_SPREAD, 3);
 #endif
 #ifdef DEBUG_PME_GPU

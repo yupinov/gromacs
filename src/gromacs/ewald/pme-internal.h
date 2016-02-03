@@ -63,6 +63,8 @@
 #include "gromacs/timing/walltime_accounting.h"
 #include "gromacs/utility/gmxmpi.h"
 
+typedef struct gmx_parallel_3dfft_gpu *gmx_parallel_3dfft_gpu_t;
+
 struct t_commrec;
 struct t_inputrec;
 
@@ -288,6 +290,7 @@ typedef struct gmx_pme_t {
     int                       cfftgrid_nx, cfftgrid_ny, cfftgrid_nz;
 
     gmx_parallel_3dfft_t     *pfft_setup;
+    gmx_parallel_3dfft_gpu_t  *pfft_setup_gpu;
 
     int                      *nnx, *nny, *nnz;
     real                     *fshx, *fshy, *fshz;
@@ -417,5 +420,40 @@ void spread2_coefficients_bsplines_thread_gpu_2
  real *grid, int order, ivec *atc_idx, int *spline_ind, int spline_n,
  real *atc_coefficie, splinevec *spline_theta, int atc_n_foo,
  int thread);
+
+void spread3_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
+         int grid_index,
+         pmegrid_t *pmegrid);
+
+ // FFT
+//#include "gromacs/fft/fft.h"
+//#include "gromacs/utility/gmxmpi.h"
+
+int gmx_parallel_3dfft_init_gpu   (gmx_parallel_3dfft_gpu_t *    pfft_setup,
+                               ivec                      ndata,
+                               real **real_data,
+                               t_complex **complex_data,
+                               MPI_Comm                  comm[2],
+                               gmx_bool                  bReproducible,
+                               int                       nthreads);
+
+int gmx_parallel_3dfft_real_limits_gpu(gmx_parallel_3dfft_gpu_t      pfft_setup,
+                               ivec                      local_ndata,
+                               ivec                      local_offset,
+                               ivec                      local_size);
+
+
+int gmx_parallel_3dfft_complex_limits_gpu(gmx_parallel_3dfft_gpu_t      pfft_setup,
+                                  ivec                      complex_order,
+                                  ivec                      local_ndata,
+                                  ivec                      local_offset,
+                                  ivec                      local_size);
+
+int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
+                           enum gmx_fft_direction  dir,
+                           int                     thread,
+                           gmx_wallcycle_t         wcycle);
+
+int gmx_parallel_3dfft_destroy_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup);
 
 #endif
