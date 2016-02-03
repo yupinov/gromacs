@@ -599,8 +599,12 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     pme->nkz         = ir->nkz;
     pme->bP3M        = (ir->coulombtype == eelP3M_AD || getenv("GMX_PME_P3M") != NULL);
     pme->pme_order   = ir->pme_order;
-    pme->bGPU        = false;
+#ifdef DEBUG_PME_GPU
 
+//yupinov
+#else
+    pme->bGPU        = true;
+#endif
     /* Always constant electrostatics coefficients */
     pme->epsilon_r   = ir->epsilon_r;
 

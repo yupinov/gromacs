@@ -46,11 +46,11 @@
 
 #define PME_ORDER_MAX 12
 typedef real *splinevec[DIM];
-
+#ifdef DEBUG_PME_GPU
 extern gpu_flags spread_gpu_flags;
 extern gpu_flags spread_bunching_gpu_flags;
 extern gpu_events gpu_events_spread;
-
+#endif
 #include "thread_mpi/mutex.h"
 
 /* This has to be a macro to enable full compiler optimization with xlC (and probably others too) */
@@ -168,11 +168,12 @@ void spread1_nvidia_coefficients_bsplines_thread_gpu_2
     int size_grid = ndatatot * sizeof(real);
 
     real *grid_check;
+    #ifdef DEBUG_PME_GPU
     if (check_vs_cpu_j(spread_gpu_flags, 1)) {
       grid_check = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_HOST);
       memcpy(grid_check, grid, ndatatot * sizeof(real));
     }
-
+#endif
     for (int i = 0; i < ndatatot; i++)
     {
       // FIX clear grid on device instead
@@ -244,7 +245,9 @@ void spread1_nvidia_coefficients_bsplines_thread_gpu_2
   int n_blocks = (n + particles_per_block - 1) / particles_per_block;
   dim3 dimGrid(n_blocks, 1, 1);
   dim3 dimBlockOrder(order, order, particles_per_block);
+  #ifdef DEBUG_PME_GPU
   events_record_start(gpu_events_spread);
+#endif
     switch (order)
     {
     case 4: spread1_coefficients_kernel_O<4,particles_per_block><<<dimGrid, dimBlockOrder>>>
@@ -255,6 +258,8 @@ void spread1_nvidia_coefficients_bsplines_thread_gpu_2
 	 coefficient_d, thx_d, thy_d, thz_d); break;
     default: /* FIXME */ break;
     }
+
+#ifdef DEBUG_PME_GPU
   events_record_stop(gpu_events_spread, ewcsPME_SPREAD, 1);
 
   if (check_vs_cpu_j(spread_gpu_flags, 1)) {
@@ -296,5 +301,6 @@ void spread1_nvidia_coefficients_bsplines_thread_gpu_2
     fprintf(stderr, "#PME Errors = %d\n", num_errors);
     print_mutex.unlock();
   }
+#endif
   cudaMemcpy(grid, grid_d, size_grid, cudaMemcpyDeviceToHost);
 }

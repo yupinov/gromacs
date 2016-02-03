@@ -975,7 +975,6 @@ void spread_on_grid(struct gmx_pme_t *pme,
     pme->bGPU = true;
 #endif //DEBUG_PME_GPU
 
-
 #ifdef PME_TIME_THREADS
     c1 = omp_cyc_start();
 #endif

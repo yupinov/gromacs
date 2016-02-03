@@ -46,12 +46,12 @@
 #include <cuda_runtime.h>
 
 typedef real *splinevec[DIM];
-
+#ifdef DEBUG_PME_GPU
 extern gpu_flags spread_gpu_flags;
 extern gpu_flags spread_bunching_gpu_flags;
 
 extern gpu_events gpu_events_spread;
-
+#endif
 #include "thread_mpi/mutex.h"
 
 #include "th-a.cuh"
@@ -234,12 +234,13 @@ void spread3_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
   // GRID CHECK
   int ndatatot = nx*ny*nz;
   int size_grid = ndatatot * sizeof(real);
+  #ifdef DEBUG_PME_GPU
   real *grid_check;
   if (check_vs_cpu_j(spread_gpu_flags, 3)) {
     grid_check = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_HOST);
     memcpy(grid_check, pmegrid, ndatatot * sizeof(real));
   }
-
+#endif
   // G2T
   int *g2tx_h = pme->pmegrid[grid_index].g2t[XX];
   int *g2ty_h = pme->pmegrid[grid_index].g2t[YY];
@@ -294,8 +295,9 @@ void spread3_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     }
   real *grid_d = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_CUDA);
   cudaMemcpy(grid_d, grid, size_grid, cudaMemcpyHostToDevice);
-
+#ifdef DEBUG_PME_GPU
   events_record_start(gpu_events_spread);
+#endif
   const int N = 256;
   const int D = 2;
   int n_blocks = (n + N - 1) / N;
@@ -323,6 +325,7 @@ void spread3_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
        grid_d,
        n);
   }
+  #ifdef DEBUG_PME_GPU
   events_record_stop(gpu_events_spread, ewcsPME_SPREAD, 3);
 
   if (check_vs_cpu_j(spread_gpu_flags, 3)) {
@@ -359,5 +362,6 @@ void spread3_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     }
     print_mutex.unlock();
   }
-  cudaMemcpy(grid, grid_d, size_grid, cudaMemcpyDeviceToHost);
+  #endif
+  cudaMemcpy(grid, grid_d, size_grid, cudaMemcpyDeviceToHost); //yupinov part of check?
 }
