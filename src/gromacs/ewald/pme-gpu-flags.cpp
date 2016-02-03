@@ -9,8 +9,10 @@
 #include "pme-spread.h"
 #include "pme-gather.h"
 
-struct gpu_flags {
-  enum run_on {
+struct gpu_flags
+{
+  enum run_on
+  {
     CPU_ONLY, GPU_ONLY, BOTH, BOTH_CHECK, BOTH_CHECK_VERBOSE
   };
   run_on on;

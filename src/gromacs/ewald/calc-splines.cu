@@ -53,6 +53,8 @@ typedef float real;
 typedef real *splinevec[DIM];
 #ifdef DEBUG_PME_GPU
 extern gpu_flags calcspline_gpu_flags;
+#endif
+#ifdef DEBUG_PME_TIMINGS_GPU
 extern gpu_events gpu_events_calcspline;
 #endif
 

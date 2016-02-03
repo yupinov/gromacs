@@ -49,6 +49,8 @@ typedef real *splinevec[DIM];
 #ifdef DEBUG_PME_GPU
 extern gpu_flags spread_gpu_flags;
 extern gpu_flags spread_bunching_gpu_flags;
+#endif
+#ifdef DEBUG_PME_TIMINGS_GPU
 extern gpu_events gpu_events_spread;
 #endif
 #include "thread_mpi/mutex.h"
@@ -166,9 +168,8 @@ void spread1_nvidia_coefficients_bsplines_thread_gpu_2
 
     int ndatatot = pnx*pny*pnz;
     int size_grid = ndatatot * sizeof(real);
-
+#ifdef DEBUG_PME_GPU
     real *grid_check;
-    #ifdef DEBUG_PME_GPU
     if (check_vs_cpu_j(spread_gpu_flags, 1)) {
       grid_check = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_HOST);
       memcpy(grid_check, grid, ndatatot * sizeof(real));
@@ -245,7 +246,7 @@ void spread1_nvidia_coefficients_bsplines_thread_gpu_2
   int n_blocks = (n + particles_per_block - 1) / particles_per_block;
   dim3 dimGrid(n_blocks, 1, 1);
   dim3 dimBlockOrder(order, order, particles_per_block);
-  #ifdef DEBUG_PME_GPU
+#ifdef DEBUG_PME_TIMINGS_GPU
   events_record_start(gpu_events_spread);
 #endif
     switch (order)
@@ -259,9 +260,11 @@ void spread1_nvidia_coefficients_bsplines_thread_gpu_2
     default: /* FIXME */ break;
     }
 
-#ifdef DEBUG_PME_GPU
-  events_record_stop(gpu_events_spread, ewcsPME_SPREAD, 1);
 
+#ifdef DEBUG_PME_TIMINGS_GPU
+  events_record_stop(gpu_events_spread, ewcsPME_SPREAD, 1);
+#endif
+#ifdef DEBUG_PME_GPU
   if (check_vs_cpu_j(spread_gpu_flags, 1)) {
     print_mutex.lock();
     int num_errors = 0;

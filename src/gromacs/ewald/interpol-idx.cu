@@ -20,6 +20,8 @@ enum TH_V_ID {
 static thread_vectors TH_V(32, ID_END);
 #ifdef DEBUG_PME_GPU
 extern gpu_flags interpol_gpu_flags;
+#endif
+#ifdef DEBUG_PME_TIMINGS_GPU
 extern gpu_events gpu_events_interpol_idx;
 #endif
 template <typename T>

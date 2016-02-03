@@ -1,14 +1,16 @@
-#ifdef DEBUG_PME_GPU
 #include <cuda.h>
 
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
+
+#ifdef DEBUG_PME_TIMINGS_GPU
+
 #include "gromacs/timing/gpu_timing.h"
 #include "gromacs/timing/wallcycle.h"
 
-#include "thread_mpi/mutex.h"
 
-struct gpu_events {
+struct gpu_events
+{
   bool created;
   cudaEvent_t event_start, event_stop;
   gpu_events() : created(false) { }
@@ -22,7 +24,8 @@ gpu_events gpu_events_solve;
 gpu_events gpu_events_fft_c2r;
 gpu_events gpu_events_gather;
 
-void events_record_start(gpu_events &events) {
+void events_record_start(gpu_events &events)
+{
   if (!events.created) {
     cudaEventCreate(&events.event_start);
     cudaEventCreate(&events.event_stop);
@@ -41,6 +44,13 @@ void events_record_stop(gpu_events &events, int ewcsn, int j) {
   gmx_wallclock_gpu_pme.pme_time[idx][j].t += milliseconds;
   ++gmx_wallclock_gpu_pme.pme_time[idx][j].c;
 }
+#endif
+
+
+
+#ifdef DEBUG_PME_GPU
+
+#include "thread_mpi/mutex.h"
 
 const bool check_verbose = false;
 static tMPI::mutex print_mutex;
