@@ -169,6 +169,7 @@ int gmx_pme_destroy(FILE *log, struct gmx_pme_t **pmedata)
         sfree((*pmedata)->fftgrid[i]);
         sfree((*pmedata)->cfftgrid[i]);
         gmx_parallel_3dfft_destroy((*pmedata)->pfft_setup[i]);
+        gmx_parallel_3dfft_destroy_gpu((*pmedata)->pfft_setup_gpu[i]);
     }
 
     sfree((*pmedata)->lb_buf1);
@@ -735,6 +736,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     snew(pme->fftgrid, pme->ngrids);
     snew(pme->cfftgrid, pme->ngrids);
     snew(pme->pfft_setup, pme->ngrids);
+    snew(pme->pfft_setup_gpu, pme->ngrids); //yupinov destroy!
 
     for (i = 0; i < pme->ngrids; ++i)
     {
@@ -753,10 +755,16 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
                           pme->overlap[0].s2g1[pme->nodeid_major]-pme->overlap[0].s2g0[pme->nodeid_major+1],
                           pme->overlap[1].s2g1[pme->nodeid_minor]-pme->overlap[1].s2g0[pme->nodeid_minor+1]);
             /* This routine will allocate the grid data to fit the FFTs */
-            gmx_parallel_3dfft_init(&pme->pfft_setup[i], ndata,
+            if (!pme->bGPU)
+                gmx_parallel_3dfft_init(&pme->pfft_setup[i], ndata,
                                     &pme->fftgrid[i], &pme->cfftgrid[i],
                                     pme->mpi_comm_d,
                                     bReproducible, pme->nthread);
+            else
+                gmx_parallel_3dfft_init_gpu(&pme->pfft_setup_gpu[i], ndata, //yupinov see how it works
+                                                &pme->fftgrid[i], &pme->cfftgrid[i],
+                                                pme->mpi_comm_d,
+                                               bReproducible, pme->nthread);
 
         }
     }
@@ -1106,9 +1114,9 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     /* do 3d-fft */
                     if (thread == 0)
                     {
-                        wallcycle_start(wcycle, ewcPME_FFT);
+                        wallcycle_start(wcycle, ewcPME_FFT); //yupinov thread 0 timing?
                     }
-                    gmx_parallel_3dfft_execute(pfft_setup, GMX_FFT_REAL_TO_COMPLEX,
+                    gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_REAL_TO_COMPLEX,
                                                thread, wcycle);
                     if (thread == 0)
                     {
@@ -1154,7 +1162,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                         where();
                         wallcycle_start(wcycle, ewcPME_FFT);
                     }
-                    gmx_parallel_3dfft_execute(pfft_setup, GMX_FFT_COMPLEX_TO_REAL,
+                    gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_COMPLEX_TO_REAL,
                                                thread, wcycle);
                     if (thread == 0)
                     {
@@ -1375,7 +1383,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                                 wallcycle_start(wcycle, ewcPME_FFT);
                             }
 
-                            gmx_parallel_3dfft_execute(pfft_setup, GMX_FFT_REAL_TO_COMPLEX,
+                            gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_REAL_TO_COMPLEX,
                                                        thread, wcycle);
                             if (thread == 0)
                             {
@@ -1451,7 +1459,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                                 wallcycle_start(wcycle, ewcPME_FFT);
                             }
 
-                            gmx_parallel_3dfft_execute(pfft_setup, GMX_FFT_COMPLEX_TO_REAL,
+                            gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_COMPLEX_TO_REAL,
                                                        thread, wcycle);
                             if (thread == 0)
                             {
