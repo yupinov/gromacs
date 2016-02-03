@@ -44,7 +44,7 @@ struct gmx_parallel_3dfft_gpu
     cufftComplex *cdata;
 };
 
-
+/*
 struct test_3dfft_t
 {
     gmx_parallel_3dfft_t pfft_setup;
@@ -123,6 +123,7 @@ void test_3dfft_destroy(test_3dfft_t *t)
     gmx_parallel_3dfft_destroy_gpu(t->pfft_setup_gpu);
     delete t;
 }
+*/
 
 int gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup,
                                    ivec                      ndata,

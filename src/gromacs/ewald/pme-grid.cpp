@@ -244,6 +244,10 @@ int copy_pmegrid_to_fftgrid(struct gmx_pme_t *pme, real *pmegrid, real *fftgrid,
                                    local_fft_ndata,
                                    local_fft_offset,
                                    local_fft_size);
+    gmx_parallel_3dfft_real_limits_gpu(pme->pfft_setup_gpu[grid_index],
+                                       local_fft_ndata,
+                                       local_fft_offset,
+                                       local_fft_size);
 
     local_pme_size[0] = pme->pmegrid_nx;
     local_pme_size[1] = pme->pmegrid_ny;
@@ -335,7 +339,10 @@ int copy_fftgrid_to_pmegrid(struct gmx_pme_t *pme, const real *fftgrid, real *pm
                                    local_fft_ndata,
                                    local_fft_offset,
                                    local_fft_size);
-
+    gmx_parallel_3dfft_real_limits_gpu(pme->pfft_setup_gpu[grid_index],
+                                       local_fft_ndata,
+                                       local_fft_offset,
+                                       local_fft_size);
     local_pme_size[0] = pme->pmegrid_nx;
     local_pme_size[1] = pme->pmegrid_ny;
     local_pme_size[2] = pme->pmegrid_nz;
@@ -900,7 +907,10 @@ void dump_local_fftgrid(struct gmx_pme_t *pme, const real *fftgrid)
                                    local_fft_ndata,
                                    local_fft_offset,
                                    local_fft_size);
-
+    gmx_parallel_3dfft_real_limits_gpu(pme->pfft_setup_gpu[PME_GRID_QA],
+                                       local_fft_ndata,
+                                       local_fft_offset,
+                                       local_fft_size);
     dump_grid(stderr,
               pme->pmegrid_start_ix,
               pme->pmegrid_start_iy,
