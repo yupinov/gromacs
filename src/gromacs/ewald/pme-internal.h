@@ -492,21 +492,30 @@ inline int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t *pme,
     int res = 0;
     gmx_bool bGPU = pme->bGPU;
     int wcycle_id = ewcPME_FFT;
+    int wsubcycle_id = (dir == GMX_FFT_REAL_TO_COMPLEX) ? ewcsPME_FFT_R2C : ewcsPME_FFT_C2R;  //yupinov - this is 1 thread!
 #ifdef DEBUG_PME_GPU
     if (!bGPU)
+    {
         wcycle_id = ewcPME_FFT_CPU;
+        wsubcycle_id = (dir == GMX_FFT_REAL_TO_COMPLEX) ? ewcsPME_FFT_R2C_CPU : ewcsPME_FFT_C2R_CPU;
+    }
 #endif
 
     if (thread == 0)
+    {
         wallcycle_start(wcycle, wcycle_id);
-
+        wallcycle_sub_start(wcycle, wsubcycle_id);
+    }
     if (bGPU)
         res = gmx_parallel_3dfft_execute_gpu(pme->pfft_setup_gpu[grid_index], dir, thread, wcycle);
     else
         res = gmx_parallel_3dfft_execute(pme->pfft_setup[grid_index], dir, thread, wcycle);
 
     if (thread == 0)
+    {
         wallcycle_stop(wcycle, wcycle_id);
+        wallcycle_sub_stop(wcycle, wsubcycle_id);
+    }
 
     return res;
 }
