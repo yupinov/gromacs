@@ -765,7 +765,7 @@ __global__ void solve_pme_lj_yzx_iyz_loop_kernel
                 denomk = 1.0/denomk;
                 tmp1k = exp(tmp1k);
                 real mk = tmp2k;
-                tmp2k = sqrt_M_PI_d*mk*erfcf(mk);
+                tmp2k = sqrt_M_PI_d*mk*erfcf(mk); //yupinov std::erfc? gmx_erfc?
 
                 m2k    = factor*m2k;
                 real eterm  = -((1.0 - 2.0*m2k)*tmp1k
