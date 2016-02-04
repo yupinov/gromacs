@@ -22,6 +22,7 @@ extern gpu_events gpu_events_fft_r2c;
 extern gpu_events gpu_events_fft_c2r;
 #endif
 
+#include <assert.h>
 
 struct gmx_parallel_3dfft_gpu
 {
@@ -184,6 +185,7 @@ int gmx_parallel_3dfft_real_limits_gpu(gmx_parallel_3dfft_gpu_t      pfft_setup,
 {
     //fprintf(stderr, "3dfft_real_limits_gpu\n");
     gmx_parallel_3dfft_gpu_t setup = pfft_setup;
+    assert(setup);
     setup->local_ndata[0] = local_ndata[0];
     setup->local_ndata[1] = local_ndata[1];
     setup->local_ndata[2] = local_ndata[2];

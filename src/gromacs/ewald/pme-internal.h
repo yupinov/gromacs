@@ -461,10 +461,11 @@ inline int gmx_parallel_3dfft_real_limits_wrapper(struct gmx_pme_t *pme,
                                ivec                      local_size)
 {
     int res = 0;
+    res = gmx_parallel_3dfft_real_limits(pme->pfft_setup[grid_index], local_ndata, local_offset, local_size);
     if (pme->bGPU)
         res = gmx_parallel_3dfft_real_limits_gpu(pme->pfft_setup_gpu[grid_index], local_ndata, local_offset, local_size);
     else
-        res = gmx_parallel_3dfft_real_limits(pme->pfft_setup[grid_index], local_ndata, local_offset, local_size);
+        ;//res = gmx_parallel_3dfft_real_limits(pme->pfft_setup[grid_index], local_ndata, local_offset, local_size);
     return res;
 }
 
@@ -475,11 +476,13 @@ inline int gmx_parallel_3dfft_complex_limits_wrapper(struct gmx_pme_t *pme,
                                ivec                      local_offset,
                                ivec                      local_size)
 {
+    //yupinov - so both FFT limits functiosn are broken for now?
     int res = 0;
+    res = gmx_parallel_3dfft_complex_limits(pme->pfft_setup[grid_index], complex_order, local_ndata, local_offset, local_size);
     if (pme->bGPU)
         res = gmx_parallel_3dfft_complex_limits_gpu(pme->pfft_setup_gpu[grid_index], complex_order, local_ndata, local_offset, local_size);
     else
-        res = gmx_parallel_3dfft_complex_limits(pme->pfft_setup[grid_index], complex_order, local_ndata, local_offset, local_size);
+        ;//res = gmx_parallel_3dfft_complex_limits(pme->pfft_setup[grid_index], complex_order, local_ndata, local_offset, local_size);
     return res;
 }
 
@@ -506,6 +509,7 @@ inline int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t *pme,
         wallcycle_start(wcycle, wcycle_id);
         wallcycle_sub_start(wcycle, wsubcycle_id);
     }
+    //res = gmx_parallel_3dfft_execute(pme->pfft_setup[grid_index], dir, thread, wcycle);
     if (bGPU)
         res = gmx_parallel_3dfft_execute_gpu(pme->pfft_setup_gpu[grid_index], dir, thread, wcycle);
     else

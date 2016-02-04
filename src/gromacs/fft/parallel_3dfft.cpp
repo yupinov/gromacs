@@ -48,12 +48,12 @@
 #include "gromacs/utility/gmxmpi.h"
 #include "gromacs/utility/smalloc.h"
 
-struct gmx_parallel_3dfft  {
+struct gmx_parallel_3dfft
+{
     fft5d_plan p1, p2;
 };
 
-int
-gmx_parallel_3dfft_init   (gmx_parallel_3dfft_t     *    pfft_setup,
+int gmx_parallel_3dfft_init   (gmx_parallel_3dfft_t     *    pfft_setup,
                            ivec                          ndata,
                            real     **                   real_data,
                            t_complex     **              complex_data,
