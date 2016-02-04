@@ -59,6 +59,7 @@
 #include "gromacs/domdec/domdec_struct.h"
 #include "gromacs/essentialdynamics/edsam.h"
 #include "gromacs/ewald/pme.h"
+#include "gromacs/ewald/pme-internal.h"
 #include "gromacs/fileio/checkpoint.h"
 #include "gromacs/fileio/oenv.h"
 #include "gromacs/fileio/tpxio.h"
@@ -1398,6 +1399,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
     }
 
     wallcycle_stop(wcycle, ewcRUN);
+    fprintf(fplog, "\nThis was a %s PME run!\n", (*pmedata)->bGPU ? "GPU" : "CPU");
 
     /* Finish up, write some stuff
      * if rerunMD, don't write last frame again
