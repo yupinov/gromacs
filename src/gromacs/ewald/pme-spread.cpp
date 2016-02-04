@@ -1151,7 +1151,7 @@ void spread_on_grid(struct gmx_pme_t *pme,
     c2   = omp_cyc_end(c2);
     cs2 += (double)c2;
 #endif
-
+    assert(fftgrid);
     if (bSpread && pme->bUseThreads)
     {
 #ifdef PME_TIME_THREADS
