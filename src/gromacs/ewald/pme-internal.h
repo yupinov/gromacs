@@ -524,4 +524,25 @@ inline int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t *pme,
     return res;
 }
 
+int solve_pme_yzx_gpu(real pme_epsilon_r,
+              int nx, int ny, int nz,
+              ivec complex_order, ivec local_ndata, ivec local_offset, ivec local_size,
+              real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
+              //real *mhx, real *mhy, real *mhz, real *m2, real *denom, real *tmp1, real *eterm, real *m2inv,
+              splinevec pme_bsp_mod,
+              matrix work_vir_q, real *work_energy_q,
+              t_complex *grid,
+              real ewaldcoeff, real vol,
+              gmx_bool bEnerVir,
+              int nthread, int thread);
+int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
+             ivec complex_order, ivec local_ndata, ivec local_offset, ivec local_size,
+             real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
+             //real *mhx, real *mhy, real *mhz, real *m2, real *denom, real *tmp1, real *tmp2,
+             splinevec pme_bsp_mod,
+             matrix work_vir_lj, real *work_energy_lj,
+             t_complex **grid, gmx_bool bLB,
+             real ewaldcoeff, real vol,
+             gmx_bool bEnerVir, int nthread, int thread);
+
 #endif
