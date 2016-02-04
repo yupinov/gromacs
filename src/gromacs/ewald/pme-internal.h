@@ -476,7 +476,7 @@ inline int gmx_parallel_3dfft_complex_limits_wrapper(struct gmx_pme_t *pme,
                                ivec                      local_offset,
                                ivec                      local_size)
 {
-    //yupinov - so both FFT limits functiosn are broken for now?
+    //yupinov - so both FFT limits functiosn are broken for now? as well as constructr
     int res = 0;
     res = gmx_parallel_3dfft_complex_limits(pme->pfft_setup[grid_index], complex_order, local_ndata, local_offset, local_size);
     if (pme->bGPU)
