@@ -453,7 +453,7 @@ int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
                            gmx_wallcycle_t         wcycle);
 
 int gmx_parallel_3dfft_destroy_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup);
-
+#include <assert.h>
 inline int gmx_parallel_3dfft_real_limits_wrapper(struct gmx_pme_t *pme,
                                int                       grid_index,
                                ivec                      local_ndata,
@@ -464,8 +464,7 @@ inline int gmx_parallel_3dfft_real_limits_wrapper(struct gmx_pme_t *pme,
     res = gmx_parallel_3dfft_real_limits(pme->pfft_setup[grid_index], local_ndata, local_offset, local_size);
     if (pme->bGPU)
         res = gmx_parallel_3dfft_real_limits_gpu(pme->pfft_setup_gpu[grid_index], local_ndata, local_offset, local_size);
-    else
-        ;//res = gmx_parallel_3dfft_real_limits(pme->pfft_setup[grid_index], local_ndata, local_offset, local_size);
+    assert(res == 0);
     return res;
 }
 
@@ -481,10 +480,10 @@ inline int gmx_parallel_3dfft_complex_limits_wrapper(struct gmx_pme_t *pme,
     res = gmx_parallel_3dfft_complex_limits(pme->pfft_setup[grid_index], complex_order, local_ndata, local_offset, local_size);
     if (pme->bGPU)
         res = gmx_parallel_3dfft_complex_limits_gpu(pme->pfft_setup_gpu[grid_index], complex_order, local_ndata, local_offset, local_size);
-    else
-        ;//res = gmx_parallel_3dfft_complex_limits(pme->pfft_setup[grid_index], complex_order, local_ndata, local_offset, local_size);
     return res;
 }
+
+
 
 inline int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t *pme,
                            int grid_index,
