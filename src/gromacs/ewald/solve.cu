@@ -124,8 +124,7 @@ int solve_pme_yzx_gpu(real pme_epsilon_r,
     int n_blocks = (n + block_size - 1) / block_size;
 
     cudaMemcpyToSymbol( &sqrt_M_PI_d, &sqrt_M_PI, sizeof(real));
-    printf("local_size[XX] %d local_ndata[XX] %d\n",
-	   local_size[XX], local_ndata[XX]);
+    //printf("local_size[XX] %d local_ndata[XX] %d\n", local_size[XX], local_ndata[XX]);
     int grid_size = local_size[YY] * local_size[ZZ] * local_ndata[XX]; // * local_size[XX];
     local_vectors lv = TH_V.local(thread);
     thrust::device_vector<t_complex> &grid_d = lv.device<t_complex>(ID_GRID, grid_size);
@@ -134,16 +133,18 @@ int solve_pme_yzx_gpu(real pme_epsilon_r,
     thrust::device_vector<real> &pme_bsp_mod_z_d = lv.device<real>(ID_PME_BSP_MOD_Z, nz);
     thrust::device_vector<real> &energy_d = lv.device<real>(ID_ENERGY, n);
     thrust::device_vector<real> &virial_d = lv.device<real>(ID_VIRIAL, 6 * n);
-    fprintf(stderr, "grid copy %p to %p, end val %f,%f thread %d/%d\n",
+    /*
+     * fprintf(stderr, "grid copy %p to %p, end val %f,%f thread %d/%d\n",
 	    grid, thrust::raw_pointer_cast(&grid_d[0]),
 	    (double) grid[grid_size - local_size[XX] + local_ndata[XX] - 1].re,
 	    (double) grid[grid_size - local_size[XX] + local_ndata[XX] - 1].im,
 	    thread, nthread);
+        */
     thrust::copy(grid, grid + grid_size, grid_d.begin());
     thrust::copy(pme_bsp_mod[XX], pme_bsp_mod[XX] + nx, pme_bsp_mod_x_d.begin());
     thrust::copy(pme_bsp_mod[YY], pme_bsp_mod[YY] + ny, pme_bsp_mod_y_d.begin());
     thrust::copy(pme_bsp_mod[ZZ], pme_bsp_mod[ZZ] + nz, pme_bsp_mod_z_d.begin());
-    fprintf(stderr, "grid copy after\n");
+    //fprintf(stderr, "grid copy after\n");
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_solve);
 #endif
@@ -256,7 +257,10 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
 
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i == 0) { printf("solve_kernel start\n"); }
+    if (i == 0)
+    {
+        ;//printf("solve_kernel start\n");
+    }
     int iyz = iyz0 + i;
     if (iyz < iyz1)
     {
@@ -322,7 +326,7 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
             // NOTE: on gpu, keep the conditional. shouldn't be too bad?
             for (int kx = kxstart; kx < kxend; kx++, p0++)
             {
-                if (i == 0) { printf("solve_kernel %d\n", kx); }
+                //if (i == 0) { printf("solve_kernel %d\n", kx); }
                 mx = kx < maxkx ? kx : (kx - nx);
 
                 mhxk      = mx * rxx;
@@ -336,9 +340,8 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
                 real denom = m2k*bz*by*pme_bsp_mod_XX[kx];
                 real tmp1  = -factor*m2k;
 
-                if (iyz == iyz0 && kx == kxstart)
-                    printf
-                            ("SOLVE_gpu mhxk %f mhyk %f mhzk %f m2k %f denom %f tmp1 %f\n", (double) mhxk, (double) mhyk, (double) mhzk, (double) m2k, (double) denom, (double) tmp1);
+                //if (iyz == iyz0 && kx == kxstart)
+                    ;//printf("SOLVE_gpu mhxk %f mhyk %f mhzk %f m2k %f denom %f tmp1 %f\n", (double) mhxk, (double) mhyk, (double) mhzk, (double) m2k, (double) denom, (double) tmp1);
 
                 real m2invk = 1.0/m2k;
 
