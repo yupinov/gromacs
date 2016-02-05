@@ -49,4 +49,35 @@ real
 gather_energy_bsplines(struct gmx_pme_t *pme, real *grid,
                        pme_atomcomm_t *atc);
 
+void
+gather_f_bsplines_gpu_pre(struct gmx_pme_t *pme, real *grid,
+              gmx_bool bClearF, pme_atomcomm_t *atc,
+              splinedata_t *spline,
+              real scale, int thread);
+
+void
+gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
+              gmx_bool bClearF, pme_atomcomm_t *atc,
+              splinedata_t *spline,
+              real scale, int thread);
+
+inline void gather_f_bsplines_wrapper(struct gmx_pme_t *pme, real *grid,
+                          gmx_bool bClearF, pme_atomcomm_t *atc,
+                          splinedata_t *spline,
+                          real scale, gmx_wallcycle_t wcycle, int thread)
+{
+    gather_f_bsplines_gpu_pre(pme, grid, bClearF, atc,
+            spline,
+            scale, thread);
+    wallcycle_sub_start(wcycle, ewcsPME_GATHER); //yupinov 1 thread! GPU distinction
+    gather_f_bsplines(pme, grid, bClearF, atc,
+            spline,
+            scale);
+    wallcycle_sub_stop(wcycle, ewcsPME_GATHER);
+    gather_f_bsplines_gpu(pme, grid, bClearF, atc,
+            spline,
+            scale, thread);
+}
+
+
 #endif

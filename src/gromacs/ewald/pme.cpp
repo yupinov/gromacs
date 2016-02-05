@@ -1213,9 +1213,9 @@ int gmx_pme_do(struct gmx_pme_t *pme,
             {
                 try
                 {
-                    gather_f_bsplines(pme, grid, bClearF, atc,
+                    gather_f_bsplines_wrapper(pme, grid, bClearF, atc,
                                       &atc->spline[thread],
-                                      pme->bFEP ? (grid_index % 2 == 0 ? 1.0-lambda : lambda) : 1.0);
+                                      pme->bFEP ? (grid_index % 2 == 0 ? 1.0-lambda : lambda) : 1.0, wcycle, thread);
                 }
                 GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
             }
@@ -1484,9 +1484,9 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                         {
                             try
                             {
-                                gather_f_bsplines(pme, grid, bClearF, &pme->atc[0],
-                                                  &pme->atc[0].spline[thread],
-                                                  scale);
+                            gather_f_bsplines_wrapper(pme, grid, bClearF, &pme->atc[0],
+                                              &pme->atc[0].spline[thread],
+                                              scale, wcycle, thread);
                             }
                             GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
                         }

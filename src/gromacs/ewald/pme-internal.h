@@ -545,4 +545,22 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
              real ewaldcoeff, real vol,
              gmx_bool bEnerVir, int nthread, int thread);
 
+void gather_f_bsplines_gpu_2_pre
+(gmx_bool bClearF,
+ int *spline_ind, int spline_n,
+ real *atc_coefficient, rvec *atc_f,
+ real scale, int thread);
+
+void gather_f_bsplines_gpu_2
+(real *grid, gmx_bool bClearF,
+ int order,
+ int nx, int ny, int nz, int pnx, int pny, int pnz,
+ real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
+ int *spline_ind, int spline_n,
+ real *atc_coefficient, rvec *atc_f, ivec *atc_idx,
+ splinevec *spline_theta, splinevec *spline_dtheta,
+ real scale, int thread
+ );
+
+
 #endif
