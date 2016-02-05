@@ -124,7 +124,7 @@ int solve_pme_yzx_gpu(real pme_epsilon_r,
     int n = iyz1 - iyz0;
     int n_blocks = (n + block_size - 1) / block_size;
 
-    cudaError_t stat = cudaMemcpyToSymbol( &sqrt_M_PI_d, &sqrt_M_PI, sizeof(real));
+    cudaError_t stat = cudaMemcpyToSymbol( sqrt_M_PI_d, &sqrt_M_PI, sizeof(real));  //yupinov - this is an overkill!
     CU_RET_ERR(stat, "solve cudaMemcpyToSymbol");
     //printf("local_size[XX] %d local_ndata[XX] %d\n", local_size[XX], local_ndata[XX]);
     int grid_size = local_size[YY] * local_size[ZZ] * local_ndata[XX]; // * local_size[XX];
@@ -475,7 +475,7 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
     iyz0 = local_ndata[YY]*local_ndata[ZZ]* thread   /nthread;
     iyz1 = local_ndata[YY]*local_ndata[ZZ]*(thread+1)/nthread;
 
-    cudaError_t stat = cudaMemcpyToSymbol( &sqrt_M_PI_d, &sqrt_M_PI, sizeof(real));
+    cudaError_t stat = cudaMemcpyToSymbol( sqrt_M_PI_d, &sqrt_M_PI, sizeof(real));
     CU_RET_ERR(stat, "solve cudaMemcpyToSymbol");
 
     const int block_size = 32;
