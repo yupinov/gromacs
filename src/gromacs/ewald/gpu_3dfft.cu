@@ -14,6 +14,8 @@
 #include <cuda.h>
 #include <cufft.h>
 
+#include "gromacs/gpu_utils/cudautils.cuh"
+
 #ifdef DEBUG_PME_GPU
 extern gpu_flags fft_gpu_flags;
 #endif
@@ -134,6 +136,7 @@ int gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup,
 gmx_bool                  bReproducible,
 int                       nthreads)
 {
+    cudaError_t stat;
     gmx_parallel_3dfft_gpu_t setup = new gmx_parallel_3dfft_gpu();
 
     // FIXME: this copies the already setup pointer, to check them after execute
@@ -157,8 +160,10 @@ int                       nthreads)
     setup->n[2] = ndata[2];
     int x = setup->n[0], y = setup->n[1], z = setup->n[2];
 
-    cudaMalloc((void **) &setup->rdata, x * y * z * sizeof(cufftReal));
-    cudaMalloc((void **) &setup->cdata, x * y * (z/2+1) * 2 * sizeof(cufftComplex));
+    stat = cudaMalloc((void **) &setup->rdata, x * y * z * sizeof(cufftReal));
+    CU_RET_ERR(stat, "fft init cudaMalloc error");
+    stat = cudaMalloc((void **) &setup->cdata, x * y * (z/2+1) * 2 * sizeof(cufftComplex));
+    CU_RET_ERR(stat, "fft init cudaMalloc error"); //yupinov check all cuFFT errors
 
     *pfft_setup = setup;
     //fprintf(stderr, "3dfft_init_gpu\n");
@@ -172,7 +177,7 @@ int                       nthreads)
                       batch)
             != CUFFT_SUCCESS)
     {
-        fprintf(stderr, "PLAN_MANY FAIL!!!\n");
+        fprintf(stderr, "cufftPlanMany failure!\n"); //yupinov - handle as CU_LAUNCH_ERR?
         setup = NULL; // FIX
     }
     return 0;
@@ -261,6 +266,8 @@ int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
                                    int                     thread,
                                    gmx_wallcycle_t         wcycle)
 {
+    cudaError_t stat;
+
     //fprintf(stderr, "3dfft_execute_gpu\n");
     gmx_parallel_3dfft_gpu_t setup = pfft_setup;
 
@@ -285,7 +292,8 @@ int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
 
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {
-        cudaMemcpy(setup->rdata, setup->real_data, x * y * z * sizeof(real), cudaMemcpyHostToDevice);
+        stat = cudaMemcpy(setup->rdata, setup->real_data, x * y * z * sizeof(real), cudaMemcpyHostToDevice);
+        CU_RET_ERR(stat, "cudaMemcpy R2C error");
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_start(gpu_events_fft_r2c);
         #endif

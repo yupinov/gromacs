@@ -1,6 +1,7 @@
 #include <vector>
 #include <stdio.h>
 #include "th-a.cuh"
+#include "gromacs/gpu_utils/cudautils.cuh"
 
 static std::vector<int> th_size(TH_LOC_END * TH_ID_END * TH);
 static std::vector<void *> th_p(TH_LOC_END * TH_ID_END * TH);
@@ -8,30 +9,45 @@ static std::vector<void *> th_p(TH_LOC_END * TH_ID_END * TH);
 static const bool th_a_print = false;
 
 template <typename T>
-T *th_t(th_id id, int thread, int size, th_loc loc) {
-  int i = (loc * TH_ID_END + id) * TH + thread;
-  if (th_size[i] < size || size == 0) {
-    if (th_p[i]) {
-      if (th_a_print) fprintf(stderr, "free! %p\n", th_p[i]);
-      if (loc == TH_LOC_CUDA) {
-	cudaFree(th_p[i]);
-      } else {
-	delete[] (T *) th_p[i];
-      }
-      th_p[i] = NULL;
+T *th_t(th_id id, int thread, int size, th_loc loc)
+{
+    cudaError_t stat;
+    int i = (loc * TH_ID_END + id) * TH + thread;
+    if (th_size[i] < size || size == 0)
+    {
+        if (th_p[i])
+        {
+            if (th_a_print)
+                fprintf(stderr, "free! %p\n", th_p[i]);
+            if (loc == TH_LOC_CUDA)
+            {
+                stat = cudaFree(th_p[i]);
+                CU_RET_ERR(stat, "cudaFree th error");
+            }
+            else
+            {
+                delete[] (T *) th_p[i];
+            }
+            th_p[i] = NULL;
+        }
+        if (size > 0)
+        {
+            size = size * 2 + 16;
+            if (th_a_print)
+                fprintf(stderr, "alloc! %d\n", size);
+            if (loc == TH_LOC_CUDA)
+            {
+                stat = cudaMalloc((void **) &th_p[i], size);
+                CU_RET_ERR(stat, "cudaMalloc th error");
+            }
+            else
+            {
+                th_p[i] = new T[size / sizeof(T)];
+            }
+            th_size[i] = size;
+        }
     }
-    if (size > 0) {
-      size = size * 2 + 16;
-      if (th_a_print) fprintf(stderr, "alloc! %d\n", size);
-      if (loc == TH_LOC_CUDA) {
-	cudaMalloc((void **) &th_p[i], size);
-      } else {
-	th_p[i] = new T[size / sizeof(T)];
-      }
-      th_size[i] = size;
-    }
-  }
-  return (T *) th_p[i];
+    return (T *) th_p[i];
 }
 
 
