@@ -321,7 +321,7 @@ void spread_coefficients_bsplines_thread_gpu_2
 	 n, grid_d, i0_d, j0_d, k0_d, pny, pnz,
 	 coefficient_d, thx_d, thy_d, thz_d); break;
     }
-
+    CU_LAUNCH_ERR("spread_coefficients_kernel");
 #ifdef DEBUG_PME_TIMINGS_GPU
   events_record_stop(gpu_events_spread, ewcsPME_SPREAD, 0);
 #endif

@@ -61,10 +61,15 @@ int *th_i(th_id id, int thread, int size, th_loc loc) {
 }
 
 void th_cpy(void *dest, void *src, int size, th_loc dest_loc) {
-  if (dest_loc == TH_LOC_CUDA) {
-    cudaMemcpy(dest, src, size, cudaMemcpyHostToDevice);
-  } else {
-    cudaMemcpy(dest, src, size, cudaMemcpyDeviceToHost);
+  if (dest_loc == TH_LOC_CUDA)
+  {
+    cudaError_t stat = cudaMemcpy(dest, src, size, cudaMemcpyHostToDevice);
+    CU_RET_ERR(stat, "cudaMemcpyHostToDevice th error");
+  }
+  else
+  {
+    cudaError_t stat = cudaMemcpy(dest, src, size, cudaMemcpyDeviceToHost);
+    CU_RET_ERR(stat, "cudaMemcpyDeviceToHost th error");
   }
 }
 

@@ -258,6 +258,7 @@ void transpose_xyz_yzx(int nx, int ny, int nz,
     dim3 dimGrid((nx + block_size - 1) / block_size, ny, nz/2+1);
     dim3 dimBlock(block_size, 1, 1);
     transpose_xyz_yzx_kernel<<<dimGrid, dimBlock>>>(nx, ny, nz, cdata, forward);
+    CU_LAUNCH_ERR("transpose_xyz_yzx_kernel");
     //cudaMemcpy(cdata, cdata + nx * ny * (nz/2+1), nx * ny * (nz/2+1) * sizeof(cufftComplex), cudaMemcpyDeviceToDevice);
 }
 

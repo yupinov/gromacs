@@ -3,7 +3,7 @@
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
 #include "gromacs/math/vectypes.h"
-
+#include "gromacs/gpu_utils/cudautils.cuh"
 #include <cuda.h>
 
 #include "th-v.h"
@@ -269,6 +269,7 @@ void gather_f_bsplines_gpu_2
        thrust::raw_pointer_cast(&i0_d[0]),
        thrust::raw_pointer_cast(&j0_d[0]),
        thrust::raw_pointer_cast(&k0_d[0]));
+    CU_LAUNCH_ERR("gather_f_bsplines_kernel");
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_stop(gpu_events_gather, ewcsPME_GATHER, 0);
 #endif
