@@ -470,6 +470,18 @@ static void spread_coefficients_bsplines_thread_gpu(pmegrid_t                   
     //yupinov spread3 never called
 }
 
+static void spread_coefficients_bsplines_thread_wrapper(pmegrid_t                    *pmegrid,
+                            pme_atomcomm_t               *atc,
+                            splinedata_t                 *spline,
+                            struct pme_spline_work gmx_unused *work,
+                            int thread,
+                            gmx_bool bGPU)
+{
+    if (bGPU)
+        spread_coefficients_bsplines_thread_gpu(pmegrid, atc, spline, work, thread);
+    else
+        spread_coefficients_bsplines_thread(pmegrid, atc, spline, work);
+}
 
 static void copy_local_grid(struct gmx_pme_t *pme, pmegrids_t *pmegrids,
                             int grid_index, int thread, real *fftgrid)
@@ -1066,7 +1078,7 @@ void spread_on_grid(struct gmx_pme_t *pme,
 #ifdef PME_TIME_SPREAD
                 ct1a = omp_cyc_start();
 #endif
-                spread_coefficients_bsplines_thread(grid, atc, spline, pme->spline_work);
+                spread_coefficients_bsplines_thread_wrapper(grid, atc, spline, pme->spline_work, thread, pme->bGPU);
 
                 if (pme->bUseThreads)
                 {
@@ -1142,8 +1154,7 @@ void spread_on_grid(struct gmx_pme_t *pme,
 #ifdef PME_TIME_SPREAD
                 ct1a = omp_cyc_start();
 #endif
-                //spread_coefficients_bsplines_thread(grid, atc, spline, pme->spline_work);
-                spread_coefficients_bsplines_thread_gpu(grid, atc, spline, pme->spline_work, thread);
+                spread_coefficients_bsplines_thread_wrapper(grid, atc, spline, pme->spline_work, thread, pme->bGPU);
                 if (pme->bUseThreads)
                 {
                     copy_local_grid(pme, grids, grid_index, thread, fftgrid);
