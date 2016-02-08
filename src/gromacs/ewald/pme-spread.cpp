@@ -296,6 +296,16 @@ static void make_bsplines(splinevec theta, splinevec dtheta, int order,
     }
 }
 
+static void make_bsplines_wrapper(splinevec theta, splinevec dtheta, int order,
+                          rvec fractx[], int nr, int ind[], real coefficient[],
+                          gmx_bool bDoSplines, int thread, gmx_bool bGPU)
+{
+    if (bGPU)
+        make_bsplines_gpu(theta, dtheta, order, fractx, nr, ind, coefficient, bDoSplines, thread);
+    else
+        make_bsplines(theta, dtheta, order, fractx, nr, ind, coefficient, bDoSplines);
+}
+
 /* This has to be a macro to enable full compiler optimization with xlC (and probably others too) */
 #define DO_BSPLINE(order)                            \
     for (ithx = 0; (ithx < order); ithx++)                    \
@@ -1045,8 +1055,8 @@ void spread_on_grid(struct gmx_pme_t *pme,
             if (bCalcSplines)
             {
                 //wallcycle_sub_start(wcycle, ewcsPME_CALCSPLINE_CPU);
-                make_bsplines(spline->theta, spline->dtheta, pme->pme_order,
-                              atc->fractx, spline->n, spline->ind, atc->coefficient, bDoSplines);
+                make_bsplines_wrapper(spline->theta, spline->dtheta, pme->pme_order,
+                              atc->fractx, spline->n, spline->ind, atc->coefficient, bDoSplines, thread, pme->bGPU);
                 //wallcycle_sub_stop(wcycle, ewcsPME_CALCSPLINE_CPU);
             }
 
@@ -1122,8 +1132,8 @@ void spread_on_grid(struct gmx_pme_t *pme,
 
             if (bCalcSplines)
             {
-                make_bsplines_gpu(spline->theta, spline->dtheta, pme->pme_order,
-                              atc->fractx, spline->n, spline->ind, atc->coefficient, bDoSplines, thread); //yupinov
+                make_bsplines_wrapper(spline->theta, spline->dtheta, pme->pme_order,
+                              atc->fractx, spline->n, spline->ind, atc->coefficient, bDoSplines, thread, pme->bGPU); //yupinov
             }
 
             if (bSpread)
