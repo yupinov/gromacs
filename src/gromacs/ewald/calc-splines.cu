@@ -207,6 +207,8 @@ void make_bsplines_gpu(splinevec theta, splinevec dtheta, int order,
 		       rvec fractx[], int nr, int ind[], real coefficient[],
                gmx_bool bDoSplines, int thread)
 {
+    if (!nr)
+        return; //yupinov
     int size = nr * sizeof(real);
     int size_dim = DIM * size;
     int size_order = order * size;

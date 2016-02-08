@@ -1004,6 +1004,7 @@ void spread_on_grid(struct gmx_pme_t *pme,
                 start = atc->n* thread   /nthread;
                 end   = atc->n*(thread+1)/nthread;
 
+
                 /* Compute fftgrid index for all atoms,
                  * with help of some extra variables.
                  */

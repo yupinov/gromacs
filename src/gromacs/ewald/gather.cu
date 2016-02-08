@@ -223,6 +223,8 @@ void gather_f_bsplines_gpu_2
     }
 
     int n = oo;
+    if (!n)
+        return;
 
     thrust::device_vector<real> &atc_f_d = lv.device<real>(ID_ATC_F, DIM * n);
     thrust::device_vector<real> &coefficient_d = lv.device<real>(ID_COEFFICIENT, n);
