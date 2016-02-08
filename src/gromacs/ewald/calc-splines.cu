@@ -256,6 +256,7 @@ void make_bsplines_gpu(splinevec theta, splinevec dtheta, int order,
                                                             (order,
                                                              theta_d, dtheta_d, fractx_d, nr, coefficient_d, bDoSplines); break;
     }
+    CU_LAUNCH_ERR("make_bsplines_kernel");
 #ifdef DEBUG_PME_GPU_TIMING
     events_record_stop(gpu_events_calcspline, ewcsPME_CALCSPLINE, 0);
 #endif

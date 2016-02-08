@@ -198,7 +198,7 @@ void spread2_coefficients_bsplines_thread_gpu_2
 	 coefficient_d, thx_d, thy_d, thz_d); break;
     default: /* FIXME */ break;
     }
-
+    CU_LAUNCH_ERR("spread2_coefficients_kernel");
     #ifdef DEBUG_PME_TIMINGS_GPU
   events_record_stop(gpu_events_spread, ewcsPME_SPREAD, 2);
 #endif

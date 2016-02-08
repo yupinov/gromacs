@@ -1,4 +1,5 @@
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
+#include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/utility/real.h"
 #include "gromacs/math/vectypes.h"
 
@@ -119,6 +120,7 @@ void calc_interpolation_idx_gpu_core
             thrust::raw_pointer_cast(&fptr_d[2 * n32]),
 
             n);
+    CU_LAUNCH_ERR("calc_interpolation_idx_gpu_kernel");
 #ifdef DEBUG_PME_GPU_TIMING //yupinov
     events_record_stop(gpu_events_interpol_idx, ewcsPME_INTERPOL_IDX, 0);
 #endif

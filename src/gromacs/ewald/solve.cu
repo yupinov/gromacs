@@ -162,6 +162,7 @@ int solve_pme_yzx_gpu(real pme_epsilon_r,
        thrust::raw_pointer_cast(&grid_d[0]), ewaldcoeff, vol, bEnerVir,
        thrust::raw_pointer_cast(&energy_d[0]),
        thrust::raw_pointer_cast(&virial_d[0]));
+    CU_LAUNCH_ERR("solve_pme_yzx_iyz_loop_kernel");
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_stop(gpu_events_solve, ewcsPME_SOLVE, 0);
 #endif
@@ -514,6 +515,7 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
        thrust::raw_pointer_cast(&grid_d[0]), bLB, ewaldcoeff, vol, bEnerVir,
        thrust::raw_pointer_cast(&energy_d[0]),
        thrust::raw_pointer_cast(&virial_d[0]));
+    CU_LAUNCH_ERR("solve_pme_lj_yzx_iyz_loop_kernel");
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_stop(gpu_events_solve, ewcsPME_SOLVE, 0);
 #endif
