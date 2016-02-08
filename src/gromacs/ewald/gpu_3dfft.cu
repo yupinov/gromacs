@@ -306,7 +306,8 @@ int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     }
     else
     {
-        cudaMemcpy(setup->cdata + x * y * (z/2+1), setup->complex_data, x * y * (z/2+1) * sizeof(t_complex), cudaMemcpyHostToDevice);
+        stat = cudaMemcpy(setup->cdata + x * y * (z/2+1), setup->complex_data, x * y * (z/2+1) * sizeof(t_complex), cudaMemcpyHostToDevice);
+        CU_RET_ERR(stat, "cudaMemcpy C2R error");
         // FIXME: y major, z middle, x minor or continuous ->
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_start(gpu_events_fft_c2r);
@@ -348,7 +349,8 @@ int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
             //check_real("FFT r", &setup->rdata[i], &setup->real_data[i], 1, true);
 
             cufftComplex c;
-            cudaMemcpy(&c, &setup->cdata[i + x * y * (z/2+1)], sizeof(cufftComplex), cudaMemcpyDeviceToHost);
+            stat = cudaMemcpy(&c, &setup->cdata[i + x * y * (z/2+1)], sizeof(cufftComplex), cudaMemcpyDeviceToHost);
+            CU_RET_ERR(stat, "cudaMemcpy some error");
             fprintf(stderr, "FFT %d %f %f\t", i, (double) c.x, (double) c.y);
             fprintf(stderr, "FFT vs %f %f\n", (double) setup->complex_data[i].re, (double) setup->complex_data[i].im);
             /*
@@ -363,11 +365,13 @@ int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
 #endif
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {
-        cudaMemcpy(setup->complex_data, setup->cdata + x * y * (z/2+1), x * y * (z/2+1) * sizeof(t_complex), cudaMemcpyDeviceToHost);
+        stat = cudaMemcpy(setup->complex_data, setup->cdata + x * y * (z/2+1), x * y * (z/2+1) * sizeof(t_complex), cudaMemcpyDeviceToHost);
+        CU_RET_ERR(stat, "cudaMemcpy R2C error");
     }
     else
     {
-        cudaMemcpy(setup->real_data, setup->rdata, x * y * z * sizeof(real), cudaMemcpyDeviceToHost);
+        stat = cudaMemcpy(setup->real_data, setup->rdata, x * y * z * sizeof(real), cudaMemcpyDeviceToHost);
+        CU_RET_ERR(stat, "cudaMemcpy C2R error");
     }
 #ifdef DEBUG_PME_GPU
     if (check_vs_cpu(fft_gpu_flags))
@@ -402,8 +406,10 @@ int gmx_parallel_3dfft_destroy_gpu(gmx_parallel_3dfft_gpu_t pfft_setup)
 
   cufftDestroy(setup->plan); // FIX double plan
 
-  cudaFree((void **)setup->rdata);
-  cudaFree((void **)setup->cdata);
+  cudaError_t stat = cudaFree((void **)setup->rdata);
+  CU_RET_ERR(stat, "cudaFree error");
+  stat = cudaFree((void **)setup->cdata);
+  CU_RET_ERR(stat, "cudaFree error");
 
   delete setup;
   return 0;

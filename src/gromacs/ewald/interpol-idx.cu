@@ -192,3 +192,4 @@ __global__ void calc_interpolation_idx_gpu_kernel
         idxzptr[i] = nnz[tiz];
     }
 }
+//yupinov cuda stuff masked again

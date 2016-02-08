@@ -108,7 +108,7 @@ static __global__ void gather_f_bsplines_kernel
      */
   }
 }
-
+//yupinov where is cuda stuff?
 
 void gather_f_bsplines_gpu_2_pre
 (gmx_bool bClearF,

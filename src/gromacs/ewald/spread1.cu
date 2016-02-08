@@ -41,6 +41,7 @@
 #include "gromacs/utility/real.h"
 #include "gromacs/math/vectypes.h"
 #include "check.h"
+#include "gromacs/gpu_utils/cudautils.cuh"
 
 #include <cuda_runtime.h>
 
@@ -120,7 +121,8 @@ void spread1_coefficients_bsplines_thread_gpu_2
     }
 
     real *grid_d = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_CUDA);
-    cudaMemcpy(grid_d, grid, size_grid, cudaMemcpyHostToDevice);
+    cudaError_t stat = cudaMemcpy(grid_d, grid, size_grid, cudaMemcpyHostToDevice);
+    CU_RET_ERR(stat, "cudaMemcpy spread1 error");
 
     int size_real = spline_n * sizeof(real);
     int size_int = spline_n * sizeof(int);
@@ -172,13 +174,20 @@ void spread1_coefficients_bsplines_thread_gpu_2
 
     //fprintf(stderr, "World! %d %d/%d\n", thread, n, spline_n);
 
-    cudaMemcpy(i0_d, i0, size_int, cudaMemcpyHostToDevice);
-    cudaMemcpy(j0_d, j0, size_int, cudaMemcpyHostToDevice);
-    cudaMemcpy(k0_d, k0, size_int, cudaMemcpyHostToDevice);
-    cudaMemcpy(coefficient_d, coefficient, size_real, cudaMemcpyHostToDevice);
-    cudaMemcpy(thx_d, thx, size_real * order, cudaMemcpyHostToDevice);
-    cudaMemcpy(thy_d, thy, size_real * order, cudaMemcpyHostToDevice);
-    cudaMemcpy(thz_d, thz, size_real * order, cudaMemcpyHostToDevice);
+    stat = cudaMemcpy(i0_d, i0, size_int, cudaMemcpyHostToDevice);
+    CU_RET_ERR(stat, "cudaMemcpy spread1 error");
+    stat = cudaMemcpy(j0_d, j0, size_int, cudaMemcpyHostToDevice);
+    CU_RET_ERR(stat, "cudaMemcpy spread1 error");
+    stat = cudaMemcpy(k0_d, k0, size_int, cudaMemcpyHostToDevice);
+    CU_RET_ERR(stat, "cudaMemcpy spread1 error");
+    stat = cudaMemcpy(coefficient_d, coefficient, size_real, cudaMemcpyHostToDevice);
+    CU_RET_ERR(stat, "cudaMemcpy spread1 error");
+    stat = cudaMemcpy(thx_d, thx, size_real * order, cudaMemcpyHostToDevice);
+    CU_RET_ERR(stat, "cudaMemcpy spread1 error");
+    stat = cudaMemcpy(thy_d, thy, size_real * order, cudaMemcpyHostToDevice);
+    CU_RET_ERR(stat, "cudaMemcpy spread1 error");
+    stat = cudaMemcpy(thz_d, thz, size_real * order, cudaMemcpyHostToDevice);
+    CU_RET_ERR(stat, "cudaMemcpy spread1 error");
 
   int block_size = 32;
   int n_blocks = (n + block_size - 1) / block_size;
@@ -211,5 +220,6 @@ void spread1_coefficients_bsplines_thread_gpu_2
             check_real(NULL, &grid_d[i], &grid_check[i], pnz, true, true);
     }
 #endif
-    cudaMemcpy(grid, grid_d, size_grid, cudaMemcpyDeviceToHost);
+    stat = cudaMemcpy(grid, grid_d, size_grid, cudaMemcpyDeviceToHost);
+    CU_RET_ERR(stat, "cudaMemcpy spread1 error");
 }

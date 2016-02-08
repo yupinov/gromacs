@@ -67,7 +67,10 @@ void check(const char *name, T *data, T *expected, int size, gmx_bool bDevice, g
         T cpu_v = expected[i];
         T gpu_v;
         if (bDevice) 
-            cudaMemcpy(&gpu_v, &data[i], sizeof(T), cudaMemcpyDeviceToHost);
+        {
+            cudaError_t stat = cudaMemcpy(&gpu_v, &data[i], sizeof(T), cudaMemcpyDeviceToHost);
+            CU_RET_ERR(stat, "cudaMemcpy check error");
+        }
         else 
             gpu_v = data[i];
         T diff = gpu_v - cpu_v;

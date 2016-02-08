@@ -46,6 +46,8 @@
 typedef float real;
 #include "gromacs/math/vectypes.h"
 
+#include "gromacs/gpu_utils/cudautils.cuh"
+
 #include <cuda.h>
 #include <vector>
 
@@ -226,8 +228,8 @@ void make_bsplines_gpu(splinevec theta, splinevec dtheta, int order,
             fractx_h[i * DIM + j] = fractx[ind[i]][j];
         }
     }
-    cudaMemcpy(fractx_d, fractx_h, size_dim, cudaMemcpyHostToDevice);
-
+    cudaError_t stat = cudaMemcpy(fractx_d, fractx_h, size_dim, cudaMemcpyHostToDevice);
+    CU_RET_ERR(stat, "cudaMemcpy splines error");
     real *coefficient_d = th_a(TH_ID_COEFFICIENT, thread, size, TH_LOC_CUDA);
     //cudaMalloc((void **) &coefficient_d, size);
     real *coefficient_h = th_a(TH_ID_COEFFICIENT, thread, size, TH_LOC_HOST);
@@ -236,8 +238,8 @@ void make_bsplines_gpu(splinevec theta, splinevec dtheta, int order,
     {
         coefficient_h[i] = coefficient[ind[i]];
     }
-    cudaMemcpy(coefficient_d, coefficient_h, size, cudaMemcpyHostToDevice);
-
+    stat = cudaMemcpy(coefficient_d, coefficient_h, size, cudaMemcpyHostToDevice);
+    CU_RET_ERR(stat, "cudaMemcpy splines error");
     int block_size = 32; //yupinov
     int n_blocks = (nr + block_size - 1) / block_size;
 #ifdef DEBUG_PME_GPU_TIMING
@@ -267,11 +269,13 @@ void make_bsplines_gpu(splinevec theta, splinevec dtheta, int order,
 
     for (int j = 0; j < DIM; ++j)
     {
-        cudaMemcpy(theta[j], theta_d + j * nr * order, size_order, cudaMemcpyDeviceToHost);
+        stat = cudaMemcpy(theta[j], theta_d + j * nr * order, size_order, cudaMemcpyDeviceToHost);
+        CU_RET_ERR(stat, "cudaMemcpy splines error");
     }
     for (int j = 0; j < DIM; ++j)
     {
-        cudaMemcpy(dtheta[j], dtheta_d + j * nr * order, size_order, cudaMemcpyDeviceToHost);
+        stat = cudaMemcpy(dtheta[j], dtheta_d + j * nr * order, size_order, cudaMemcpyDeviceToHost);
+        CU_RET_ERR(stat, "cudaMemcpy splines error");
     }
 
     /*
