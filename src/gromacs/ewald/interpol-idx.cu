@@ -51,6 +51,8 @@ void calc_interpolation_idx_gpu_core
  int start, int end, int thread)
 {
     int n = end - start;
+    if (!n)
+        return;
     int n32 = (n + 31) / 32 * 32; //yupinov 32 is such a magic number?
 
     local_vectors lv = TH_V.local(thread);

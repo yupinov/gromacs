@@ -103,8 +103,8 @@ void spread1_coefficients_bsplines_thread_gpu_2
  real *atc_coefficient, splinevec *spline_theta, int atc_n_foo,
  int thread)
 {
-  //fprintf(stderr, "Hello spread! %d %d\n", thread, spline_n);
 
+    //fprintf(stderr, "Hello spread! %d %d\n", thread, spline_n);
     int ndatatot = pnx*pny*pnz;
     int size_grid = ndatatot * sizeof(real);
 #ifdef DEBUG_PME_GPU
@@ -148,29 +148,32 @@ void spread1_coefficients_bsplines_thread_gpu_2
     {
         int i           = spline_ind[ii];
         real coefficient_i = atc_coefficient[i];
-	//if (coefficient_i == 0) {
-	//   continue;
-	//}
+        //if (coefficient_i == 0)
+        //{
+        //   continue;
+        //}
 
-	coefficient[oo] = coefficient_i;
+        coefficient[oo] = coefficient_i;
 
-	int *idxptr = atc_idx[i];
-	int iiorder = ii*order;
-	int ooorder = oo*order;
+        int *idxptr = atc_idx[i];
+        int iiorder = ii*order;
+        int ooorder = oo*order;
 
-	i0[oo]   = idxptr[XX] - offx;
-	j0[oo]   = idxptr[YY] - offy;
-	k0[oo]   = idxptr[ZZ] - offz;
+        i0[oo]   = idxptr[XX] - offx;
+        j0[oo]   = idxptr[YY] - offy;
+        k0[oo]   = idxptr[ZZ] - offz;
 
-	for (int o = 0; o < order; ++o) {
-	  thx[ooorder + o] = (*spline_theta)[XX][iiorder + o];
-	  thy[ooorder + o] = (*spline_theta)[YY][iiorder + o];
-	  thz[ooorder + o] = (*spline_theta)[ZZ][iiorder + o];
-	}
-	++oo;
+        for (int o = 0; o < order; ++o) {
+            thx[ooorder + o] = (*spline_theta)[XX][iiorder + o];
+            thy[ooorder + o] = (*spline_theta)[YY][iiorder + o];
+            thz[ooorder + o] = (*spline_theta)[ZZ][iiorder + o];
+        }
+        ++oo;
     }
 
     int n = oo;
+    if (!n)
+        return;
 
     //fprintf(stderr, "World! %d %d/%d\n", thread, n, spline_n);
 
