@@ -165,6 +165,8 @@ void gather_f_bsplines_gpu_2
     }
 #endif
 
+    if (!spline_n)
+        return;
     local_vectors lv = TH_V.local(thread);
 
     thrust::device_vector<real> &grid_d = lv.device<real>(ID_GRID, ndatatot);
@@ -198,28 +200,30 @@ void gather_f_bsplines_gpu_2
             atc_f[i][ZZ] = 0;
         }
 
-	if (coefficient_i == 0) {
-	  continue;
-	}
+        if (coefficient_i == 0)
+        {
+            continue;
+        }
 
-	coefficient_h[oo] = coefficient_i;
-	int *idxptr = atc_idx[i];
-	//atc_f_h force-copying is in gather_f_bsplines_gpu_2_pre()
-	i_h[oo] = i;
-	i0_h[oo] = idxptr[XX];
-	j0_h[oo] = idxptr[YY];
-	k0_h[oo] = idxptr[ZZ];
-	int iiorder = ii*order;
-	int ooorder = oo*order;
-	for (int o = 0; o < order; ++o) {
-	  thx_h[ooorder + o] = (*spline_theta)[XX][iiorder + o];
-	  thy_h[ooorder + o] = (*spline_theta)[YY][iiorder + o];
-	  thz_h[ooorder + o] = (*spline_theta)[ZZ][iiorder + o];
-	  dthx_h[ooorder + o] = (*spline_dtheta)[XX][iiorder + o];
-	  dthy_h[ooorder + o] = (*spline_dtheta)[YY][iiorder + o];
-	  dthz_h[ooorder + o] = (*spline_dtheta)[ZZ][iiorder + o];
-	}
-	++oo;
+        coefficient_h[oo] = coefficient_i;
+        int *idxptr = atc_idx[i];
+        //atc_f_h force-copying is in gather_f_bsplines_gpu_2_pre()
+        i_h[oo] = i;
+        i0_h[oo] = idxptr[XX];
+        j0_h[oo] = idxptr[YY];
+        k0_h[oo] = idxptr[ZZ];
+        int iiorder = ii*order;
+        int ooorder = oo*order;
+        for (int o = 0; o < order; ++o)
+        {
+            thx_h[ooorder + o] = (*spline_theta)[XX][iiorder + o];
+            thy_h[ooorder + o] = (*spline_theta)[YY][iiorder + o];
+            thz_h[ooorder + o] = (*spline_theta)[ZZ][iiorder + o];
+            dthx_h[ooorder + o] = (*spline_dtheta)[XX][iiorder + o];
+            dthy_h[ooorder + o] = (*spline_dtheta)[YY][iiorder + o];
+            dthz_h[ooorder + o] = (*spline_dtheta)[ZZ][iiorder + o];
+        }
+        ++oo;
     }
 
     int n = oo;

@@ -51,6 +51,7 @@ void events_record_stop(gpu_events &events, int ewcsn, int j) {
 #ifdef DEBUG_PME_GPU
 
 #include "thread_mpi/mutex.h"
+#include "gromacs/gpu_utils/cudautils.cuh"
 
 const bool check_verbose = false;
 static tMPI::mutex print_mutex;

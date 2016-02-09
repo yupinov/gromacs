@@ -117,6 +117,9 @@ int solve_pme_yzx_gpu(real pme_epsilon_r,
     */
 
 
+
+
+
     iyz0 = local_ndata[YY]*local_ndata[ZZ]* thread   /nthread;
     iyz1 = local_ndata[YY]*local_ndata[ZZ]*(thread+1)/nthread;
 
@@ -127,6 +130,8 @@ int solve_pme_yzx_gpu(real pme_epsilon_r,
     cudaError_t stat = cudaMemcpyToSymbol( sqrt_M_PI_d, &sqrt_M_PI, sizeof(real));  //yupinov - this is an overkill!
     CU_RET_ERR(stat, "solve cudaMemcpyToSymbol");
     //printf("local_size[XX] %d local_ndata[XX] %d\n", local_size[XX], local_ndata[XX]);
+    //printf("local_size[YY] %d local_ndata[YY] %d\n", local_size[YY], local_ndata[YY]);
+    //printf("local_size[ZZ] %d local_ndata[ZZ] %d\n", local_size[ZZ], local_ndata[ZZ]);
     int grid_size = local_size[YY] * local_size[ZZ] * local_ndata[XX]; // * local_size[XX];
     local_vectors lv = TH_V.local(thread);
     thrust::device_vector<t_complex> &grid_d = lv.device<t_complex>(ID_GRID, grid_size);
@@ -142,7 +147,7 @@ int solve_pme_yzx_gpu(real pme_epsilon_r,
 	    (double) grid[grid_size - local_size[XX] + local_ndata[XX] - 1].im,
 	    thread, nthread);
         */
-    thrust::copy(grid, grid + grid_size, grid_d.begin());
+    thrust::copy(grid, grid + grid_size, grid_d.begin());  //yupinov no need!
     thrust::copy(pme_bsp_mod[XX], pme_bsp_mod[XX] + nx, pme_bsp_mod_x_d.begin());
     thrust::copy(pme_bsp_mod[YY], pme_bsp_mod[YY] + ny, pme_bsp_mod_y_d.begin());
     thrust::copy(pme_bsp_mod[ZZ], pme_bsp_mod[ZZ] + nz, pme_bsp_mod_z_d.begin());
@@ -177,7 +182,12 @@ int solve_pme_yzx_gpu(real pme_epsilon_r,
 		 (real *) grid, 2 * grid_size, false);
     }
 #endif
-    thrust::copy(grid_d.begin(), grid_d.end(), grid);
+    thrust::copy(grid_d.begin(), grid_d.begin() + grid_size, grid);
+    //yupinov: it doesn't crash now, but copies whole array in vain.
+    fprintf(stderr, "solve thread %d copying grid sized %u to %x\n", thread, grid_d.size(), grid);
+    fprintf(stderr, "solve thread %d iyz %d %d\n", thread, iyz0 * local_size[XX], iyz1* local_size[XX]);
+
+
 
     if (bEnerVir)
     {
@@ -229,7 +239,7 @@ int solve_pme_yzx_gpu(real pme_epsilon_r,
     }
 
     /* Return the loop count */
-    return local_ndata[YY]*local_ndata[XX];
+    return local_ndata[YY]*local_ndata[XX]; //yupinov isn't that wrong
 }
 
 
@@ -260,10 +270,6 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
 
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i == 0)
-    {
-        ;//printf("solve_kernel start\n");
-    }
     int iyz = iyz0 + i;
     if (iyz < iyz1)
     {
