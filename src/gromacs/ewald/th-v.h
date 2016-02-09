@@ -61,7 +61,7 @@ struct local_vectors
 
     template <typename T> thrust::device_vector<T> &device(int id, int size) 
     {
-        size = size * 2 + 16; // over-allocate
+        size = size * 2 + 16; // over-allocate //yupinov why?????
         return create_or_resize< thrust::device_vector<T> >(vptr(true, id), size);
     }
 };

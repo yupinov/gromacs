@@ -325,6 +325,7 @@ int solve_pme_yzx(struct gmx_pme_t *pme, t_complex *grid,
                                       local_ndata,
                                       local_offset,
                                       local_size);
+    //solve size and ndata are same here
 
     rxx = pme->recipbox[XX][XX];
     ryx = pme->recipbox[YY][XX];

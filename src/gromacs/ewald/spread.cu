@@ -207,7 +207,8 @@ void spread_coefficients_bsplines_thread_gpu_2
  int thread)
 {
   //fprintf(stderr, "Hello spread! %d %d\n", thread, spline_n);
-
+    if (!spline_n)
+        return;
     int ndatatot = pnx*pny*pnz;
     int size_grid = ndatatot * sizeof(real);
 #ifdef DEBUG_PME_GPU
