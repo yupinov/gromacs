@@ -56,13 +56,13 @@ void events_record_stop(gpu_events &events, int ewcsn, int j) {
 const bool check_verbose = false;
 static tMPI::mutex print_mutex;
 
-template <typename T>
-void check(const char *name, T *data, T *expected, int size, gmx_bool bDevice, gmx_bool bPrintGrid = false)
+// prints differences in GPU/CPU values
+template <typename T> void check(const char *name, T *data, T *expected, int size, gmx_bool bDevice, gmx_bool bPrintGrid = false)
 {
-    gmx_bool print1Char = bPrintGrid;
-    gmx_bool printAlways = print1Char; //|=
+    gmx_bool print1CharOnly = bPrintGrid;
+    gmx_bool printEqualsAlso = print1CharOnly; //|=
+    gmx_bool beganToPrintDiff = false;
     print_mutex.lock();
-    bool bDiff = false;
     for (int i = 0; i < size; ++i) 
     {
         T cpu_v = expected[i];
@@ -79,30 +79,31 @@ void check(const char *name, T *data, T *expected, int size, gmx_bool bDevice, g
           fprintf(stderr, " %d:%f(%f)", i, (double) cpu_v, (double) diff);
         if (diff != 0) 
         {
-            if (!bDiff && name && !print1Char)
+            if (!beganToPrintDiff && !print1CharOnly)
             {
-                fprintf(stderr, "%s:\n", name);
-                bDiff = true;
+                if (name)
+                    fprintf(stderr, "%s:\n", name);
+                beganToPrintDiff = true;
             }
             T absdiff = diff > 0 ? diff : -diff;
             T abscpu_v = cpu_v > 0 ? cpu_v : -cpu_v;
             T reldiff = absdiff / (abscpu_v > 1e-11 ? abscpu_v : 1e-11);
-            if (reldiff > .000001)
+            if (reldiff > 1e-6)
             {
-                if (print1Char)
+                if (print1CharOnly)
                     fprintf(stderr, "&");
                 else
-                    fprintf(stderr, "%.0fppm", (double) (reldiff * 1e6));
-                if (reldiff > .0001)
-                    if (print1Char)
+                    fprintf(stderr, "%.0fppm ", (double) (reldiff * 1e6));
+                if (reldiff > 1e-4)
+                    if (print1CharOnly)
                         fprintf(stderr, "!");
                     else
                         fprintf(stderr, " value %f vs %f ", (double) cpu_v, (double) gpu_v);
             }
-            else
+            else if (printEqualsAlso)
                 fprintf(stderr, "~");
         }
-        else if (printAlways)
+        else if (printEqualsAlso)
         {
             if (gpu_v == 0)
             {
@@ -114,7 +115,7 @@ void check(const char *name, T *data, T *expected, int size, gmx_bool bDevice, g
             }
         }
     }
-    if (bDiff || printAlways)
+    if (beganToPrintDiff || printEqualsAlso)
         fprintf(stderr, "\n");
     print_mutex.unlock();
 }

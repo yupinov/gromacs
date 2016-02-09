@@ -184,8 +184,8 @@ int solve_pme_yzx_gpu(real pme_epsilon_r,
 #endif
     thrust::copy(grid_d.begin(), grid_d.begin() + grid_size, grid);
     //yupinov: it doesn't crash now, but copies whole array in vain.
-    fprintf(stderr, "solve thread %d copying grid sized %u to %x\n", thread, grid_d.size(), grid);
-    fprintf(stderr, "solve thread %d iyz %d %d\n", thread, iyz0 * local_size[XX], iyz1* local_size[XX]);
+    //fprintf(stderr, "solve thread %d copying grid sized %u to %x\n", thread, grid_d.size(), grid);
+    //fprintf(stderr, "solve thread %d iyz %d %d\n", thread, iyz0 * local_size[XX], iyz1* local_size[XX]);
 
 
 

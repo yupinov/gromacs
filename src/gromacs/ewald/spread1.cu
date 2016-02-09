@@ -111,7 +111,8 @@ void spread1_coefficients_bsplines_thread_gpu_2
     int size_grid = ndatatot * sizeof(real);
 #ifdef DEBUG_PME_GPU
     real *grid_check;
-    if (check_vs_cpu_j(spread_gpu_flags, 1)) {
+    if (check_vs_cpu_j(spread_gpu_flags, 1))
+    {
       grid_check = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_HOST);
       memcpy(grid_check, grid, ndatatot * sizeof(real));
     }
@@ -165,7 +166,8 @@ void spread1_coefficients_bsplines_thread_gpu_2
         j0[oo]   = idxptr[YY] - offy;
         k0[oo]   = idxptr[ZZ] - offz;
 
-        for (int o = 0; o < order; ++o) {
+        for (int o = 0; o < order; ++o)
+        {
             thx[ooorder + o] = (*spline_theta)[XX][iiorder + o];
             thy[ooorder + o] = (*spline_theta)[YY][iiorder + o];
             thz[ooorder + o] = (*spline_theta)[ZZ][iiorder + o];
@@ -194,36 +196,34 @@ void spread1_coefficients_bsplines_thread_gpu_2
     stat = cudaMemcpy(thz_d, thz, size_real * order, cudaMemcpyHostToDevice);
     CU_RET_ERR(stat, "cudaMemcpy spread1 error");
 
-  int block_size = 32;
-  int n_blocks = (n + block_size - 1) / block_size;
-  dim3 dimGrid(1, 1, n_blocks);
-  dim3 dimBlockOrder(order, order, block_size);
-  dim3 dimBlockOne(1, 1, block_size);
-  #ifdef DEBUG_PME_TIMINGS_GPU
-  events_record_start(gpu_events_spread);
+    int block_size = 32;
+    int n_blocks = (n + block_size - 1) / block_size;
+    dim3 dimGrid(1, 1, n_blocks);
+    dim3 dimBlockOrder(order, order, block_size);
+    dim3 dimBlockOne(1, 1, block_size);
+#ifdef DEBUG_PME_TIMINGS_GPU
+    events_record_start(gpu_events_spread);
 #endif
     switch (order)
     {
-    case 4: spread1_coefficients_kernel_O<4><<<dimGrid, dimBlockOrder>>>
-	(n, grid_d, i0_d, j0_d, k0_d, pny, pnz,
-	 coefficient_d, thx_d, thy_d, thz_d); break;
-    case 5: spread1_coefficients_kernel_O<5><<<dimGrid, dimBlockOrder>>>
-	(n, grid_d, i0_d, j0_d, k0_d, pny, pnz,
-	 coefficient_d, thx_d, thy_d, thz_d); break;
-    default: /* FIXME */ break;
+        case 4: spread1_coefficients_kernel_O<4><<<dimGrid, dimBlockOrder>>>
+            (n, grid_d, i0_d, j0_d, k0_d, pny, pnz, coefficient_d, thx_d, thy_d, thz_d); break;
+        case 5: spread1_coefficients_kernel_O<5><<<dimGrid, dimBlockOrder>>>
+            (n, grid_d, i0_d, j0_d, k0_d, pny, pnz, coefficient_d, thx_d, thy_d, thz_d); break;
+        default: /* FIXME */ break;
     }
     CU_LAUNCH_ERR("spread1_coefficients_kernel");
-    #ifdef DEBUG_PME_TIMINGS_GPU
-  events_record_stop(gpu_events_spread, ewcsPME_SPREAD, 1);
-    #endif
-    #ifdef DEBUG_PME_GPU
+#ifdef DEBUG_PME_TIMINGS_GPU
+    events_record_stop(gpu_events_spread, ewcsPME_SPREAD, 1);
+#endif
+#ifdef DEBUG_PME_GPU
     if (check_vs_cpu_j(spread_gpu_flags, 1))
     {
         print_mutex.lock(); //yupinov mutex - multilevel?
         fprintf(stderr, "Check %d  (%d x %d x %d)\n", thread, pnx, pny, pnz);
         print_mutex.unlock();
         for (int i = 0; i < ndatatot; i+=pnz)
-            check_real(NULL, &grid_d[i], &grid_check[i], pnz, true, true);
+            check_real(NULL, &grid_d[i], &grid_check[i], pnz, true);//, true);
     }
 #endif
     stat = cudaMemcpy(grid, grid_d, size_grid, cudaMemcpyDeviceToHost);
