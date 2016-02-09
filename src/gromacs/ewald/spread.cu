@@ -213,7 +213,8 @@ void spread_coefficients_bsplines_thread_gpu_2
     int size_grid = ndatatot * sizeof(real);
 #ifdef DEBUG_PME_GPU
     real *grid_check;
-    if (check_vs_cpu(spread_gpu_flags)) {
+    if (check_vs_cpu(spread_gpu_flags))
+    {
       grid_check = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_HOST);
       memcpy(grid_check, grid, ndatatot * sizeof(real));
     }
