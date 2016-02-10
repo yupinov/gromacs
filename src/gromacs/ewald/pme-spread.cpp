@@ -226,7 +226,7 @@ static void make_thread_local_ind(pme_atomcomm_t *atc,
             real dr, div;                          \
             real data[PME_ORDER_MAX];              \
                                                    \
-            dr  = xptr[j];                         \
+            dr = xptr[j];                         \
                                                \
             /* dr is relative offset from lower cell limit */ \
             data[order-1] = 0;                     \

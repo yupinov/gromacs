@@ -71,26 +71,28 @@ __global__ void spread1_coefficients_kernel_O(int n,
 					     real *coefficient,
 					     real *thx, real *thy, real *thz)
 {
-  int ithz = threadIdx.x;
-  int ithy = threadIdx.y;
-  int i = blockIdx.z * blockDim.z + threadIdx.z;
-  if (i < n) {
-    if (coefficient[i]) {
-      _Pragma("unroll")
-      for (int ithx = 0; ithx < order; ithx++)
-      {
-	int index_x = (i0[i]+ithx)*pny*pnz;
-	real valx    = coefficient[i]*thx[i*order+ithx];
+    int ithz = threadIdx.x;
+    int ithy = threadIdx.y;
+    int i = blockIdx.z * blockDim.z + threadIdx.z;
+    if (i < n)
+    {
+        if (coefficient[i])
+        {
+            _Pragma("unroll")
+            for (int ithx = 0; ithx < order; ithx++)
+            {
+                int index_x = (i0[i]+ithx)*pny*pnz;
+                real valx    = coefficient[i]*thx[i*order+ithx];
 
-	real valxy    = valx*thy[i*order+ithy];
-	int index_xy = index_x+(j0[i]+ithy)*pnz;
+                real valxy    = valx*thy[i*order+ithy];
+                int index_xy = index_x+(j0[i]+ithy)*pnz;
 
-	int index_xyz        = index_xy+(k0[i]+ithz);
-	/*grid[index_xyz] += valxy*thz[i*order+ithz];*/
-	atomicAdd(&grid[index_xyz], valxy*thz[i*order+ithz]);
-      }
+                int index_xyz        = index_xy+(k0[i]+ithz);
+                /*grid[index_xyz] += valxy*thz[i*order+ithz];*/
+                atomicAdd(&grid[index_xyz], valxy*thz[i*order+ithz]);
+            }
+        }
     }
-  }
 }
 
 #include "th-a.cuh"
@@ -113,8 +115,8 @@ void spread1_coefficients_bsplines_thread_gpu_2
     real *grid_check;
     if (check_vs_cpu_j(spread_gpu_flags, 1))
     {
-      grid_check = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_HOST);
-      memcpy(grid_check, grid, ndatatot * sizeof(real));
+        grid_check = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_HOST);
+        memcpy(grid_check, grid, ndatatot * sizeof(real));
     }
 #endif
     for (int i = 0; i < ndatatot; i++)
@@ -149,7 +151,7 @@ void spread1_coefficients_bsplines_thread_gpu_2
 
     for (int ii = 0; ii < spline_n; ii++)
     {
-        int i           = spline_ind[ii];
+        int i = spline_ind[ii];
         real coefficient_i = atc_coefficient[i];
         //if (coefficient_i == 0)
         //{
@@ -200,7 +202,7 @@ void spread1_coefficients_bsplines_thread_gpu_2
     int n_blocks = (n + block_size - 1) / block_size;
     dim3 dimGrid(1, 1, n_blocks);
     dim3 dimBlockOrder(order, order, block_size);
-    dim3 dimBlockOne(1, 1, block_size);
+    //dim3 dimBlockOne(1, 1, block_size);
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_spread);
 #endif

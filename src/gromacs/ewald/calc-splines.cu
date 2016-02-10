@@ -69,7 +69,7 @@ extern gpu_events gpu_events_calcspline;
         {                                          \
             real data[max_order];                  \
             /*real ddata[max_order]; */                 \
-            real dr  = fractx[i*DIM + j];		   \
+            real dr = fractx[i*DIM + j];		   \
              /* dr is relative offset from lower cell limit */ \
             real div;                               \
                                         \
@@ -154,49 +154,49 @@ __global__ void make_bsplines_kernel_n(int order,
 /* ######## 12 reg no cmem or lmem, vs 15 reg, 4 cmem, 16 lmem */
 //yupinov unused
 __global__ void make_bsplines_kernel_42(real *theta, real *dtheta,
-					real *fractx, int nr, real *coefficient,
-					bool bDoSplines) {
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i < nr && (bDoSplines || coefficient[i] != 0.0)) {
-    {
-      real data[4];
-      real ddata[4];
-
-      for (int j = 0; j < DIM; j++)
+                                        real *fractx, int nr, real *coefficient,
+                                        bool bDoSplines) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < nr && (bDoSplines || coefficient[i] != 0.0)) {
         {
-	  real dr  = fractx[i*DIM + j];
-	  real dr2 = dr * dr;
+            real data[4];
+            real ddata[4];
 
-	  /* dr is relative offset from lower cell limit */
-	  data[3] = 0;
-	  data[2] = .5*dr2;
-	  data[1] = .5*(1-2*dr2+2*dr);
-	  data[0] = .5*(1-dr)*(1-dr);
+            for (int j = 0; j < DIM; j++)
+            {
+                real dr  = fractx[i*DIM + j];
+                real dr2 = dr * dr;
 
-	  /* differentiate */
-	  ddata[0] = -data[0];
-	  ddata[1] = data[0] - data[1];
-	  ddata[2] = data[1] - data[2];
-	  ddata[3] = data[2] - data[3];
+                /* dr is relative offset from lower cell limit */
+                data[3] = 0;
+                data[2] = .5*dr2;
+                data[1] = .5*(1-2*dr2+2*dr);
+                data[0] = .5*(1-dr)*(1-dr);
 
-	  real div     = 1.0/3;
-	  data[3] = div*dr*data[2];
-	  data[2] = div*((dr+1)*data[1]+(3-dr)*data[2]);
-	  data[1] = div*((dr+2)*data[0]+(2-dr)*data[1]);
-	  data[0] = div*(1-dr)*data[0];
+                /* differentiate */
+                ddata[0] = -data[0];
+                ddata[1] = data[0] - data[1];
+                ddata[2] = data[1] - data[2];
+                ddata[3] = data[2] - data[3];
 
-	  int t0 = j*nr+i;
-	  theta[t0+0] = data[0];
-	  theta[t0+1] = data[1];
-	  theta[t0+2] = data[2];
-	  theta[t0+3] = data[3];
-	  dtheta[t0+0] = ddata[0];
-	  dtheta[t0+1] = ddata[1];
-	  dtheta[t0+2] = ddata[2];
-	  dtheta[t0+3] = ddata[3];
+                real div     = 1.0/3;
+                data[3] = div*dr*data[2];
+                data[2] = div*((dr+1)*data[1]+(3-dr)*data[2]);
+                data[1] = div*((dr+2)*data[0]+(2-dr)*data[1]);
+                data[0] = div*(1-dr)*data[0];
+
+                int t0 = j*nr+i;
+                theta[t0+0] = data[0];
+                theta[t0+1] = data[1];
+                theta[t0+2] = data[2];
+                theta[t0+3] = data[3];
+                dtheta[t0+0] = ddata[0];
+                dtheta[t0+1] = ddata[1];
+                dtheta[t0+2] = ddata[2];
+                dtheta[t0+3] = ddata[3];
+            }
         }
     }
-  }
 }
 
 /* ######## */
@@ -250,11 +250,11 @@ void make_bsplines_gpu(splinevec theta, splinevec dtheta, int order,
     assert(order >= 4 && order <= PME_ORDER_MAX); //yupinvo just in case
     switch (order)
     {
-    case 4: make_bsplines_kernel_4<<<n_blocks, block_size>>>
+        case 4: make_bsplines_kernel_4<<<n_blocks, block_size>>>
                                                            (theta_d, dtheta_d, fractx_d, nr, coefficient_d, bDoSplines); break;
-    case 5: make_bsplines_kernel_5<<<n_blocks, block_size>>>
+        case 5: make_bsplines_kernel_5<<<n_blocks, block_size>>>
                                                            (theta_d, dtheta_d, fractx_d, nr, coefficient_d, bDoSplines); break;
-    default: make_bsplines_kernel_n<<<n_blocks, block_size>>>
+        default: make_bsplines_kernel_n<<<n_blocks, block_size>>>
                                                             (order,
                                                              theta_d, dtheta_d, fractx_d, nr, coefficient_d, bDoSplines); break;
     }
@@ -291,6 +291,7 @@ void make_bsplines_gpu(splinevec theta, splinevec dtheta, int order,
     */
 }
 
-void free_bsplines_gpu(int thread) { //yupinov unused
+void free_bsplines_gpu(int thread)
+{ //yupinov unused
   make_bsplines_gpu(NULL, NULL, 0, NULL, 0, NULL, NULL, false, thread);
 }
