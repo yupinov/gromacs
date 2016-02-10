@@ -472,7 +472,8 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
                  gmx_bool           bFreeEnergy_q,
                  gmx_bool           bFreeEnergy_lj,
                  gmx_bool           bReproducible,
-                 int                nthread)
+                 int                nthread,
+                 gmx_bool           bPMEGPU)
 {
     struct gmx_pme_t *pme = NULL;
 
@@ -603,7 +604,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     pme->bP3M        = (ir->coulombtype == eelP3M_AD || getenv("GMX_PME_P3M") != NULL);
     pme->pme_order   = ir->pme_order;
 //yupinov bGPU not checked everywhere! have to refactor
-    pme->bGPU        = true;
+    pme->bGPU        = bPMEGPU;
 #ifdef DEBUG_PME_GPU
     pme->bGPU        = true; //yupinov don't touch
 #endif
@@ -830,7 +831,7 @@ int gmx_pme_reinit(struct gmx_pme_t **pmedata,
     }
 
     ret = gmx_pme_init(pmedata, cr, pme_src->nnodes_major, pme_src->nnodes_minor,
-                       &irc, homenr, pme_src->bFEP_q, pme_src->bFEP_lj, FALSE, pme_src->nthread);
+                       &irc, homenr, pme_src->bFEP_q, pme_src->bFEP_lj, FALSE, pme_src->nthread, pme_src->bGPU);
 
     if (ret == 0)
     {
