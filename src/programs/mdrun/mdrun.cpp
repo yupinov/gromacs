@@ -266,6 +266,7 @@ int gmx_mdrun(int argc, char *argv[])
     gmx_bool          bDDBondCheck  = TRUE;
     gmx_bool          bDDBondComm   = TRUE;
     gmx_bool          bTunePME      = TRUE;
+    gmx_bool          bPMEGPU       = FALSE;
     gmx_bool          bVerbose      = FALSE;
     gmx_bool          bRerunVSite   = FALSE;
     gmx_bool          bConfout      = TRUE;
@@ -369,6 +370,8 @@ int gmx_mdrun(int argc, char *argv[])
           "Set nstlist when using a Verlet buffer tolerance (0 is guess)" },
         { "-tunepme", FALSE, etBOOL, {&bTunePME},
           "Optimize PME load between PP/PME ranks or GPU/CPU" },
+        { "-pmegpu", FALSE, etBOOL, {&bPMEGPU},
+          "Use GPU for PME" },
         { "-v",       FALSE, etBOOL, {&bVerbose},
           "Be loud and noisy" },
         { "-pforce",  FALSE, etREAL, {&pforce},
@@ -494,6 +497,7 @@ int gmx_mdrun(int argc, char *argv[])
     Flags = Flags | (bDDBondCheck  ? MD_DDBONDCHECK  : 0);
     Flags = Flags | (bDDBondComm   ? MD_DDBONDCOMM   : 0);
     Flags = Flags | (bTunePME      ? MD_TUNEPME      : 0);
+    Flags = Flags | (bPMEGPU       ? MD_PMEGPU       : 0);
     Flags = Flags | (bConfout      ? MD_CONFOUT      : 0);
     Flags = Flags | (bRerunVSite   ? MD_RERUN_VSITE  : 0);
     Flags = Flags | (bReproducible ? MD_REPRODUCIBLE : 0);
