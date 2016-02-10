@@ -53,7 +53,7 @@ void calc_interpolation_idx_gpu_core
     int n = end - start;
     if (!n)
         return;
-    int n32 = (n + 31) / 32 * 32; //yupinov 32 is such a magic number?
+    int n32 = (n + 31) / 32 * 32; //yupinov warp-size
 
     local_vectors lv = TH_V.local(thread);
 
@@ -90,7 +90,7 @@ void calc_interpolation_idx_gpu_core
 
     xptr_d = xptr_h;
 
-    int block_size = 32;
+    int block_size = warp_size;
     int n_blocks = (n + block_size - 1) / block_size;
 #ifdef DEBUG_PME_GPU_TIMING
     events_record_start(gpu_events_interpol_idx);
