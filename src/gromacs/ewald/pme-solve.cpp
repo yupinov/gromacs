@@ -325,7 +325,6 @@ int solve_pme_yzx(struct gmx_pme_t *pme, t_complex *grid,
                                       local_ndata,
                                       local_offset,
                                       local_size);
-    //solve size and ndata are same here
 
     rxx = pme->recipbox[XX][XX];
     ryx = pme->recipbox[YY][XX];
@@ -349,6 +348,25 @@ int solve_pme_yzx(struct gmx_pme_t *pme, t_complex *grid,
 
     iyz0 = local_ndata[YY]*local_ndata[ZZ]* thread   /nthread;
     iyz1 = local_ndata[YY]*local_ndata[ZZ]*(thread+1)/nthread;
+
+
+    if (pme->bGPU)
+    {
+        //yupinov launch from 1 thread?
+        if (thread == 0)
+        solve_pme_yzx_gpu(pme->epsilon_r,
+              nx, ny, nz,
+              complex_order, local_ndata, local_offset, local_size,
+              rxx, ryx, ryy, rzx, rzy, rzz,
+              pme->bsp_mod,
+              work->vir_lj, &work->energy_lj,
+              grid, ewaldcoeff, vol, bEnerVir,
+                          1, 0);
+                          //nthread, thread); // all these parameters instead of pme?
+    //yupinov rework structure!
+    }
+    else
+    {
 
     for (iyz = iyz0; iyz < iyz1; iyz++)
     {
@@ -535,16 +553,7 @@ int solve_pme_yzx(struct gmx_pme_t *pme, t_complex *grid,
         /* This energy should be corrected for a charged system */
         work->energy_q = 0.5*energy;
     }
-    //yupinov call separately!
-    if (pme->bGPU)
-        solve_pme_yzx_gpu(pme->epsilon_r,
-                  nx, ny, nz,
-                  complex_order, local_ndata, local_offset, local_size,
-                  rxx, ryx, ryy, rzx, rzy, rzz,
-                  pme->bsp_mod,
-                  work->vir_lj, &work->energy_lj,
-                  grid, ewaldcoeff, vol, bEnerVir, nthread, thread);
-
+    }
     /* Return the loop count */
     return local_ndata[YY]*local_ndata[XX];
 }
