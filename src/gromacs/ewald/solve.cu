@@ -184,6 +184,7 @@ int solve_pme_yzx_gpu(real pme_epsilon_r,
 #endif
     thrust::copy(grid_d.begin(), grid_d.begin() + grid_size, grid);
     //yupinov: it doesn't crash now, but copies whole array in vain.
+    //adn don't forget solve LJ
     //fprintf(stderr, "solve thread %d copying grid sized %u to %x\n", thread, grid_d.size(), grid);
     //fprintf(stderr, "solve thread %d iyz %d %d\n", thread, iyz0 * local_size[XX], iyz1* local_size[XX]);
 
@@ -497,7 +498,7 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
     thrust::device_vector<real> &pme_bsp_mod_z_d = lv.device<real>(ID_PME_BSP_MOD_Z, nz);
     thrust::device_vector<real> &energy_d = lv.device<real>(ID_ENERGY, n);
     thrust::device_vector<real> &virial_d = lv.device<real>(ID_VIRIAL, 6 * n);
-    for (int ig = 0; ig < 6; ++ig)
+    for (int ig = 0; ig < 6; ++ig) //what is 6
     {
       thrust::copy(grid[ig], grid[ig] + grid_size,
 		   grid_d.begin() + ig * grid_size);

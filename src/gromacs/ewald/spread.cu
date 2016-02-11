@@ -249,7 +249,8 @@ void spread_coefficients_bsplines_thread_gpu_2
 
     int oo = 0;
 #ifdef DEBUG_PME_GPU
-    if (check_vs_cpu(spread_bunching_gpu_flags)) {
+    if (check_vs_cpu(spread_bunching_gpu_flags))
+    {
       try_bunching(pnx, pny, pnz,
 		   atc_idx, spline_ind, spline_n, atc_coefficient, atc_n_foo);
     }
