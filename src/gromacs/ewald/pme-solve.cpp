@@ -359,7 +359,7 @@ int solve_pme_yzx(struct gmx_pme_t *pme, t_complex *grid,
               complex_order, local_ndata, local_offset, local_size,
               rxx, ryx, ryy, rzx, rzy, rzz,
               pme->bsp_mod,
-              work->vir_lj, &work->energy_lj,
+              work->vir_q, &work->energy_q, //yupinov was lj!!!
               grid, ewaldcoeff, vol, bEnerVir,
                           1, 0);
                           //nthread, thread); // all these parameters instead of pme?
