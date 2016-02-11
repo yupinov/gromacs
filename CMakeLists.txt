@@ -567,8 +567,8 @@ endif()
 ########################################################################
 # Our own GROMACS tests
 ########################################################################
-add_definitions( -DDEBUG_PME_GPU )
-#add_definitions( -DDEBUG_PME_TIMINGS_GPU )
+# add_definitions( -DDEBUG_PME_GPU )
+# add_definitions( -DDEBUG_PME_TIMINGS_GPU )
 add_definitions( -DHAVE_CONFIG_H )
 include_directories(BEFORE ${CMAKE_SOURCE_DIR}/src)
 include_directories(BEFORE ${CMAKE_SOURCE_DIR}/src/external/thread_mpi/include)
