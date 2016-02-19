@@ -1115,9 +1115,9 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                 {
                     int loop_count;
 
-                    #pragma omp barrier //yupinov remove test barriers
-                    if (thread == 3)
-                        dump_local_fftgrid(pme,fftgrid, grid_index);
+                    #pragma omp barrier //yupinov remove test and other sbarriers
+                    //if (thread == 3)
+                    //    dump_local_fftgrid(pme,fftgrid, grid_index);
                     if (thread == 3)
                         if (pme->bGPU)
                         {
@@ -1140,12 +1140,13 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                                                thread, wcycle);
                     where();
 
+                    /*
                     #pragma omp barrier
-                    if (thread == 3)
-                        ;//yupinov CHANGED by CPU code in place? dump_local_fftgrid(pme,(const real *)fftgrid, grid_index);
                     if (thread == 3)
                         dump_local_fftgrid(pme,(const real *)cfftgrid, grid_index);
                     #pragma omp barrier
+                    */
+
 
                     /* solve in k-space for our local cells */
                     if (thread == 0)
@@ -1168,12 +1169,12 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                                              bCalcEnerVir,
                                              pme->nthread, thread);
                     }
-                    /*
+
                     #pragma omp barrier
                     if (thread == 3)
                         dump_local_fftgrid(pme,(const real *)cfftgrid, grid_index);
                     #pragma omp barrier
-                    */
+
                     if (thread == 0)
                     {
                         wallcycle_stop(wcycle, (grid_index < DO_Q ? ewcPME_SOLVE : ewcLJPME));
@@ -1191,11 +1192,13 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     }
                     gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_COMPLEX_TO_REAL,
                                               thread, wcycle);
-                    //#pragma omp barrier
+                    #pragma omp barrier
+                    if (thread == 3)
+                        dump_local_fftgrid(pme,(const real *)fftgrid, grid_index);
+                    #pragma omp barrier
+
                     if (thread == 0)
                     {
-
-                        //dump_local_fftgrid(pme,(const real *)fftgrid, grid_index);
                         where();
 
                         if (pme->nodeid == 0)
@@ -1210,7 +1213,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                            refactoring code here. */
                         wallcycle_start(wcycle, ewcPME_SPREADGATHER);
                     }
-                    //#pragma omp barrier
+
                     copy_fftgrid_to_pmegrid(pme, fftgrid, grid, grid_index, pme->nthread, thread);
                 }
             } GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;

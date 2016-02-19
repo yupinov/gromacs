@@ -43,7 +43,8 @@ struct gmx_parallel_3dfft_gpu
     ivec                      local_size;
 
     int n[3];
-    cufftHandle plan;
+    cufftHandle planR2C;
+    cufftHandle planC2R;
     cufftReal *rdata;
     cufftComplex *cdata;
 };
@@ -175,8 +176,19 @@ int                       nthreads)
     int rank = 3, batch = 1;
 
 
-    cufftResult_t result = cufftPlan3d(&setup->plan, setup->n[0], setup->n[1], setup->n[2], CUFFT_R2C);
-/*
+    cufftResult_t result = cufftPlan3d(&setup->planR2C, setup->n[0], setup->n[1], setup->n[2], CUFFT_R2C);
+    if (result != CUFFT_SUCCESS)
+    {
+        fprintf(stderr, "cufft planR2C error %d\n", result);
+        setup = NULL; //yupinov FIX
+    }
+    result = cufftPlan3d(&setup->planC2R, setup->n[0], setup->n[1], setup->n[2], CUFFT_C2R);
+    if (result != CUFFT_SUCCESS)
+    {
+        fprintf(stderr, "cufft planC2R error %d\n", result);
+        setup = NULL; // FIX
+    }
+    /*
 
     int rembed[3];
     rembed[0] = setup->n[XX];
@@ -198,12 +210,8 @@ int                       nthreads)
                                       batch);
 */
 
-    if (result != CUFFT_SUCCESS)
-    {
-        fprintf(stderr, "cufftPlanMany error %d!\n", result);
-        setup = NULL; // FIX
-    }
-    assert(!result);
+
+    //assert(!result);
     return 0;
 }
 
@@ -255,7 +263,7 @@ __global__ void transpose_xyz_yzx_kernel(int nx, int ny, int nz,
                                          bool forward)
 {
     // transpose cdata to be contiguous in a y z x loop
-    // z-dim has nz/2 elems
+    // z-dim has nz/2 + 1 elems
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
     int z = blockIdx.z * blockDim.z + threadIdx.z;
@@ -326,7 +334,7 @@ int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_start(gpu_events_fft_r2c);
         #endif
-        cufftResult_t result = cufftExecR2C(setup->plan, setup->rdata, setup->cdata);
+        cufftResult_t result = cufftExecR2C(setup->planR2C, setup->rdata, setup->cdata);
         if (result)
             fprintf(stderr, "cufft error %d\n", result);
         assert(!result);
@@ -338,14 +346,14 @@ int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     }
     else
     {
-        stat = cudaMemcpy(setup->cdata + x * y * (z/2+1), setup->complex_data, x * y * (z/2+1) * sizeof(t_complex), cudaMemcpyHostToDevice);
+        stat = cudaMemcpy(setup->cdata + x * y * (z / 2 + 1), setup->complex_data, x * y * (z / 2 + 1) * sizeof(t_complex), cudaMemcpyHostToDevice);
         CU_RET_ERR(stat, "cudaMemcpy C2R error");
         // FIXME: y major, z middle, x minor or continuous ->
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_start(gpu_events_fft_c2r);
         #endif
         transpose_xyz_yzx(x, y, z, setup->cdata, false);
-        cufftResult_t result = cufftExecC2R(setup->plan, setup->cdata, setup->rdata);
+        cufftResult_t result = cufftExecC2R(setup->planC2R, setup->cdata, setup->rdata);
         assert(!result);
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_stop(gpu_events_fft_c2r, ewcsPME_FFT_C2R, 0);
@@ -437,7 +445,8 @@ int gmx_parallel_3dfft_destroy_gpu(gmx_parallel_3dfft_gpu_t pfft_setup)
   //fprintf(stderr, "3dfft_destroy_gpu\n");
   gmx_parallel_3dfft_gpu_t setup = pfft_setup;
 
-  cufftDestroy(setup->plan); // FIX double plan
+  cufftDestroy(setup->planR2C);
+  cufftDestroy(setup->planC2R);
 
   cudaError_t stat = cudaFree((void **)setup->rdata);
   CU_RET_ERR(stat, "cudaFree error");
