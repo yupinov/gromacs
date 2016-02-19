@@ -15,6 +15,7 @@
 #include <cufft.h>
 
 #include "gromacs/gpu_utils/cudautils.cuh"
+#include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 
 #ifdef DEBUG_PME_GPU
 extern gpu_flags fft_gpu_flags;
@@ -139,8 +140,10 @@ int                       nthreads)
     cudaError_t stat;
     gmx_parallel_3dfft_gpu_t setup = new gmx_parallel_3dfft_gpu();
 
-    // FIXME: this copies the already setup pointer, to check them after execute
+    //yupinov FIXME: this copies the already setup pointer, to check them after execute
+
     setup->real_data = *real_data;
+
     setup->complex_data = *complex_data;
 
     setup->comm[0] = comm[0];
@@ -157,29 +160,50 @@ int                       nthreads)
    */
     setup->n[0] = ndata[0];
     setup->n[1] = ndata[1];
-    setup->n[2] = ndata[2];
+    setup->n[2] = ndata[2]; //yupinov ZZ
+
     int x = setup->n[0], y = setup->n[1], z = setup->n[2];
 
     stat = cudaMalloc((void **) &setup->rdata, x * y * z * sizeof(cufftReal));
     CU_RET_ERR(stat, "fft init cudaMalloc error");
-    stat = cudaMalloc((void **) &setup->cdata, x * y * (z/2+1) * 2 * sizeof(cufftComplex));
+    stat = cudaMalloc((void **) &setup->cdata, x * y * (z / 2 + 1) * 2 * sizeof(cufftComplex)); //yupinov: there are 2 complex planes here - for transposing
     CU_RET_ERR(stat, "fft init cudaMalloc error"); //yupinov check all cuFFT errors
 
     *pfft_setup = setup;
-    //fprintf(stderr, "3dfft_init_gpu\n");
 
     // FIX: double plans?
     int rank = 3, batch = 1;
-    if (cufftPlanMany(&setup->plan, rank, setup->n,
-                      NULL, 0, 0,
-                      NULL, 0, 0,
-                      CUFFT_R2C,
-                      batch)
-            != CUFFT_SUCCESS)
+
+
+    cufftResult_t result = cufftPlan3d(&setup->plan, setup->n[0], setup->n[1], setup->n[2], CUFFT_R2C);
+/*
+
+    int rembed[3];
+    rembed[0] = setup->n[XX];
+    rembed[1] = setup->n[YY];
+    rembed[2] = setup->n[ZZ];
+    rembed[2] = (rembed[2] / 2 + 1) * 2;
+    int cembed[3];
+    cembed[0] = setup->n[XX];
+    cembed[1] = setup->n[YY];
+    cembed[2] = setup->n[ZZ];
+    cembed[2] = (cembed[2] / 2 + 1);
+
+
+
+    cufftResult_t result = cufftPlanMany(&setup->plan, rank, setup->n,
+                                       rembed, 1, 1,
+                                       cembed, 1, 1,
+                                       CUFFT_R2C,
+                                      batch);
+*/
+
+    if (result != CUFFT_SUCCESS)
     {
-        fprintf(stderr, "cufftPlanMany failure!\n"); //yupinov - handle as CU_LAUNCH_ERR?
+        fprintf(stderr, "cufftPlanMany error %d!\n", result);
         setup = NULL; // FIX
     }
+    assert(!result);
     return 0;
 }
 
@@ -231,14 +255,18 @@ __global__ void transpose_xyz_yzx_kernel(int nx, int ny, int nz,
                                          bool forward)
 {
     // transpose cdata to be contiguous in a y z x loop
-    // z-dim has nz/2+1 elems
+    // z-dim has nz/2 elems
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
     int z = blockIdx.z * blockDim.z + threadIdx.z;
-    if (x < nx && y < ny && z < nz)
+    if ((x < nx) && (y < ny) && (z < (nz / 2 + 1)))
     {
-        int idx1 = (x * ny + y) * (nz/2+1) + z;
-        int idx2 = ((ny + y) * (nz/2+1) + z) * nx + x;
+        int idx1 = (x * ny + y) * (nz / 2 + 1) + z; //XYZ index into the first complex plane.
+        int idx2 = ((ny + y) * (nz / 2 + 1) + z) * nx + x; //YZX-index into second complex plane
+
+        //if (idx1 == 2)
+        //    printf ("index %d %d %d %d %d %f %f\n", x, y, z, idx1, idx2, cdata[idx1].x, cdata[idx1].y);
+
         if (forward)
         {
             cdata[idx2] = cdata[idx1];
@@ -254,8 +282,8 @@ void transpose_xyz_yzx(int nx, int ny, int nz,
                        cufftComplex *cdata,
                        bool forward)
 {
-    int block_size = 32;
-    dim3 dimGrid((nx + block_size - 1) / block_size, ny, nz/2+1);
+    int block_size = warp_size;
+    dim3 dimGrid((nx + block_size - 1) / block_size, ny, nz / 2 + 1);
     dim3 dimBlock(block_size, 1, 1);
     transpose_xyz_yzx_kernel<<<dimGrid, dimBlock>>>(nx, ny, nz, cdata, forward);
     CU_LAUNCH_ERR("transpose_xyz_yzx_kernel");
@@ -298,7 +326,10 @@ int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_start(gpu_events_fft_r2c);
         #endif
-        cufftExecR2C(setup->plan, setup->rdata, setup->cdata);
+        cufftResult_t result = cufftExecR2C(setup->plan, setup->rdata, setup->cdata);
+        if (result)
+            fprintf(stderr, "cufft error %d\n", result);
+        assert(!result);
         // FIXME: -> y major, z middle, x minor or continuous
         transpose_xyz_yzx(x, y, z, setup->cdata, true);
         #ifdef DEBUG_PME_TIMINGS_GPU
@@ -314,7 +345,8 @@ int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
         events_record_start(gpu_events_fft_c2r);
         #endif
         transpose_xyz_yzx(x, y, z, setup->cdata, false);
-        cufftExecC2R(setup->plan, setup->cdata, setup->rdata);
+        cufftResult_t result = cufftExecC2R(setup->plan, setup->cdata, setup->rdata);
+        assert(!result);
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_stop(gpu_events_fft_c2r, ewcsPME_FFT_C2R, 0);
         #endif
@@ -366,7 +398,7 @@ int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
 #endif
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {
-        stat = cudaMemcpy(setup->complex_data, setup->cdata + x * y * (z/2+1), x * y * (z/2+1) * sizeof(t_complex), cudaMemcpyDeviceToHost);
+        stat = cudaMemcpy(setup->complex_data, setup->cdata + x * y * (z / 2 + 1), x * y * (z / 2 + 1) * sizeof(t_complex), cudaMemcpyDeviceToHost);
         CU_RET_ERR(stat, "cudaMemcpy R2C error");
     }
     else

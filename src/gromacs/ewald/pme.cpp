@@ -761,7 +761,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
                 gmx_parallel_3dfft_init(&pme->pfft_setup[i], ndata,
                                     &pme->fftgrid[i], &pme->cfftgrid[i],
                                     pme->mpi_comm_d,
-                                    bReproducible, pme->nthread);
+                                     bReproducible, pme->nthread);
            if (pme->bGPU) //yupinov does not do proper separate init
                 gmx_parallel_3dfft_init_gpu(&pme->pfft_setup_gpu[i], ndata,
                                                 &pme->fftgrid[i], &pme->cfftgrid[i],
@@ -1097,8 +1097,10 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                copy_pmegrid_to_fftgrid() will perhaps live in the same
                source file and the following debugging function can live
                there too. */
-            /*
+/*
                dump_local_fftgrid(pme,fftgrid);
+
+                //yupinov - here on the first step absolute CPU/GPU difference is of order 1e-5...
                exit(0);
              */
         }
@@ -1113,10 +1115,37 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                 {
                     int loop_count;
 
+                    #pragma omp barrier //yupinov remove test barriers
+                    if (thread == 3)
+                        dump_local_fftgrid(pme,fftgrid, grid_index);
+                    if (thread == 3)
+                        if (pme->bGPU)
+                        {
+                            real *dest = fftgrid, *src = fftgrid;
+                            for (int x = 0; x < 20; x++)
+                                for (int y = 0; y < 20; y++)
+                                 {
+                                    int size = 20;
+                                    int gap = (22 - 20);
+                                    memmove(dest, src, size * sizeof(real));
+                                    dest += size;
+                                    src += size + gap;
+                                 }
+                           ;
+                        }
+                    #pragma omp barrier
+
                     /* do 3d-fft */
                     gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_REAL_TO_COMPLEX,
                                                thread, wcycle);
                     where();
+
+                    #pragma omp barrier
+                    if (thread == 3)
+                        ;//yupinov CHANGED by CPU code in place? dump_local_fftgrid(pme,(const real *)fftgrid, grid_index);
+                    if (thread == 3)
+                        dump_local_fftgrid(pme,(const real *)cfftgrid, grid_index);
+                    #pragma omp barrier
 
                     /* solve in k-space for our local cells */
                     if (thread == 0)
@@ -1126,7 +1155,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     if (grid_index < DO_Q)
                     {
                         loop_count =
-                            solve_pme_yzx(pme, cfftgrid, ewaldcoeff_q,
+                            solve_pme_yzx_wrapper(pme, cfftgrid, ewaldcoeff_q,
                                           box[XX][XX]*box[YY][YY]*box[ZZ][ZZ],
                                           bCalcEnerVir,
                                           pme->nthread, thread);
@@ -1134,12 +1163,17 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     else
                     {
                         loop_count =
-                            solve_pme_lj_yzx(pme, &cfftgrid, FALSE, ewaldcoeff_lj,
+                            solve_pme_lj_yzx_wrapper(pme, &cfftgrid, FALSE, ewaldcoeff_lj,
                                              box[XX][XX]*box[YY][YY]*box[ZZ][ZZ],
                                              bCalcEnerVir,
                                              pme->nthread, thread);
                     }
-
+                    /*
+                    #pragma omp barrier
+                    if (thread == 3)
+                        dump_local_fftgrid(pme,(const real *)cfftgrid, grid_index);
+                    #pragma omp barrier
+                    */
                     if (thread == 0)
                     {
                         wallcycle_stop(wcycle, (grid_index < DO_Q ? ewcPME_SOLVE : ewcLJPME));
@@ -1156,9 +1190,12 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                         where();
                     }
                     gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_COMPLEX_TO_REAL,
-                                               thread, wcycle);
+                                              thread, wcycle);
+                    //#pragma omp barrier
                     if (thread == 0)
                     {
+
+                        //dump_local_fftgrid(pme,(const real *)fftgrid, grid_index);
                         where();
 
                         if (pme->nodeid == 0)
@@ -1173,7 +1210,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                            refactoring code here. */
                         wallcycle_start(wcycle, ewcPME_SPREADGATHER);
                     }
-
+                    //#pragma omp barrier
                     copy_fftgrid_to_pmegrid(pme, fftgrid, grid, grid_index, pme->nthread, thread);
                 }
             } GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
