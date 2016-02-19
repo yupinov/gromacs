@@ -508,13 +508,15 @@ inline int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t *pme,
         wallcycle_start(wcycle, wcycle_id);
         wallcycle_sub_start(wcycle, wsubcycle_id);
     }
-    res = gmx_parallel_3dfft_execute(pme->pfft_setup[grid_index], dir, thread, wcycle);
-    /* //yupinov FFT broken
+
     if (bGPU)
-        res = gmx_parallel_3dfft_execute_gpu(pme->pfft_setup_gpu[grid_index], dir, thread, wcycle);
+    {
+        if (thread == 0)
+            res = gmx_parallel_3dfft_execute_gpu(pme->pfft_setup_gpu[grid_index], dir, thread, wcycle);
+    }
     else
         res = gmx_parallel_3dfft_execute(pme->pfft_setup[grid_index], dir, thread, wcycle);
-    */
+
     if (thread == 0)
     {
         wallcycle_stop(wcycle, wcycle_id);
