@@ -1115,25 +1115,12 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                 {
                     int loop_count;
 
-                    #pragma omp barrier //yupinov remove test and other sbarriers
-                    //if (thread == 3)
-                    //    dump_local_fftgrid(pme,fftgrid, grid_index);
-                    if (thread == 3)
-                        if (pme->bGPU)
-                        {
-                            real *dest = fftgrid, *src = fftgrid;
-                            for (int x = 0; x < 20; x++)
-                                for (int y = 0; y < 20; y++)
-                                 {
-                                    int size = 20;
-                                    int gap = (22 - 20);
-                                    memmove(dest, src, size * sizeof(real));
-                                    dest += size;
-                                    src += size + gap;
-                                 }
-                           ;
-                        }
+                    /*
                     #pragma omp barrier
+                    if (thread == 3)
+                        dump_local_fftgrid(pme, fftgrid, grid_index);
+                    #pragma omp barrier
+                    */
 
                     /* do 3d-fft */
                     gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_REAL_TO_COMPLEX,
@@ -1143,7 +1130,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     /*
                     #pragma omp barrier
                     if (thread == 3)
-                        dump_local_fftgrid(pme,(const real *)cfftgrid, grid_index);
+                        dump_local_fftgrid(pme, (const real *)cfftgrid, grid_index);
                     #pragma omp barrier
                     */
 
@@ -1172,7 +1159,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
 
                     #pragma omp barrier
                     if (thread == 3)
-                        dump_local_fftgrid(pme,(const real *)cfftgrid, grid_index);
+                        dump_local_fftgrid(pme, (const real *)cfftgrid, grid_index);
                     #pragma omp barrier
 
                     if (thread == 0)
