@@ -329,8 +329,29 @@ int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
 
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {
+        //yupinov hack for padded data
+        /*
         stat = cudaMemcpy(setup->rdata, setup->real_data, x * y * z * sizeof(real), cudaMemcpyHostToDevice);
         CU_RET_ERR(stat, "cudaMemcpy R2C error");
+        */
+        if (thread == 0) // redundant - called in thread 0 already though
+        {
+            cufftReal *dest = setup->rdata;
+            real *src = setup->real_data;
+            for (int xi = 0; xi < x; xi++)
+                for (int yi = 0; yi < y; yi++)
+                 {
+                    int size = z;
+                    int stripe = (z / 2 + 1) * 2;
+                    stat = cudaMemcpy(dest, src, size * sizeof(real), cudaMemcpyHostToDevice);
+                    CU_RET_ERR(stat, "cudaMemcpy R2C error");
+                    dest += size;
+                    src += stripe;
+                 }
+        }
+        #pragma omp barrier //?
+
+
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_start(gpu_events_fft_r2c);
         #endif
