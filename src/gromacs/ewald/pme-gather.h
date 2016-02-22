@@ -69,7 +69,7 @@ inline void gather_f_bsplines_wrapper(struct gmx_pme_t *pme, real *grid,
     if (pme->bGPU)
         gather_f_bsplines_gpu_pre(pme, grid, bClearF, atc, spline, scale, thread);
     wallcycle_sub_start(wcycle, ewcsPME_GATHER); //yupinov 1 thread! GPU distinction
-    gather_f_bsplines(pme, grid, bClearF, atc,
+    gather_f_bsplines(pme, grid, bClearF, atc, //yupinov does it work?
             spline,
             scale);
     wallcycle_sub_stop(wcycle, ewcsPME_GATHER);

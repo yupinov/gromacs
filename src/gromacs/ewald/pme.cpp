@@ -1524,9 +1524,9 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                         {
                             try
                             {
-                            gather_f_bsplines_wrapper(pme, grid, bClearF, &pme->atc[0],
-                                              &pme->atc[0].spline[thread],
-                                              scale, wcycle, thread);
+                                gather_f_bsplines_wrapper(pme, grid, bClearF, &pme->atc[0],
+                                                 &pme->atc[0].spline[thread],
+                                                scale, wcycle, thread);
                             }
                             GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
                         }
