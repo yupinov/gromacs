@@ -1144,6 +1144,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     if (thread == 0)
                     {
                         wallcycle_start(wcycle, (grid_index < DO_Q ? ewcPME_SOLVE : ewcLJPME));
+                        wallcycle_sub_start(wcycle, ewcsPME_SOLVE);
                     }
                     if (grid_index < DO_Q)
                     {
@@ -1170,6 +1171,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     if (thread == 0)
                     {
                         wallcycle_stop(wcycle, (grid_index < DO_Q ? ewcPME_SOLVE : ewcLJPME));
+                        wallcycle_sub_stop(wcycle, ewcsPME_SOLVE);
                         where();
                         inc_nrnb(nrnb, eNR_SOLVEPME, loop_count);
                     }
@@ -1253,11 +1255,11 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                 }
                 GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
             }
-
+            /*
             #pragma omp barrier
             dump_local_fftgrid(pme, (const real *)grid, grid_index);
             #pragma omp barrier
-
+            */
             where();
 
             inc_nrnb(nrnb, eNR_GATHERFBSP,
