@@ -483,8 +483,6 @@ inline int gmx_parallel_3dfft_complex_limits_wrapper(struct gmx_pme_t *pme,
     return res;
 }
 
-
-
 inline int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t *pme,
                            int grid_index,
                            enum gmx_fft_direction  dir,
