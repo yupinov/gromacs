@@ -1349,9 +1349,6 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
     }
 
     wallcycle_stop(wcycle, ewcRUN);
-    //if (pmedata)
-      //  if (*pmedata)
-        //    fprintf(fplog, "\nThis was a %s PME run!\n", (*pmedata)->bGPU ? "GPU" : "CPU");
 
     /* Finish up, write some stuff
      * if rerunMD, don't write last frame again
