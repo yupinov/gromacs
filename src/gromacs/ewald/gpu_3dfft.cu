@@ -165,30 +165,30 @@ int                       nthreads)
 
     int x = setup->n[0], y = setup->n[1], z = setup->n[2];
 
-    stat = cudaMalloc((void **) &setup->rdata, x * y * z * sizeof(cufftReal));
+    stat = cudaMalloc((void **) &setup->rdata, x * y * (z / 2 + 1) * 2 * sizeof(cufftReal));
     CU_RET_ERR(stat, "fft init cudaMalloc error");
     stat = cudaMalloc((void **) &setup->cdata, x * y * (z / 2 + 1) * 2 * sizeof(cufftComplex)); //yupinov: there are 2 complex planes here - for transposing
     CU_RET_ERR(stat, "fft init cudaMalloc error"); //yupinov check all cuFFT errors
 
     *pfft_setup = setup;
 
-    // FIX: double plans?
-    int rank = 3, batch = 1;
 
-
-    cufftResult_t result = cufftPlan3d(&setup->planR2C, setup->n[0], setup->n[1], setup->n[2], CUFFT_R2C);
+    cufftResult_t result;
+    /*
+    result = cufftPlan3d(&setup->planR2C, setup->n[0], setup->n[1], setup->n[2], CUFFT_R2C);
     if (result != CUFFT_SUCCESS)
     {
         fprintf(stderr, "cufft planR2C error %d\n", result);
         setup = NULL; //yupinov FIX
     }
+
     result = cufftPlan3d(&setup->planC2R, setup->n[0], setup->n[1], setup->n[2], CUFFT_C2R);
     if (result != CUFFT_SUCCESS)
     {
         fprintf(stderr, "cufft planC2R error %d\n", result);
         setup = NULL; // FIX
     }
-    /*
+    */
 
     int rembed[3];
     rembed[0] = setup->n[XX];
@@ -201,14 +201,30 @@ int                       nthreads)
     cembed[2] = setup->n[ZZ];
     cembed[2] = (cembed[2] / 2 + 1);
 
+    int rank = 3, batch = 1;
 
-
-    cufftResult_t result = cufftPlanMany(&setup->plan, rank, setup->n,
-                                       rembed, 1, 1,
-                                       cembed, 1, 1,
+    result = cufftPlanMany(&setup->planR2C, rank, setup->n,
+                                       rembed, 1, rembed[0] * rembed[1] * rembed[2],
+                                       cembed, 1, cembed[0] * cembed[1] * cembed[2],
                                        CUFFT_R2C,
                                       batch);
-*/
+    if (result != CUFFT_SUCCESS)
+    {
+        fprintf(stderr, "cufft planR2RC error %d\n", result);
+        setup = NULL; // FIX
+    }
+
+    result = cufftPlanMany(&setup->planC2R, rank, setup->n,
+                                       cembed, 1, cembed[0] * cembed[1] * cembed[2],
+                                       rembed, 1, rembed[0] * rembed[1] * rembed[2],
+                                       CUFFT_C2R,
+                                       batch);
+    if (result != CUFFT_SUCCESS)
+    {
+        fprintf(stderr, "cufft planR2RC error %d\n", result);
+        setup = NULL; // FIX
+    }
+
 
 
     //assert(!result);
@@ -330,10 +346,10 @@ int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {
         //yupinov hack for padded data
-        /*
-        stat = cudaMemcpy(setup->rdata, setup->real_data, x * y * z * sizeof(real), cudaMemcpyHostToDevice);
+
+        stat = cudaMemcpy(setup->rdata, setup->real_data, x * y * (z / 2 + 1) * 2 * sizeof(real), cudaMemcpyHostToDevice);
         CU_RET_ERR(stat, "cudaMemcpy R2C error");
-        */
+        /*
         if (thread == 0) // redundant - called in thread 0 already though
         {
             cufftReal *dest = setup->rdata;
@@ -349,7 +365,7 @@ int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
                     src += stripe;
                  }
         }
-        #pragma omp barrier //?
+        */
 
 
         #ifdef DEBUG_PME_TIMINGS_GPU
@@ -433,11 +449,11 @@ int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     else
     {
         //yupinov hack for padded data
-        /*
-        stat = cudaMemcpy(setup->real_data, setup->rdata, x * y * z * sizeof(real), cudaMemcpyDeviceToHost);
-        CU_RET_ERR(stat, "cudaMemcpy C2R error");
-        */
 
+        stat = cudaMemcpy(setup->real_data, setup->rdata, x * y * (z / 2 + 1) * 2 * sizeof(real), cudaMemcpyDeviceToHost);
+        CU_RET_ERR(stat, "cudaMemcpy C2R error");
+
+        /*
         if (thread == 0) // redundant - called in thread 0 already though
         {
             real *dest = setup->real_data;
@@ -453,8 +469,7 @@ int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
                     src += size;
                  }
         }
-        #pragma omp barrier //?
-
+        */
 
     }
 #ifdef DEBUG_PME_GPU

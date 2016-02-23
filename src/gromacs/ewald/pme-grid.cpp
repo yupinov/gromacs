@@ -879,7 +879,7 @@ static void dump_grid(FILE *fp,
             for (z = 0; z < nz; z++)
             {
                 if (g[(x*my + y)*mz + z] != 0.0)
-                    fprintf(fp, "%2d %2d %2d %10.1e\n",
+                    fprintf(fp, "%2d %2d %2d %10.2e\n",
                         sx+x, sy+y, sz+z, g[(x*my + y)*mz + z]);
             }
         }
