@@ -572,8 +572,18 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
         }
         pme->bPPnode = (cr->duty & DUTY_PP);
     }
+    //yupinov bGPU not checked everywhere! have to refactor
+    pme->bGPU        = bPMEGPU;
+    #ifdef DEBUG_PME_GPU
+    pme->bGPU        = true; //yupinov don't touch
+    #endif
 
     pme->nthread = nthread;
+    //yupinov: gather_f, and other things are not currently written for multi-threading...
+    // have to prove this doesn't hurt performance - what if we're turning off some OpenMP regions?
+    // maybe introduce a separate nthreads_gpu variable to manipulate GPU code only?
+    if (pme->bGPU)
+        pme->nthread = 1;
 
     /* Check if any of the PME MPI ranks uses threads */
     use_threads = (pme->nthread > 1 ? 1 : 0);
@@ -603,11 +613,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     pme->nkz         = ir->nkz;
     pme->bP3M        = (ir->coulombtype == eelP3M_AD || getenv("GMX_PME_P3M") != NULL);
     pme->pme_order   = ir->pme_order;
-//yupinov bGPU not checked everywhere! have to refactor
-    pme->bGPU        = bPMEGPU;
-#ifdef DEBUG_PME_GPU
-    pme->bGPU        = true; //yupinov don't touch
-#endif
+
     /* Always constant electrostatics coefficients */
     pme->epsilon_r   = ir->epsilon_r;
 
@@ -1097,10 +1103,9 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                copy_pmegrid_to_fftgrid() will perhaps live in the same
                source file and the following debugging function can live
                there too. */
-/*
-               dump_local_fftgrid(pme,fftgrid);
 
-                //yupinov - here on the first step absolute CPU/GPU difference is of order 1e-5...
+             /*
+               dump_local_fftgrid(pme,fftgrid);
                exit(0);
              */
         }
@@ -1248,6 +1253,10 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                 }
                 GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
             }
+
+            #pragma omp barrier
+            dump_local_fftgrid(pme, (const real *)grid, grid_index);
+            #pragma omp barrier
 
             where();
 
