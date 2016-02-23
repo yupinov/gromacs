@@ -1122,7 +1122,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
 
                     /*
                     #pragma omp barrier
-                    if (thread == 3)
+                    if (thread == 0)
                         dump_local_fftgrid(pme, fftgrid, grid_index);
                     #pragma omp barrier
                     */
@@ -1134,7 +1134,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
 
                     /*
                     #pragma omp barrier
-                    if (thread == 3)
+                    if (thread == 0)
                         dump_local_fftgrid(pme, (const real *)cfftgrid, grid_index);
                     #pragma omp barrier
                     */
@@ -1164,7 +1164,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     }
                     /*
                     #pragma omp barrier
-                    if (thread == 3)
+                    if (thread == 0)
                         dump_local_fftgrid(pme, (const real *)cfftgrid, grid_index);
                     #pragma omp barrier
                     */
@@ -1188,7 +1188,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                                               thread, wcycle);
                     /*
                     #pragma omp barrier
-                    if (thread == 3)
+                    if (thread == 0)
                         dump_local_fftgrid(pme,(const real *)fftgrid, grid_index);
                     #pragma omp barrier
                     */
