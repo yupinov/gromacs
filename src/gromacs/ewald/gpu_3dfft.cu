@@ -49,7 +49,7 @@ struct gmx_parallel_3dfft_gpu
     cufftComplex *cdata;
 };
 
-int gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup,
+void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup,
                                    ivec                      ndata,
                                    real **real_data,
                                    t_complex **complex_data,
@@ -147,10 +147,9 @@ int                       nthreads)
 
 
     //assert(!result);
-    return 0;
 }
 
-int gmx_parallel_3dfft_real_limits_gpu(gmx_parallel_3dfft_gpu_t      pfft_setup,
+void gmx_parallel_3dfft_real_limits_gpu(gmx_parallel_3dfft_gpu_t      pfft_setup,
                                        ivec                      local_ndata,
                                        ivec                      local_offset,
                                        ivec                      local_size)
@@ -167,15 +166,15 @@ int gmx_parallel_3dfft_real_limits_gpu(gmx_parallel_3dfft_gpu_t      pfft_setup,
     setup->local_size[0] = local_size[0];
     setup->local_size[1] = local_size[1];
     setup->local_size[2] = local_size[2];
-    return 0;
 }
 
-int gmx_parallel_3dfft_complex_limits_gpu(gmx_parallel_3dfft_gpu_t      pfft_setup,
+void gmx_parallel_3dfft_complex_limits_gpu(gmx_parallel_3dfft_gpu_t      pfft_setup,
                                           ivec                      complex_order,
                                           ivec                      local_ndata,
                                           ivec                      local_offset,
                                           ivec                      local_size)
 {
+    //yupinov why are they here
     //fprintf(stderr, "3dfft_complex_limits_gpu\n");
     gmx_parallel_3dfft_gpu_t setup = pfft_setup;
     setup->complex_order[0] = complex_order[0];
@@ -190,7 +189,6 @@ int gmx_parallel_3dfft_complex_limits_gpu(gmx_parallel_3dfft_gpu_t      pfft_set
     setup->local_size[0] = local_size[0];
     setup->local_size[1] = local_size[1];
     setup->local_size[2] = local_size[2];
-    return 0;
 }
 
 __global__ void transpose_xyz_yzx_kernel(int nx, int ny, int nz,
@@ -233,7 +231,7 @@ void transpose_xyz_yzx(int nx, int ny, int nz,
     //cudaMemcpy(cdata, cdata + nx * ny * (nz/2+1), nx * ny * (nz/2+1) * sizeof(cufftComplex), cudaMemcpyDeviceToDevice);
 }
 
-int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
+void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
                                    enum gmx_fft_direction  dir,
                                    int                     thread,
                                    gmx_wallcycle_t         wcycle)
@@ -413,11 +411,9 @@ int gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
 #endif
     // FIX destroy plans after
     //cufftDestroy(setup->plan);
-
-    return 0;
 }
 
-int gmx_parallel_3dfft_destroy_gpu(gmx_parallel_3dfft_gpu_t pfft_setup)
+void gmx_parallel_3dfft_destroy_gpu(gmx_parallel_3dfft_gpu_t pfft_setup)
 {
   //fprintf(stderr, "3dfft_destroy_gpu\n");
   gmx_parallel_3dfft_gpu_t setup = pfft_setup;
@@ -431,5 +427,4 @@ int gmx_parallel_3dfft_destroy_gpu(gmx_parallel_3dfft_gpu_t pfft_setup)
   CU_RET_ERR(stat, "cudaFree error");
 
   delete setup;
-  return 0;
 }
