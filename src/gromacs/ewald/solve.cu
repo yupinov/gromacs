@@ -71,7 +71,7 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
  real *energy_v, real *virial_v);
 
 
-int solve_pme_yzx_gpu(real pme_epsilon_r,
+void solve_pme_yzx_gpu(real pme_epsilon_r,
 		      int nx, int ny, int nz,
 		      ivec complex_order, ivec local_ndata, ivec local_offset, ivec local_size,
 		      real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
@@ -81,7 +81,7 @@ int solve_pme_yzx_gpu(real pme_epsilon_r,
 		      t_complex *grid,
 		      real ewaldcoeff, real vol,
 		      gmx_bool bEnerVir,
-		      int nthread, int thread)
+              int nthread, int thread, t_complex *complexFFTGridSavedOnDevice)
 {
     /* do recip sum over local cells in grid */
     /* y major, z middle, x minor or continuous */
@@ -132,9 +132,9 @@ int solve_pme_yzx_gpu(real pme_epsilon_r,
     //printf("local_size[XX] %d local_ndata[XX] %d\n", local_size[XX], local_ndata[XX]);
     //printf("local_size[YY] %d local_ndata[YY] %d\n", local_size[YY], local_ndata[YY]);
     //printf("local_size[ZZ] %d local_ndata[ZZ] %d\n", local_size[ZZ], local_ndata[ZZ]);
-    int grid_size = local_size[YY] * local_size[ZZ] * local_ndata[XX]; // * local_size[XX];
+    int grid_size = local_size[YY] * local_size[ZZ] * local_size[XX];
     local_vectors lv = TH_V.local(thread);
-    thrust::device_vector<t_complex> &grid_d = lv.device<t_complex>(ID_GRID, grid_size);
+
     thrust::device_vector<real> &pme_bsp_mod_x_d = lv.device<real>(ID_PME_BSP_MOD_X, nx);
     thrust::device_vector<real> &pme_bsp_mod_y_d = lv.device<real>(ID_PME_BSP_MOD_Y, ny);
     thrust::device_vector<real> &pme_bsp_mod_z_d = lv.device<real>(ID_PME_BSP_MOD_Z, nz);
@@ -147,7 +147,14 @@ int solve_pme_yzx_gpu(real pme_epsilon_r,
 	    (double) grid[grid_size - local_size[XX] + local_ndata[XX] - 1].im,
 	    thread, nthread);
         */
-    thrust::copy(grid, grid + grid_size, grid_d.begin());  //yupinov no need!
+    t_complex *workingGrid = complexFFTGridSavedOnDevice;
+    if (!workingGrid)
+    {
+        thrust::device_vector<t_complex> &grid_d = lv.device<t_complex>(ID_GRID, grid_size);
+        thrust::copy(grid, grid + grid_size, grid_d.begin());  //yupinov no need!
+        //launch blocks while copying?
+        workingGrid = thrust::raw_pointer_cast(&grid_d[0]);
+    }
     thrust::copy(pme_bsp_mod[XX], pme_bsp_mod[XX] + nx, pme_bsp_mod_x_d.begin());
     thrust::copy(pme_bsp_mod[YY], pme_bsp_mod[YY] + ny, pme_bsp_mod_y_d.begin());
     thrust::copy(pme_bsp_mod[ZZ], pme_bsp_mod[ZZ] + nz, pme_bsp_mod_z_d.begin());
@@ -164,7 +171,7 @@ int solve_pme_yzx_gpu(real pme_epsilon_r,
        thrust::raw_pointer_cast(&pme_bsp_mod_x_d[0]),
        thrust::raw_pointer_cast(&pme_bsp_mod_y_d[0]),
        thrust::raw_pointer_cast(&pme_bsp_mod_z_d[0]),
-       thrust::raw_pointer_cast(&grid_d[0]), ewaldcoeff, vol, bEnerVir,
+       complexFFTGridSavedOnDevice, ewaldcoeff, vol, bEnerVir,
        thrust::raw_pointer_cast(&energy_d[0]),
        thrust::raw_pointer_cast(&virial_d[0]));
     CU_LAUNCH_ERR("solve_pme_yzx_iyz_loop_kernel");
@@ -182,13 +189,11 @@ int solve_pme_yzx_gpu(real pme_epsilon_r,
 		 (real *) grid, 2 * grid_size, false);
     }
 #endif
-    thrust::copy(grid_d.begin(), grid_d.begin() + grid_size, grid);
+
+    stat = cudaMemcpy(grid, workingGrid, grid_size * sizeof(t_complex), cudaMemcpyDeviceToHost);
+    CU_RET_ERR(stat, "cudaMemcpy solve_pme_yzx");
+    //thrust::copy(grid_d.begin(), grid_d.begin() + grid_size, grid);
     //yupinov: it doesn't crash now, but copies whole array in vain.
-    //adn don't forget solve LJ
-    //fprintf(stderr, "solve thread %d copying grid sized %u to %x\n", thread, grid_d.size(), grid);
-    //fprintf(stderr, "solve thread %d iyz %d %d\n", thread, iyz0 * local_size[XX], iyz1* local_size[XX]);
-
-
 
     if (bEnerVir)
     {
@@ -240,7 +245,7 @@ int solve_pme_yzx_gpu(real pme_epsilon_r,
     }
 
     /* Return the loop count */
-    return local_ndata[YY]*local_ndata[XX]; //yupinov isn't that wrong
+    //return local_ndata[YY]*local_ndata[XX]; //yupinov why
 }
 
 

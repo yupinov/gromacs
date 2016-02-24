@@ -51,7 +51,8 @@ GPU_FUNC_QUALIFIER void gmx_parallel_3dfft_complex_limits_gpu(gmx_parallel_3dfft
 GPU_FUNC_QUALIFIER void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t gmx_unused pfft_setup,
                            enum gmx_fft_direction gmx_unused dir,
                            int             gmx_unused        thread,
-                           gmx_wallcycle_t   gmx_unused      wcycle) GPU_FUNC_TERM
+                           gmx_wallcycle_t   gmx_unused      wcycle,
+                            t_complex gmx_unused **complexFFTGridSavedOnDevice) GPU_FUNC_TERM
 
 
 GPU_FUNC_QUALIFIER void calc_interpolation_idx_gpu_core
@@ -139,7 +140,8 @@ inline int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t gmx_unused *pme,
                            int grid_index,
                            enum gmx_fft_direction gmx_unused  dir,
                            int           gmx_unused           thread,
-                           gmx_wallcycle_t         wcycle)
+                           gmx_wallcycle_t         wcycle,
+                           t_complex **complexFFTGridSavedOnDevice = NULL)
 {
     int res = 0;
     gmx_bool bGPU = pme->bGPU;
@@ -162,7 +164,7 @@ inline int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t gmx_unused *pme,
     if (bGPU)
     {
         if (thread == 0)
-            gmx_parallel_3dfft_execute_gpu(pme->pfft_setup_gpu[grid_index], dir, thread, wcycle);
+            gmx_parallel_3dfft_execute_gpu(pme->pfft_setup_gpu[grid_index], dir, thread, wcycle, complexFFTGridSavedOnDevice);
     }
     else
         res = gmx_parallel_3dfft_execute(pme->pfft_setup[grid_index], dir, thread, wcycle);
@@ -186,7 +188,7 @@ GPU_FUNC_QUALIFIER void solve_pme_yzx_gpu(real gmx_unused pme_epsilon_r,
               t_complex gmx_unused *grid,
               real gmx_unused ewaldcoeff, real gmx_unused vol,
               gmx_bool gmx_unused bEnerVir,
-              int gmx_unused nthread, int gmx_unused thread) GPU_FUNC_TERM
+              int gmx_unused nthread, int gmx_unused thread, t_complex gmx_unused *complexFFTGridSavedOnDevice) GPU_FUNC_TERM
 GPU_FUNC_QUALIFIER void solve_pme_lj_yzx_gpu(int gmx_unused nx, int gmx_unused ny, int gmx_unused nz,
              ivec gmx_unused complex_order, ivec gmx_unused local_ndata, ivec gmx_unused local_offset, ivec gmx_unused local_size,
              real gmx_unused rxx, real gmx_unused ryx, gmx_unused real ryy, real gmx_unused rzx, real gmx_unused rzy, real gmx_unused rzz,

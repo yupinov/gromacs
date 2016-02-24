@@ -234,7 +234,8 @@ void transpose_xyz_yzx(int nx, int ny, int nz,
 void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
                                    enum gmx_fft_direction  dir,
                                    int                     thread,
-                                   gmx_wallcycle_t         wcycle)
+                                   gmx_wallcycle_t         wcycle,
+                                   t_complex **complexFFTGridSavedOnDevice)
 {
     cudaError_t stat;
 
@@ -313,55 +314,17 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
         events_record_stop(gpu_events_fft_c2r, ewcsPME_FFT_C2R, 0);
         #endif
     }
-#ifdef DEBUG_PME_GPU
-    if (check_vs_cpu(fft_gpu_flags))
-    {
-        //print_lock();
-        for (int ix = 0; ix < x; ++ix)
-        {
-            fprintf(stderr, "plane %d\n", ix);
-            for (int iy = 0; iy < y; ++iy)
-            {
-                for (int iz = 0; iz < z; ++iz)
-                {
-                    int i = (ix * y + iy) * z + iz;
-                    fprintf(stderr, " %5.2f", setup->real_data[i]);
-                }
-                fprintf(stderr, "\n");
-            }
-        }
 
-#if 0
-        real sum = 0;
-        for (int i = 0; i < x * y * z; ++i)
-        {
-            sum += setup->real_data[i];
-        }
-        check_real("FFT r all", setup->rdata, setup->real_data, x * y * z, true);
-        fprintf(stderr, "sum %f\n", (double) sum);
-        for (int i = 0; i < x * y * (z/2 + 1); ++i)
-        {
-            //check_real("FFT r", &setup->rdata[i], &setup->real_data[i], 1, true);
-
-            cufftComplex c;
-            stat = cudaMemcpy(&c, &setup->cdata[i + x * y * (z/2+1)], sizeof(cufftComplex), cudaMemcpyDeviceToHost);
-            CU_RET_ERR(stat, "cudaMemcpy some error");
-            fprintf(stderr, "FFT %d %f %f\t", i, (double) c.x, (double) c.y);
-            fprintf(stderr, "FFT vs %f %f\n", (double) setup->complex_data[i].re, (double) setup->complex_data[i].im);
-            /*
-      fprintf(stderr, "FFT %d %p %p\n", i, &setup->cdata[i].x, &setup->cdata[i].y);
-      check_real("FFT cr", &setup->cdata[i].x, &setup->complex_data[i].re, 1, true);
-      check_real("FFT ci", &setup->cdata[i].y, &setup->complex_data[i].im, 1, true);
-      */
-        }
-#endif //0
-        //print_unlock();
-    }
-#endif
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {
-        stat = cudaMemcpy(setup->complex_data, setup->cdata + x * y * (z / 2 + 1), x * y * (z / 2 + 1) * sizeof(t_complex), cudaMemcpyDeviceToHost);
-        CU_RET_ERR(stat, "cudaMemcpy R2C error");
+        cufftComplex *complexFFTGrid = setup->cdata + x * y * (z / 2 + 1);
+        if (!complexFFTGridSavedOnDevice)
+        {
+            stat = cudaMemcpy(setup->complex_data, complexFFTGrid, x * y * (z / 2 + 1) * sizeof(t_complex), cudaMemcpyDeviceToHost);
+            CU_RET_ERR(stat, "cudaMemcpy R2C error");
+        }
+        else
+            *complexFFTGridSavedOnDevice = (t_complex *)complexFFTGrid;
     }
     else
     {
