@@ -1128,8 +1128,9 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     */
 
                     /* do 3d-fft */
+                    t_complex *complexFFTGridSavedOnDevice = NULL;
                     gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_REAL_TO_COMPLEX,
-                                               thread, wcycle);
+                                               thread, wcycle, pme->bGPU ? &complexFFTGridSavedOnDevice : NULL);
                     where();
 
                     /*
@@ -1149,10 +1150,10 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     if (grid_index < DO_Q)
                     {
                         loop_count =
-                            solve_pme_yzx_wrapper(pme, cfftgrid, ewaldcoeff_q,
+                            solve_pme_yzx(pme, cfftgrid, ewaldcoeff_q,
                                           box[XX][XX]*box[YY][YY]*box[ZZ][ZZ],
                                           bCalcEnerVir,
-                                          pme->nthread, thread);
+                                          pme->nthread, thread, complexFFTGridSavedOnDevice);
                     }
                     else
                     {
@@ -1160,7 +1161,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                             solve_pme_lj_yzx_wrapper(pme, &cfftgrid, FALSE, ewaldcoeff_lj,
                                              box[XX][XX]*box[YY][YY]*box[ZZ][ZZ],
                                              bCalcEnerVir,
-                                             pme->nthread, thread);
+                                             pme->nthread, thread);  //yupinov implement LJ
                     }
                     /*
                     #pragma omp barrier

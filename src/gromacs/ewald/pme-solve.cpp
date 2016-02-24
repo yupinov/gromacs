@@ -290,7 +290,7 @@ gmx_inline static void calc_exponentials_lj(int start, int end, real *r, real *t
 int solve_pme_yzx(struct gmx_pme_t *pme, t_complex *grid,
                   real ewaldcoeff, real vol,
                   gmx_bool bEnerVir,
-                  int nthread, int thread)
+                  int nthread, int thread, t_complex *complexFFTGridSavedOnDevice)
 {
     /* do recip sum over local cells in grid */
     /* y major, z middle, x minor or continuous */
@@ -352,7 +352,6 @@ int solve_pme_yzx(struct gmx_pme_t *pme, t_complex *grid,
 
     if (pme->bGPU)
     {
-        //yupinov launch from 1 thread?
         if (thread == 0)
             solve_pme_yzx_gpu(pme->epsilon_r,
               nx, ny, nz,
@@ -361,7 +360,7 @@ int solve_pme_yzx(struct gmx_pme_t *pme, t_complex *grid,
               pme->bsp_mod,
               work->vir_q, &work->energy_q, //yupinov was lj!!!
               grid, ewaldcoeff, vol, bEnerVir,
-                          1, 0);
+                          1, 0, complexFFTGridSavedOnDevice);
                           //nthread, thread); // all these parameters instead of pme?
     //yupinov rework structure!
     }

@@ -72,7 +72,7 @@ void get_pme_ener_vir_lj(struct pme_solve_work_t *work, int nthread,
 int solve_pme_yzx(struct gmx_pme_t *pme, t_complex *grid,
                   real ewaldcoeff, real vol,
                   gmx_bool bEnerVir,
-                  int nthread, int thread);
+                  int nthread, int thread, t_complex *complexFFTGridSavedOnDevice);
 
 int solve_pme_lj_yzx(struct gmx_pme_t *pme, t_complex **grid, gmx_bool bLB,
                      real ewaldcoeff, real vol,
@@ -80,27 +80,7 @@ int solve_pme_lj_yzx(struct gmx_pme_t *pme, t_complex **grid, gmx_bool bLB,
 
 #include "pme-internal.h"
 //yupinov lj solve
-inline int solve_pme_yzx_wrapper(struct gmx_pme_t *pme, t_complex *grid,
-                  real ewaldcoeff, real vol,
-                  gmx_bool bEnerVir,
-                  int nthread, int thread)
-{
-    int res = 0;
-    /*
-     * if (pme->bGPU)
-        res = solve_pme_yzx_gpu(pme->epsilon_r,
-              nx, ny, nz,
-              complex_order, local_ndata, local_offset, local_size,
-              rxx, ryx, ryy, rzx, rzy, rzz,
-              pme->bsp_mod,
-              work->vir_lj, &work->energy_lj,
-              grid, ewaldcoeff, vol, bEnerVir, nthread, thread); // all these parameters instead of pme?
-    else
-    */
-    //now calls solve_pme_yzx_gpu inside
-        res = solve_pme_yzx(pme, grid, ewaldcoeff, vol, bEnerVir, nthread, thread);
-    return res;
-}
+//yupinov move GPU stuff?
 
 inline int solve_pme_lj_yzx_wrapper(struct gmx_pme_t *pme, t_complex **grid, gmx_bool bLB,
                      real ewaldcoeff, real vol,
