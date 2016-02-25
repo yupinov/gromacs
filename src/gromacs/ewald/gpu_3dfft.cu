@@ -140,10 +140,9 @@ int                       nthreads)
                                        batch);
     if (result != CUFFT_SUCCESS)
     {
-        fprintf(stderr, "cufft planR2RC error %d\n", result);
+        fprintf(stderr, "cufft planC2R error %d\n", result);
         setup = NULL; // FIX
     }
-
 
 
     //assert(!result);
