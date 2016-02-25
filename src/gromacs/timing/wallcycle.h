@@ -65,6 +65,9 @@ enum {
 };
 
 
+//yupinov
+#define YUP_MAGIC 8
+
 enum {
     ewcsDD_REDIST, ewcsDD_GRID, ewcsDD_SETUPCOMM,
     ewcsDD_MAKETOP, ewcsDD_MAKECONSTR, ewcsDD_TOPOTHER,
