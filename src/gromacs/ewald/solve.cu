@@ -23,6 +23,8 @@ enum TH_V_ID {
   ID_END
 };
 
+#define SQRT_M_PI (2.0 / M_2_SQRTPI)
+
 static thread_vectors TH_V(32, ID_END);
 
 #ifdef DEBUG_PME_GPU
@@ -44,8 +46,8 @@ static const __constant__ real lb_scale_factor_symm[] = { 2.0/64, 12.0/64, 30.0/
   e = f*r*d;
   }*/
 
-static const real sqrt_M_PI = sqrt(M_PI);
-static __constant__ real sqrt_M_PI_d;
+//static const real sqrt_M_PI = sqrt(M_PI);
+//static __constant__ real sqrt_M_PI_d;
 
 /*__device__ gmx_inline static void calc_exponentials_lj_one(real &r, real &tmp2, real &d)
 {
@@ -64,11 +66,13 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
  real elfac,
  //splinevec pme_bsp_mod,
- real *pme_bsp_mod_XX, real *pme_bsp_mod_YY, real *pme_bsp_mod_ZZ,
- t_complex *grid,
+ const real * __restrict__ pme_bsp_mod_XX,
+ const real * __restrict__ pme_bsp_mod_YY,
+ const real * __restrict__ pme_bsp_mod_ZZ,
+ t_complex * __restrict__ grid,
  real ewaldcoeff, real vol,
  gmx_bool bEnerVir,
- real *energy_v, real *virial_v);
+ real * __restrict__ energy_v, real * __restrict__ virial_v);
 
 
 void solve_pme_yzx_gpu(real pme_epsilon_r,
@@ -123,12 +127,13 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     iyz0 = local_ndata[YY]*local_ndata[ZZ]* thread   /nthread;
     iyz1 = local_ndata[YY]*local_ndata[ZZ]*(thread+1)/nthread;
 
-    const int block_size = 32;
+    const int block_size = warp_size;
     int n = iyz1 - iyz0;
     int n_blocks = (n + block_size - 1) / block_size;
 
-    cudaError_t stat = cudaMemcpyToSymbol( sqrt_M_PI_d, &sqrt_M_PI, sizeof(real));  //yupinov - this is an overkill!
-    CU_RET_ERR(stat, "solve cudaMemcpyToSymbol");
+    cudaError_t stat;
+    //cudaError_t stat = cudaMemcpyToSymbol( sqrt_M_PI_d, &sqrt_M_PI, sizeof(real));  //yupinov - this is an overkill!
+    //CU_RET_ERR(stat, "solve cudaMemcpyToSymbol");
     //printf("local_size[XX] %d local_ndata[XX] %d\n", local_size[XX], local_ndata[XX]);
     //printf("local_size[YY] %d local_ndata[YY] %d\n", local_size[YY], local_ndata[YY]);
     //printf("local_size[ZZ] %d local_ndata[ZZ] %d\n", local_size[ZZ], local_ndata[ZZ]);
@@ -148,7 +153,8 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
 	    thread, nthread);
         */
     t_complex *workingGrid = complexFFTGridSavedOnDevice;
-    if (!workingGrid)
+    gmx_bool gridIsOnDevice = (workingGrid != NULL);
+    if (!gridIsOnDevice)
     {
         thrust::device_vector<t_complex> &grid_d = lv.device<t_complex>(ID_GRID, grid_size);
         thrust::copy(grid, grid + grid_size, grid_d.begin());  //yupinov no need!
@@ -190,8 +196,11 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     }
 #endif
 
-    stat = cudaMemcpy(grid, workingGrid, grid_size * sizeof(t_complex), cudaMemcpyDeviceToHost);
-    CU_RET_ERR(stat, "cudaMemcpy solve_pme_yzx");
+    //if (!gridIsOnDevice)
+    {
+        stat = cudaMemcpy(grid, workingGrid, grid_size * sizeof(t_complex), cudaMemcpyDeviceToHost);
+        CU_RET_ERR(stat, "cudaMemcpy solve_pme_yzx");
+    }
     //thrust::copy(grid_d.begin(), grid_d.begin() + grid_size, grid);
     //yupinov: it doesn't crash now, but copies whole array in vain.
 
@@ -257,11 +266,13 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
  real elfac,
  //splinevec pme_bsp_mod,
- real *pme_bsp_mod_XX, real *pme_bsp_mod_YY, real *pme_bsp_mod_ZZ,
- t_complex *grid,
+ const real * __restrict__ pme_bsp_mod_XX,
+ const real * __restrict__ pme_bsp_mod_YY,
+ const real * __restrict__ pme_bsp_mod_ZZ,
+ t_complex * __restrict__ grid,
  real ewaldcoeff, real vol,
  gmx_bool bEnerVir,
- real *energy_v, real *virial_v)
+ real * __restrict__ energy_v, real * __restrict__ virial_v)
 {
     const real factor = M_PI*M_PI/(ewaldcoeff*ewaldcoeff);
 
@@ -488,8 +499,8 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
     iyz0 = local_ndata[YY]*local_ndata[ZZ]* thread   /nthread;
     iyz1 = local_ndata[YY]*local_ndata[ZZ]*(thread+1)/nthread;
 
-    cudaError_t stat = cudaMemcpyToSymbol( sqrt_M_PI_d, &sqrt_M_PI, sizeof(real));
-    CU_RET_ERR(stat, "solve cudaMemcpyToSymbol");
+    //cudaError_t stat = cudaMemcpyToSymbol( sqrt_M_PI_d, &sqrt_M_PI, sizeof(real));
+    //CU_RET_ERR(stat, "solve cudaMemcpyToSymbol");
 
     const int block_size = 32;
     int n = iyz1 - iyz0;
@@ -686,7 +697,7 @@ __global__ void solve_pme_lj_yzx_iyz_loop_kernel
                 denomk = 1.0/denomk;
                 tmp1k = exp(tmp1k);
                 real mk = tmp2k;
-                tmp2k = sqrt_M_PI_d*mk*erfcf(mk);
+                tmp2k = SQRT_M_PI * mk * erfcf(mk);
 
                 m2k   = factor*m2k;
                 real eterm = -((1.0 - 2.0*m2k)*tmp1k
@@ -785,7 +796,7 @@ __global__ void solve_pme_lj_yzx_iyz_loop_kernel
                 denomk = 1.0/denomk;
                 tmp1k = exp(tmp1k);
                 real mk = tmp2k;
-                tmp2k = sqrt_M_PI_d*mk*erfcf(mk); //yupinov std::erfc? gmx_erfc?
+                tmp2k = SQRT_M_PI * mk * erfcf(mk); //yupinov std::erfc? gmx_erfc?
 
                 m2k    = factor*m2k;
                 real eterm  = -((1.0 - 2.0*m2k)*tmp1k
