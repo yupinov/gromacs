@@ -290,8 +290,7 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
         #endif
         cufftResult_t result = cufftExecR2C(setup->planR2C, setup->rdata, setup->cdata);
         if (result)
-            fprintf(stderr, "cufft error %d\n", result);
-        assert(!result);
+            fprintf(stderr, "cufft R2C error %d\n", result);
         // FIXME: -> y major, z middle, x minor or continuous
         transpose_xyz_yzx(x, y, z, setup->cdata, true);
         #ifdef DEBUG_PME_TIMINGS_GPU
@@ -300,6 +299,7 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     }
     else
     {
+        //yupinov no second transfer
         stat = cudaMemcpy(setup->cdata + x * y * (z / 2 + 1), setup->complex_data, x * y * (z / 2 + 1) * sizeof(t_complex), cudaMemcpyHostToDevice);
         CU_RET_ERR(stat, "cudaMemcpy C2R error");
         // FIXME: y major, z middle, x minor or continuous ->
@@ -308,7 +308,8 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
         #endif
         transpose_xyz_yzx(x, y, z, setup->cdata, false);
         cufftResult_t result = cufftExecC2R(setup->planC2R, setup->cdata, setup->rdata);
-        assert(!result);
+        if (result)
+            fprintf(stderr, "cufft C2R error %d\n", result);
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_stop(gpu_events_fft_c2r, ewcsPME_FFT_C2R, 0);
         #endif

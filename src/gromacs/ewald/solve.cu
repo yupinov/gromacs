@@ -87,6 +87,7 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
 		      gmx_bool bEnerVir,
               int nthread, int thread, t_complex *complexFFTGridSavedOnDevice)
 {
+
     /* do recip sum over local cells in grid */
     /* y major, z middle, x minor or continuous */
     //t_complex *p0;
@@ -177,7 +178,7 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
        thrust::raw_pointer_cast(&pme_bsp_mod_x_d[0]),
        thrust::raw_pointer_cast(&pme_bsp_mod_y_d[0]),
        thrust::raw_pointer_cast(&pme_bsp_mod_z_d[0]),
-       complexFFTGridSavedOnDevice, ewaldcoeff, vol, bEnerVir,
+       workingGrid, ewaldcoeff, vol, bEnerVir,
        thrust::raw_pointer_cast(&energy_d[0]),
        thrust::raw_pointer_cast(&virial_d[0]));
     CU_LAUNCH_ERR("solve_pme_yzx_iyz_loop_kernel");
@@ -252,7 +253,6 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
         /* This energy should be corrected for a charged system */
         *work_energy_q = 0.5*energy;
     }
-
     /* Return the loop count */
     //return local_ndata[YY]*local_ndata[XX]; //yupinov why
 }
