@@ -108,8 +108,7 @@ static void calc_interpolation_idx(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     if (pme->bGPU)
         calc_interpolation_idx_gpu_core(nx, ny, nz,
-				 rxx, ryx, ryy, rzx, rzy, rzz,
-				 g2tz, g2ty, g2tz,
+                 rxx, ryx, ryy, rzx, rzy, rzz,
 				 fshx, fshy,
 				 nnx, nny, nnz,
 				 atc->x, atc->idx, atc->fractx,
@@ -437,15 +436,15 @@ static void spread_coefficients_bsplines_thread_gpu(pmegrid_t                   
     real *atc_coefficient = atc->coefficient;
     splinevec *spline_theta = &spline->theta;
     int atc_n_foo = atc->n; // for bunch testing
-/**/
+/*
     spread_coefficients_bsplines_thread_gpu_2
       (pnx, pny, pnz, offx, offy, offz,
        grid, order, atc_idx, spline_ind, spline_n,
        atc_coefficient, spline_theta,
        atc_n_foo,
        thread);
+*/
 
-/*
     spread1_coefficients_bsplines_thread_gpu_2
       (pnx, pny, pnz, offx, offy, offz,
        grid, order, atc_idx, spline_ind, spline_n,
@@ -453,7 +452,7 @@ static void spread_coefficients_bsplines_thread_gpu(pmegrid_t                   
        atc_n_foo,
        thread);
 
-
+/*
     spread1_nvidia_coefficients_bsplines_thread_gpu_2
       (pnx, pny, pnz, offx, offy, offz,
        grid, order, atc_idx, spline_ind, spline_n,
@@ -952,6 +951,16 @@ void spread_on_grid(struct gmx_pme_t *pme,
     nthread = pme->nthread;
     assert(nthread > 0);
 
+    if (pme->bGPU)
+    {
+        spread3_yup_gpu(pme, atc, grid_index, &grids->grid); //yupinov grid index here and everywhere else?
+
+    }
+        //yupinov check flags
+    //yupinov copy_local_grid
+    else
+    {
+
 
 #ifdef DEBUG_PME_GPU //yupinov copied 1st cycle
     pme->bGPU = false;
@@ -1175,6 +1184,10 @@ void spread_on_grid(struct gmx_pme_t *pme,
     c2   = omp_cyc_end(c2);
     cs2 += (double)c2;
 #endif
+
+
+    }//yupinov
+
     assert(fftgrid);
     if (bSpread && pme->bUseThreads)
     {
