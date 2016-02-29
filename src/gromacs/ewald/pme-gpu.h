@@ -58,7 +58,6 @@ GPU_FUNC_QUALIFIER void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t 
 GPU_FUNC_QUALIFIER void calc_interpolation_idx_gpu_core
 (int gmx_unused nx, int gmx_unused ny, int gmx_unused nz,
  real gmx_unused rxx, real gmx_unused ryx, real gmx_unused ryy, real gmx_unused rzx, real gmx_unused rzy, real gmx_unused rzz,
- int gmx_unused *g2tx, int gmx_unused *g2ty, int gmx_unused *g2tz,
  real gmx_unused *fshx, real gmx_unused *fshy,
  int gmx_unused *nnx, int gmx_unused *nny, int gmx_unused *nnz,
  rvec gmx_unused *xptr_v, ivec gmx_unused *idxptr_v, rvec gmx_unused *fptr_v,
@@ -100,13 +99,16 @@ void spread3_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
          int grid_index,
          pmegrid_t *pmegrid);
 
+
+void spread3_yup_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
+         int grid_index,
+         pmegrid_t *pmegrid);
  // FFT
 
 
 
 GPU_FUNC_QUALIFIER void gmx_parallel_3dfft_destroy_gpu(gmx_parallel_3dfft_gpu_t gmx_unused pfft_setup) GPU_FUNC_TERM
 
-#include <assert.h>
 inline int gmx_parallel_3dfft_real_limits_wrapper(struct gmx_pme_t *pme,
                                int                       grid_index,
                                ivec                      local_ndata,
@@ -117,7 +119,6 @@ inline int gmx_parallel_3dfft_real_limits_wrapper(struct gmx_pme_t *pme,
     res = gmx_parallel_3dfft_real_limits(pme->pfft_setup[grid_index], local_ndata, local_offset, local_size);
     if (pme->bGPU)
         gmx_parallel_3dfft_real_limits_gpu(pme->pfft_setup_gpu[grid_index], local_ndata, local_offset, local_size);
-    assert(res == 0);
     return res;
 }
 

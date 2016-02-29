@@ -244,7 +244,7 @@ void make_bsplines_gpu(splinevec theta, splinevec dtheta, int order,
     CU_RET_ERR(stat, "cudaMemcpy splines error");
     int block_size = 32; //yupinov
     int n_blocks = (nr + block_size - 1) / block_size;
-#ifdef DEBUG_PME_GPU_TIMING
+#ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_calcspline);
 #endif
     assert(order >= 4 && order <= PME_ORDER_MAX); //yupinvo just in case
@@ -259,7 +259,7 @@ void make_bsplines_gpu(splinevec theta, splinevec dtheta, int order,
                                                              theta_d, dtheta_d, fractx_d, nr, coefficient_d, bDoSplines); break;
     }
     CU_LAUNCH_ERR("make_bsplines_kernel");
-#ifdef DEBUG_PME_GPU_TIMING
+#ifdef DEBUG_PME_TIMINGS_GPU
     events_record_stop(gpu_events_calcspline, ewcsPME_CALCSPLINE, 0);
 #endif
 #ifdef DEBUG_PME_GPU

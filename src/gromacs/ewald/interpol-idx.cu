@@ -33,7 +33,6 @@ static T *raw_off(device_vector<T> &v, int off) {
 __global__ void calc_interpolation_idx_gpu_kernel
 (int nx, int ny, int nz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
- int *g2tx, int *g2ty, int *g2tz,
  real *fshx, real *fshy,
  int *nnx, int *nny, int *nnz,
  real *xptr, real *yptr, real *zptr,
@@ -44,7 +43,6 @@ __global__ void calc_interpolation_idx_gpu_kernel
 void calc_interpolation_idx_gpu_core
 (int nx, int ny, int nz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
- int *g2tx, int *g2ty, int *g2tz,
  real *fshx, real *fshy,
  int *nnx, int *nny, int *nnz,
  rvec *xptr_v, ivec *idxptr_v, rvec *fptr_v,
@@ -57,10 +55,6 @@ void calc_interpolation_idx_gpu_core
 
     local_vectors lv = TH_V.local(thread);
 
-    device_vector<int> &g2t_d = lv.device<int>(ID_G2T, 3 * n32);
-    thrust::copy(g2tx, g2tx + n, g2t_d.begin());
-    thrust::copy(g2ty, g2ty + n, g2t_d.begin() + n32);
-    thrust::copy(g2tz, g2tz + n, g2t_d.begin() + 2 * n32);
 
     device_vector<real> &fsh_d = lv.device<real>(ID_FSH, 5 * (nx + ny));
     thrust::copy(fshx, fshx + 5 * nx, fsh_d.begin());
@@ -92,15 +86,11 @@ void calc_interpolation_idx_gpu_core
 
     int block_size = warp_size;
     int n_blocks = (n + block_size - 1) / block_size;
-#ifdef DEBUG_PME_GPU_TIMING
+#ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_interpol_idx);
 #endif
     calc_interpolation_idx_gpu_kernel<<<n_blocks, block_size>>>
                                                               (nx, ny, nz, rxx, ryx, ryy, rzx, rzy, rzz,
-
-                                                               thrust::raw_pointer_cast(&g2t_d[0]),
-            thrust::raw_pointer_cast(&g2t_d[n32]),
-            thrust::raw_pointer_cast(&g2t_d[2 * n32]),
 
             thrust::raw_pointer_cast(&fsh_d[0]),
             thrust::raw_pointer_cast(&fsh_d[5 * nx]),
@@ -123,7 +113,7 @@ void calc_interpolation_idx_gpu_core
 
             n);
     CU_LAUNCH_ERR("calc_interpolation_idx_gpu_kernel");
-#ifdef DEBUG_PME_GPU_TIMING //yupinov
+#ifdef DEBUG_PME_TIMINGS_GPU //yupinov
     events_record_stop(gpu_events_interpol_idx, ewcsPME_INTERPOL_IDX, 0);
 #endif
     idxptr_h = idxptr_d;
@@ -159,7 +149,6 @@ void calc_interpolation_idx_gpu_core
 __global__ void calc_interpolation_idx_gpu_kernel
 (int nx, int ny, int nz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
- int *g2tx, int *g2ty, int *g2tz,
  real *fshx, real *fshy,
  int *nnx, int *nny, int *nnz,
  real *xptr, real *yptr, real *zptr,
@@ -196,4 +185,3 @@ __global__ void calc_interpolation_idx_gpu_kernel
         idxzptr[i] = nnz[tiz];
     }
 }
-//yupinov cuda stuff masked again
