@@ -66,15 +66,10 @@ static tMPI::mutex print_mutex;
 
 #define DO_BSPLINE(order)                                         \
     _Pragma("unroll")                                                    \
-    if (globalParticleIndex == 0) \
-        printf("%g coefficient\n", coefficient[globalParticleIndex]); \
     for (ithx = 0; (ithx < order); ithx++)                    \
     {                                                             \
         index_x = (i0 + ithx) * pny * pnz;                    \
         valx = coefficient[globalParticleIndex] * thx[ithx];                      \
-        if (globalParticleIndex == 0) \
-        {    printf("%d index_x\n", index_x); \
-         printf("%d %d %d %d\n", i0, ithx, pny, pnz);} \
         _Pragma("unroll")                                                         \
         for (ithy = 0; (ithy < order); ithy++)                \
         {                                                         \
@@ -86,8 +81,6 @@ static tMPI::mutex print_mutex;
                 index_xyz        = index_xy+(k0+ithz);        \
                 /*grid[index_xyz] += valxy*thz[ithz];*/               \
                 atomicAdd(grid + index_xyz, valxy*thz[ithz]);      \
-                if (globalParticleIndex == 0) \
-                    printf("contributing %g to %i\n", valxy*thz[ithz], index_xyz); \
             }                                                     \
         }                                                         \
     }
@@ -161,11 +154,6 @@ __global__ void spread3_kernel
         tix = (int)(tx);
         tiy = (int)(ty);
         tiz = (int)(tz);
-        if (globalParticleIndex == 0)
-        for (int rr = 0; rr < 5 * nx; rr++)
-            printf("%d test %d\n", rr, nnx[rr]);
-        if (globalParticleIndex == 0)
-            printf("%d %d tix\n", tix, nnx[tix]);
         /* Because decomposition only occurs in x and y,
         * we never have a fraction correction in z.
         */
@@ -250,11 +238,6 @@ __global__ void spread3_kernel
             DO_BSPLINE(order);
         }
     }
-    //yupinov start spread copypaste
-
-
-
-      //yupinov end spread copypaste
 
 
 
@@ -357,12 +340,14 @@ void spread3_yup_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
   int thread = 0;
 
 
-    printf("%d second\n", pme->nnx[201]);
+  const int pnx = nx + order - 1, pny = ny + order - 1, pnz = nz + order - 1; //yupinov fix me!
 
   int n = atc->n;
   int n_blocked = (n + warp_size - 1) / warp_size * warp_size;
-  int ndatatot = nx*ny*nz;
+  //int ndatatot = nx*ny*nz;
+  int ndatatot = pnx*pny*pnz;
   int size_grid = ndatatot * sizeof(real);
+
 
 #ifdef DEBUG_PME_GPU
   // GRID CHECK
@@ -437,7 +422,6 @@ void spread3_yup_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
   //CU_RET_ERR(stat, "cudaMemcpy spread error");
   stat = cudaMemset(grid_d, 0, size_grid);
   CU_RET_ERR(stat, "cudaMemset spread error");
-      printf("%d third\n", pme->nnx[201]);
 #ifdef DEBUG_PME_TIMINGS_GPU
   events_record_start(gpu_events_spread);
 #endif
