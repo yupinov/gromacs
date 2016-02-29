@@ -808,7 +808,6 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     pme_init_all_work(&pme->solve_work, pme->nthread, pme->nkx);
 
     *pmedata = pme;
-
     return 0;
 }
 
@@ -1130,7 +1129,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     /* do 3d-fft */
                     t_complex *complexFFTGridSavedOnDevice = NULL;
                     gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_REAL_TO_COMPLEX,
-                                               thread, wcycle, pme->bGPU ? &complexFFTGridSavedOnDevice : NULL);
+                                               thread, wcycle); //pme->bGPU ? &complexFFTGridSavedOnDevice : NULL);
                     where();
 
                     /*
