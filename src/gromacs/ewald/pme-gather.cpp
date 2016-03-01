@@ -42,6 +42,7 @@
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/smalloc.h"
 
+#include "pme-gpu.h"
 #include "pme-internal.h"
 #include "pme-simd.h"
 #include "pme-spline-work.h"

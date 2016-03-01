@@ -1,7 +1,7 @@
 #ifndef PMEGPU_H
 #define PMEGPU_H
 
-//#include "pme-internal.h"
+#include "pme-internal.h"
 //#include "gromacs/fft/parallel_3dfft.h"
 #include "gromacs/gpu_utils/gpu_macros.h"
 
