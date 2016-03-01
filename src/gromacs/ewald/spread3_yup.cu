@@ -100,7 +100,7 @@ __global__ void spread3_kernel
  int *nnx, int *nny, int *nnz,
  real *xptr, real *yptr, real *zptr,
  real *coefficient,
- real *grid,
+ real *grid, real *theta, real *dtheta, int *idx, //yupinov
  int n)
 {
 /*
@@ -116,7 +116,7 @@ __global__ void spread3_kernel
 */
 
     const int offx = 0, offy = 0, offz = 0;
-    const int pnx = nx + order - 1, pny = ny + order - 1, pnz = nz + order - 1; //yupinov fix me!
+    const int pny = ny + order - 1, pnz = nz + order - 1; //yupinov fix me!
 
     //const int B = K / D / order / order;
 
@@ -127,8 +127,8 @@ __global__ void spread3_kernel
     __shared__ real fyptr[particlesPerBlock];
     __shared__ real fzptr[particlesPerBlock];
 
-    __shared__ real theta[3 * order * particlesPerBlock];
-    __shared__ real dtheta[3 * order * particlesPerBlock];
+    __shared__ real theta_shared[3 * order * particlesPerBlock];
+    __shared__ real dtheta_shared[3 * order * particlesPerBlock];
     //printf("%d %d %d %d %d %d\n", blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z);
 
     // so I have particlesPerBlock to process with warp_size threads?
@@ -141,6 +141,7 @@ __global__ void spread3_kernel
     int globalParticleIndex = blockIdx.x * particlesPerBlock + localParticleIndex;
     if (globalParticleIndex < n)
     //yupinov - this is a single particle work!
+        //yup bDoSplines!
     {
         // INTERPOL_IDX
 
@@ -198,12 +199,12 @@ __global__ void spread3_kernel
                 }
                 /* differentiate */
                 int thetaOffset = (j * particlesPerBlock + localParticleIndex) * order;
-                dtheta[thetaOffset] = -data[0];
+                dtheta_shared[thetaOffset] = -data[0];
 
                 _Pragma("unroll")
                 for (int k = 1; k < order; k++)
                 {
-                    dtheta[thetaOffset + k] = data[k - 1] - data[k];
+                    dtheta_shared[thetaOffset + k] = data[k - 1] - data[k];
                 }
 
                 div             = 1.0 / (order - 1);
@@ -218,21 +219,34 @@ __global__ void spread3_kernel
                 _Pragma("unroll")
                 for (int k = 0; k < order; k++)
                 {
-                    theta[thetaOffset + k] = data[k];
+                    theta_shared[thetaOffset + k] = data[k];
                 }
             }
-        }
 
-
-        if (coefficient[globalParticleIndex] != 0.0) //yupinov weak
-        {
             int i0   = idxxptr[localParticleIndex] - offx; //?
             int j0   = idxyptr[localParticleIndex] - offy;
             int k0   = idxzptr[localParticleIndex] - offz;
 
-            real *thx = theta + (0 * particlesPerBlock + localParticleIndex) * order;
-            real *thy = theta + (1 * particlesPerBlock + localParticleIndex) * order;
-            real *thz = theta + (2 * particlesPerBlock + localParticleIndex) * order;
+            real *thx = theta_shared + (0 * particlesPerBlock + localParticleIndex) * order;
+            real *thy = theta_shared + (1 * particlesPerBlock + localParticleIndex) * order;
+            real *thz = theta_shared + (2 * particlesPerBlock + localParticleIndex) * order;
+
+            //yupinov store to global
+            _Pragma("unroll")
+            for (int j = 0; j < DIM; j++)
+            {
+                int thetaOffset = (j * particlesPerBlock + localParticleIndex) * order;
+                int thetaGlobalOffset = (j * n + globalParticleIndex) * order;
+                _Pragma("unroll")
+                for (int z = 0; z < order; z++)
+                {
+                    theta[thetaGlobalOffset + z] = theta_shared[thetaOffset + z];
+                    dtheta[thetaGlobalOffset + z] = dtheta_shared[thetaOffset + z];
+                }
+            }
+            idx[globalParticleIndex * DIM + 0] = idxxptr[localParticleIndex];
+            idx[globalParticleIndex * DIM + 1] = idxyptr[localParticleIndex];
+            idx[globalParticleIndex * DIM + 2] = idxzptr[localParticleIndex];
 
            // switch (order)
             DO_BSPLINE(order);
@@ -348,6 +362,13 @@ void spread3_yup_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
   int ndatatot = pnx*pny*pnz;
   int size_grid = ndatatot * sizeof(real);
 
+  int size_order = order * n * sizeof(real);
+  int size_order_dim = size_order * DIM;
+  real *theta_d = th_a(TH_ID_THETA, thread, size_order_dim, TH_LOC_CUDA);
+  //stat = cudaMalloc((void **) &theta_d, size_order_dim);
+  real *dtheta_d = th_a(TH_ID_DTHETA, thread, size_order_dim, TH_LOC_CUDA);
+  //cudaMalloc((void **) &dtheta_d, size_order_dim);
+
 
 #ifdef DEBUG_PME_GPU
   // GRID CHECK
@@ -372,6 +393,11 @@ void spread3_yup_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
   cudaMemcpy(g2ty_d, g2ty_h, n * sizeof(int), cudaMemcpyHostToDevice);
   cudaMemcpy(g2tz_d, g2tz_h, n * sizeof(int), cudaMemcpyHostToDevice);
   */
+
+  // IDX
+  int *idx_d;
+  int idx_size = n * DIM * sizeof(int);
+  cudaMalloc((int **)&idx_d, idx_size);  //why is it not stored?
 
   // FSH
   real *fshx_d = th_a(TH_ID_FSH, thread, 5 * (nx + ny) * sizeof(real), TH_LOC_CUDA);
@@ -460,7 +486,7 @@ void spread3_yup_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
        nnx_d, nny_d, nnz_d,
        xptr_d, yptr_d, zptr_d,
        coefficient_d,
-       grid_d,
+       grid_d, theta_d, dtheta_d, idx_d,
        n);
     //yupinov orders
   }
@@ -506,6 +532,28 @@ void spread3_yup_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
   }
   #endif
   stat = cudaMemcpy(grid, grid_d, size_grid, cudaMemcpyDeviceToHost); //yupinov part of check?
-  CU_RET_ERR(stat, "cudaMemcpy spread3 error");
+  CU_RET_ERR(stat, "cudaMemcpy spread error");
+
+  for (int j = 0; j < DIM; ++j)
+  {
+      stat = cudaMemcpy(atc->spline[thread].theta[j], theta_d + j * n * order, size_order, cudaMemcpyDeviceToHost);
+      CU_RET_ERR(stat, "cudaMemcpy spread error");
+  }
+  for (int j = 0; j < DIM; ++j)
+  {
+      stat = cudaMemcpy(atc->spline[thread].dtheta[j], dtheta_d + j * n * order, size_order, cudaMemcpyDeviceToHost);
+      CU_RET_ERR(stat, "cudaMemcpy spread error");
+  }
+  stat = cudaMemcpy(atc->idx, idx_d, idx_size, cudaMemcpyDeviceToHost);
+  CU_RET_ERR(stat, "cudaMemcpy spread error");
+//yupinov free, keep allocated
+  /*
+  cudaFree(theta_d);
+  cudaFree(dtheta_d);
+  cudaFree(fractx_d);
+  cudaFree(coefficient_d);
+  free(fractx_h);
+  free(coefficient_h);
+  */
 }
 
