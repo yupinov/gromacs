@@ -382,7 +382,5 @@ void gmx_pme_send_force_vir_ener(struct gmx_pme_pp *pme_pp,
                                  matrix vir_lj, real energy_lj,
                                  real dvdlambda_q, real dvdlambda_lj,
                                  float cycles);
-//yupinov gpu part
-#include "pme-gpu.h" //yupinov move this
 
 #endif

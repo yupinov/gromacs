@@ -51,6 +51,7 @@
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/smalloc.h"
 
+#include "pme-gpu.h"
 #include "pme-internal.h"
 #include "pme-simd.h"
 #include "pme-spline-work.h"
@@ -1188,7 +1189,6 @@ void spread_on_grid(struct gmx_pme_t *pme,
 
     }//yupinov
 
-    assert(fftgrid);
     if (bSpread && pme->bUseThreads)
     {
 #ifdef PME_TIME_THREADS

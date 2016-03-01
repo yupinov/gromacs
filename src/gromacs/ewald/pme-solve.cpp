@@ -50,6 +50,7 @@
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/smalloc.h"
 
+#include "pme-gpu.h"
 #include "pme-internal.h"
 
 #if GMX_SIMD_HAVE_REAL
@@ -358,7 +359,7 @@ int solve_pme_yzx(struct gmx_pme_t *pme, t_complex *grid,
               complex_order, local_ndata, local_offset, local_size,
               rxx, ryx, ryy, rzx, rzy, rzz,
               pme->bsp_mod,
-              work->vir_q, &work->energy_q, //yupinov was lj!!!
+              work->vir_q, &work->energy_q,
               grid, ewaldcoeff, vol, bEnerVir,
                           1, 0, complexFFTGridSavedOnDevice);
                           //nthread, thread); // all these parameters instead of pme?
