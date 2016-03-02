@@ -137,6 +137,7 @@ static const char *wcsn[ewcsNR] =
     "Spline",
     "Spread",
     "Spline/spread",
+    "Int./spline/spread",
     "FFT r2c",
     "Solve",
     "FFT c2r",

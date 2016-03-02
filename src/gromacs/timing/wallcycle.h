@@ -66,7 +66,9 @@ enum {
 
 
 //yupinov
-#define YUP_MAGIC 8
+#ifndef YUP_MAGIC
+#define YUP_MAGIC 9
+#endif
 
 enum {
     ewcsDD_REDIST, ewcsDD_GRID, ewcsDD_SETUPCOMM,
@@ -87,6 +89,7 @@ enum {
     ewcsPME_CALCSPLINE, //unused
     ewcsPME_SPREAD,  //unused
     ewcsPME_CALCSPLINEANDSPREAD,
+    ewcsPME_INTERPCALCSPLINEANDSPREAD,
     ewcsPME_FFT_R2C,
     ewcsPME_SOLVE,
     ewcsPME_FFT_C2R,

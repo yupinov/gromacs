@@ -51,25 +51,27 @@ T *th_t(th_id id, int thread, int size, th_loc loc)
 }
 
 
-real *th_a(th_id id, int thread, int size, th_loc loc) {
-  return th_t<real>(id, thread, size, loc);
+real *th_a(th_id id, int thread, int size, th_loc loc)
+{
+    return th_t<real>(id, thread, size, loc);
 }
 
-
-int *th_i(th_id id, int thread, int size, th_loc loc) {
-  return th_t<int>(id, thread, size, loc);
+int *th_i(th_id id, int thread, int size, th_loc loc)
+{
+    return th_t<int>(id, thread, size, loc);
 }
 
-void th_cpy(void *dest, void *src, int size, th_loc dest_loc) {
-  if (dest_loc == TH_LOC_CUDA)
-  {
-    cudaError_t stat = cudaMemcpy(dest, src, size, cudaMemcpyHostToDevice);
-    CU_RET_ERR(stat, "cudaMemcpyHostToDevice th error");
-  }
-  else
-  {
-    cudaError_t stat = cudaMemcpy(dest, src, size, cudaMemcpyDeviceToHost);
-    CU_RET_ERR(stat, "cudaMemcpyDeviceToHost th error");
-  }
+void th_cpy(void *dest, void *src, int size, th_loc dest_loc) //yupinov move everything onto this function
+{
+    if (dest_loc == TH_LOC_CUDA)
+    {
+        cudaError_t stat = cudaMemcpy(dest, src, size, cudaMemcpyHostToDevice);
+        CU_RET_ERR(stat, "cudaMemcpyHostToDevice th error");
+    }
+    else
+    {
+        cudaError_t stat = cudaMemcpy(dest, src, size, cudaMemcpyDeviceToHost);
+        CU_RET_ERR(stat, "cudaMemcpyDeviceToHost th error");
+    }
 }
 

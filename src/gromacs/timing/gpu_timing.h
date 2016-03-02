@@ -68,7 +68,7 @@ struct gmx_wallclock_gpu_t
 };
 
 //yupinov
-#define YUP_MAGIC 8
+#include "wallcycle.h"
 struct gmx_wallclock_gpu_pme_t
 {
   struct gmx_nbnxn_kernel_timing_data_t pme_time[YUP_MAGIC][YUP_MAGIC];
