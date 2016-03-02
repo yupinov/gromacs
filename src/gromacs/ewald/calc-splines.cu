@@ -247,7 +247,7 @@ void make_bsplines_gpu(splinevec theta, splinevec dtheta, int order,
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_calcspline);
 #endif
-    assert(order >= 4 && order <= PME_ORDER_MAX); //yupinvo just in case
+    assert(order >= 4 && order <= PME_ORDER_MAX); //yupinov just in case
     switch (order)
     {
         case 4: make_bsplines_kernel_4<<<n_blocks, block_size>>>
