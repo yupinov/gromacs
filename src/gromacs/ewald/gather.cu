@@ -4,9 +4,10 @@
 #include "gromacs/utility/real.h"
 #include "gromacs/math/vectypes.h"
 #include "gromacs/gpu_utils/cudautils.cuh"
+#include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 #include <cuda.h>
 
-#include "th-v.h"
+#include "th-a.cuh"
 #include "check.h"
 
 enum TH_V_ID {
@@ -20,7 +21,7 @@ enum TH_V_ID {
   ID_END
 };
 
-static thread_vectors TH_V(32, ID_END);
+//yupinov static thread_vectors TH_V(32, ID_END);
 
 typedef real *splinevec[DIM];
 #ifdef DEBUG_PME_GPU
@@ -108,7 +109,6 @@ static __global__ void gather_f_bsplines_kernel
      */
   }
 }
-//yupinov where is cuda stuff?
 
 void gather_f_bsplines_gpu_2_pre
 (gmx_bool bClearF,
@@ -117,11 +117,13 @@ void gather_f_bsplines_gpu_2_pre
  real scale, int thread
  )
 {
-    // copy atc_f before cpu calcucation
-    local_vectors lv = TH_V.local(thread);
+    // compact atc_f before cpu calcucation
 
-    thrust::host_vector<real> &atc_f_h = lv.host<real>(ID_ATC_F, DIM * spline_n);
-    thrust::host_vector<int> &i_h = lv.host<int>(ID_I, spline_n);
+    int size_forces = DIM * spline_n * sizeof(real);
+    real *atc_f_compacted = th_a(TH_ID_F, thread, size_forces, TH_LOC_HOST); //yupinov fixed allocation size - not actually compacted, same for i_compacted
+    int size_indices = spline_n * sizeof(int);
+    int *atc_i_compacted = th_i(TH_ID_I, thread, size_indices, TH_LOC_HOST);
+
     int oo = 0;
     for (int ii = 0; ii < spline_n; ii++)
     {
@@ -134,16 +136,16 @@ void gather_f_bsplines_gpu_2_pre
             atc_f[i][ZZ] = 0;
         }
 
-	if (coefficient_i == 0) {
-	  continue;
-	}
-
-	atc_f_h[oo * DIM + XX] = atc_f[i][XX];
-	atc_f_h[oo * DIM + YY] = atc_f[i][YY];
-	atc_f_h[oo * DIM + ZZ] = atc_f[i][ZZ];
-	i_h[oo] = i;
-	oo++;
+        if (coefficient_i != 0.0)
+        {
+            atc_f_compacted[oo * DIM + XX] = atc_f[i][XX];
+            atc_f_compacted[oo * DIM + YY] = atc_f[i][YY];
+            atc_f_compacted[oo * DIM + ZZ] = atc_f[i][ZZ];
+            atc_i_compacted[oo] = i;  // indices of uncompacted particles stored in a compacted array
+            oo++;
+        }
     }
+    //oo is a real size of compacted stuff now
 }
 
 void gather_f_bsplines_gpu_2
@@ -159,34 +161,39 @@ void gather_f_bsplines_gpu_2
  )
 {
     int ndatatot = pnx*pny*pnz;
-#ifdef DEBUG_PME_GPU
-    if (check_vs_cpu(gather_gpu_flags)) {
-      fprintf(stderr, "gather_f_bsplines_gpu_2 %dx%dx%d=%d %d\n", pnx, pny, pnz, ndatatot, spline_n);
-    }
-#endif
 
     if (!spline_n)
         return;
-    local_vectors lv = TH_V.local(thread);
 
-    thrust::device_vector<real> &grid_d = lv.device<real>(ID_GRID, ndatatot);
-    thrust::copy(grid, grid + ndatatot, grid_d.begin());
+    int size_grid = ndatatot * sizeof(real);
+    real *grid_d = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_CUDA);
+    th_cpy(grid_d, grid, size_grid, TH_LOC_CUDA);
 
-    thrust::host_vector<real> &atc_f_h = lv.host<real>(ID_ATC_F, DIM * spline_n);
+    //copy order?
+    //compacting, and size....
+    int n = spline_n;
+    int size_indices = n * sizeof(int);
+    int size_coefficients = n * sizeof(real);
+    int size_forces = DIM * n * sizeof(real);
+    int size_splines = order * n * sizeof(int);
 
-    thrust::host_vector<real> &coefficient_h = lv.host<real>(ID_COEFFICIENT, spline_n);
 
-    thrust::host_vector<int> &i_h = lv.host<int>(ID_I, spline_n);
-    thrust::host_vector<int> &i0_h = lv.host<int>(ID_I0, spline_n);
-    thrust::host_vector<int> &j0_h = lv.host<int>(ID_J0, spline_n);
-    thrust::host_vector<int> &k0_h = lv.host<int>(ID_K0, spline_n);
+    real *atc_f_compacted = th_a(TH_ID_F, thread, -1, TH_LOC_HOST); //but that's wrong! realloc
 
-    thrust::host_vector<real> &thx_h = lv.host<real>(ID_THX, order * spline_n);
-    thrust::host_vector<real> &thy_h = lv.host<real>(ID_THY, order * spline_n);
-    thrust::host_vector<real> &thz_h = lv.host<real>(ID_THZ, order * spline_n);
-    thrust::host_vector<real> &dthx_h = lv.host<real>(ID_DTHX, order * spline_n);
-    thrust::host_vector<real> &dthy_h = lv.host<real>(ID_DTHY, order * spline_n);
-    thrust::host_vector<real> &dthz_h = lv.host<real>(ID_DTHZ, order * spline_n);
+    int *atc_i_compacted = th_i(TH_ID_I, thread, -1, TH_LOC_HOST);  //way to get sizes from th-a?
+    real *coefficients_compacted = th_a(TH_ID_COEFFICIENT, thread, size_coefficients, TH_LOC_HOST);
+    //yupinov reuse H_ID_COEFFICIENT and other stuff from before solve?
+
+    int *i0_compacted = th_i(TH_ID_I0, thread, size_indices, TH_LOC_HOST); //yupinov these are IDXPTR, actually. maybe split it?
+    int *j0_compacted = th_i(TH_ID_J0, thread, size_indices, TH_LOC_HOST);
+    int *k0_compacted = th_i(TH_ID_K0, thread, size_indices, TH_LOC_HOST);
+
+    real *theta_x_compacted = th_a(TH_ID_THX, thread, size_splines, TH_LOC_HOST);
+    real *theta_y_compacted = th_a(TH_ID_THY, thread, size_splines, TH_LOC_HOST);
+    real *theta_z_compacted = th_a(TH_ID_THZ, thread, size_splines, TH_LOC_HOST);
+    real *dtheta_x_compacted = th_a(TH_ID_DTHX, thread, size_splines, TH_LOC_HOST);
+    real *dtheta_y_compacted = th_a(TH_ID_DTHY, thread, size_splines, TH_LOC_HOST);
+    real *dtheta_z_compacted = th_a(TH_ID_DTHZ, thread, size_splines, TH_LOC_HOST);
 
     int oo = 0;
     for (int ii = 0; ii < spline_n; ii++)
@@ -195,109 +202,99 @@ void gather_f_bsplines_gpu_2
         real coefficient_i = scale*atc_coefficient[i];
         if (bClearF)
         {
-            atc_f[i][XX] = 0;
+            atc_f[i][XX] = 0; //yupinov memeset?
             atc_f[i][YY] = 0;
             atc_f[i][ZZ] = 0;
         }
 
-        if (coefficient_i == 0)
+        if (coefficient_i != 0)
         {
-            continue;
+            coefficients_compacted[oo] = coefficient_i;
+            int *idxptr = atc_idx[i];
+            //Mattias: atc_f_h force-copying is in gather_f_bsplines_gpu_2_pre()
+            //yupinov: the fuck is it doing there?
+            atc_i_compacted[oo] = i;
+            i0_compacted[oo] = idxptr[XX];
+            j0_compacted[oo] = idxptr[YY];
+            k0_compacted[oo] = idxptr[ZZ];
+            int iiorder = ii*order;
+            int ooorder = oo*order;
+            for (int o = 0; o < order; ++o)
+            {
+                theta_x_compacted[ooorder + o] = (*spline_theta)[XX][iiorder + o];
+                theta_y_compacted[ooorder + o] = (*spline_theta)[YY][iiorder + o];
+                theta_z_compacted[ooorder + o] = (*spline_theta)[ZZ][iiorder + o];
+                dtheta_x_compacted[ooorder + o] = (*spline_dtheta)[XX][iiorder + o];
+                dtheta_y_compacted[ooorder + o] = (*spline_dtheta)[YY][iiorder + o];
+                dtheta_z_compacted[ooorder + o] = (*spline_dtheta)[ZZ][iiorder + o];
+            }
+            ++oo;
         }
-
-        coefficient_h[oo] = coefficient_i;
-        int *idxptr = atc_idx[i];
-        //atc_f_h force-copying is in gather_f_bsplines_gpu_2_pre()
-        i_h[oo] = i;
-        i0_h[oo] = idxptr[XX];
-        j0_h[oo] = idxptr[YY];
-        k0_h[oo] = idxptr[ZZ];
-        int iiorder = ii*order;
-        int ooorder = oo*order;
-        for (int o = 0; o < order; ++o)
-        {
-            thx_h[ooorder + o] = (*spline_theta)[XX][iiorder + o];
-            thy_h[ooorder + o] = (*spline_theta)[YY][iiorder + o];
-            thz_h[ooorder + o] = (*spline_theta)[ZZ][iiorder + o];
-            dthx_h[ooorder + o] = (*spline_dtheta)[XX][iiorder + o];
-            dthy_h[ooorder + o] = (*spline_dtheta)[YY][iiorder + o];
-            dthz_h[ooorder + o] = (*spline_dtheta)[ZZ][iiorder + o];
-        }
-        ++oo;
     }
 
-    int n = oo;
+    n = oo;
     if (!n)
         return;
 
-    thrust::device_vector<real> &atc_f_d = lv.device<real>(ID_ATC_F, DIM * n);
-    thrust::device_vector<real> &coefficient_d = lv.device<real>(ID_COEFFICIENT, n);
-    thrust::device_vector<int> &i0_d = lv.device<int>(ID_I0, n);
-    thrust::device_vector<int> &j0_d = lv.device<int>(ID_J0, n);
-    thrust::device_vector<int> &k0_d = lv.device<int>(ID_K0, n);
-    thrust::device_vector<real> &thx_d = lv.device<real>(ID_THX, order * n);
-    thrust::device_vector<real> &thy_d = lv.device<real>(ID_THY, order * n);
-    thrust::device_vector<real> &thz_d = lv.device<real>(ID_THZ, order * n);
-    thrust::device_vector<real> &dthx_d = lv.device<real>(ID_DTHX, order * n);
-    thrust::device_vector<real> &dthy_d = lv.device<real>(ID_DTHY, order * n);
-    thrust::device_vector<real> &dthz_d = lv.device<real>(ID_DTHZ, order * n);
-    atc_f_d = atc_f_h;
-    coefficient_d = coefficient_h;
-    i0_d = i0_h;
-    j0_d = j0_h;
-    k0_d = k0_h;
-    thx_d = thx_h;
-    thy_d = thy_h;
-    thz_d = thz_h;
-    dthx_d = dthx_h;
-    dthy_d = dthy_h;
-    dthz_d = dthz_h;
+    //copypasted
+    size_indices = n * sizeof(int);
+    size_coefficients = n * sizeof(real);
+    size_forces = DIM * n * sizeof(real);
+    size_splines = order * n * sizeof(int);
 
+    real *atc_f_d = th_a(TH_ID_F, thread, size_forces, TH_LOC_CUDA);
+    th_cpy(atc_f_d, atc_f_compacted, size_forces, TH_LOC_CUDA);
 
-    int block_size = 64;
+    real *coefficients_d = th_a(TH_ID_COEFFICIENT, thread, size_coefficients, TH_LOC_CUDA);
+    th_cpy(coefficients_d, coefficients_compacted, size_coefficients, TH_LOC_CUDA);
+
+    int *i0_d = th_i(TH_ID_I0, thread, size_indices, TH_LOC_CUDA);
+    int *j0_d = th_i(TH_ID_J0, thread, size_indices, TH_LOC_CUDA);
+    int *k0_d = th_i(TH_ID_K0, thread, size_indices, TH_LOC_CUDA);
+    th_cpy(i0_d, i0_compacted, size_indices, TH_LOC_CUDA);
+    th_cpy(j0_d, j0_compacted, size_indices, TH_LOC_CUDA);
+    th_cpy(k0_d, k0_compacted, size_indices, TH_LOC_CUDA);
+
+    real *theta_x_d = th_a(TH_ID_THX, thread, size_splines, TH_LOC_CUDA);
+    real *theta_y_d = th_a(TH_ID_THY, thread, size_splines, TH_LOC_CUDA);
+    real *theta_z_d = th_a(TH_ID_THZ, thread, size_splines, TH_LOC_CUDA);
+    real *dtheta_x_d = th_a(TH_ID_DTHX, thread, size_splines, TH_LOC_CUDA);
+    real *dtheta_y_d = th_a(TH_ID_DTHY, thread, size_splines, TH_LOC_CUDA);
+    real *dtheta_z_d = th_a(TH_ID_DTHZ, thread, size_splines, TH_LOC_CUDA);
+
+    th_cpy(theta_x_d, theta_x_compacted, size_splines, TH_LOC_CUDA);
+    th_cpy(theta_y_d, theta_y_compacted, size_splines, TH_LOC_CUDA);
+    th_cpy(theta_z_d, theta_z_compacted, size_splines, TH_LOC_CUDA);
+    th_cpy(dtheta_x_d, dtheta_x_compacted, size_splines, TH_LOC_CUDA);
+    th_cpy(dtheta_y_d, dtheta_y_compacted, size_splines, TH_LOC_CUDA);
+    th_cpy(dtheta_z_d, dtheta_z_compacted, size_splines, TH_LOC_CUDA);
+
+    int block_size = 2 * warp_size;
     int n_blocks = (n + block_size - 1) / block_size;
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_gather);
 #endif
     gather_f_bsplines_kernel<<<n_blocks, block_size>>>
-      (thrust::raw_pointer_cast(&grid_d[0]),
+      (grid_d,
        order, n,
        nx, ny, nz, pnx, pny, pnz,
        rxx, ryx, ryy, rzx, rzy, rzz,
-       thrust::raw_pointer_cast(&thx_d[0]),
-       thrust::raw_pointer_cast(&thy_d[0]),
-       thrust::raw_pointer_cast(&thz_d[0]),
-       thrust::raw_pointer_cast(&dthx_d[0]),
-       thrust::raw_pointer_cast(&dthy_d[0]),
-       thrust::raw_pointer_cast(&dthz_d[0]),
-       thrust::raw_pointer_cast(&atc_f_d[0]),
-       thrust::raw_pointer_cast(&coefficient_d[0]),
-       thrust::raw_pointer_cast(&i0_d[0]),
-       thrust::raw_pointer_cast(&j0_d[0]),
-       thrust::raw_pointer_cast(&k0_d[0]));
+       theta_x_d, theta_y_d, theta_z_d,
+       dtheta_x_d, dtheta_y_d, dtheta_z_d,
+       atc_f_d, coefficients_d,
+       i0_d, j0_d, k0_d);
     CU_LAUNCH_ERR("gather_f_bsplines_kernel");
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_stop(gpu_events_gather, ewcsPME_GATHER, 0);
 #endif
-    atc_f_h = atc_f_d;
 
-    for (int ii = 0; ii < n; ii++)
-    {
-        int i = i_h[ii];
-        #ifdef DEBUG_PME_GPU
-    if (check_vs_cpu(gather_gpu_flags))
-    {
-	  fprintf(stderr, "check %d=%.2f,%.2f,%.2f ", i,
-		  atc_f[i][XX],
-		  atc_f[i][YY],
-		  atc_f[i][ZZ]
-		  );
-	  check_real("atc_f", &atc_f_h[ii * DIM], atc_f[i], DIM, false);
-	}
-#endif
+    th_cpy(atc_f_compacted, atc_f_d, size_forces, TH_LOC_HOST);
 
-	atc_f[i][XX] = atc_f_h[ii * DIM + XX];
-	atc_f[i][YY] = atc_f_h[ii * DIM + YY];
-	atc_f[i][ZZ] = atc_f_h[ii * DIM + ZZ];
+    for (int ii = 0; ii < n; ii++)  // iterating over compacted particles
+    {
+        int i = atc_i_compacted[ii]; //index of uncompacted particle
+        atc_f[i][XX] = atc_f_compacted[ii * DIM + XX];
+        atc_f[i][YY] = atc_f_compacted[ii * DIM + YY];
+        atc_f[i][ZZ] = atc_f_compacted[ii * DIM + ZZ];
     }
 }
