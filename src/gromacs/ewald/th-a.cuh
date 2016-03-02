@@ -23,6 +23,7 @@ enum th_id
 
   TH_ID_END
 };
+
 enum th_loc
 {
   TH_LOC_HOST, TH_LOC_CUDA, TH_LOC_END
