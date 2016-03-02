@@ -22,7 +22,7 @@ T *th_t(th_id id, int thread, int size, th_loc loc)
             if (loc == TH_LOC_CUDA)
             {
                 stat = cudaFree(th_p[i]);
-                CU_RET_ERR(stat, "cudaFree th error");
+                CU_RET_ERR(stat, "PME cudaFree error");
             }
             else
             {
@@ -38,7 +38,7 @@ T *th_t(th_id id, int thread, int size, th_loc loc)
             if (loc == TH_LOC_CUDA)
             {
                 stat = cudaMalloc((void **) &th_p[i], size);
-                CU_RET_ERR(stat, "cudaMalloc th error");
+                CU_RET_ERR(stat, "PME cudaMalloc error");
             }
             else
             {
@@ -61,17 +61,17 @@ int *th_i(th_id id, int thread, int size, th_loc loc)
     return th_t<int>(id, thread, size, loc);
 }
 
-void th_cpy(void *dest, void *src, int size, th_loc dest_loc) //yupinov move everything onto this function
+void th_cpy(void *dest, void *src, int size, th_loc dest_loc) //yupinov move everything onto this function - or not
 {
     if (dest_loc == TH_LOC_CUDA)
     {
         cudaError_t stat = cudaMemcpy(dest, src, size, cudaMemcpyHostToDevice);
-        CU_RET_ERR(stat, "cudaMemcpyHostToDevice th error");
+        CU_RET_ERR(stat, "PME cudaMemcpyHostToDevice error");
     }
     else
     {
         cudaError_t stat = cudaMemcpy(dest, src, size, cudaMemcpyDeviceToHost);
-        CU_RET_ERR(stat, "cudaMemcpyDeviceToHost th error");
+        CU_RET_ERR(stat, "PME cudaMemcpyDeviceToHost error");
     }
 }
 
