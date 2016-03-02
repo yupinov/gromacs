@@ -85,8 +85,6 @@ static tMPI::mutex print_mutex;
     }
 
 
-
-
 //template <int order, int N, int K, int D>
 // K is particles per block?
 template <int order, int particlesPerBlock>
@@ -257,197 +255,154 @@ __global__ void spread3_kernel
 }
 
 
-void spread3_yup_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
+void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
          int grid_index,
-         pmegrid_t *pmegrid)
+         pmegrid_t *pmegrid)//yupinov, gmx_bool bCalcSplines, gmx_bool bSpread, gmx_bool bDoSplines)
+//yupinov templating!
+//real *fftgrid
+//added:, gmx_wallcycle_t wcycle)
 {
-  int nx = pme->nkx, ny = pme->nky, nz = pme->nkz;
-  //int nx = pmegrid->s[XX], ny = pmegrid->s[YY], nz = pmegrid->s[ZZ];
-  real *grid = pmegrid->grid;
-  const int order = pmegrid->order;
-  int thread = 0;
+    cudaError_t stat;
 
+    atc->spline[0].n = atc->n; //yupinov - without it, the conserved energy went down by 0.5%! used in gather or sometwhere else?
 
-  const int pnx = nx + order - 1, pny = ny + order - 1, pnz = nz + order - 1; //yupinov fix me!
+    int nx = pme->nkx, ny = pme->nky, nz = pme->nkz;
+    //int nx = pmegrid->s[XX], ny = pmegrid->s[YY], nz = pmegrid->s[ZZ];
+    real *grid = pmegrid->grid;
+    const int order = pmegrid->order;
+    int thread = 0;
 
-  int n = atc->n;
-  int n_blocked = (n + warp_size - 1) / warp_size * warp_size;
-  //int ndatatot = nx*ny*nz;
-  int ndatatot = pnx*pny*pnz;
-  int size_grid = ndatatot * sizeof(real);
+    const int pnx = nx + order - 1, pny = ny + order - 1, pnz = nz + order - 1; //yupinov fix me!
 
-  int size_order = order * n * sizeof(real);
-  int size_order_dim = size_order * DIM;
-  real *theta_d = th_a(TH_ID_THETA, thread, size_order_dim, TH_LOC_CUDA);
-  //stat = cudaMalloc((void **) &theta_d, size_order_dim);
-  real *dtheta_d = th_a(TH_ID_DTHETA, thread, size_order_dim, TH_LOC_CUDA);
-  //cudaMalloc((void **) &dtheta_d, size_order_dim);
+    int n = atc->n;
+    int n_blocked = (n + warp_size - 1) / warp_size * warp_size;
+    int ndatatot = pnx*pny*pnz;
+    int size_grid = ndatatot * sizeof(real);
 
+    int size_order = order * n * sizeof(real);
+    int size_order_dim = size_order * DIM;
+    real *theta_d = th_a(TH_ID_THETA, thread, size_order_dim, TH_LOC_CUDA);
+    real *dtheta_d = th_a(TH_ID_DTHETA, thread, size_order_dim, TH_LOC_CUDA);
 
-#ifdef DEBUG_PME_GPU
-  // GRID CHECK
+    // G2T
+    /*
+    int *g2tx_h = pme->pmegrid[grid_index].g2t[XX];
+    int *g2ty_h = pme->pmegrid[grid_index].g2t[YY];
+    int *g2tz_h = pme->pmegrid[grid_index].g2t[ZZ];
+    int *g2tx_d = th_i(TH_ID_G2T, thread, 3 * n32 * sizeof(int), TH_LOC_CUDA);
+    int *g2ty_d = g2tx_d + n32;
+    int *g2tz_d = g2ty_d + n32;
+    cudaMemcpy(g2tx_d, g2tx_h, n * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(g2ty_d, g2ty_h, n * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(g2tz_d, g2tz_h, n * sizeof(int), cudaMemcpyHostToDevice);
+    */
 
+    // IDXPTR
+    int idx_size = n * DIM * sizeof(int);
+    int *idx_d = th_i(TH_ID_IDXPTR, thread, idx_size, TH_LOC_CUDA); //why is it not stored?
 
-  real *grid_check;
-  if (check_vs_cpu_j(spread_gpu_flags, 3))
-  {
-    grid_check = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_HOST);
-    memcpy(grid_check, pmegrid, ndatatot * sizeof(real));
-  }
-#endif
-  // G2T
-  /*
-  int *g2tx_h = pme->pmegrid[grid_index].g2t[XX];
-  int *g2ty_h = pme->pmegrid[grid_index].g2t[YY];
-  int *g2tz_h = pme->pmegrid[grid_index].g2t[ZZ];
-  int *g2tx_d = th_i(TH_ID_G2T, thread, 3 * n32 * sizeof(int), TH_LOC_CUDA);
-  int *g2ty_d = g2tx_d + n32;
-  int *g2tz_d = g2ty_d + n32;
-  cudaMemcpy(g2tx_d, g2tx_h, n * sizeof(int), cudaMemcpyHostToDevice);
-  cudaMemcpy(g2ty_d, g2ty_h, n * sizeof(int), cudaMemcpyHostToDevice);
-  cudaMemcpy(g2tz_d, g2tz_h, n * sizeof(int), cudaMemcpyHostToDevice);
-  */
+    // FSH
+    real *fshx_d = th_a(TH_ID_FSH, thread, 5 * (nx + ny) * sizeof(real), TH_LOC_CUDA);
+    real *fshy_d = fshx_d + 5 * nx;
+    stat = cudaMemcpy(fshx_d, pme->fshx, 5 * nx * sizeof(real), cudaMemcpyHostToDevice);
+    CU_RET_ERR(stat, "cudaMemcpy spread error");
+    stat = cudaMemcpy(fshy_d, pme->fshy, 5 * ny * sizeof(real), cudaMemcpyHostToDevice);
+    CU_RET_ERR(stat, "cudaMemcpy spread error");
 
-  // IDX
-  int *idx_d;
-  int idx_size = n * DIM * sizeof(int);
-  cudaMalloc((int **)&idx_d, idx_size);  //why is it not stored?
+    // NN
+    int *nnx_d = th_i(TH_ID_NN, thread, 5 * (nx + ny + nz) * sizeof(int), TH_LOC_CUDA);
+    int *nny_d = nnx_d + 5 * nx;
+    int *nnz_d = nny_d + 5 * ny;
+    stat = cudaMemcpy(nnx_d, pme->nnx, 5 * nx * sizeof(int), cudaMemcpyHostToDevice);
+    CU_RET_ERR(stat, "cudaMemcpy spread error");
+    stat = cudaMemcpy(nny_d, pme->nny, 5 * ny * sizeof(int), cudaMemcpyHostToDevice);
+    CU_RET_ERR(stat, "cudaMemcpy spread error");
+    stat = cudaMemcpy(nnz_d, pme->nnz, 5 * nz * sizeof(int), cudaMemcpyHostToDevice);
+    CU_RET_ERR(stat, "cudaMemcpy spread error");
 
-  // FSH
-  real *fshx_d = th_a(TH_ID_FSH, thread, 5 * (nx + ny) * sizeof(real), TH_LOC_CUDA);
-  real *fshy_d = fshx_d + 5 * nx;
-  cudaMemcpy(fshx_d, pme->fshx, 5 * nx * sizeof(real), cudaMemcpyHostToDevice);
-  cudaMemcpy(fshy_d, pme->fshy, 5 * ny * sizeof(real), cudaMemcpyHostToDevice);
-
-  // NN
-  int *nnx_d = th_i(TH_ID_NN, thread, 5 * (nx + ny + nz) * sizeof(int), TH_LOC_CUDA);
-  int *nny_d = nnx_d + 5 * nx;
-  int *nnz_d = nny_d + 5 * ny;
-  cudaMemcpy(nnx_d, pme->nnx, 5 * nx * sizeof(int), cudaMemcpyHostToDevice);
-  cudaMemcpy(nny_d, pme->nny, 5 * ny * sizeof(int), cudaMemcpyHostToDevice);
-  cudaMemcpy(nnz_d, pme->nnz, 5 * nz * sizeof(int), cudaMemcpyHostToDevice);
-
-  // XPTR
-  real *xptr_h = th_a(TH_ID_XPTR, thread, 3 * n_blocked * sizeof(real), TH_LOC_HOST);
-  real *xptr_d = th_a(TH_ID_XPTR, thread, 3 * n_blocked * sizeof(real), TH_LOC_CUDA);
-  real *yptr_d = xptr_d + n_blocked;
-  real *zptr_d = yptr_d + n_blocked;
-  {
-    int ix = 0, iy = n_blocked, iz = 2 * n_blocked;
-    for (int i = 0; i < n; i++)
+    // XPTR
+    real *xptr_h = th_a(TH_ID_XPTR, thread, 3 * n_blocked * sizeof(real), TH_LOC_HOST);
+    real *xptr_d = th_a(TH_ID_XPTR, thread, 3 * n_blocked * sizeof(real), TH_LOC_CUDA);
+    real *yptr_d = xptr_d + n_blocked;
+    real *zptr_d = yptr_d + n_blocked;
     {
-      real *xptr = atc->x[i];
-      xptr_h[ix++] = xptr[XX];
-      xptr_h[iy++] = xptr[YY];
-      xptr_h[iz++] = xptr[ZZ];
+        int ix = 0, iy = n_blocked, iz = 2 * n_blocked;
+        for (int i = 0; i < n; i++)
+        {
+          real *xptr = atc->x[i];
+          xptr_h[ix++] = xptr[XX];
+          xptr_h[iy++] = xptr[YY];
+          xptr_h[iz++] = xptr[ZZ];
+        }
     }
-  }
-  cudaMemcpy(xptr_d, xptr_h, 3 * n_blocked * sizeof(real), cudaMemcpyHostToDevice);
+    stat = cudaMemcpy(xptr_d, xptr_h, 3 * n_blocked * sizeof(real), cudaMemcpyHostToDevice);
+    CU_RET_ERR(stat, "cudaMemcpy spread error");
 
-  // COEFFICIENT
-  real *coefficient_d = th_a(TH_ID_COEFFICIENT, thread, n * sizeof(real), TH_LOC_CUDA);
-  cudaMemcpy(coefficient_d, atc->coefficient, n * sizeof(real), cudaMemcpyHostToDevice);
+    // COEFFICIENT
+    real *coefficient_d = th_a(TH_ID_COEFFICIENT, thread, n * sizeof(real), TH_LOC_CUDA);
+    stat = cudaMemcpy(coefficient_d, atc->coefficient, n * sizeof(real), cudaMemcpyHostToDevice);
+    CU_RET_ERR(stat, "cudaMemcpy spread error");
 
-  // GRID
+    // GRID
 
-  for (int i = 0; i < ndatatot; i++)
+    for (int i = 0; i < ndatatot; i++)
     {
       // FIX clear grid on device instead
       grid[i] = 0;
     }
 
-  cudaError_t stat;
-  real *grid_d = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_CUDA);
-  //stat = cudaMemcpy(grid_d, grid, size_grid, cudaMemcpyHostToDevice);
-  //CU_RET_ERR(stat, "cudaMemcpy spread error");
-  stat = cudaMemset(grid_d, 0, size_grid);
-  CU_RET_ERR(stat, "cudaMemset spread error");
-#ifdef DEBUG_PME_TIMINGS_GPU
-  events_record_start(gpu_events_spread);
-#endif
-  /*
-  const int N = 256;
-  const int D = 2;
-  int n_blocks = (n + N - 1) / N;
-  dim3 dimGrid(n_blocks, 1, 1);
-  dim3 dimBlock(order, order, D);
-  */
-  const int particlesPerBlock = warp_size;
-  //const int D = 2;
-  dim3 nBlocks((n + particlesPerBlock - 1) / particlesPerBlock, 1, 1);
-  //dim3 dimBlock(order, order, D); //each block has 32 threads now to hand 32 particlesPerBlock
-  dim3 dimBlock(particlesPerBlock, 1, 1); //yupinov heavy
-  switch (order)
-  {
-  case 4:
-      /*
+    real *grid_d = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_CUDA);
+    stat = cudaMemset(grid_d, 0, size_grid);
+    CU_RET_ERR(stat, "cudaMemset spread error");
+    #ifdef DEBUG_PME_TIMINGS_GPU
+    events_record_start(gpu_events_spread);
+    #endif
+    /*
+    const int N = 256;
+    const int D = 2;
+    int n_blocks = (n + N - 1) / N;
+    dim3 dimGrid(n_blocks, 1, 1);
+    dim3 dimBlock(order, order, D);
+    */
+    const int particlesPerBlock = warp_size;
+    //const int D = 2;
+    dim3 nBlocks((n + particlesPerBlock - 1) / particlesPerBlock, 1, 1);
+    //dim3 dimBlock(order, order, D); //each block has 32 threads now to hand 32 particlesPerBlock
+    dim3 dimBlock(particlesPerBlock, 1, 1); //yupinov heavy
+    switch (order)
+    {
+      case 4:
+          /*
     const int O = 4;
     const int B = 1;
     const int K = B * D * O * O;
     */
-    //spread3_kernel<4, N, K, D><<<dimGrid, dimBlock>>>
-      spread3_kernel<4, particlesPerBlock><<<nBlocks, dimBlock>>>
-      (nx, ny, nz,
-       pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
-       pme->recipbox[XX][XX],
-       pme->recipbox[YY][XX],
-       pme->recipbox[YY][YY],
-       pme->recipbox[ZZ][XX],
-       pme->recipbox[ZZ][YY],
-       pme->recipbox[ZZ][ZZ],
-       //g2tx_d, g2ty_d, g2tz_d,
-       fshx_d, fshy_d,
-       nnx_d, nny_d, nnz_d,
-       xptr_d, yptr_d, zptr_d,
-       coefficient_d,
-       grid_d, theta_d, dtheta_d, idx_d,
-       n);
-    //yupinov orders
-  }
-  CU_LAUNCH_ERR("spread3_kernel");
+          //spread3_kernel<4, N, K, D><<<dimGrid, dimBlock>>>
+          spread3_kernel<4, particlesPerBlock><<<nBlocks, dimBlock>>>
+                                                                    (nx, ny, nz,
+                                                                     pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
+                                                                     pme->recipbox[XX][XX],
+                                                                     pme->recipbox[YY][XX],
+                                                                     pme->recipbox[YY][YY],
+                                                                     pme->recipbox[ZZ][XX],
+                                                                     pme->recipbox[ZZ][YY],
+                                                                     pme->recipbox[ZZ][ZZ],
+                                                                     //g2tx_d, g2ty_d, g2tz_d,
+                                                                     fshx_d, fshy_d,
+                                                                     nnx_d, nny_d, nnz_d,
+                                                                     xptr_d, yptr_d, zptr_d,
+                                                                     coefficient_d,
+                                                                     grid_d, theta_d, dtheta_d, idx_d,
+                                                                     n);
+          //yupinov orders
+    }
+    CU_LAUNCH_ERR("spread3_kernel");
 
 #ifdef DEBUG_PME_TIMINGS_GPU
   events_record_stop(gpu_events_spread, ewcsPME_SPREAD, 3);
 #endif
-#ifdef DEBUG_PME_GPU
-  if (check_vs_cpu_j(spread_gpu_flags, 3)) {
-    print_mutex.lock();
-    fprintf(stderr, "Check %d  (%d x %d x %d)\n",
-        thread, nx, ny, nz);
-    for (int i = 0; i < ndatatot; ++i) {
-      real diff = grid_check[i];
-      real cpu_v = grid_check[i];
-      cudaMemcpy(&grid_check[i], &grid_d[i], sizeof(real), cudaMemcpyDeviceToHost);
-      diff -= grid_check[i];
-      real gpu_v = grid_check[i];
-      if (diff != 0) {
-    real absdiff = fabs(diff) / fabs(cpu_v);
-    if (absdiff > .000001) {
-      fprintf(stderr, "%dppm", (int) (absdiff * 1e6));
-      if (absdiff > .0001) {
-        fprintf(stderr, " value %f ", cpu_v);
-      }
-    } else {
-      fprintf(stderr, "~");
-    }
-    //fprintf(stderr, "(%f - %f)", cpu_v, gpu_v);
-      } else {
-    if (gpu_v == 0) {
-      fprintf(stderr, "0");
-    } else {
-      fprintf(stderr, "=");
-    }
-      }
-      if ((i + 1) % nz == 0) {
-    fprintf(stderr, "\n");
-      }
-    }
-    print_mutex.unlock();
-  }
-  #endif
-  stat = cudaMemcpy(grid, grid_d, size_grid, cudaMemcpyDeviceToHost); //yupinov part of check?
+  stat = cudaMemcpy(grid, grid_d, size_grid, cudaMemcpyDeviceToHost);
   CU_RET_ERR(stat, "cudaMemcpy spread error");
-
   for (int j = 0; j < DIM; ++j)
   {
       stat = cudaMemcpy(atc->spline[thread].theta[j], theta_d + j * n * order, size_order, cudaMemcpyDeviceToHost);

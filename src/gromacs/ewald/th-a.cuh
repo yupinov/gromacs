@@ -17,6 +17,9 @@ enum th_id {
   TH_ID_NN,
   TH_ID_XPTR,
 
+  TH_ID_IDXPTR, //yupinov added - is it a duplicate?
+
+
   TH_ID_END
 };
 enum th_loc {

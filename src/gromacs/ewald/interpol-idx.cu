@@ -12,7 +12,7 @@ enum TH_V_ID {
   ID_G2T,
   ID_FSH,
   ID_NN,
-  ID_XPTR,
+  ID_XPTR,//why is it dublicated?
   ID_IDXPTR,
   ID_FPTR,
   ID_END

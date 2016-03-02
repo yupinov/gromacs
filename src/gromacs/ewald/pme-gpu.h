@@ -100,7 +100,7 @@ void spread3_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
          pmegrid_t *pmegrid);
 
 
-void spread3_yup_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
+void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
          int grid_index,
          pmegrid_t *pmegrid);
  // FFT
