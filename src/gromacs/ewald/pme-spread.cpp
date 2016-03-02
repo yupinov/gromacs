@@ -444,7 +444,7 @@ static void spread_coefficients_bsplines_thread_gpu(pmegrid_t                   
        atc_coefficient, spline_theta,
        atc_n_foo,
        thread);
-*/
+
 
     spread1_coefficients_bsplines_thread_gpu_2
       (pnx, pny, pnz, offx, offy, offz,
@@ -453,7 +453,7 @@ static void spread_coefficients_bsplines_thread_gpu(pmegrid_t                   
        atc_n_foo,
        thread);
 
-/*
+*/
     spread1_nvidia_coefficients_bsplines_thread_gpu_2
       (pnx, pny, pnz, offx, offy, offz,
        grid, order, atc_idx, spline_ind, spline_n,
@@ -461,7 +461,7 @@ static void spread_coefficients_bsplines_thread_gpu(pmegrid_t                   
        atc_n_foo,
        thread);
 
-
+/*
     spread2_coefficients_bsplines_thread_gpu_2
       (pnx, pny, pnz, offx, offy, offz,
        grid, order, atc_idx, spline_ind, spline_n,
@@ -469,7 +469,6 @@ static void spread_coefficients_bsplines_thread_gpu(pmegrid_t                   
        atc_n_foo,
        thread);
        */
-    //yupinov spread3 never called
 }
 
 static void spread_coefficients_bsplines_thread_wrapper(pmegrid_t                    *pmegrid,
@@ -952,9 +951,12 @@ void spread_on_grid(struct gmx_pme_t *pme,
     nthread = pme->nthread;
     assert(nthread > 0);
 
+
     if (pme->bGPU)
     {
+        wallcycle_sub_start(wcycle, ewcsPME_INTERPCALCSPLINEANDSPREAD);
         spread_on_grid_gpu(pme, atc, grid_index, &grids->grid);
+        wallcycle_sub_stop(wcycle, ewcsPME_INTERPCALCSPLINEANDSPREAD);
     //yupinov grid index here and everywhere else?
         //yupinov check flags
         //yupinov copy_local_grid

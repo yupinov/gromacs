@@ -4,7 +4,8 @@
 #include "gromacs/utility/real.h"
 
 const int TH = 32;
-enum th_id {
+enum th_id
+{
   TH_ID_THETA, TH_ID_DTHETA, TH_ID_FRACTX, TH_ID_COEFFICIENT,
 
   TH_ID_GRID,
@@ -22,7 +23,8 @@ enum th_id {
 
   TH_ID_END
 };
-enum th_loc {
+enum th_loc
+{
   TH_LOC_HOST, TH_LOC_CUDA, TH_LOC_END
 };
 
