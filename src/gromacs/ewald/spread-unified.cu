@@ -339,7 +339,7 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     CU_RET_ERR(stat, "cudaMemcpy spread error");
 
     // COEFFICIENT
-    real *coefficient_d = th_a(TH_ID_COEFFICIENT, thread, n * sizeof(real), TH_LOC_CUDA);
+    real *coefficient_d = th_a(TH_ID_COEFFICIENT, thread, n * sizeof(real), TH_LOC_CUDA); //yupinov compact here as weel?
     stat = cudaMemcpy(coefficient_d, atc->coefficient, n * sizeof(real), cudaMemcpyHostToDevice);
     CU_RET_ERR(stat, "cudaMemcpy spread error");
 

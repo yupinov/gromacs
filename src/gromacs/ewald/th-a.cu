@@ -13,7 +13,7 @@ T *th_t(th_id id, int thread, int size, th_loc loc)
 {
     cudaError_t stat;
     int i = (loc * TH_ID_END + id) * TH + thread;
-    if (th_size[i] < size || size == 0)
+    if (th_size[i] < size || size == 0) //delete
     {
         if (th_p[i])
         {
@@ -32,9 +32,11 @@ T *th_t(th_id id, int thread, int size, th_loc loc)
         }
         if (size > 0)
         {
-            size = size * 2 + 16;
             if (th_a_print)
-                fprintf(stderr, "alloc! %d\n", size);
+                printf("asked to alloc %d", size);
+            size = size * 1.02; //yupinov overalloc
+            if (th_a_print)
+                printf(", actually allocating %d\n", size);
             if (loc == TH_LOC_CUDA)
             {
                 stat = cudaMalloc((void **) &th_p[i], size);
@@ -49,7 +51,6 @@ T *th_t(th_id id, int thread, int size, th_loc loc)
     }
     return (T *) th_p[i];
 }
-
 
 real *th_a(th_id id, int thread, int size, th_loc loc)
 {

@@ -18,8 +18,10 @@ enum th_id
   TH_ID_NN,
   TH_ID_XPTR,
 
-  TH_ID_IDXPTR, //yupinov added - is it a duplicate?
-
+  TH_ID_IDXPTR, //yupinov added - a duplicate of TH_ID_I0, TH_ID_J0, TH_ID_K0,
+  TH_ID_F,
+  TH_ID_I,
+  TH_ID_DTHX, TH_ID_DTHY, TH_ID_DTHZ,
 
   TH_ID_END
 };
@@ -29,8 +31,8 @@ enum th_loc
   TH_LOC_HOST, TH_LOC_CUDA, TH_LOC_END
 };
 
-real *th_a(th_id id, int thread, int size, th_loc loc);
-int *th_i(th_id id, int thread, int size, th_loc loc);
+real *th_a(th_id id, int thread, int size = -1, th_loc loc = TH_LOC_END);
+int *th_i(th_id id, int thread, int size = -1, th_loc loc = TH_LOC_END);
 
 void th_cpy(void *dest, void *src, int size, th_loc dest_loc);
 
