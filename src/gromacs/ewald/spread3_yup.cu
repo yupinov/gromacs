@@ -79,8 +79,7 @@ static tMPI::mutex print_mutex;
             for (ithz = 0; (ithz < order); ithz++)            \
             {                                                     \
                 index_xyz        = index_xy+(k0+ithz);        \
-                /*grid[index_xyz] += valxy*thz[ithz];*/               \
-                atomicAdd(grid + index_xyz, valxy*thz[ithz]);      \
+                atomicAdd(grid + index_xyz, valxy*thz[ithz]);    \
             }                                                     \
         }                                                         \
     }
@@ -223,14 +222,6 @@ __global__ void spread3_kernel
                 }
             }
 
-            int i0   = idxxptr[localParticleIndex] - offx; //?
-            int j0   = idxyptr[localParticleIndex] - offy;
-            int k0   = idxzptr[localParticleIndex] - offz;
-
-            real *thx = theta_shared + (0 * particlesPerBlock + localParticleIndex) * order;
-            real *thy = theta_shared + (1 * particlesPerBlock + localParticleIndex) * order;
-            real *thz = theta_shared + (2 * particlesPerBlock + localParticleIndex) * order;
-
             //yupinov store to global
             _Pragma("unroll")
             for (int j = 0; j < DIM; j++)
@@ -248,98 +239,21 @@ __global__ void spread3_kernel
             idx[globalParticleIndex * DIM + 1] = idxyptr[localParticleIndex];
             idx[globalParticleIndex * DIM + 2] = idxzptr[localParticleIndex];
 
-           // switch (order)
+            // SPREAD
+
+
+            int i0   = idxxptr[localParticleIndex] - offx; //?
+            int j0   = idxyptr[localParticleIndex] - offy;
+            int k0   = idxzptr[localParticleIndex] - offz;
+
+            real *thx = theta_shared + (0 * particlesPerBlock + localParticleIndex) * order;
+            real *thy = theta_shared + (1 * particlesPerBlock + localParticleIndex) * order;
+            real *thz = theta_shared + (2 * particlesPerBlock + localParticleIndex) * order;
+
+            // switch (order)
             DO_BSPLINE(order);
         }
     }
-
-
-
-
-
-    /*
-#ifdef DEBUG_PME_TIMINGS_GPU
-    events_record_stop(gpu_events_calcspline, ewcsPME_CALCSPLINE, 0);
-#endif
-    */
-
-
-    //yupinov
-    /*
-    cudaFree(theta_d);
-    cudaFree(dtheta_d);
-    cudaFree(fractx_d);
-    cudaFree(coefficient_d);
-    free(fractx_h);
-    free(coefficient_h);
-    */
-
-
-
-
-    //int block_i0 = blockIdx.x * N;
-    //int idxspline_i = (threadIdx.z * order + threadIdx.y) * order + threadIdx.x; // 0 -> 31 -> index of first or second particle contrib....
-/*
-    for (int block_i = 0; block_i < N; block_i += K) //256, += 32 => each iter is a warp
-    {
-        //int i = block_i0 + block_i + idxspline_i; //block_i0 + block_i is a particle index
-        //if ((blockIdx.x == 1) && (idxspline_i == 1))
-        //    printf("%d %d %d %d %d\n", blockIdx.x, threadIdx.x, threadIdx.y, threadIdx.z, i);
-        //so why why would you add thread id?
-       // if (i < N)  //it is always less than N, isn't it?
-        {
-            //printf("%d %d %d %d %d %d %d\n", blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z, i);
-            ;
-
-        }*/
-    /*
-        if (particlesPerBlock > 32) //???
-        {
-            __syncthreads();
-        }
-        */
-        //printf("hello2 %d\n", idxspline_i);
-        // SPREAD
-        /*
-        for (int spread_i0 = 0; spread_i0 < K; spread_i0 += B) // B is 1 now = stride?
-        {
-            int i = block_i0 + block_i + spread_i0 + threadIdx.z / D;
-            if (i < n)
-            {
-                int *i0 = idxxptr;
-                int *j0 = idxyptr;
-                int *k0 = idxzptr;
-                real *thx = theta;
-                real *thy = thx + order*N;
-                real *thz = thy + order*N;
-
-                int ithz = threadIdx.x;
-                int ithy = threadIdx.y;
-                int i = blockIdx.z * blockDim.z + threadIdx.z;
-                if (i < n)
-                {
-                    if (coefficient[i])
-                    {
-                        _Pragma("unroll")
-                        for (int ithx0 = 0; ithx0 < order; ithx0 += D)
-                        {
-                            int ithx = ithx0 + threadIdx.z % D;
-                            int index_x = (i0[i]+ithx)*ny*nz;
-                            real valx    = coefficient[i]*thx[i*order+ithx];
-
-                            real valxy    = valx*thy[i*order+ithy];
-                            int index_xy = index_x+(j0[i]+ithy)*nz;
-
-                            int index_xyz        = index_xy+(k0[i]+ithz);
-                            //grid[index_xyz] += valxy*thz[i*order+ithz];
-                            atomicAdd(&grid[index_xyz], valxy*thz[i*order+ithz]);
-                        }
-                    }
-                }
-            }
-        }
-        */
-    //}
 }
 
 

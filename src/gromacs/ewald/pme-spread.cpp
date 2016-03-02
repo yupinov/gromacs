@@ -955,9 +955,8 @@ void spread_on_grid(struct gmx_pme_t *pme,
     if (pme->bGPU)
     {
         spread3_yup_gpu(pme, atc, grid_index, &grids->grid); //yupinov grid index here and everywhere else?
-
-    }
-        //yupinov check flags
+        atc->spline[0].n = atc->n; //important! without it, the conserved energy went down by 0.5%!
+    }      //yupinov check flags
     //yupinov copy_local_grid
     else
     {
