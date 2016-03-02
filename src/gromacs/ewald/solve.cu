@@ -7,25 +7,15 @@
 #include "gromacs/math/units.h"
 #include "gromacs/math/utilities.h"
 #include "gromacs/gpu_utils/cudautils.cuh"
+#include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 
 #include <cuda.h>
 
-#include "th-v.h"
+#include "th-a.cuh"
 #include "check.h"
-
-enum TH_V_ID {
-  ID_GRID,
-  ID_PME_BSP_MOD_X,
-  ID_PME_BSP_MOD_Y,
-  ID_PME_BSP_MOD_Z,
-  ID_ENERGY,
-  ID_VIRIAL,
-  ID_END
-};
 
 #define SQRT_M_PI (2.0 / M_2_SQRTPI)
 
-static thread_vectors TH_V(32, ID_END);
 
 #ifdef DEBUG_PME_GPU
 extern gpu_flags solve_gpu_flags;
@@ -138,33 +128,26 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     //printf("local_size[XX] %d local_ndata[XX] %d\n", local_size[XX], local_ndata[XX]);
     //printf("local_size[YY] %d local_ndata[YY] %d\n", local_size[YY], local_ndata[YY]);
     //printf("local_size[ZZ] %d local_ndata[ZZ] %d\n", local_size[ZZ], local_ndata[ZZ]);
-    int grid_size = local_size[YY] * local_size[ZZ] * local_size[XX];
-    local_vectors lv = TH_V.local(thread);
+    int grid_n = local_size[YY] * local_size[ZZ] * local_size[XX];
+    int grid_size = grid_n * sizeof(t_complex);
 
-    thrust::device_vector<real> &pme_bsp_mod_x_d = lv.device<real>(ID_PME_BSP_MOD_X, nx);
-    thrust::device_vector<real> &pme_bsp_mod_y_d = lv.device<real>(ID_PME_BSP_MOD_Y, ny);
-    thrust::device_vector<real> &pme_bsp_mod_z_d = lv.device<real>(ID_PME_BSP_MOD_Z, nz);
-    thrust::device_vector<real> &energy_d = lv.device<real>(ID_ENERGY, n);
-    thrust::device_vector<real> &virial_d = lv.device<real>(ID_VIRIAL, 6 * n);
-    /*
-     * fprintf(stderr, "grid copy %p to %p, end val %f,%f thread %d/%d\n",
-	    grid, thrust::raw_pointer_cast(&grid_d[0]),
-	    (double) grid[grid_size - local_size[XX] + local_ndata[XX] - 1].re,
-	    (double) grid[grid_size - local_size[XX] + local_ndata[XX] - 1].im,
-	    thread, nthread);
-        */
+    real *pme_bsp_mod_x_d = th_a_cpy(TH_ID_BSP_MOD_X, thread, pme_bsp_mod[XX], nx * sizeof(real), TH_LOC_CUDA);
+    real *pme_bsp_mod_y_d = th_a_cpy(TH_ID_BSP_MOD_Y, thread, pme_bsp_mod[YY], ny * sizeof(real), TH_LOC_CUDA);
+    real *pme_bsp_mod_z_d = th_a_cpy(TH_ID_BSP_MOD_Z, thread, pme_bsp_mod[ZZ], nz * sizeof(real), TH_LOC_CUDA);
+
+    int energy_size = n * sizeof(real);
+    int virial_size = 6 * n * sizeof(real);
+    real *energy_d = th_a(TH_ID_ENERGY, thread, energy_size, TH_LOC_CUDA);
+    real *virial_d = th_a(TH_ID_VIRIAL, thread, virial_size, TH_LOC_CUDA);
+
     t_complex *workingGrid = complexFFTGridSavedOnDevice;
     gmx_bool gridIsOnDevice = (workingGrid != NULL);
     if (!gridIsOnDevice)
     {
-        thrust::device_vector<t_complex> &grid_d = lv.device<t_complex>(ID_GRID, grid_size);
-        thrust::copy(grid, grid + grid_size, grid_d.begin());  //yupinov no need!
+        t_complex *grid_d = th_c_cpy(TH_ID_GRID, thread, grid, grid_size, TH_LOC_CUDA); //no need to copy?
         //launch blocks while copying?
-        workingGrid = thrust::raw_pointer_cast(&grid_d[0]);
+        workingGrid = grid_d;
     }
-    thrust::copy(pme_bsp_mod[XX], pme_bsp_mod[XX] + nx, pme_bsp_mod_x_d.begin());
-    thrust::copy(pme_bsp_mod[YY], pme_bsp_mod[YY] + ny, pme_bsp_mod_y_d.begin());
-    thrust::copy(pme_bsp_mod[ZZ], pme_bsp_mod[ZZ] + nz, pme_bsp_mod_z_d.begin());
     //fprintf(stderr, "grid copy after\n");
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_solve);
@@ -175,42 +158,24 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
        local_size[XX], local_size[YY], local_size[ZZ],
        nx, ny, nz, rxx, ryx, ryy, rzx, rzy, rzz,
        elfac,
-       thrust::raw_pointer_cast(&pme_bsp_mod_x_d[0]),
-       thrust::raw_pointer_cast(&pme_bsp_mod_y_d[0]),
-       thrust::raw_pointer_cast(&pme_bsp_mod_z_d[0]),
+       pme_bsp_mod_x_d, pme_bsp_mod_y_d, pme_bsp_mod_z_d,
        workingGrid, ewaldcoeff, vol, bEnerVir,
-       thrust::raw_pointer_cast(&energy_d[0]),
-       thrust::raw_pointer_cast(&virial_d[0]));
+       energy_d, virial_d);
     CU_LAUNCH_ERR("solve_pme_yzx_iyz_loop_kernel");
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_stop(gpu_events_solve, ewcsPME_SOLVE, 0);
 #endif
-#ifdef DEBUG_PME_GPU
-    if (check_vs_cpu(solve_gpu_flags))
-    {
-      thrust::host_vector<t_complex> &grid_h = lv.host<t_complex>(ID_GRID, grid_size);
-      //grid_h = grid_d;
-      thrust::copy(grid_d.begin(), grid_d.end(), grid_h.begin());
-      check_real("grid_q",
-		 (real *) thrust::raw_pointer_cast(&grid_h[0]),
-		 (real *) grid, 2 * grid_size, false);
-    }
-#endif
 
-    //if (!gridIsOnDevice)
+    //if (!gridIsOnDevice) //yupinov?
     {
-        stat = cudaMemcpy(grid, workingGrid, grid_size * sizeof(t_complex), cudaMemcpyDeviceToHost);
+        stat = cudaMemcpy(grid, workingGrid, grid_size, cudaMemcpyDeviceToHost);
         CU_RET_ERR(stat, "cudaMemcpy solve_pme_yzx");
     }
-    //thrust::copy(grid_d.begin(), grid_d.begin() + grid_size, grid);
-    //yupinov: it doesn't crash now, but copies whole array in vain.
 
     if (bEnerVir)
     {
-        thrust::host_vector<real> &energy_h = lv.host<real>(ID_ENERGY, n);
-        thrust::host_vector<real> &virial_h = lv.host<real>(ID_VIRIAL, 6*n);
-        thrust::copy(energy_d.begin(), energy_d.begin() + n, energy_h.begin());
-        thrust::copy(virial_d.begin(), virial_d.begin() + 6*n, virial_h.begin());
+        real *energy_h = th_a_cpy(TH_ID_ENERGY, thread, energy_d, energy_size, TH_LOC_HOST);
+        real *virial_h = th_a_cpy(TH_ID_VIRIAL, thread, virial_d, virial_size, TH_LOC_HOST);
         for (int i = 0, j = 0; i < n; ++i)
         {
             energy += energy_h[i];
@@ -506,22 +471,20 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
     int n = iyz1 - iyz0;
     int n_blocks = (n + block_size - 1) / block_size;
 
-    int grid_size = local_size[YY] * local_size[ZZ] * local_size[XX];
-    local_vectors lv = TH_V.local(thread);
-    thrust::device_vector<t_complex> &grid_d = lv.device<t_complex>(ID_GRID, 6 * grid_size);
-    thrust::device_vector<real> &pme_bsp_mod_x_d = lv.device<real>(ID_PME_BSP_MOD_X, nx);
-    thrust::device_vector<real> &pme_bsp_mod_y_d = lv.device<real>(ID_PME_BSP_MOD_Y, ny);
-    thrust::device_vector<real> &pme_bsp_mod_z_d = lv.device<real>(ID_PME_BSP_MOD_Z, nz);
-    thrust::device_vector<real> &energy_d = lv.device<real>(ID_ENERGY, n);
-    thrust::device_vector<real> &virial_d = lv.device<real>(ID_VIRIAL, 6 * n);
-    for (int ig = 0; ig < 6; ++ig) //what is 6
-    {
-      thrust::copy(grid[ig], grid[ig] + grid_size,
-		   grid_d.begin() + ig * grid_size);
-    }
-    thrust::copy(pme_bsp_mod[XX], pme_bsp_mod[XX] + nx, pme_bsp_mod_x_d.begin());
-    thrust::copy(pme_bsp_mod[YY], pme_bsp_mod[YY] + ny, pme_bsp_mod_y_d.begin());
-    thrust::copy(pme_bsp_mod[ZZ], pme_bsp_mod[ZZ] + nz, pme_bsp_mod_z_d.begin());
+#define MAGIC_6 6
+
+    int grid_n = local_size[YY] * local_size[ZZ] * local_size[XX];
+    int grid_size = grid_n * sizeof(t_complex);
+    t_complex *grid_d = th_c(TH_ID_GRID, thread, grid_size * MAGIC_6, TH_LOC_CUDA); //6 grids!
+    real *pme_bsp_mod_x_d = th_a_cpy(TH_ID_BSP_MOD_X, thread, pme_bsp_mod[XX], nx * sizeof(real), TH_LOC_CUDA);
+    real *pme_bsp_mod_y_d = th_a_cpy(TH_ID_BSP_MOD_Y, thread, pme_bsp_mod[YY], ny * sizeof(real), TH_LOC_CUDA);
+    real *pme_bsp_mod_z_d = th_a_cpy(TH_ID_BSP_MOD_Z, thread, pme_bsp_mod[ZZ], nz * sizeof(real), TH_LOC_CUDA);
+    int energy_size = n * sizeof(real);
+    int virial_size = 6 * n * sizeof(real);
+    real *energy_d = th_a(TH_ID_ENERGY, thread, energy_size, TH_LOC_CUDA);
+    real *virial_d = th_a(TH_ID_VIRIAL, thread, virial_size, TH_LOC_CUDA);
+    for (int ig = 0; ig < MAGIC_6; ++ig)
+        th_cpy(grid_d + ig * grid_n, grid[ig], grid_size, TH_LOC_CUDA);
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_solve);
 #endif
@@ -532,36 +495,20 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
        nx, ny, nz, rxx, ryx, ryy, rzx, rzy, rzz,
        //elfac,
        //pme_bsp_mod,
-       thrust::raw_pointer_cast(&pme_bsp_mod_x_d[0]),
-       thrust::raw_pointer_cast(&pme_bsp_mod_y_d[0]),
-       thrust::raw_pointer_cast(&pme_bsp_mod_z_d[0]),
-       thrust::raw_pointer_cast(&grid_d[0]), bLB, ewaldcoeff, vol, bEnerVir,
-       thrust::raw_pointer_cast(&energy_d[0]),
-       thrust::raw_pointer_cast(&virial_d[0]));
+       pme_bsp_mod_x_d, pme_bsp_mod_y_d, pme_bsp_mod_z_d,
+       grid_d, bLB, ewaldcoeff, vol, bEnerVir,
+       energy_d, virial_d);
     CU_LAUNCH_ERR("solve_pme_lj_yzx_iyz_loop_kernel");
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_stop(gpu_events_solve, ewcsPME_SOLVE, 0);
 #endif
-    for (int ig = 0; ig < 6; ++ig)
-    {
-#ifdef DEBUG_PME_GPU
-        if (check_vs_cpu(solve_gpu_flags))
-        {
-            check_real("grid_lj",
-                       (real *) thrust::raw_pointer_cast(&grid_d[ig * grid_size]),
-                    (real *) grid[ig], 2 * grid_size, true);
-        }
-#endif //DEBUG_PME_GPU
-        thrust::copy(grid_d.begin() + ig * grid_size,
-                     grid_d.begin() + (ig + 1) * grid_size, grid[ig]); //yupinov copying again? check all CUDA code!
-    }
+    for (int ig = 0; ig < MAGIC_6; ++ig)
+        th_cpy(grid[ig], grid_d + ig * grid_n, grid_size, TH_LOC_HOST);
 
     if (bEnerVir)
     {
-        thrust::host_vector<real> &energy_h = lv.host<real>(ID_ENERGY, n);
-        thrust::host_vector<real> &virial_h = lv.host<real>(ID_VIRIAL, 6 * n);
-        thrust::copy(energy_d.begin(), energy_d.end(), energy_h.begin());
-        thrust::copy(virial_d.begin(), virial_d.end(), virial_h.begin());
+        real *energy_h = th_a_cpy(TH_ID_ENERGY, thread, energy_d, energy_size, TH_LOC_HOST);
+        real *virial_h = th_a_cpy(TH_ID_VIRIAL, thread, virial_d, virial_size, TH_LOC_HOST);
         for (int i = 0, j = 0; i < n; ++i) {
             energy += energy_h[i];
             virxx += virial_h[j++];

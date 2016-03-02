@@ -57,9 +57,32 @@ real *th_a(th_id id, int thread, int size, th_loc loc)
     return th_t<real>(id, thread, size, loc);
 }
 
+t_complex *th_c(th_id id, int thread, int size, th_loc loc)
+{
+    return th_t<t_complex>(id, thread, size, loc);
+}
+
 int *th_i(th_id id, int thread, int size, th_loc loc)
 {
     return th_t<int>(id, thread, size, loc);
+}
+
+template <typename T>
+T *th_t_cpy(th_id id, int thread, void *src, int size, th_loc loc)
+{
+    T *result = th_t<T>(id, thread, size, loc);
+    th_cpy(result, src, size, loc);
+    return result;
+}
+
+t_complex *th_c_cpy(th_id id, int thread, void *src, int size, th_loc loc)
+{
+    return th_t_cpy<t_complex>(id, thread, src, size, loc);
+}
+
+real *th_a_cpy(th_id id, int thread, void *src, int size, th_loc loc)
+{
+    return th_t_cpy<real>(id, thread, src, size, loc);
 }
 
 void th_cpy(void *dest, void *src, int size, th_loc dest_loc) //yupinov move everything onto this function - or not
