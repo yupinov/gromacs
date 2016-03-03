@@ -776,7 +776,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
                 gmx_parallel_3dfft_init_gpu(&pme->pfft_setup_gpu[i], ndata,
                                                 &pme->fftgrid[i], &pme->cfftgrid[i],
                                                 pme->mpi_comm_d,
-                                               bReproducible, pme->nthread);
+                                               bReproducible, pme->nthread, pme);
 
         }
     }

@@ -37,7 +37,8 @@ CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t gm
                                t_complex gmx_unused **complex_data,
                                MPI_Comm  gmx_unused                comm[2],
                                gmx_bool    gmx_unused              bReproducible,
-                               int         gmx_unused              nthreads)  CUDA_FUNC_TERM
+                               int         gmx_unused              nthreads,
+                                gmx_pme_t *pme)  CUDA_FUNC_TERM
 
 CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_real_limits_gpu(gmx_parallel_3dfft_gpu_t gmx_unused pfft_setup,
                                ivec          gmx_unused            local_ndata,
