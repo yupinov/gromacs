@@ -10,19 +10,6 @@
 #include "th-a.cuh"
 #include "check.h"
 
-enum TH_V_ID {
-  ID_ATC_F,
-  ID_GRID,
-  ID_COEFFICIENT,
-  ID_I,
-  ID_I0, ID_J0, ID_K0,
-  ID_THX, ID_THY, ID_THZ,
-  ID_DTHX, ID_DTHY, ID_DTHZ,
-  ID_END
-};
-
-//yupinov static thread_vectors TH_V(32, ID_END);
-
 typedef real *splinevec[DIM];
 #ifdef DEBUG_PME_GPU
 extern gpu_flags gather_gpu_flags;

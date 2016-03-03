@@ -63,6 +63,7 @@
 #include "gromacs/timing/walltime_accounting.h"
 #include "gromacs/utility/gmxmpi.h"
 
+typedef struct gmx_pme_gpu *gmx_pme_gpu_t;
 typedef struct gmx_parallel_3dfft_gpu *gmx_parallel_3dfft_gpu_t;
 
 struct t_commrec;
@@ -254,7 +255,8 @@ typedef struct gmx_pme_t {
     int        pme_order;
     real       epsilon_r;
 
-    gmx_bool   bGPU; /* Are we using the GPU acceleration for PME purposes? */ //yupinov init me!
+    gmx_bool   bGPU; /* Are we using the GPU acceleration for PME purposes? */
+    gmx_pme_gpu_t *gpu_pme;         /* pointer to GPU data     */
 
     int        ljpme_combination_rule;  /* Type of combination rule in LJ-PME */
 
@@ -290,7 +292,7 @@ typedef struct gmx_pme_t {
     int                       cfftgrid_nx, cfftgrid_ny, cfftgrid_nz;
 
     gmx_parallel_3dfft_t     *pfft_setup;
-    gmx_parallel_3dfft_gpu_t  *pfft_setup_gpu;
+    gmx_parallel_3dfft_gpu_t  *pfft_setup_gpu; //yupinov move to gpu
 
     int                      *nnx, *nny, *nnz;
     real                     *fshx, *fshy, *fshz;
