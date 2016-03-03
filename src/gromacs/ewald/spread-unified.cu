@@ -56,9 +56,11 @@ extern gpu_events gpu_events_spread;
 #endif
 #include "thread_mpi/mutex.h"
 
+#include "pme-cuda.h"
 #include "th-a.cuh"
 
-static tMPI::mutex print_mutex;
+
+static tMPI::mutex print_mutex; //yupinov
 
 
 
@@ -263,6 +265,7 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 //added:, gmx_wallcycle_t wcycle)
 {
     cudaError_t stat;
+    cudaStream_t s = pme->gpu->pmeStream;
 
     atc->spline[0].n = atc->n; //yupinov - without it, the conserved energy went down by 0.5%! used in gather or sometwhere else?
 
@@ -378,7 +381,7 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     const int K = B * D * O * O;
     */
           //spread3_kernel<4, N, K, D><<<dimGrid, dimBlock>>>
-          spread3_kernel<4, particlesPerBlock><<<nBlocks, dimBlock>>>
+          spread3_kernel<4, particlesPerBlock><<<nBlocks, dimBlock, 0, s>>>
                                                                     (nx, ny, nz,
                                                                      pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
                                                                      pme->recipbox[XX][XX],

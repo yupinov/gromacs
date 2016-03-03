@@ -256,6 +256,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
       atc_coefficient, atc_f, atc_idx,
        spline_theta, spline_dtheta,
        scale,
+       pme,
        thread);
 }
 

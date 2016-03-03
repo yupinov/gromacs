@@ -10,6 +10,9 @@
 #include "th-a.cuh"
 #include "check.h"
 
+#include "pme-internal.h"
+#include "pme-cuda.h"
+
 typedef real *splinevec[DIM];
 #ifdef DEBUG_PME_GPU
 extern gpu_flags gather_gpu_flags;
@@ -144,17 +147,18 @@ void gather_f_bsplines_gpu_2
  real *atc_coefficient, rvec *atc_f, ivec *atc_idx,
  splinevec *spline_theta, splinevec *spline_dtheta,
  real scale,
+ gmx_pme_t *pme,
  int thread
  )
 {
+    cudaStream_t s = pme->gpu->pmeStream;
     int ndatatot = pnx*pny*pnz;
 
     if (!spline_n)
         return;
 
     int size_grid = ndatatot * sizeof(real);
-    real *grid_d = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_CUDA);
-    th_cpy(grid_d, grid, size_grid, TH_LOC_CUDA);
+    real *grid_d = th_a_cpy(TH_ID_GRID, thread, grid, size_grid, TH_LOC_CUDA, s);
 
     //copy order?
     //compacting, and size....
@@ -229,39 +233,26 @@ void gather_f_bsplines_gpu_2
     size_forces = DIM * n * sizeof(real);
     size_splines = order * n * sizeof(int);
 
-    real *atc_f_d = th_a(TH_ID_F, thread, size_forces, TH_LOC_CUDA);
-    th_cpy(atc_f_d, atc_f_compacted, size_forces, TH_LOC_CUDA);
+    real *atc_f_d = th_a_cpy(TH_ID_F, thread, atc_f_compacted, size_forces, TH_LOC_CUDA, s);
+    real *coefficients_d = th_a_cpy(TH_ID_COEFFICIENT, thread, coefficients_compacted, size_coefficients, TH_LOC_CUDA, s);
 
-    real *coefficients_d = th_a(TH_ID_COEFFICIENT, thread, size_coefficients, TH_LOC_CUDA);
-    th_cpy(coefficients_d, coefficients_compacted, size_coefficients, TH_LOC_CUDA);
+    int *i0_d = th_i_cpy(TH_ID_I0, thread, i0_compacted, size_indices, TH_LOC_CUDA, s);
+    int *j0_d = th_i_cpy(TH_ID_J0, thread, j0_compacted, size_indices, TH_LOC_CUDA, s);
+    int *k0_d = th_i_cpy(TH_ID_K0, thread, k0_compacted, size_indices, TH_LOC_CUDA, s);
 
-    int *i0_d = th_i(TH_ID_I0, thread, size_indices, TH_LOC_CUDA);
-    int *j0_d = th_i(TH_ID_J0, thread, size_indices, TH_LOC_CUDA);
-    int *k0_d = th_i(TH_ID_K0, thread, size_indices, TH_LOC_CUDA);
-    th_cpy(i0_d, i0_compacted, size_indices, TH_LOC_CUDA);
-    th_cpy(j0_d, j0_compacted, size_indices, TH_LOC_CUDA);
-    th_cpy(k0_d, k0_compacted, size_indices, TH_LOC_CUDA);
-
-    real *theta_x_d = th_a(TH_ID_THX, thread, size_splines, TH_LOC_CUDA);
-    real *theta_y_d = th_a(TH_ID_THY, thread, size_splines, TH_LOC_CUDA);
-    real *theta_z_d = th_a(TH_ID_THZ, thread, size_splines, TH_LOC_CUDA);
-    real *dtheta_x_d = th_a(TH_ID_DTHX, thread, size_splines, TH_LOC_CUDA);
-    real *dtheta_y_d = th_a(TH_ID_DTHY, thread, size_splines, TH_LOC_CUDA);
-    real *dtheta_z_d = th_a(TH_ID_DTHZ, thread, size_splines, TH_LOC_CUDA);
-
-    th_cpy(theta_x_d, theta_x_compacted, size_splines, TH_LOC_CUDA);
-    th_cpy(theta_y_d, theta_y_compacted, size_splines, TH_LOC_CUDA);
-    th_cpy(theta_z_d, theta_z_compacted, size_splines, TH_LOC_CUDA);
-    th_cpy(dtheta_x_d, dtheta_x_compacted, size_splines, TH_LOC_CUDA);
-    th_cpy(dtheta_y_d, dtheta_y_compacted, size_splines, TH_LOC_CUDA);
-    th_cpy(dtheta_z_d, dtheta_z_compacted, size_splines, TH_LOC_CUDA);
+    real *theta_x_d = th_a_cpy(TH_ID_THX, thread, theta_x_compacted, size_splines, TH_LOC_CUDA, s);
+    real *theta_y_d = th_a_cpy(TH_ID_THY, thread, theta_y_compacted, size_splines, TH_LOC_CUDA, s);
+    real *theta_z_d = th_a_cpy(TH_ID_THZ, thread, theta_z_compacted, size_splines, TH_LOC_CUDA, s);
+    real *dtheta_x_d = th_a_cpy(TH_ID_DTHX, thread, dtheta_x_compacted, size_splines, TH_LOC_CUDA, s);
+    real *dtheta_y_d = th_a_cpy(TH_ID_DTHY, thread, dtheta_y_compacted, size_splines, TH_LOC_CUDA, s);
+    real *dtheta_z_d = th_a_cpy(TH_ID_DTHZ, thread, dtheta_z_compacted, size_splines, TH_LOC_CUDA, s);
 
     int block_size = 2 * warp_size;
     int n_blocks = (n + block_size - 1) / block_size;
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_gather);
 #endif
-    gather_f_bsplines_kernel<<<n_blocks, block_size>>>
+    gather_f_bsplines_kernel<<<n_blocks, block_size, 0, s>>>
       (grid_d,
        order, n,
        nx, ny, nz, pnx, pny, pnz,
@@ -275,7 +266,7 @@ void gather_f_bsplines_gpu_2
     events_record_stop(gpu_events_gather, ewcsPME_GATHER, 0);
 #endif
 
-    th_cpy(atc_f_compacted, atc_f_d, size_forces, TH_LOC_HOST);
+    th_cpy(atc_f_compacted, atc_f_d, size_forces, TH_LOC_HOST, s);
 
     for (int ii = 0; ii < n; ii++)  // iterating over compacted particles
     {

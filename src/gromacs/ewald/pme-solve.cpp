@@ -360,7 +360,7 @@ int solve_pme_yzx(struct gmx_pme_t *pme, t_complex *grid,
               rxx, ryx, ryy, rzx, rzy, rzz,
               pme->bsp_mod,
               work->vir_q, &work->energy_q,
-              grid, ewaldcoeff, vol, bEnerVir,
+              grid, ewaldcoeff, vol, bEnerVir, pme,
                           1, 0, complexFFTGridSavedOnDevice);
                           //nthread, thread); // all these parameters instead of pme?
     //yupinov rework structure!
@@ -872,7 +872,7 @@ int solve_pme_lj_yzx(struct gmx_pme_t *pme, t_complex **grid, gmx_bool bLB,
                  //mhx, mhy, mhz, m2, denom, tmp1, tmp2,
                  pme->bsp_mod,
                  work->vir_lj, &work->energy_lj,
-                 grid, bLB, ewaldcoeff, vol, bEnerVir, nthread, thread);
+                 grid, bLB, ewaldcoeff, vol, bEnerVir, pme,nthread, thread);
 
     /* Return the loop count */
     return local_ndata[YY]*local_ndata[XX];

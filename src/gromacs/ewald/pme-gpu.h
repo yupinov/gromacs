@@ -25,7 +25,7 @@ typedef int gmx_nbnxn_gpu_t;
 
 //yupinov add pmegpu detection warning!
 //yupinov add author info everywhere
-//yupinov CUDA_FUNC_QUALIFIER everywhere?
+//yupinov CUDA_FUNC_QUALIFIER everywhere? as weel as parameters
 // gmx_unused
 
 
@@ -55,6 +55,7 @@ CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t
                            enum gmx_fft_direction gmx_unused dir,
                            int             gmx_unused        thread,
                            gmx_wallcycle_t   gmx_unused      wcycle,
+                            gmx_pme_t *pme,
                             t_complex gmx_unused **complexFFTGridSavedOnDevice) CUDA_FUNC_TERM
 
 
@@ -108,6 +109,7 @@ CUDA_FUNC_QUALIFIER void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_
          pmegrid_t *pmegrid) CUDA_FUNC_TERM
  // FFT
 
+CUDA_FUNC_QUALIFIER void pme_gpu_init(gmx_pme_gpu_t **pme) CUDA_FUNC_TERM
 
 
 CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_destroy_gpu(gmx_parallel_3dfft_gpu_t gmx_unused pfft_setup) CUDA_FUNC_TERM
@@ -168,7 +170,7 @@ inline int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t gmx_unused *pme,
     if (bGPU)
     {
         if (thread == 0)
-            gmx_parallel_3dfft_execute_gpu(pme->pfft_setup_gpu[grid_index], dir, thread, wcycle, complexFFTGridSavedOnDevice);
+            gmx_parallel_3dfft_execute_gpu(pme->pfft_setup_gpu[grid_index], dir, thread, wcycle, pme, complexFFTGridSavedOnDevice);
     }
     else
         res = gmx_parallel_3dfft_execute(pme->pfft_setup[grid_index], dir, thread, wcycle);
@@ -192,6 +194,7 @@ CUDA_FUNC_QUALIFIER void solve_pme_yzx_gpu(real gmx_unused pme_epsilon_r,
               t_complex gmx_unused *grid,
               real gmx_unused ewaldcoeff, real gmx_unused vol,
               gmx_bool gmx_unused bEnerVir,
+             gmx_pme_t *pme,
               int gmx_unused nthread, int gmx_unused thread, t_complex gmx_unused *complexFFTGridSavedOnDevice) CUDA_FUNC_TERM
 CUDA_FUNC_QUALIFIER void solve_pme_lj_yzx_gpu(int gmx_unused nx, int gmx_unused ny, int gmx_unused nz,
              ivec gmx_unused complex_order, ivec gmx_unused local_ndata, ivec gmx_unused local_offset, ivec gmx_unused local_size,
@@ -201,7 +204,8 @@ CUDA_FUNC_QUALIFIER void solve_pme_lj_yzx_gpu(int gmx_unused nx, int gmx_unused 
              matrix gmx_unused work_vir_lj, real gmx_unused *work_energy_lj,
              t_complex gmx_unused **grid, gmx_bool gmx_unused bLB,
              real gmx_unused ewaldcoeff, real gmx_unused vol,
-             gmx_bool gmx_unused bEnerVir, int gmx_unused nthread, int gmx_unused thread) CUDA_FUNC_TERM
+             gmx_bool gmx_unused bEnerVir, gmx_pme_t *pme,
+                                              int gmx_unused nthread, int gmx_unused thread) CUDA_FUNC_TERM
 
 CUDA_FUNC_QUALIFIER void gather_f_bsplines_gpu_2_pre
 (gmx_bool gmx_unused bClearF,
@@ -217,7 +221,7 @@ CUDA_FUNC_QUALIFIER void gather_f_bsplines_gpu_2
  int gmx_unused *spline_ind, int gmx_unused spline_n,
  real gmx_unused *atc_coefficient, rvec gmx_unused *atc_f, ivec gmx_unused *atc_idx,
  splinevec gmx_unused *spline_theta, splinevec gmx_unused *spline_dtheta,
- real gmx_unused scale, int gmx_unused thread
+ real gmx_unused scale, gmx_pme_t *pme, int gmx_unused thread
  ) CUDA_FUNC_TERM
 
 

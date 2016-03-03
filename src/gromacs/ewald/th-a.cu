@@ -3,6 +3,16 @@
 #include "th-a.cuh"
 #include "gromacs/gpu_utils/cudautils.cuh"
 
+
+#include "pme-cuda.h"
+void pme_gpu_init(gmx_pme_gpu_t **pme)
+{
+    *pme = new gmx_pme_gpu_t;
+    cudaError_t stat = cudaStreamCreate(&(*pme)->pmeStream);
+    CU_RET_ERR(stat, "PME cudaStreamCreate error");
+}
+
+
 static std::vector<int> th_size(TH_LOC_END * TH_ID_END * TH);
 static std::vector<void *> th_p(TH_LOC_END * TH_ID_END * TH);
 
@@ -44,7 +54,7 @@ T *th_t(th_id id, int thread, int size, th_loc loc)
             }
             else
             {
-                th_p[i] = new T[size / sizeof(T)];
+                th_p[i] = new T[size / sizeof(T)]; //yupinov cudaHostMalloc?
             }
             th_size[i] = size;
         }
@@ -68,33 +78,40 @@ int *th_i(th_id id, int thread, int size, th_loc loc)
 }
 
 template <typename T>
-T *th_t_cpy(th_id id, int thread, void *src, int size, th_loc loc)
+T *th_t_cpy(th_id id, int thread, void *src, int size, th_loc loc, cudaStream_t s)
 {
     T *result = th_t<T>(id, thread, size, loc);
-    th_cpy(result, src, size, loc);
+    th_cpy(result, src, size, loc, s);
     return result;
 }
 
-t_complex *th_c_cpy(th_id id, int thread, void *src, int size, th_loc loc)
+t_complex *th_c_cpy(th_id id, int thread, void *src, int size, th_loc loc, cudaStream_t s)
 {
-    return th_t_cpy<t_complex>(id, thread, src, size, loc);
+    return th_t_cpy<t_complex>(id, thread, src, size, loc, s);
 }
 
-real *th_a_cpy(th_id id, int thread, void *src, int size, th_loc loc)
+real *th_a_cpy(th_id id, int thread, void *src, int size, th_loc loc, cudaStream_t s)
 {
-    return th_t_cpy<real>(id, thread, src, size, loc);
+    return th_t_cpy<real>(id, thread, src, size, loc, s);
 }
 
-void th_cpy(void *dest, void *src, int size, th_loc dest_loc) //yupinov move everything onto this function - or not
+int *th_i_cpy(th_id id, int thread, void *src, int size, th_loc loc, cudaStream_t s)
+{
+    return th_t_cpy<int>(id, thread, src, size, loc, s);
+}
+
+void th_cpy(void *dest, void *src, int size, th_loc dest_loc, cudaStream_t s) //yupinov move everything onto this function - or not
 {
     if (dest_loc == TH_LOC_CUDA)
     {
-        cudaError_t stat = cudaMemcpy(dest, src, size, cudaMemcpyHostToDevice);
+        //cudaError_t stat = cudaMemcpy(dest, src, size, cudaMemcpyHostToDevice);
+        cudaError_t stat = cudaMemcpyAsync(dest, src, size, cudaMemcpyHostToDevice, s);
         CU_RET_ERR(stat, "PME cudaMemcpyHostToDevice error");
     }
     else
     {
-        cudaError_t stat = cudaMemcpy(dest, src, size, cudaMemcpyDeviceToHost);
+        //cudaError_t stat = cudaMemcpy(dest, src, size, cudaMemcpyDeviceToHost);
+        cudaError_t stat = cudaMemcpyAsync(dest, src, size, cudaMemcpyDeviceToHost, s);
         CU_RET_ERR(stat, "PME cudaMemcpyDeviceToHost error");
     }
 }
