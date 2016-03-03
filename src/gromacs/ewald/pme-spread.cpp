@@ -107,14 +107,14 @@ static void calc_interpolation_idx(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
         }
     }
 
-    if (pme->bGPU)
+    /*if (pme->bGPU)
         calc_interpolation_idx_gpu_core(nx, ny, nz,
                  rxx, ryx, ryy, rzx, rzy, rzz,
 				 fshx, fshy,
 				 nnx, nny, nnz,
 				 atc->x, atc->idx, atc->fractx,
 				 start, end, thread);
-    else
+    else*/
         for (i = start; i < end; i++)
         {
             xptr   = atc->x[i];
@@ -300,9 +300,9 @@ static void make_bsplines_wrapper(splinevec theta, splinevec dtheta, int order,
                           rvec fractx[], int nr, int ind[], real coefficient[],
                           gmx_bool bDoSplines, int thread, gmx_bool bGPU)
 {
-    if (bGPU)
+    /*if (bGPU)
         make_bsplines_gpu(theta, dtheta, order, fractx, nr, ind, coefficient, bDoSplines, thread);
-    else
+    else*/
         make_bsplines(theta, dtheta, order, fractx, nr, ind, coefficient, bDoSplines);
 }
 
@@ -453,14 +453,14 @@ static void spread_coefficients_bsplines_thread_gpu(pmegrid_t                   
        atc_n_foo,
        thread);
 
-*/
+
     spread1_nvidia_coefficients_bsplines_thread_gpu_2
       (pnx, pny, pnz, offx, offy, offz,
        grid, order, atc_idx, spline_ind, spline_n,
        atc_coefficient, spline_theta,
        atc_n_foo,
        thread);
-
+*/
 /*
     spread2_coefficients_bsplines_thread_gpu_2
       (pnx, pny, pnz, offx, offy, offz,
@@ -478,9 +478,10 @@ static void spread_coefficients_bsplines_thread_wrapper(pmegrid_t               
                             int thread,
                             gmx_bool bGPU)
 {
+    /*
     if (bGPU)
         spread_coefficients_bsplines_thread_gpu(pmegrid, atc, spline, work, thread);
-    else
+    else*/
         spread_coefficients_bsplines_thread(pmegrid, atc, spline, work);
 }
 
