@@ -586,6 +586,9 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     if (pme->bGPU)
         pme->nthread = 1;
 
+    if (pme->bGPU)
+        pme_gpu_init(&pme->gpu);
+
     /* Check if any of the PME MPI ranks uses threads */
     use_threads = (pme->nthread > 1 ? 1 : 0);
 #if GMX_MPI

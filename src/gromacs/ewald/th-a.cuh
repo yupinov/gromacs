@@ -39,10 +39,11 @@ real *th_a(th_id id, int thread, int size = -1, th_loc loc = TH_LOC_END);
 int *th_i(th_id id, int thread, int size = -1, th_loc loc = TH_LOC_END);
 t_complex *th_c(th_id id, int thread, int size = -1, th_loc loc = TH_LOC_END);
 
-void th_cpy(void *dest, void *src, int size, th_loc dest_loc);
+void th_cpy(void *dest, void *src, int size, th_loc dest_loc, cudaStream_t s); //yupinov alloc as well
 
-real *th_a_cpy(th_id id, int thread, void *src, int size, th_loc loc = TH_LOC_END);
-t_complex *th_c_cpy(th_id id, int thread, void *src, int size, th_loc loc = TH_LOC_END);
+int *th_i_cpy(th_id id, int thread, void *src, int size, th_loc loc, cudaStream_t s);
+real *th_a_cpy(th_id id, int thread, void *src, int size, th_loc loc, cudaStream_t s);
+t_complex *th_c_cpy(th_id id, int thread, void *src, int size, th_loc loc, cudaStream_t s);
 
 //yupinov warn o nwrong param
 

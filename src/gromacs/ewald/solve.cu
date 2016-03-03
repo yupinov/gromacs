@@ -14,6 +14,9 @@
 #include "th-a.cuh"
 #include "check.h"
 
+
+#include "pme-cuda.h"
+
 #define SQRT_M_PI (2.0 / M_2_SQRTPI)
 
 
@@ -26,7 +29,7 @@ extern gpu_events gpu_events_solve;
 typedef real *splinevec[DIM];
 
 /* Pascal triangle coefficients used in solve_pme_lj_yzx, only need to do 4 calculations due to symmetry */
-static const __constant__ real lb_scale_factor_symm[] = { 2.0/64, 12.0/64, 30.0/64, 20.0/64 };
+static const __constant__ real lb_scale_factor_symm_gpu[] = { 2.0/64, 12.0/64, 30.0/64, 20.0/64 }; //yupinov copeid from pme-internal
 
 
 /*__device__ gmx_inline static void calc_exponentials_q_one(const real f, real &d, real &r, real &e)
@@ -75,9 +78,10 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
 		      t_complex *grid,
 		      real ewaldcoeff, real vol,
 		      gmx_bool bEnerVir,
+              gmx_pme_t *pme,
               int nthread, int thread, t_complex *complexFFTGridSavedOnDevice)
 {
-
+    cudaStream_t s = pme->gpu->pmeStream;
     /* do recip sum over local cells in grid */
     /* y major, z middle, x minor or continuous */
     //t_complex *p0;
@@ -131,9 +135,9 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     int grid_n = local_size[YY] * local_size[ZZ] * local_size[XX];
     int grid_size = grid_n * sizeof(t_complex);
 
-    real *pme_bsp_mod_x_d = th_a_cpy(TH_ID_BSP_MOD_X, thread, pme_bsp_mod[XX], nx * sizeof(real), TH_LOC_CUDA);
-    real *pme_bsp_mod_y_d = th_a_cpy(TH_ID_BSP_MOD_Y, thread, pme_bsp_mod[YY], ny * sizeof(real), TH_LOC_CUDA);
-    real *pme_bsp_mod_z_d = th_a_cpy(TH_ID_BSP_MOD_Z, thread, pme_bsp_mod[ZZ], nz * sizeof(real), TH_LOC_CUDA);
+    real *pme_bsp_mod_x_d = th_a_cpy(TH_ID_BSP_MOD_X, thread, pme_bsp_mod[XX], nx * sizeof(real), TH_LOC_CUDA, s);
+    real *pme_bsp_mod_y_d = th_a_cpy(TH_ID_BSP_MOD_Y, thread, pme_bsp_mod[YY], ny * sizeof(real), TH_LOC_CUDA, s);
+    real *pme_bsp_mod_z_d = th_a_cpy(TH_ID_BSP_MOD_Z, thread, pme_bsp_mod[ZZ], nz * sizeof(real), TH_LOC_CUDA, s);
 
     int energy_size = n * sizeof(real);
     int virial_size = 6 * n * sizeof(real);
@@ -144,7 +148,7 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     gmx_bool gridIsOnDevice = (workingGrid != NULL);
     if (!gridIsOnDevice)
     {
-        t_complex *grid_d = th_c_cpy(TH_ID_GRID, thread, grid, grid_size, TH_LOC_CUDA); //no need to copy?
+        t_complex *grid_d = th_c_cpy(TH_ID_GRID, thread, grid, grid_size, TH_LOC_CUDA, s); //no need to copy?
         //launch blocks while copying?
         workingGrid = grid_d;
     }
@@ -152,7 +156,7 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_solve);
 #endif
-    solve_pme_yzx_iyz_loop_kernel<<<n_blocks, block_size>>>
+    solve_pme_yzx_iyz_loop_kernel<<<n_blocks, block_size, 0, s>>>
       (iyz0, iyz1, local_ndata[ZZ], local_ndata[XX],
        local_offset[XX], local_offset[YY], local_offset[ZZ],
        local_size[XX], local_size[YY], local_size[ZZ],
@@ -174,8 +178,8 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
 
     if (bEnerVir)
     {
-        real *energy_h = th_a_cpy(TH_ID_ENERGY, thread, energy_d, energy_size, TH_LOC_HOST);
-        real *virial_h = th_a_cpy(TH_ID_VIRIAL, thread, virial_d, virial_size, TH_LOC_HOST);
+        real *energy_h = th_a_cpy(TH_ID_ENERGY, thread, energy_d, energy_size, TH_LOC_HOST, s);
+        real *virial_h = th_a_cpy(TH_ID_VIRIAL, thread, virial_d, virial_size, TH_LOC_HOST, s);
         for (int i = 0, j = 0; i < n; ++i)
         {
             energy += energy_h[i];
@@ -429,8 +433,9 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
 			 matrix work_vir_lj, real *work_energy_lj,
 			 t_complex **grid, gmx_bool bLB,
 			 real ewaldcoeff, real vol,
-			 gmx_bool bEnerVir, int nthread, int thread)
+             gmx_bool bEnerVir, gmx_pme_t *pme, int nthread, int thread)
 {
+    cudaStream_t s = pme->gpu->pmeStream;
     /* do recip sum over local cells in grid */
     /* y major, z middle, x minor or continuous */
     //int     ig, gcount;
@@ -476,19 +481,19 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
     int grid_n = local_size[YY] * local_size[ZZ] * local_size[XX];
     int grid_size = grid_n * sizeof(t_complex);
     t_complex *grid_d = th_c(TH_ID_GRID, thread, grid_size * MAGIC_6, TH_LOC_CUDA); //6 grids!
-    real *pme_bsp_mod_x_d = th_a_cpy(TH_ID_BSP_MOD_X, thread, pme_bsp_mod[XX], nx * sizeof(real), TH_LOC_CUDA);
-    real *pme_bsp_mod_y_d = th_a_cpy(TH_ID_BSP_MOD_Y, thread, pme_bsp_mod[YY], ny * sizeof(real), TH_LOC_CUDA);
-    real *pme_bsp_mod_z_d = th_a_cpy(TH_ID_BSP_MOD_Z, thread, pme_bsp_mod[ZZ], nz * sizeof(real), TH_LOC_CUDA);
+    real *pme_bsp_mod_x_d = th_a_cpy(TH_ID_BSP_MOD_X, thread, pme_bsp_mod[XX], nx * sizeof(real), TH_LOC_CUDA, s);
+    real *pme_bsp_mod_y_d = th_a_cpy(TH_ID_BSP_MOD_Y, thread, pme_bsp_mod[YY], ny * sizeof(real), TH_LOC_CUDA, s);
+    real *pme_bsp_mod_z_d = th_a_cpy(TH_ID_BSP_MOD_Z, thread, pme_bsp_mod[ZZ], nz * sizeof(real), TH_LOC_CUDA, s);
     int energy_size = n * sizeof(real);
     int virial_size = 6 * n * sizeof(real);
     real *energy_d = th_a(TH_ID_ENERGY, thread, energy_size, TH_LOC_CUDA);
     real *virial_d = th_a(TH_ID_VIRIAL, thread, virial_size, TH_LOC_CUDA);
     for (int ig = 0; ig < MAGIC_6; ++ig)
-        th_cpy(grid_d + ig * grid_n, grid[ig], grid_size, TH_LOC_CUDA);
+        th_cpy(grid_d + ig * grid_n, grid[ig], grid_size, TH_LOC_CUDA, s);
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_solve);
 #endif
-    solve_pme_lj_yzx_iyz_loop_kernel<<<n_blocks, block_size>>>
+    solve_pme_lj_yzx_iyz_loop_kernel<<<n_blocks, block_size, 0, s>>>
       (iyz0, iyz1, local_ndata[ZZ], local_ndata[XX],
        local_offset[XX], local_offset[YY], local_offset[ZZ],
        local_size[XX], local_size[YY], local_size[ZZ],
@@ -503,12 +508,12 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
     events_record_stop(gpu_events_solve, ewcsPME_SOLVE, 0);
 #endif
     for (int ig = 0; ig < MAGIC_6; ++ig)
-        th_cpy(grid[ig], grid_d + ig * grid_n, grid_size, TH_LOC_HOST);
+        th_cpy(grid[ig], grid_d + ig * grid_n, grid_size, TH_LOC_HOST, s);
 
     if (bEnerVir)
     {
-        real *energy_h = th_a_cpy(TH_ID_ENERGY, thread, energy_d, energy_size, TH_LOC_HOST);
-        real *virial_h = th_a_cpy(TH_ID_VIRIAL, thread, virial_d, virial_size, TH_LOC_HOST);
+        real *energy_h = th_a_cpy(TH_ID_ENERGY, thread, energy_d, energy_size, TH_LOC_HOST, s);
+        real *virial_h = th_a_cpy(TH_ID_VIRIAL, thread, virial_d, virial_size, TH_LOC_HOST, s);
         for (int i = 0, j = 0; i < n; ++i) {
             energy += energy_h[i];
             virxx += virial_h[j++];
@@ -683,7 +688,7 @@ __global__ void solve_pme_lj_yzx_iyz_loop_kernel
 
                         t_complex *p0k    = grid_v/*[ig]*/ + ig*grid_size + iy*local_size_ZZ*local_size_XX + iz*local_size_XX + (kx - kxstart);
                         t_complex *p1k    = grid_v/*[6-ig]*/ + (6-ig)*grid_size + iy*local_size_ZZ*local_size_XX + iz*local_size_XX + (kx - kxstart);
-                        scale = 2.0*lb_scale_factor_symm[ig];
+                        scale = 2.0*lb_scale_factor_symm_gpu[ig];
                         struct2k += scale*(p0k->re*p1k->re + p0k->im*p1k->im);
                     }
                     for (int ig = 0; ig <= 6; ++ig)

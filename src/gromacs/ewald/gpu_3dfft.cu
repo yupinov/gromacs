@@ -25,7 +25,9 @@ extern gpu_events gpu_events_fft_r2c;
 extern gpu_events gpu_events_fft_c2r;
 #endif
 
-#include <assert.h>
+#include "pme-internal.h" //yupinov pme passed everywhere
+#include "pme-cuda.h"
+
 
 struct gmx_parallel_3dfft_gpu
 {
@@ -129,7 +131,7 @@ int                       nthreads)
                                       batch);
     if (result != CUFFT_SUCCESS)
     {
-        fprintf(stderr, "cufft planR2RC error %d\n", result);
+        fprintf(stderr, "cufft planR2RC error %d\n", result); //yupinov throw fatalerror
         setup = NULL; // FIX
     }
 
@@ -143,9 +145,6 @@ int                       nthreads)
         fprintf(stderr, "cufft planC2R error %d\n", result);
         setup = NULL; // FIX
     }
-
-
-    //assert(!result);
 }
 
 void gmx_parallel_3dfft_real_limits_gpu(gmx_parallel_3dfft_gpu_t      pfft_setup,
@@ -155,7 +154,6 @@ void gmx_parallel_3dfft_real_limits_gpu(gmx_parallel_3dfft_gpu_t      pfft_setup
 {
     //fprintf(stderr, "3dfft_real_limits_gpu\n");
     gmx_parallel_3dfft_gpu_t setup = pfft_setup;
-    assert(setup);
     setup->local_ndata[0] = local_ndata[0];
     setup->local_ndata[1] = local_ndata[1];
     setup->local_ndata[2] = local_ndata[2];
@@ -220,12 +218,13 @@ __global__ void transpose_xyz_yzx_kernel(int nx, int ny, int nz,
 
 void transpose_xyz_yzx(int nx, int ny, int nz,
                        cufftComplex *cdata,
-                       bool forward)
+                       bool forward, gmx_pme_t *pme)
 {
+    cudaStream_t s = pme->gpu->pmeStream;
     int block_size = warp_size;
     dim3 dimGrid((nx + block_size - 1) / block_size, ny, nz / 2 + 1);
     dim3 dimBlock(block_size, 1, 1);
-    transpose_xyz_yzx_kernel<<<dimGrid, dimBlock>>>(nx, ny, nz, cdata, forward);
+    transpose_xyz_yzx_kernel<<<dimGrid, dimBlock, 0, s>>>(nx, ny, nz, cdata, forward);
     CU_LAUNCH_ERR("transpose_xyz_yzx_kernel");
     //cudaMemcpy(cdata, cdata + nx * ny * (nz/2+1), nx * ny * (nz/2+1) * sizeof(cufftComplex), cudaMemcpyDeviceToDevice);
 }
@@ -234,6 +233,7 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
                                    enum gmx_fft_direction  dir,
                                    int                     thread,
                                    gmx_wallcycle_t         wcycle,
+                                   gmx_pme_t *pme,
                                    t_complex **complexFFTGridSavedOnDevice)
 {
     cudaError_t stat;
@@ -292,7 +292,7 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
         if (result)
             fprintf(stderr, "cufft R2C error %d\n", result);
         // FIXME: -> y major, z middle, x minor or continuous
-        transpose_xyz_yzx(x, y, z, setup->cdata, true);
+        transpose_xyz_yzx(x, y, z, setup->cdata, true, pme);
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_stop(gpu_events_fft_r2c, ewcsPME_FFT_R2C, 0);
         #endif
@@ -306,7 +306,7 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_start(gpu_events_fft_c2r);
         #endif
-        transpose_xyz_yzx(x, y, z, setup->cdata, false);
+        transpose_xyz_yzx(x, y, z, setup->cdata, false, pme);
         cufftResult_t result = cufftExecC2R(setup->planC2R, setup->cdata, setup->rdata);
         if (result)
             fprintf(stderr, "cufft C2R error %d\n", result);
