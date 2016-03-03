@@ -57,7 +57,8 @@ void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup,
                                    t_complex **complex_data,
                                    MPI_Comm                  comm[2],
 gmx_bool                  bReproducible,
-int                       nthreads)
+int                       nthreads,
+gmx_pme_t *pme)
 {
     cudaError_t stat;
     gmx_parallel_3dfft_gpu_t setup = new gmx_parallel_3dfft_gpu();
@@ -144,6 +145,20 @@ int                       nthreads)
     {
         fprintf(stderr, "cufft planC2R error %d\n", result);
         setup = NULL; // FIX
+    }
+
+    cudaStream_t s = pme->gpu->pmeStream;
+    result = cufftSetStream(setup->planR2C, s);
+    if (result != CUFFT_SUCCESS)
+    {
+        fprintf(stderr, "cufft planR2RC error %d\n", result);
+        setup = NULL;
+    }
+    result = cufftSetStream(setup->planC2R, s);
+    if (result != CUFFT_SUCCESS)
+    {
+        fprintf(stderr, "cufft planR2RC error %d\n", result);
+        setup = NULL;
     }
 }
 
