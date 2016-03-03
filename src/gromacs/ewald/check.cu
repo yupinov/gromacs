@@ -11,9 +11,9 @@
 
 struct gpu_events
 {
-  bool created;
-  cudaEvent_t event_start, event_stop;
-  gpu_events() : created(false) { }
+    bool created;
+    cudaEvent_t event_start, event_stop;
+    gpu_events() : created(false) { }
 };
 
 gpu_events gpu_events_interpol_idx;
@@ -26,23 +26,25 @@ gpu_events gpu_events_gather;
 
 void events_record_start(gpu_events &events)
 {
-  if (!events.created) {
-    cudaEventCreate(&events.event_start);
-    cudaEventCreate(&events.event_stop);
-    events.created = true;
-  }
-  cudaEventRecord(events.event_start);
+    if (!events.created)
+    {
+        cudaEventCreate(&events.event_start);
+        cudaEventCreate(&events.event_stop);
+        events.created = true;
+    }
+    cudaEventRecord(events.event_start);
 }
 
-void events_record_stop(gpu_events &events, int ewcsn, int j) {
-  cudaEventRecord(events.event_stop);
-  cudaEventSynchronize(events.event_stop);
-  float milliseconds = 0;
-  cudaEventElapsedTime(&milliseconds, events.event_start, events.event_stop);
+void events_record_stop(gpu_events &events, int ewcsn, int j)
+{
+    cudaEventRecord(events.event_stop);
+    cudaEventSynchronize(events.event_stop);
+    float milliseconds = 0;
+    cudaEventElapsedTime(&milliseconds, events.event_start, events.event_stop);
 
-  int idx = ewcsn - ewcsPME_INTERPOL_IDX;
-  gmx_wallclock_gpu_pme.pme_time[idx][j].t += milliseconds;
-  ++gmx_wallclock_gpu_pme.pme_time[idx][j].c;
+    int idx = ewcsn - ewcsPME_INTERPOL_IDX;
+    gmx_wallclock_gpu_pme.pme_time[idx][j].t += milliseconds;
+    ++gmx_wallclock_gpu_pme.pme_time[idx][j].c;
 }
 #endif
 
