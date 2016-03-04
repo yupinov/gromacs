@@ -89,7 +89,7 @@ static tMPI::mutex print_mutex; //yupinov
 
 //template <int order, int N, int K, int D>
 // K is particles per block?
-template <int order, int particlesPerBlock>
+template <const int order, const int particlesPerBlock>
 __global__ void spread3_kernel
 (int nx, int ny, int nz,
  int start_ix, int start_iy, int start_iz,
@@ -130,7 +130,7 @@ __global__ void spread3_kernel
     __shared__ real dtheta_shared[3 * order * particlesPerBlock];
     //printf("%d %d %d %d %d %d\n", blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z);
 
-    // so I have particlesPerBlock to process with warp_size threads?
+    // so I have particlesPerBlock to process with warp_size threads - wat
 
     int ithx, index_x, ithy, index_xy, ithz, index_xyz;
     real valx, valxy;
@@ -168,7 +168,7 @@ __global__ void spread3_kernel
 
         // CALCSPLINE
 
-        if (coefficient[globalParticleIndex] != 0.0) //yupinov weak
+        if (coefficient[globalParticleIndex] != 0.0) //yupinov how bad is this conditional?
         {
             real dr, div;
             real data[order];
@@ -177,7 +177,7 @@ __global__ void spread3_kernel
             for (int j = 0; j < DIM; j++)
             {
                 //dr  = fractx[i*DIM + j];
-                dr = j == 0 ? fxptr[localParticleIndex] : (j == 1 ? fyptr[localParticleIndex] : fzptr[localParticleIndex]);
+                dr = (j == 0) ? fxptr[localParticleIndex] : ((j == 1) ? fyptr[localParticleIndex] : fzptr[localParticleIndex]);
 
                 /* dr is relative offset from lower cell limit */
                 data[order - 1] = 0;
@@ -197,7 +197,7 @@ __global__ void spread3_kernel
                     data[0] = div * (1 - dr) * data[0];
                 }
                 /* differentiate */
-                int thetaOffset = (j * particlesPerBlock + localParticleIndex) * order;
+                const int thetaOffset = (j * particlesPerBlock + localParticleIndex) * order;
                 dtheta_shared[thetaOffset] = -data[0];
 
                 _Pragma("unroll")
@@ -226,8 +226,8 @@ __global__ void spread3_kernel
             _Pragma("unroll")
             for (int j = 0; j < DIM; j++)
             {
-                int thetaOffset = (j * particlesPerBlock + localParticleIndex) * order;
-                int thetaGlobalOffset = (j * n + globalParticleIndex) * order;
+                const int thetaOffset = (j * particlesPerBlock + localParticleIndex) * order;
+                const int thetaGlobalOffset = (j * n + globalParticleIndex) * order;
                 _Pragma("unroll")
                 for (int z = 0; z < order; z++)
                 {
@@ -242,13 +242,13 @@ __global__ void spread3_kernel
             // SPREAD
 
 
-            int i0   = idxxptr[localParticleIndex] - offx; //?
-            int j0   = idxyptr[localParticleIndex] - offy;
-            int k0   = idxzptr[localParticleIndex] - offz;
+            const int i0  = idxxptr[localParticleIndex] - offx; //?
+            const int j0  = idxyptr[localParticleIndex] - offy;
+            const int k0  = idxzptr[localParticleIndex] - offz;
 
-            real *thx = theta_shared + (0 * particlesPerBlock + localParticleIndex) * order;
-            real *thy = theta_shared + (1 * particlesPerBlock + localParticleIndex) * order;
-            real *thz = theta_shared + (2 * particlesPerBlock + localParticleIndex) * order;
+            const real *thx = theta_shared + (0 * particlesPerBlock + localParticleIndex) * order;
+            const real *thy = theta_shared + (1 * particlesPerBlock + localParticleIndex) * order;
+            const real *thz = theta_shared + (2 * particlesPerBlock + localParticleIndex) * order;
 
             // switch (order)
             DO_BSPLINE(order);
