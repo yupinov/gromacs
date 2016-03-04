@@ -8,8 +8,30 @@
 void pme_gpu_init(gmx_pme_gpu_t **pme)
 {
     *pme = new gmx_pme_gpu_t;
-    cudaError_t stat = cudaStreamCreate(&(*pme)->pmeStream); //yupinov dealloc@
+    cudaError_t stat;
+//yupinov dealloc@
+
+// there are 3 situations (all tested with a single rank):
+// no priority support => big hole between nbnxn and spread3
+// creating PME stream with no priority => small hole, only memcpy hidden, memset is synced (?)
+// creating PME steram with highest priority (out of 2, lol) => actually works in parallel
+// but still, a lot of spread D2H even in the last case....
+// in short, priority doesn't hurt, but only shows up on TEsla/... (compute >= 35)
+#if GMX_CUDA_VERSION >= 5050
+    int highest_priority;
+    int lowest_priority;
+    stat = cudaDeviceGetStreamPriorityRange(&lowest_priority, &highest_priority);
+    CU_RET_ERR(stat, "cudaDeviceGetStreamPriorityRange failed");
+    stat = cudaStreamCreateWithPriority(&(*pme)->pmeStream,
+                                            //cudaStreamNonBlocking,
+                                            cudaStreamDefault, //yupinov why not ?
+                                            highest_priority);
+    //yupinov: fighting with nbnxn non-local for highest priority - check on MPI!
+    CU_RET_ERR(stat, "cudaStreamCreateWithPriority on PME stream failed");
+#else
+    stat = cudaStreamCreate(&(*pme)->pmeStream);
     CU_RET_ERR(stat, "PME cudaStreamCreate error");
+#endif
 }
 
 
