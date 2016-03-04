@@ -349,7 +349,7 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     real *grid_d = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_CUDA);
     stat = cudaMemsetAsync(grid_d, 0, size_grid, s); //yupinov
-    CU_RET_ERR(stat, "cudaMemset spread error");
+    CU_RET_ERR(stat, "cudaMemsetAsync spread error");
     #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_spread);
     #endif
