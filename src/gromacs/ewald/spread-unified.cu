@@ -95,11 +95,11 @@ __global__ void spread3_kernel
  int start_ix, int start_iy, int start_iz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
  //int *g2tx, int *g2ty, int *g2tz,
- real *fshx, real *fshy,
- int *nnx, int *nny, int *nnz,
- real *xptr, real *yptr, real *zptr,
- real *coefficient,
- real *grid, real *theta, real *dtheta, int *idx, //yupinov
+ const real * __restrict__ fshx, const real * __restrict__ fshy,
+ const int * __restrict__ nnx, const int * __restrict__ nny, const int * __restrict__ nnz,
+ const real * __restrict__ xptr, const real * __restrict__ yptr, const real * __restrict__ zptr,
+ const real * __restrict__ coefficient,
+ real * __restrict__ grid, real * __restrict__ theta, real * __restrict__ dtheta, int * __restrict__ idx, //yupinov
  int n)
 {
 /*
