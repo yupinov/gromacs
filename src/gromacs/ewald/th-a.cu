@@ -8,7 +8,7 @@
 void pme_gpu_init(gmx_pme_gpu_t **pme)
 {
     *pme = new gmx_pme_gpu_t;
-    cudaError_t stat = cudaStreamCreate(&(*pme)->pmeStream);
+    cudaError_t stat = cudaStreamCreate(&(*pme)->pmeStream); //yupinov dealloc@
     CU_RET_ERR(stat, "PME cudaStreamCreate error");
 }
 

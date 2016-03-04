@@ -126,7 +126,6 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     int n = iyz1 - iyz0;
     int n_blocks = (n + block_size - 1) / block_size;
 
-    cudaError_t stat;
     //cudaError_t stat = cudaMemcpyToSymbol( sqrt_M_PI_d, &sqrt_M_PI, sizeof(real));  //yupinov - this is an overkill!
     //CU_RET_ERR(stat, "solve cudaMemcpyToSymbol");
     //printf("local_size[XX] %d local_ndata[XX] %d\n", local_size[XX], local_ndata[XX]);
@@ -172,8 +171,7 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
 
     //if (!gridIsOnDevice) //yupinov?
     {
-        stat = cudaMemcpy(grid, workingGrid, grid_size, cudaMemcpyDeviceToHost);
-        CU_RET_ERR(stat, "cudaMemcpy solve_pme_yzx");
+        th_cpy(grid, workingGrid, grid_size, TH_LOC_HOST, s);
     }
 
     if (bEnerVir)
