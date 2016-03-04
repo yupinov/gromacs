@@ -153,7 +153,7 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     }
     //fprintf(stderr, "grid copy after\n");
 #ifdef DEBUG_PME_TIMINGS_GPU
-    events_record_start(gpu_events_solve);
+    events_record_start(gpu_events_solve, s);
 #endif
     solve_pme_yzx_iyz_loop_kernel<<<n_blocks, block_size, 0, s>>>
       (iyz0, iyz1, local_ndata[ZZ], local_ndata[XX],
@@ -166,7 +166,7 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
        energy_d, virial_d);
     CU_LAUNCH_ERR("solve_pme_yzx_iyz_loop_kernel");
 #ifdef DEBUG_PME_TIMINGS_GPU
-    events_record_stop(gpu_events_solve, ewcsPME_SOLVE, 0);
+    events_record_stop(gpu_events_solve, s, ewcsPME_SOLVE, 0);
 #endif
 
     //if (!gridIsOnDevice) //yupinov?
@@ -489,7 +489,7 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
     for (int ig = 0; ig < MAGIC_6; ++ig)
         th_cpy(grid_d + ig * grid_n, grid[ig], grid_size, TH_LOC_CUDA, s);
 #ifdef DEBUG_PME_TIMINGS_GPU
-    events_record_start(gpu_events_solve);
+    events_record_start(gpu_events_solve, s);
 #endif
     solve_pme_lj_yzx_iyz_loop_kernel<<<n_blocks, block_size, 0, s>>>
       (iyz0, iyz1, local_ndata[ZZ], local_ndata[XX],
@@ -503,7 +503,7 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
        energy_d, virial_d);
     CU_LAUNCH_ERR("solve_pme_lj_yzx_iyz_loop_kernel");
 #ifdef DEBUG_PME_TIMINGS_GPU
-    events_record_stop(gpu_events_solve, ewcsPME_SOLVE, 0);
+    events_record_stop(gpu_events_solve, s, ewcsPME_SOLVE, 0);
 #endif
     for (int ig = 0; ig < MAGIC_6; ++ig)
         th_cpy(grid[ig], grid_d + ig * grid_n, grid_size, TH_LOC_HOST, s);

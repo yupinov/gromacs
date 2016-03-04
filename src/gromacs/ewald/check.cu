@@ -24,7 +24,7 @@ gpu_events gpu_events_solve;
 gpu_events gpu_events_fft_c2r;
 gpu_events gpu_events_gather;
 
-void events_record_start(gpu_events &events)
+void events_record_start(gpu_events &events, cudaStream_t s)
 {
     if (!events.created)
     {
@@ -32,12 +32,12 @@ void events_record_start(gpu_events &events)
         cudaEventCreate(&events.event_stop);
         events.created = true;
     }
-    cudaEventRecord(events.event_start);
+    cudaEventRecord(events.event_start, s);
 }
 
-void events_record_stop(gpu_events &events, int ewcsn, int j)
+void events_record_stop(gpu_events &events, cudaStream_t s, int ewcsn, int j)
 {
-    cudaEventRecord(events.event_stop);
+    cudaEventRecord(events.event_stop, s);
     cudaEventSynchronize(events.event_stop);
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, events.event_start, events.event_stop);

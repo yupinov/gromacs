@@ -250,7 +250,7 @@ void gather_f_bsplines_gpu_2
     int block_size = 2 * warp_size;
     int n_blocks = (n + block_size - 1) / block_size;
 #ifdef DEBUG_PME_TIMINGS_GPU
-    events_record_start(gpu_events_gather);
+    events_record_start(gpu_events_gather, s);
 #endif
     gather_f_bsplines_kernel<<<n_blocks, block_size, 0, s>>>
       (grid_d,
@@ -263,7 +263,7 @@ void gather_f_bsplines_gpu_2
        i0_d, j0_d, k0_d);
     CU_LAUNCH_ERR("gather_f_bsplines_kernel");
 #ifdef DEBUG_PME_TIMINGS_GPU
-    events_record_stop(gpu_events_gather, ewcsPME_GATHER, 0);
+    events_record_stop(gpu_events_gather, s, ewcsPME_GATHER, 0);
 #endif
 
     th_cpy(atc_f_compacted, atc_f_d, size_forces, TH_LOC_HOST, s);
