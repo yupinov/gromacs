@@ -307,21 +307,16 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     // FSH
     real *fshx_d = th_a(TH_ID_FSH, thread, 5 * (nx + ny) * sizeof(real), TH_LOC_CUDA);
     real *fshy_d = fshx_d + 5 * nx;
-    stat = cudaMemcpy(fshx_d, pme->fshx, 5 * nx * sizeof(real), cudaMemcpyHostToDevice);
-    CU_RET_ERR(stat, "cudaMemcpy spread error");
-    stat = cudaMemcpy(fshy_d, pme->fshy, 5 * ny * sizeof(real), cudaMemcpyHostToDevice);
-    CU_RET_ERR(stat, "cudaMemcpy spread error");
+    th_cpy(fshx_d, pme->fshx, 5 * nx * sizeof(real), TH_LOC_CUDA, s);
+    th_cpy(fshy_d, pme->fshy, 5 * ny * sizeof(real), TH_LOC_CUDA, s);
 
     // NN
     int *nnx_d = th_i(TH_ID_NN, thread, 5 * (nx + ny + nz) * sizeof(int), TH_LOC_CUDA);
     int *nny_d = nnx_d + 5 * nx;
     int *nnz_d = nny_d + 5 * ny;
-    stat = cudaMemcpy(nnx_d, pme->nnx, 5 * nx * sizeof(int), cudaMemcpyHostToDevice);
-    CU_RET_ERR(stat, "cudaMemcpy spread error");
-    stat = cudaMemcpy(nny_d, pme->nny, 5 * ny * sizeof(int), cudaMemcpyHostToDevice);
-    CU_RET_ERR(stat, "cudaMemcpy spread error");
-    stat = cudaMemcpy(nnz_d, pme->nnz, 5 * nz * sizeof(int), cudaMemcpyHostToDevice);
-    CU_RET_ERR(stat, "cudaMemcpy spread error");
+    th_cpy(nnx_d, pme->nnx, 5 * nx * sizeof(int), TH_LOC_CUDA, s);
+    th_cpy(nny_d, pme->nny, 5 * ny * sizeof(int), TH_LOC_CUDA, s);
+    th_cpy(nnz_d, pme->nnz, 5 * nz * sizeof(int), TH_LOC_CUDA, s);
 
     // XPTR
     real *xptr_h = th_a(TH_ID_XPTR, thread, 3 * n_blocked * sizeof(real), TH_LOC_HOST);
@@ -338,24 +333,22 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
           xptr_h[iz++] = xptr[ZZ];
         }
     }
-    stat = cudaMemcpy(xptr_d, xptr_h, 3 * n_blocked * sizeof(real), cudaMemcpyHostToDevice);
-    CU_RET_ERR(stat, "cudaMemcpy spread error");
+    th_cpy(xptr_d, xptr_h, 3 * n_blocked * sizeof(real), TH_LOC_CUDA, s);
 
     // COEFFICIENT
-    real *coefficient_d = th_a(TH_ID_COEFFICIENT, thread, n * sizeof(real), TH_LOC_CUDA); //yupinov compact here as weel?
-    stat = cudaMemcpy(coefficient_d, atc->coefficient, n * sizeof(real), cudaMemcpyHostToDevice);
-    CU_RET_ERR(stat, "cudaMemcpy spread error");
+    real *coefficient_d = th_a_cpy(TH_ID_COEFFICIENT, thread, atc->coefficient, n * sizeof(real), TH_LOC_CUDA, s); //yupinov compact here as weel?
 
     // GRID
-
+    /*
     for (int i = 0; i < ndatatot; i++)
     {
       // FIX clear grid on device instead
       grid[i] = 0;
     }
+    */
 
     real *grid_d = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_CUDA);
-    stat = cudaMemset(grid_d, 0, size_grid);
+    stat = cudaMemsetAsync(grid_d, 0, size_grid, s); //yupinov
     CU_RET_ERR(stat, "cudaMemset spread error");
     #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_spread);
@@ -404,20 +397,13 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 #ifdef DEBUG_PME_TIMINGS_GPU
   events_record_stop(gpu_events_spread, ewcsPME_SPREAD, 3);
 #endif
-  stat = cudaMemcpy(grid, grid_d, size_grid, cudaMemcpyDeviceToHost);
-  CU_RET_ERR(stat, "cudaMemcpy spread error");
+  th_cpy(grid, grid_d, size_grid, TH_LOC_HOST, s);
   for (int j = 0; j < DIM; ++j)
   {
-      stat = cudaMemcpy(atc->spline[thread].theta[j], theta_d + j * n * order, size_order, cudaMemcpyDeviceToHost);
-      CU_RET_ERR(stat, "cudaMemcpy spread error");
+      th_cpy(atc->spline[thread].dtheta[j], dtheta_d + j * n * order, size_order, TH_LOC_HOST, s);
+      th_cpy(atc->spline[thread].theta[j], theta_d + j * n * order, size_order, TH_LOC_HOST, s);
   }
-  for (int j = 0; j < DIM; ++j)
-  {
-      stat = cudaMemcpy(atc->spline[thread].dtheta[j], dtheta_d + j * n * order, size_order, cudaMemcpyDeviceToHost);
-      CU_RET_ERR(stat, "cudaMemcpy spread error");
-  }
-  stat = cudaMemcpy(atc->idx, idx_d, idx_size, cudaMemcpyDeviceToHost);
-  CU_RET_ERR(stat, "cudaMemcpy spread error");
+  th_cpy(atc->idx, idx_d, idx_size, TH_LOC_HOST, s);
 //yupinov free, keep allocated
   /*
   cudaFree(theta_d);

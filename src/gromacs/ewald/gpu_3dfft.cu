@@ -28,6 +28,8 @@ extern gpu_events gpu_events_fft_c2r;
 #include "pme-internal.h" //yupinov pme passed everywhere
 #include "pme-cuda.h"
 
+#include "th-a.cuh"
+
 
 struct gmx_parallel_3dfft_gpu
 {
@@ -60,7 +62,6 @@ gmx_bool                  bReproducible,
 int                       nthreads,
 gmx_pme_t *pme)
 {
-    cudaError_t stat;
     gmx_parallel_3dfft_gpu_t setup = new gmx_parallel_3dfft_gpu();
 
     //yupinov FIXME: this copies the already setup pointer, to check them after execute
@@ -87,7 +88,7 @@ gmx_pme_t *pme)
 
     int x = setup->n[0], y = setup->n[1], z = setup->n[2];
 
-    stat = cudaMalloc((void **) &setup->rdata, x * y * (z / 2 + 1) * 2 * sizeof(cufftReal));
+    cudaError_t stat = cudaMalloc((void **) &setup->rdata, x * y * (z / 2 + 1) * 2 * sizeof(cufftReal));
     CU_RET_ERR(stat, "fft init cudaMalloc error");
     stat = cudaMalloc((void **) &setup->cdata, x * y * (z / 2 + 1) * 2 * sizeof(cufftComplex)); //yupinov: there are 2 complex planes here - for transposing
     CU_RET_ERR(stat, "fft init cudaMalloc error"); //yupinov check all cuFFT errors
@@ -251,7 +252,7 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
                                    gmx_pme_t *pme,
                                    t_complex **complexFFTGridSavedOnDevice)
 {
-    cudaError_t stat;
+    cudaStream_t s = pme->gpu->pmeStream;
 
     //fprintf(stderr, "3dfft_execute_gpu\n");
     gmx_parallel_3dfft_gpu_t setup = pfft_setup;
@@ -278,9 +279,7 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {
         //yupinov hack for padded data
-
-        stat = cudaMemcpy(setup->rdata, setup->real_data, x * y * (z / 2 + 1) * 2 * sizeof(real), cudaMemcpyHostToDevice);
-        CU_RET_ERR(stat, "cudaMemcpy R2C error");
+        th_cpy(setup->rdata, setup->real_data, x * y * (z / 2 + 1) * 2 * sizeof(real), TH_LOC_CUDA, s);
         /*
         if (thread == 0) // redundant - called in thread 0 already though
         {
@@ -315,8 +314,7 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     else
     {
         //yupinov no second transfer
-        stat = cudaMemcpy(setup->cdata + x * y * (z / 2 + 1), setup->complex_data, x * y * (z / 2 + 1) * sizeof(t_complex), cudaMemcpyHostToDevice);
-        CU_RET_ERR(stat, "cudaMemcpy C2R error");
+        th_cpy(setup->cdata + x * y * (z / 2 + 1), setup->complex_data, x * y * (z / 2 + 1) * sizeof(t_complex), TH_LOC_CUDA, s);
         // FIXME: y major, z middle, x minor or continuous ->
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_start(gpu_events_fft_c2r);
@@ -334,10 +332,7 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     {
         cufftComplex *complexFFTGrid = setup->cdata + x * y * (z / 2 + 1);
         if (!complexFFTGridSavedOnDevice)
-        {
-            stat = cudaMemcpy(setup->complex_data, complexFFTGrid, x * y * (z / 2 + 1) * sizeof(t_complex), cudaMemcpyDeviceToHost);
-            CU_RET_ERR(stat, "cudaMemcpy R2C error");
-        }
+            th_cpy(setup->complex_data, complexFFTGrid, x * y * (z / 2 + 1) * sizeof(t_complex), TH_LOC_HOST, s);
         else
             *complexFFTGridSavedOnDevice = (t_complex *)complexFFTGrid;
     }
@@ -345,8 +340,7 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     {
         //yupinov hack for padded data
 
-        stat = cudaMemcpy(setup->real_data, setup->rdata, x * y * (z / 2 + 1) * 2 * sizeof(real), cudaMemcpyDeviceToHost);
-        CU_RET_ERR(stat, "cudaMemcpy C2R error");
+        th_cpy(setup->real_data, setup->rdata, x * y * (z / 2 + 1) * 2 * sizeof(real), TH_LOC_HOST, s);
 
         /*
         if (thread == 0) // redundant - called in thread 0 already though
