@@ -300,7 +300,7 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
 
 
         #ifdef DEBUG_PME_TIMINGS_GPU
-        events_record_start(gpu_events_fft_r2c);
+        events_record_start(gpu_events_fft_r2c, s);
         #endif
         cufftResult_t result = cufftExecR2C(setup->planR2C, setup->rdata, setup->cdata);
         if (result)
@@ -308,7 +308,7 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
         // FIXME: -> y major, z middle, x minor or continuous
         transpose_xyz_yzx(x, y, z, setup->cdata, true, pme);
         #ifdef DEBUG_PME_TIMINGS_GPU
-        events_record_stop(gpu_events_fft_r2c, ewcsPME_FFT_R2C, 0);
+        events_record_stop(gpu_events_fft_r2c, s, ewcsPME_FFT_R2C, 0);
         #endif
     }
     else
@@ -317,14 +317,14 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
         th_cpy(setup->cdata + x * y * (z / 2 + 1), setup->complex_data, x * y * (z / 2 + 1) * sizeof(t_complex), TH_LOC_CUDA, s);
         // FIXME: y major, z middle, x minor or continuous ->
         #ifdef DEBUG_PME_TIMINGS_GPU
-        events_record_start(gpu_events_fft_c2r);
+        events_record_start(gpu_events_fft_c2r, s);
         #endif
         transpose_xyz_yzx(x, y, z, setup->cdata, false, pme);
         cufftResult_t result = cufftExecC2R(setup->planC2R, setup->cdata, setup->rdata);
         if (result)
             fprintf(stderr, "cufft C2R error %d\n", result);
         #ifdef DEBUG_PME_TIMINGS_GPU
-        events_record_stop(gpu_events_fft_c2r, ewcsPME_FFT_C2R, 0);
+        events_record_stop(gpu_events_fft_c2r, s, ewcsPME_FFT_C2R, 0);
         #endif
     }
 
