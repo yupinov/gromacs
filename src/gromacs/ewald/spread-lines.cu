@@ -72,25 +72,25 @@ static tMPI::mutex print_mutex; //yupinov
     {                                                             \
         index_x = (i0 + ithx) * pny * pnz;                    \
         valx = coefficient[globalParticleIndex] * thx[ithx];                      \
-        _Pragma("unroll")                                                         \
-        for (ithy = 0; (ithy < order); ithy++)                \
+        /*_Pragma("unroll")                                                         \
+        for (ithy = 0; (ithy < order); ithy++)            */    \
         {                                                         \
             valxy    = valx*thy[ithy];                       \
             index_xy = index_x+(j0+ithy)*pnz;                 \
-             _Pragma("unroll")                                                     \
-            for (ithz = 0; (ithz < order); ithz++)            \
+            /* _Pragma("unroll")                                                     \
+            for (ithz = 0; (ithz < order); ithz++) */           \
             {                                                     \
                 index_xyz        = index_xy+(k0+ithz);        \
+                /*printf(" INDEX %d %d/%d %d/%d\n ", (i0 + ithx), (j0+ithy), pny, (k0+ithz), pnz);*/\
                 atomicAdd(grid + index_xyz, valxy*thz[ithz]);    \
             }                                                     \
         }                                                         \
     }
 
+//yupinov is the grid contiguous in x or in z?
 
-//template <int order, int N, int K, int D>
-// K is particles per block?
 template <const int order, const int particlesPerBlock>
-__global__ void spread3_kernel
+__global__ void spread_kernel_lines
 (int nx, int ny, int nz,
  int start_ix, int start_iy, int start_iz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
@@ -117,8 +117,6 @@ __global__ void spread3_kernel
     const int offx = 0, offy = 0, offz = 0;
     const int pny = ny + order - 1, pnz = nz + order - 1; //yupinov fix me!
 
-    //const int B = K / D / order / order;
-
     __shared__ int idxxptr[particlesPerBlock];
     __shared__ int idxyptr[particlesPerBlock];
     __shared__ int idxzptr[particlesPerBlock];
@@ -130,15 +128,13 @@ __global__ void spread3_kernel
     __shared__ real dtheta_shared[3 * order * particlesPerBlock];
     //printf("%d %d %d %d %d %d\n", blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z);
 
-    // so I have particlesPerBlock to process with warp_size threads - wat
-
     int ithx, index_x, ithy, index_xy, ithz, index_xyz;
     real valx, valxy;
 
+    int localParticleIndex = threadIdx.x;
 
-    int localParticleIndex = threadIdx.x;  //yupinov
     int globalParticleIndex = blockIdx.x * particlesPerBlock + localParticleIndex;
-    if (globalParticleIndex < n)
+    if ((globalParticleIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
     //yupinov - this is a single particle work!
         //yup bDoSplines!
     {
@@ -166,9 +162,14 @@ __global__ void spread3_kernel
         idxyptr[localParticleIndex] = nny[tiy];
         idxzptr[localParticleIndex] = nnz[tiz];
 
+
+
         idx[globalParticleIndex * DIM + 0] = idxxptr[localParticleIndex];
         idx[globalParticleIndex * DIM + 1] = idxyptr[localParticleIndex];
         idx[globalParticleIndex * DIM + 2] = idxzptr[localParticleIndex];
+
+        //printf("set %d %d %d %d\n", globalParticleIndex, idxxptr[localParticleIndex], idxyptr[localParticleIndex], idxzptr[localParticleIndex]);
+
 
         // CALCSPLINE
 
@@ -181,6 +182,7 @@ __global__ void spread3_kernel
             for (int j = 0; j < DIM; j++)
             {
                 //dr  = fractx[i*DIM + j];
+
                 dr = (j == 0) ? fxptr[localParticleIndex] : ((j == 1) ? fyptr[localParticleIndex] : fzptr[localParticleIndex]);
 
                 /* dr is relative offset from lower cell limit */
@@ -225,7 +227,6 @@ __global__ void spread3_kernel
                     theta_shared[thetaOffset + k] = data[k];
                 }
             }
-
             //yupinov store to global
             _Pragma("unroll")
             for (int j = 0; j < DIM; j++)
@@ -239,26 +240,35 @@ __global__ void spread3_kernel
                     dtheta[thetaGlobalOffset + z] = dtheta_shared[thetaOffset + z];
                 }
             }
-
-            // SPREAD
-
-
-            const int i0  = idxxptr[localParticleIndex] - offx; //?
-            const int j0  = idxyptr[localParticleIndex] - offy;
-            const int k0  = idxzptr[localParticleIndex] - offz;
-
-            const real *thx = theta_shared + (0 * particlesPerBlock + localParticleIndex) * order;
-            const real *thy = theta_shared + (1 * particlesPerBlock + localParticleIndex) * order;
-            const real *thz = theta_shared + (2 * particlesPerBlock + localParticleIndex) * order;
-
-            // switch (order)
-            DO_BSPLINE(order);
         }
+    }
+    __syncthreads(); //yupinov do we need it?
+
+    // SPREAD
+
+    // spline Y/Z coordinates
+    ithy = threadIdx.y;
+    ithz = threadIdx.z;
+
+    //globalParticleIndex
+    if ((globalParticleIndex < n) && (coefficient[globalParticleIndex] != 0.0)) //yupinov store checks
+    {
+        const int i0  = idxxptr[localParticleIndex] - offx; //?
+        const int j0  = idxyptr[localParticleIndex] - offy;
+        const int k0  = idxzptr[localParticleIndex] - offz;
+
+        //printf ("%d %d %d %d %d %d %d\n", blockIdx.x, threadIdx.x, threadIdx.y, threadIdx.z, i0, j0, k0);
+        const real *thx = theta_shared + (0 * particlesPerBlock + localParticleIndex) * order;
+        const real *thy = theta_shared + (1 * particlesPerBlock + localParticleIndex) * order;
+        const real *thz = theta_shared + (2 * particlesPerBlock + localParticleIndex) * order;
+
+        // switch (order)
+        DO_BSPLINE(order);
     }
 }
 
 
-void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
+void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
          int grid_index,
          pmegrid_t *pmegrid)//yupinov, gmx_bool bCalcSplines, gmx_bool bSpread, gmx_bool bDoSplines)
 //yupinov templating!
@@ -361,21 +371,25 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     dim3 dimGrid(n_blocks, 1, 1);
     dim3 dimBlock(order, order, D);
     */
-    const int particlesPerBlock = warp_size;
-    //const int D = 2;
-    dim3 nBlocks((n + particlesPerBlock - 1) / particlesPerBlock, 1, 1);
+
+    // in spread-unified each kernel thread works on one particle: calculates its splines, spreads it to [order^3] gridpoints
+    // here each kernel thread works on [order] contiguous x grid points, so we multiply the total number of threads by [order^2]
+    // so only [1/order^2] of all kernel threads works on particle splines -> does it make sense to split it like this
+
+
+    //const int particlesPerBlock = warp_size;
+    const int blockSize = warp_size;
+    const int particlesPerBlock = blockSize / order / order; //was 32, now 2 for order==4 ->round up=>
+    //this is the number of particles for SPREAD, btw
+    dim3 nBlocks((n + blockSize - 1) / blockSize * order * order, 1, 1);
     //dim3 dimBlock(order, order, D); //each block has 32 threads now to hand 32 particlesPerBlock
-    dim3 dimBlock(particlesPerBlock, 1, 1); //yupinov heavy
+    //dim3 dimBlock(particlesPerBlock, 1, 1);
+    dim3 dimBlock(particlesPerBlock, order, order);
     switch (order)
     {
       case 4:
-          /*
-    const int O = 4;
-    const int B = 1;
-    const int K = B * D * O * O;
-    */
-          //spread3_kernel<4, N, K, D><<<dimGrid, dimBlock>>>
-          spread3_kernel<4, particlesPerBlock><<<nBlocks, dimBlock, 0, s>>>
+          const int particlesPerBlock = blockSize / 4 / 4; //was 32, now 2 for order==4
+          spread_kernel_lines<4, particlesPerBlock><<<nBlocks, dimBlock, 0, s>>>
                                                                     (nx, ny, nz,
                                                                      pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
                                                                      pme->recipbox[XX][XX],
@@ -391,9 +405,9 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                                                                      coefficient_d,
                                                                      grid_d, theta_d, dtheta_d, idx_d,
                                                                      n);
-          //yupinov orders
+          //yupinov different orders
     }
-    CU_LAUNCH_ERR("spread3_kernel");
+    CU_LAUNCH_ERR("spread_kernel");
 
 #ifdef DEBUG_PME_TIMINGS_GPU
   events_record_stop(gpu_events_spread, s, ewcsPME_SPREAD, 3);

@@ -37,6 +37,7 @@ extern gpu_events gpu_events_gather;
                                                \
             for (int ithz = 0; (ithz < order); ithz++)      \
             {                                      \
+                /*printf(" INDEX %d %d %d\n", (i0[i] + ithx), (j0[i]+ithy), (k0[i]+ithz));*/\
                 real gval  = grid[index_xy+(k0[i]+ithz)];  \
                 fxy1 += thz[iorder+ithz]*gval;            \
                 fz1  += dthz[iorder+ithz]*gval;           \
@@ -57,7 +58,8 @@ static __global__ void gather_f_bsplines_kernel
 {
   /* sum forces for local particles */
   int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i < n) {
+  if (i < n)
+  {
     real coefficient = coefficient_v[i];
     real fx     = 0;
     real fy     = 0;
@@ -77,8 +79,7 @@ static __global__ void gather_f_bsplines_kernel
       DO_FSPLINE(order);
       break;
     }
-    /*if (i < 10)
-      printf("GPU gather_f_bsplines after DO_FSPLINE %d %f,%f,%f\n", i, (double)fx, (double)fy, (double)fz);*/
+
 
     atc_f[idim + XX] += -coefficient*( fx*nx*rxx );
     atc_f[idim + YY] += -coefficient*( fx*nx*ryx + fy*ny*ryy );
