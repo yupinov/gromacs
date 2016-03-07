@@ -72,12 +72,12 @@ static tMPI::mutex print_mutex; //yupinov
     {                                                             \
         index_x = (i0 + ithx) * pny * pnz;                    \
         valx = coefficient[globalParticleIndex] * thx[ithx];                      \
-        /*_Pragma("unroll")                                                         \
+        /*#pragma unroll                                                        \
         for (ithy = 0; (ithy < order); ithy++)            */    \
         {                                                         \
             valxy    = valx*thy[ithy];                       \
             index_xy = index_x+(j0+ithy)*pnz;                 \
-            /* _Pragma("unroll")                                                     \
+            /* #pragma unroll                                                    \
             for (ithz = 0; (ithz < order); ithz++) */           \
             {                                                     \
                 index_xyz        = index_xy+(k0+ithz);        \
@@ -142,9 +142,9 @@ __global__ void spread_kernel_lines
 
         /* Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes */
         real tx, ty, tz;
-        tx = nx * ( xptr[globalParticleIndex] * rxx + yptr[globalParticleIndex] * ryx + zptr[globalParticleIndex] * rzx + 2.0 );
-        ty = ny * (                                   yptr[globalParticleIndex] * ryy + zptr[globalParticleIndex] * rzy + 2.0 );
-        tz = nz * (                                                                     zptr[globalParticleIndex] * rzz + 2.0 );
+        tx = nx * ( xptr[globalParticleIndex] * rxx + yptr[globalParticleIndex] * ryx + zptr[globalParticleIndex] * rzx + 2.0f );
+        ty = ny * (                                   yptr[globalParticleIndex] * ryy + zptr[globalParticleIndex] * rzy + 2.0f );
+        tz = nz * (                                                                     zptr[globalParticleIndex] * rzz + 2.0f );
 
         int tix, tiy, tiz;
         tix = (int)(tx);
@@ -173,12 +173,12 @@ __global__ void spread_kernel_lines
 
         // CALCSPLINE
 
-        if (coefficient[globalParticleIndex] != 0.0) //yupinov how bad is this conditional?
+        if (coefficient[globalParticleIndex] != 0.0f) //yupinov how bad is this conditional?
         {
             real dr, div;
             real data[order];
 
-            _Pragma("unroll")
+#pragma unroll
             for (int j = 0; j < DIM; j++)
             {
                 //dr  = fractx[i*DIM + j];
@@ -190,12 +190,12 @@ __global__ void spread_kernel_lines
                 data[1]         = dr;
                 data[0]         = 1 - dr;
 
-                _Pragma("unroll")
+#pragma unroll
                 for (int k = 3; k < order; k++)
                 {
-                    div         = 1.0 / (k - 1.0);
+                    div         = 1.0f / (k - 1.0f);
                     data[k - 1] = div * dr * data[k - 2];
-                    _Pragma("unroll")
+                    #pragma unroll
                     for (int l = 1; l < (k - 1); l++)
                     {
                         data[k - l - 1] = div * ((dr + l) * data[k - l - 2] + (k - l - dr) * data[k - l - 1]);
@@ -206,34 +206,34 @@ __global__ void spread_kernel_lines
                 const int thetaOffset = (j * particlesPerBlock + localParticleIndex) * order;
                 dtheta_shared[thetaOffset] = -data[0];
 
-                _Pragma("unroll")
+                #pragma unroll
                 for (int k = 1; k < order; k++)
                 {
                     dtheta_shared[thetaOffset + k] = data[k - 1] - data[k];
                 }
 
-                div             = 1.0 / (order - 1);
+                div             = 1.0f / (order - 1);
                 data[order - 1] = div * dr * data[order - 2];
-                _Pragma("unroll")
+#pragma unroll
                 for (int l = 1; l < (order - 1); l++)
                 {
                     data[order - l - 1] = div * ((dr + l) * data[order - l - 2] + (order - l - dr) * data[order - l - 1]);
                 }
                 data[0] = div * (1 - dr) * data[0];
 
-                _Pragma("unroll")
+#pragma unroll
                 for (int k = 0; k < order; k++)
                 {
                     theta_shared[thetaOffset + k] = data[k];
                 }
             }
             //yupinov store to global
-            _Pragma("unroll")
+#pragma unroll
             for (int j = 0; j < DIM; j++)
             {
                 const int thetaOffset = (j * particlesPerBlock + localParticleIndex) * order;
                 const int thetaGlobalOffset = (j * n + globalParticleIndex) * order;
-                _Pragma("unroll")
+#pragma unroll
                 for (int z = 0; z < order; z++)
                 {
                     theta[thetaGlobalOffset + z] = theta_shared[thetaOffset + z];
@@ -251,7 +251,7 @@ __global__ void spread_kernel_lines
     ithz = threadIdx.z;
 
     //globalParticleIndex
-    if ((globalParticleIndex < n) && (coefficient[globalParticleIndex] != 0.0)) //yupinov store checks
+    if ((globalParticleIndex < n) && (coefficient[globalParticleIndex] != 0.0f)) //yupinov store checks
     {
         const int i0  = idxxptr[localParticleIndex] - offx; //?
         const int j0  = idxyptr[localParticleIndex] - offy;

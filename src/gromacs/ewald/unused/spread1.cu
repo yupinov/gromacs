@@ -78,7 +78,7 @@ __global__ void spread1_coefficients_kernel_O(int n,
     {
         if (coefficient[i])
         {
-            _Pragma("unroll")
+            #pragma unroll
             for (int ithx = 0; ithx < order; ithx++)
             {
                 int index_x = (i0[i]+ithx)*pny*pnz;

@@ -124,7 +124,7 @@ __global__ void spread3_kernel
 	  real data[order];
 	  real ddata[order];
 
-	  _Pragma("unroll")
+	  #pragma unroll
 	    for (int j = 0; j < DIM; j++)
 	      {
 		//dr  = fractx[i*DIM + j];
@@ -135,12 +135,12 @@ __global__ void spread3_kernel
 		data[1]       = dr;
 		data[0]       = 1 - dr;
 
-		_Pragma("unroll")
+		#pragma unroll
 		  for (int k = 3; k < order; k++)
 		    {
 		      div       = 1.0/(k - 1.0);
 		      data[k-1] = div*dr*data[k-2];
-		      _Pragma("unroll")
+		      #pragma unroll
 			for (int l = 1; l < (k-1); l++)
 			  {
 			    data[k-l-1] = div*((dr+l)*data[k-l-2]+(k-l-dr)*
@@ -150,7 +150,7 @@ __global__ void spread3_kernel
 		    }
 		/* differentiate */
 		ddata[0] = -data[0];
-		_Pragma("unroll")
+		#pragma unroll
 		  for (int k = 1; k < order; k++)
 		    {
 		      ddata[k] = data[k-1] - data[k];
@@ -158,7 +158,7 @@ __global__ void spread3_kernel
 
 		div           = 1.0/(order - 1);
 		data[order-1] = div*dr*data[order-2];
-		_Pragma("unroll")
+		#pragma unroll
 		  for (int l = 1; l < (order-1); l++)
 		    {
 		      data[order-l-1] = div*((dr+l)*data[order-l-2]+
@@ -166,7 +166,7 @@ __global__ void spread3_kernel
 		    }
 		data[0] = div*(1 - dr)*data[0];
 
-		_Pragma("unroll")
+		#pragma unroll
 		  for (int k = 0; k < order; k++)
 		    {
 		      theta[j*order*N + i*order+k]  = data[k];
@@ -196,7 +196,7 @@ __global__ void spread3_kernel
 	int i = blockIdx.z * blockDim.z + threadIdx.z;
 	if (i < n) {
 	  if (coefficient[i]) {
-	    _Pragma("unroll")
+	    #pragma unroll
 	      for (int ithx0 = 0; ithx0 < order; ithx0 += D)
 		{
 		  int ithx = ithx0 + threadIdx.z % D;

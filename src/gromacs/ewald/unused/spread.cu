@@ -67,7 +67,7 @@ j0[0] = 3; \
 k0[0] = 3; \
 coefficient[0] = 3; \
 } \
-            _Pragma("unroll")  \
+            #pragma unroll  \
      for (int ithx = 0; ithx < order; ithx++)	     \
      {  \
         int index_x = (i0[i]+ithx)*pny*pnz;                     \
