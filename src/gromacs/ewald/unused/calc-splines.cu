@@ -77,12 +77,12 @@ extern gpu_events gpu_events_calcspline;
             data[1]       = dr;                          \
             data[0]       = 1 - dr;                      \
                                                \
-            _Pragma("unroll")  \
+            #pragma unroll  \
             for (int k = 3; k < order; k++)               \
             {                                      \
                 div       = 1.0/(k - 1.0);               \
                 data[k-1] = div*dr*data[k-2];      \
-                _Pragma("unroll")  \
+                #pragma unroll  \
                 for (int l = 1; l < (k-1); l++)           \
                 {                                  \
                     data[k-l-1] = div*((dr+l)*data[k-l-2]+(k-l-dr)* \
@@ -93,7 +93,7 @@ extern gpu_events gpu_events_calcspline;
             /* differentiate */                    \
             /*ddata[0] = -data[0];*/     \
             dtheta[j*order*nr + i*order] = -data[0];              \
-            _Pragma("unroll")  \
+            #pragma unroll  \
             for (int k = 1; k < order; k++)               \
             {                                      \
                 dtheta[j*order*nr + i*order + k] = data[k-1] - data[k]; /* //yupinov sequiential ptr?*/\
@@ -103,7 +103,7 @@ extern gpu_events gpu_events_calcspline;
                                                \
             div           = 1.0/(order - 1);                 \
             data[order-1] = div*dr*data[order-2];  \
-            _Pragma("unroll")  \
+            #pragma unroll  \
             for (int l = 1; l < (order-1); l++)  \
             {                                      \
                 data[order-l-1] = div*((dr+l)*data[order-l-2]+    \
@@ -111,7 +111,7 @@ extern gpu_events gpu_events_calcspline;
             }                                      \
             data[0] = div*(1 - dr)*data[0];        \
                                                \
-            _Pragma("unroll")  \
+            #pragma unroll  \
             for (int k = 0; k < order; k++)                 \
             {                                      \
                 theta[j*order*nr + i*order + k]  = data[k];  \
