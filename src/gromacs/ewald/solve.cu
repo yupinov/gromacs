@@ -452,7 +452,7 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
     //cudaError_t stat = cudaMemcpyToSymbol( sqrt_M_PI_d, &sqrt_M_PI, sizeof(real));
     //CU_RET_ERR(stat, "solve cudaMemcpyToSymbol");
 
-    const int block_size = 32;
+    const int block_size = warp_size;
     int n = iyz1 - iyz0;
     int n_blocks = (n + block_size - 1) / block_size;
 
