@@ -374,7 +374,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
 
     //const int particlesPerBlock = warp_size;
-    const int blockSize = warp_size;
+    const int blockSize = 2 * warp_size; //yupinov: 3 > 4 > 2 on my GTX 660 TI;
     const int particlesPerBlock = blockSize / order / order; //was 32, now 2 for order==4 ->round up=>
     //this is the number of particles for SPREAD, btw
     dim3 nBlocks((n + blockSize - 1) / blockSize * order * order, 1, 1);
@@ -383,9 +383,9 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     dim3 dimBlock(particlesPerBlock, order, order);
     switch (order)
     {
-      case 4:
-          const int particlesPerBlock = blockSize / 4 / 4; //was 32, now 2 for order==4
-          spread_kernel_lines<4, particlesPerBlock><<<nBlocks, dimBlock, 0, s>>>
+        case 4:
+            const int particlesPerBlock2 = blockSize / 4 / 4; //yupinov - the hell is wrong with constants?
+            spread_kernel_lines<4, particlesPerBlock2><<<nBlocks, dimBlock, 0, s>>>
                                                                     (nx, ny, nz,
                                                                      pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
                                                                      pme->recipbox[XX][XX],
@@ -401,7 +401,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                                                                      coefficient_d,
                                                                      grid_d, theta_d, dtheta_d, idx_d,
                                                                      n);
-          //yupinov different orders
+            //yupinov different orders
     }
     CU_LAUNCH_ERR("spread_kernel");
 
