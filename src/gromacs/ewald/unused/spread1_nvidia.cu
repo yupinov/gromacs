@@ -92,7 +92,7 @@ __global__ void spread1_coefficients_kernel_O(
       const int th_idx = i_base*order + local_idx;
       if ( th_idx - 0*particles_per_block*order < n*order &&
            local_idx >= 0*particles_per_block*order &&
-           local_idx <   particles_per_block*order )
+           local_idx <  1*particles_per_block*order )
       {
         thx_shared[local_idx-0*particles_per_block*order]
             = thx[th_idx-0*particles_per_block*order];
