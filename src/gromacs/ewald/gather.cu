@@ -22,21 +22,22 @@ extern gpu_events gpu_events_gather;
 #define DO_FSPLINE(order)                      \
     for (int ithx = 0; (ithx < order); ithx++)              \
     {                                              \
-        int index_x = (i0[i]+ithx)*pny*pnz;               \
-        real tx      = thx[iorder+ithx];                       \
-        real dx      = dthx[iorder+ithx];                      \
+        const int index_x = (i0[i]+ithx)*pny*pnz;               \
+        const real tx      = thx[iorder+ithx];                       \
+        const real dx      = dthx[iorder+ithx];                      \
                                                \
         for (int ithy = 0; (ithy < order); ithy++)          \
         {                                          \
-            int index_xy = index_x+(j0[i]+ithy)*pnz;      \
-            real ty       = thy[iorder+ithy];                  \
-            real dy       = dthy[iorder+ithy];                 \
-            real fxy1     = 0.0f, fz1 = 0.0f;		   \
+            const int index_xy = index_x+(j0[i]+ithy)*pnz;      \
+            const real ty       = thy[iorder+ithy];                  \
+            const real dy       = dthy[iorder+ithy];                 \
+            real fxy1     = 0.0f; \
+            real fz1 = 0.0f;		   \
                                                \
             for (int ithz = 0; (ithz < order); ithz++)      \
             {                                      \
                 /*printf(" INDEX %d %d %d\n", (i0[i] + ithx), (j0[i]+ithy), (k0[i]+ithz));*/\
-                real gval  = grid[index_xy+(k0[i]+ithz)];  \
+                const real gval  = grid[index_xy+(k0[i]+ithz)];  \
                 fxy1 += thz[iorder+ithz]*gval;            \
                 fz1  += dthz[iorder+ithz]*gval;           \
             }                                      \
@@ -48,17 +49,19 @@ extern gpu_events gpu_events_gather;
 
 
 static __global__ void gather_f_bsplines_kernel
-(real *grid, int order, int n,
- int nx, int ny, int nz, int pnx, int pny, int pnz,
- real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
- real *thx, real *thy, real *thz, real *dthx, real *dthy, real *dthz,
- real *atc_f, real *coefficient_v, int *i0, int *j0, int *k0)
+(const real * __restrict__ grid, const int order, const int n,
+ const int nx, const int ny, const int nz, const int pnx, const int pny, const int pnz,
+ const real rxx, const real ryx, const real ryy, const real rzx, const real rzy, const real rzz,
+ const real * __restrict__ thx, const real * __restrict__ thy, const real * __restrict__ thz,
+ const real * __restrict__ dthx, const real * __restrict__ dthy, const real * __restrict__ dthz,
+ real * __restrict__ atc_f, const real * __restrict__ coefficient_v,
+ const int * __restrict__ i0, const int * __restrict__ j0, const int * __restrict__ k0)
 {
     /* sum forces for local particles */
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n)
     {
-        real coefficient = coefficient_v[i];
+        const real coefficient = coefficient_v[i];
         real fx     = 0.0f;
         real fy     = 0.0f;
         real fz     = 0.0f;
@@ -77,7 +80,6 @@ static __global__ void gather_f_bsplines_kernel
             DO_FSPLINE(order);
             break;
         }
-
 
         atc_f[idim + XX] += -coefficient * ( fx * nx * rxx );
         atc_f[idim + YY] += -coefficient * ( fx * nx * ryx + fy * ny * ryy );
@@ -188,7 +190,7 @@ void gather_f_bsplines_gpu_2
         real coefficient_i = scale*atc_coefficient[i];
         if (bClearF)
         {
-            atc_f[i][XX] = 0; //yupinov memeset?
+            atc_f[i][XX] = 0; //yupinov memset?
             atc_f[i][YY] = 0;
             atc_f[i][ZZ] = 0;
         }
