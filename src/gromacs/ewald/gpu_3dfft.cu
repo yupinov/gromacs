@@ -361,26 +361,6 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
         */
 
     }
-#ifdef DEBUG_PME_GPU
-    if (check_vs_cpu(fft_gpu_flags))
-    {
-        //print_lock();
-        for (int ix = 0; ix < x; ++ix)
-        {
-            fprintf(stderr, "plane %d\n", ix);
-            for (int iy = 0; iy < y; ++iy)
-            {
-                for (int iz = 0; iz < z / 2 + 1; ++iz)
-                {
-                    int i = (ix * y + iy) * (z/2+1) + iz;
-                    fprintf(stderr, " %5.2f+i%5.2f", setup->complex_data[i].re, setup->complex_data[i].im);
-                }
-                fprintf(stderr, "\n");
-            }
-        }
-        //print_unlock();
-    }
-#endif
     // FIX destroy plans after
     //cufftDestroy(setup->plan);
 }
