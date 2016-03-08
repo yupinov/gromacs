@@ -64,7 +64,7 @@ static tMPI::mutex print_mutex; //yupinov
 //yupinov is the grid contiguous in x or in z?
 
 template <const int order, const int particlesPerBlock>
-__global__ void spread_kernel_lines
+__global__ void spline_and_spread_kernel
 (int nx, int ny, int nz,
  int start_ix, int start_iy, int start_iz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
@@ -266,6 +266,305 @@ __global__ void spread_kernel_lines
 }
 
 
+
+
+
+// spline_and_spread split into spline and spread - as an experiment
+
+template <const int order, const int particlesPerBlock>
+__global__ void spline_kernel
+(int nx, int ny, int nz,
+ int start_ix, int start_iy, int start_iz,
+ real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
+ //int *g2tx, int *g2ty, int *g2tz,
+ const real * __restrict__ fshx, const real * __restrict__ fshy,
+ const int * __restrict__ nnx, const int * __restrict__ nny, const int * __restrict__ nnz,
+ const real * __restrict__ xptr, const real * __restrict__ yptr, const real * __restrict__ zptr,
+ const real * __restrict__ coefficientGlobal,
+ real * __restrict__ grid, real * __restrict__ theta, real * __restrict__ dtheta, int * __restrict__ idx, //yupinov
+ int n)
+{
+/*
+
+    pnx = pmegrid->s[XX];
+    pny = pmegrid->s[YY];
+    pnz = pmegrid->s[ZZ];
+
+    offx = pmegrid->offset[XX];
+    offy = pmegrid->offset[YY];
+    offz = pmegrid->offset[ZZ];
+
+*/
+
+    const int offx = 0, offy = 0, offz = 0;
+    const int pny = ny + order - 1, pnz = nz + order - 1; //yupinov fix me!
+
+    __shared__ int idxxptr[particlesPerBlock];
+    __shared__ int idxyptr[particlesPerBlock];
+    __shared__ int idxzptr[particlesPerBlock];
+    __shared__ real fxptr[particlesPerBlock];
+    __shared__ real fyptr[particlesPerBlock];
+    __shared__ real fzptr[particlesPerBlock];
+    __shared__ real coefficient[particlesPerBlock];
+
+    __shared__ real theta_shared[3 * order * particlesPerBlock];
+    __shared__ real dtheta_shared[3 * order * particlesPerBlock];
+    //printf("%d %d %d %d %d %d\n", blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z);
+
+    int ithx, index_x, ithy, index_xy, ithz, index_xyz;
+    real valx, valxy;
+
+    int localParticleIndex = threadIdx.x;
+
+    int globalParticleIndex = blockIdx.x * particlesPerBlock + localParticleIndex;
+    if ((globalParticleIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
+    //yupinov - this is a single particle work!
+        //yup bDoSplines!
+    {
+        // INTERPOL_IDX
+
+        /* Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes */
+        real tx, ty, tz;
+        tx = nx * ( xptr[globalParticleIndex] * rxx + yptr[globalParticleIndex] * ryx + zptr[globalParticleIndex] * rzx + 2.0f );
+        ty = ny * (                                   yptr[globalParticleIndex] * ryy + zptr[globalParticleIndex] * rzy + 2.0f );
+        tz = nz * (                                                                     zptr[globalParticleIndex] * rzz + 2.0f );
+
+        int tix, tiy, tiz;
+        tix = (int)(tx);
+        tiy = (int)(ty);
+        tiz = (int)(tz);
+        /* Because decomposition only occurs in x and y,
+        * we never have a fraction correction in z.
+        */
+
+        fxptr[localParticleIndex] = tx - tix + fshx[tix];
+        fyptr[localParticleIndex] = ty - tiy + fshy[tiy];
+        fzptr[localParticleIndex] = tz - tiz;
+
+        idxxptr[localParticleIndex] = nnx[tix];
+        idxyptr[localParticleIndex] = nny[tiy];
+        idxzptr[localParticleIndex] = nnz[tiz];
+
+        coefficient[localParticleIndex] = coefficientGlobal[globalParticleIndex]; //staging for both parts
+
+
+        idx[globalParticleIndex * DIM + 0] = idxxptr[localParticleIndex];
+        idx[globalParticleIndex * DIM + 1] = idxyptr[localParticleIndex];
+        idx[globalParticleIndex * DIM + 2] = idxzptr[localParticleIndex];
+
+        //printf("set %d %d %d %d\n", globalParticleIndex, idxxptr[localParticleIndex], idxyptr[localParticleIndex], idxzptr[localParticleIndex]);
+
+
+        // CALCSPLINE
+
+        if (coefficient[localParticleIndex] != 0.0f) //yupinov how bad is this conditional?
+        {
+            real dr, div;
+            real data[order];
+
+#pragma unroll
+            for (int j = 0; j < DIM; j++)
+            {
+                //dr  = fractx[i*DIM + j];
+
+                dr = (j == 0) ? fxptr[localParticleIndex] : ((j == 1) ? fyptr[localParticleIndex] : fzptr[localParticleIndex]);
+
+                /* dr is relative offset from lower cell limit */
+                data[order - 1] = 0;
+                data[1]         = dr;
+                data[0]         = 1 - dr;
+
+#pragma unroll
+                for (int k = 3; k < order; k++)
+                {
+                    div         = 1.0f / (k - 1.0f);
+                    data[k - 1] = div * dr * data[k - 2];
+                    #pragma unroll
+                    for (int l = 1; l < (k - 1); l++)
+                    {
+                        data[k - l - 1] = div * ((dr + l) * data[k - l - 2] + (k - l - dr) * data[k - l - 1]);
+                    }
+                    data[0] = div * (1 - dr) * data[0];
+                }
+                /* differentiate */
+                const int thetaOffset = (j * particlesPerBlock + localParticleIndex) * order;
+                dtheta_shared[thetaOffset] = -data[0];
+
+                #pragma unroll
+                for (int k = 1; k < order; k++)
+                {
+                    dtheta_shared[thetaOffset + k] = data[k - 1] - data[k];
+                }
+
+                div             = 1.0f / (order - 1);
+                data[order - 1] = div * dr * data[order - 2];
+#pragma unroll
+                for (int l = 1; l < (order - 1); l++)
+                {
+                    data[order - l - 1] = div * ((dr + l) * data[order - l - 2] + (order - l - dr) * data[order - l - 1]);
+                }
+                data[0] = div * (1 - dr) * data[0];
+
+#pragma unroll
+                for (int k = 0; k < order; k++)
+                {
+                    theta_shared[thetaOffset + k] = data[k];
+                }
+            }
+            //yupinov store to global
+#pragma unroll
+            for (int j = 0; j < DIM; j++)
+            {
+                const int thetaOffset = (j * particlesPerBlock + localParticleIndex) * order;
+                const int thetaGlobalOffset = (j * n + globalParticleIndex) * order;
+#pragma unroll
+                for (int z = 0; z < order; z++)
+                {
+                    theta[thetaGlobalOffset + z] = theta_shared[thetaOffset + z];
+                    dtheta[thetaGlobalOffset + z] = dtheta_shared[thetaOffset + z];
+                }
+            }
+        }
+    }
+}
+
+
+template <const int order, const int particlesPerBlock>
+__global__ void spread_kernel
+(int nx, int ny, int nz,
+ int start_ix, int start_iy, int start_iz,
+ real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
+ //int *g2tx, int *g2ty, int *g2tz,
+ const real * __restrict__ fshx, const real * __restrict__ fshy,
+ const int * __restrict__ nnx, const int * __restrict__ nny, const int * __restrict__ nnz,
+ const real * __restrict__ xptr, const real * __restrict__ yptr, const real * __restrict__ zptr,
+ const real * __restrict__ coefficientGlobal,
+ real * __restrict__ grid, real * __restrict__ theta, real * __restrict__ dtheta, const int * __restrict__ idx, //yupinov
+ int n)
+{
+/*
+
+    pnx = pmegrid->s[XX];
+    pny = pmegrid->s[YY];
+    pnz = pmegrid->s[ZZ];
+
+    offx = pmegrid->offset[XX];
+    offy = pmegrid->offset[YY];
+    offz = pmegrid->offset[ZZ];
+
+*/
+
+    const int offx = 0, offy = 0, offz = 0;
+    const int pny = ny + order - 1, pnz = nz + order - 1; //yupinov fix me!
+
+    __shared__ int idxxptr[particlesPerBlock];
+    __shared__ int idxyptr[particlesPerBlock];
+    __shared__ int idxzptr[particlesPerBlock];
+    __shared__ real coefficient[particlesPerBlock];
+
+    __shared__ real theta_shared[3 * order * particlesPerBlock];
+    __shared__ real dtheta_shared[3 * order * particlesPerBlock];
+    //printf("%d %d %d %d %d %d\n", blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z);
+
+    int ithx, index_x, ithy, index_xy, ithz, index_xyz;
+    real valx, valxy;
+
+    int localParticleIndex = threadIdx.x;
+
+    int globalParticleIndex = blockIdx.x * particlesPerBlock + localParticleIndex;
+    if ((globalParticleIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
+    //yupinov - this is a single particle work!
+    {
+
+        idxxptr[localParticleIndex] = idx[globalParticleIndex * DIM + 0];
+        idxyptr[localParticleIndex] = idx[globalParticleIndex * DIM + 1];
+        idxzptr[localParticleIndex] = idx[globalParticleIndex * DIM + 2];
+#pragma unroll
+        for (int j = 0; j < DIM; j++)
+        {
+            const int thetaOffset = (j * particlesPerBlock + localParticleIndex) * order;
+            const int thetaGlobalOffset = (j * n + globalParticleIndex) * order;
+#pragma unroll
+            for (int z = 0; z < order; z++)
+            {
+                theta_shared[thetaOffset + z] = theta[thetaGlobalOffset + z];
+                dtheta_shared[thetaOffset + z] = dtheta[thetaGlobalOffset + z];
+            }
+        }
+
+        coefficient[localParticleIndex] = coefficientGlobal[globalParticleIndex]; //staging for both parts
+    }
+    __syncthreads(); //yupinov do we need it?
+
+    // SPREAD
+
+    // spline Y/Z coordinates
+    ithy = threadIdx.y;
+    ithz = threadIdx.z;
+
+    //globalParticleIndex
+    if ((globalParticleIndex < n) && (coefficient[localParticleIndex] != 0.0f)) //yupinov store checks
+    {
+        const int i0  = idxxptr[localParticleIndex] - offx; //?
+        const int j0  = idxyptr[localParticleIndex] - offy;
+        const int k0  = idxzptr[localParticleIndex] - offz;
+
+        //printf ("%d %d %d %d %d %d %d\n", blockIdx.x, threadIdx.x, threadIdx.y, threadIdx.z, i0, j0, k0);
+        const real *thx = theta_shared + (0 * particlesPerBlock + localParticleIndex) * order;
+        const real *thy = theta_shared + (1 * particlesPerBlock + localParticleIndex) * order;
+        const real *thz = theta_shared + (2 * particlesPerBlock + localParticleIndex) * order;
+
+        // switch (order) ?
+
+        #pragma unroll
+        for (ithx = 0; (ithx < order); ithx++)
+        {
+            index_x = (i0 + ithx) * pny * pnz;
+            valx = coefficient[localParticleIndex] * thx[ithx];
+            /*
+            #pragma unroll
+            for (ithy = 0; (ithy < order); ithy++)
+            */
+            {
+                valxy    = valx*thy[ithy];
+                index_xy = index_x+(j0+ithy)*pnz;
+                /*
+                #pragma unroll
+                for (ithz = 0; (ithz < order); ithz++)
+                */
+                {
+                    index_xyz        = index_xy+(k0+ithz);
+                    atomicAdd(grid + index_xyz, valxy*thz[ithz]);
+                }
+            }
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
          int grid_index,
          pmegrid_t *pmegrid)//yupinov, gmx_bool bCalcSplines, gmx_bool bSpread, gmx_bool bDoSplines)
@@ -364,8 +663,9 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     switch (order)
     {
         case 4:
-            const int particlesPerBlock2 = blockSize / 4 / 4; //yupinov - the hell is wrong with constants?
-            spread_kernel_lines<4, particlesPerBlock2><<<nBlocks, dimBlock, 0, s>>>
+            const int particlesPerBlock2 = blockSize / 4 / 4;
+
+            spline_and_spread_kernel<4, particlesPerBlock2><<<nBlocks, dimBlock, 0, s>>>
                                                                     (nx, ny, nz,
                                                                      pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
                                                                      pme->recipbox[XX][XX],
@@ -374,16 +674,50 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                                                                      pme->recipbox[ZZ][XX],
                                                                      pme->recipbox[ZZ][YY],
                                                                      pme->recipbox[ZZ][ZZ],
-                                                                     //g2tx_d, g2ty_d, g2tz_d,
                                                                      fshx_d, fshy_d,
                                                                      nnx_d, nny_d, nnz_d,
                                                                      xptr_d, yptr_d, zptr_d,
                                                                      coefficient_d,
                                                                      grid_d, theta_d, dtheta_d, idx_d,
                                                                      n);
+            CU_LAUNCH_ERR("spline_and_spread_kernel");
+            /*
+            spline_kernel<4, particlesPerBlock2><<<nBlocks, dimBlock, 0, s>>>
+                                                                    (nx, ny, nz,
+                                                                     pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
+                                                                     pme->recipbox[XX][XX],
+                                                                     pme->recipbox[YY][XX],
+                                                                     pme->recipbox[YY][YY],
+                                                                     pme->recipbox[ZZ][XX],
+                                                                     pme->recipbox[ZZ][YY],
+                                                                     pme->recipbox[ZZ][ZZ],
+                                                                     fshx_d, fshy_d,
+                                                                     nnx_d, nny_d, nnz_d,
+                                                                     xptr_d, yptr_d, zptr_d,
+                                                                     coefficient_d,
+                                                                     grid_d, theta_d, dtheta_d, idx_d,
+                                                                     n);
+            CU_LAUNCH_ERR("spline_kernel");
+            spread_kernel<4, particlesPerBlock2><<<nBlocks, dimBlock, 0, s>>>
+                                                                    (nx, ny, nz,
+                                                                     pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
+                                                                     pme->recipbox[XX][XX],
+                                                                     pme->recipbox[YY][XX],
+                                                                     pme->recipbox[YY][YY],
+                                                                     pme->recipbox[ZZ][XX],
+                                                                     pme->recipbox[ZZ][YY],
+                                                                     pme->recipbox[ZZ][ZZ],
+                                                                     fshx_d, fshy_d,
+                                                                     nnx_d, nny_d, nnz_d,
+                                                                     xptr_d, yptr_d, zptr_d,
+                                                                     coefficient_d,
+                                                                     grid_d, theta_d, dtheta_d, idx_d,
+                                                                     n);
+            CU_LAUNCH_ERR("spread_kernel");
+            */
             //yupinov different orders
     }
-    CU_LAUNCH_ERR("spread_kernel");
+
 
 #ifdef DEBUG_PME_TIMINGS_GPU
   events_record_stop(gpu_events_spread, s, ewcsPME_SPREAD, 3);
