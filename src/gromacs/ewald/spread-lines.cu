@@ -61,29 +61,6 @@ static tMPI::mutex print_mutex; //yupinov
 
 
 
-/* This has to be a macro to enable full compiler optimization with xlC (and probably others too) */
-
-#define DO_BSPLINE(order)                                         \
-    _Pragma("unroll")                                                    \
-    for (ithx = 0; (ithx < order); ithx++)                    \
-    {                                                             \
-        index_x = (i0 + ithx) * pny * pnz;                    \
-        valx = coefficient[globalParticleIndex] * thx[ithx];                      \
-        /*#pragma unroll                                                        \
-        for (ithy = 0; (ithy < order); ithy++)            */    \
-        {                                                         \
-            valxy    = valx*thy[ithy];                       \
-            index_xy = index_x+(j0+ithy)*pnz;                 \
-            /* #pragma unroll                                                    \
-            for (ithz = 0; (ithz < order); ithz++) */           \
-            {                                                     \
-                index_xyz        = index_xy+(k0+ithz);        \
-                /*printf(" INDEX %d %d/%d %d/%d\n ", (i0 + ithx), (j0+ithy), pny, (k0+ithz), pnz);*/\
-                atomicAdd(grid + index_xyz, valxy*thz[ithz]);    \
-            }                                                     \
-        }                                                         \
-    }
-
 //yupinov is the grid contiguous in x or in z?
 
 template <const int order, const int particlesPerBlock>
@@ -259,8 +236,30 @@ __global__ void spread_kernel_lines
         const real *thy = theta_shared + (1 * particlesPerBlock + localParticleIndex) * order;
         const real *thz = theta_shared + (2 * particlesPerBlock + localParticleIndex) * order;
 
-        // switch (order)
-        DO_BSPLINE(order);
+        // switch (order) ?
+
+        #pragma unroll
+        for (ithx = 0; (ithx < order); ithx++)
+        {
+            index_x = (i0 + ithx) * pny * pnz;
+            valx = coefficient[globalParticleIndex] * thx[ithx];
+            /*
+            #pragma unroll
+            for (ithy = 0; (ithy < order); ithy++)
+            */
+            {
+                valxy    = valx*thy[ithy];
+                index_xy = index_x+(j0+ithy)*pnz;
+                /*
+                #pragma unroll
+                for (ithz = 0; (ithz < order); ithz++)
+                */
+                {
+                    index_xyz        = index_xy+(k0+ithz);
+                    atomicAdd(grid + index_xyz, valxy*thz[ithz]);
+                }
+            }
+        }
     }
 }
 
