@@ -17,7 +17,8 @@
 
 #include "pme-cuda.h"
 
-#define SQRT_M_PI (2.0 / M_2_SQRTPI)
+#define SQRT_M_PI real(2.0f / M_2_SQRTPI)
+//yupinov check if these constants work
 
 
 #ifdef DEBUG_PME_GPU
@@ -29,12 +30,12 @@ extern gpu_events gpu_events_solve;
 typedef real *splinevec[DIM];
 
 /* Pascal triangle coefficients used in solve_pme_lj_yzx, only need to do 4 calculations due to symmetry */
-static const __constant__ real lb_scale_factor_symm_gpu[] = { 2.0/64, 12.0/64, 30.0/64, 20.0/64 }; //yupinov copeid from pme-internal
+static const __constant__ real lb_scale_factor_symm_gpu[] = { 2.0/64, 12.0/64, 30.0/64, 20.0/64 }; //yupinov copied from pme-internal
 
 
 /*__device__ gmx_inline static void calc_exponentials_q_one(const real f, real &d, real &r, real &e)
 {
-  d = 1.0/d;
+  d = 1.0f/d;
   r = expf(r);
   e = f*r*d;
   }*/
@@ -44,7 +45,7 @@ static const __constant__ real lb_scale_factor_symm_gpu[] = { 2.0/64, 12.0/64, 3
 
 /*__device__ gmx_inline static void calc_exponentials_lj_one(real &r, real &tmp2, real &d)
 {
-  d = 1.0/d;
+  d = 1.0f/d;
   r = exp(r);
   real mk = tmp2;
   tmp2 = sqrt_M_PI_d*mk*erfcf(mk);
@@ -188,37 +189,22 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
             virxz += virial_h[j++];
             viryz += virial_h[j++];
         }
-        #ifdef DEBUG_PME_GPU
-        if (check_vs_cpu(solve_gpu_flags))
-        {
-            real t;
-            t = 0.25*virxx; check_real("viqxx", &t, &work_vir_q[XX][XX], 1, false);
-            t = 0.25*viryy; check_real("viqyy", &t, &work_vir_q[YY][YY], 1, false);
-            t = 0.25*virzz; check_real("viqzz", &t, &work_vir_q[ZZ][ZZ], 1, false);
-            t = 0.25*virxy; check_real("viqxy", &t, &work_vir_q[XX][YY], 1, false);
-            t = 0.25*virxz; check_real("viqxz", &t, &work_vir_q[XX][ZZ], 1, false);
-            t = 0.25*viryz; check_real("viqyz", &t, &work_vir_q[YY][ZZ], 1, false);
-            t = 0.25*virxy; check_real("virxy", &t, &work_vir_q[YY][XX], 1, false);
-            t = 0.25*virxz; check_real("virxz", &t, &work_vir_q[ZZ][XX], 1, false);
-            t = 0.25*viryz; check_real("viryz", &t, &work_vir_q[ZZ][YY], 1, false);
-            t = 0.5*energy; check_real("enerq", &t, &*work_energy_q, 1, false);
-        }
-#endif
+
         /* Update virial with local values.
          * The virial is symmetric by definition.
          * this virial seems ok for isotropic scaling, but I'm
          * experiencing problems on semiisotropic membranes.
          * IS THAT COMMENT STILL VALID??? (DvdS, 2001/02/07).
          */
-        work_vir_q[XX][XX] = 0.25*virxx;
-        work_vir_q[YY][YY] = 0.25*viryy;
-        work_vir_q[ZZ][ZZ] = 0.25*virzz;
-        work_vir_q[XX][YY] = work_vir_q[YY][XX] = 0.25*virxy;
-        work_vir_q[XX][ZZ] = work_vir_q[ZZ][XX] = 0.25*virxz;
-        work_vir_q[YY][ZZ] = work_vir_q[ZZ][YY] = 0.25*viryz;
+        work_vir_q[XX][XX] = 0.25 * virxx;
+        work_vir_q[YY][YY] = 0.25 * viryy;
+        work_vir_q[ZZ][ZZ] = 0.25 * virzz;
+        work_vir_q[XX][YY] = work_vir_q[YY][XX] = 0.25 * virxy;
+        work_vir_q[XX][ZZ] = work_vir_q[ZZ][XX] = 0.25 * virxz;
+        work_vir_q[YY][ZZ] = work_vir_q[ZZ][YY] = 0.25 * viryz;
 
         /* This energy should be corrected for a charged system */
-        *work_energy_q = 0.5*energy;
+        *work_energy_q = 0.5 * energy;
     }
     /* Return the loop count */
     //return local_ndata[YY]*local_ndata[XX]; //yupinov why
@@ -249,8 +235,8 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
     //(void) maxkz; // unused
 
 
-    real energy = 0;
-    real    virxx = 0, virxy = 0, virxz = 0, viryy = 0, viryz = 0, virzz = 0;
+    real energy = 0.0f;
+    real virxx = 0.0f, virxy = 0.0f, virxz = 0.0f, viryy = 0.0f, viryz = 0.0f, virzz = 0.0f;
 
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -281,10 +267,10 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
         real bz = pme_bsp_mod_ZZ[kz];
 
         /* 0.5 correction for corner points */
-        real corner_fac = 1;
+        real corner_fac = 1.0f;
         if (kz == 0 || kz == (nz+1)/2)
         {
-            corner_fac = 0.5;
+            corner_fac = 0.5f;
         }
 
         t_complex *p0 = grid + iy*local_size_ZZ*local_size_XX + iz*local_size_XX;
@@ -336,10 +322,10 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
                 //if (iyz == iyz0 && kx == kxstart)
                     ;//printf("SOLVE_gpu mhxk %f mhyk %f mhzk %f m2k %f denom %f tmp1 %f\n", (double) mhxk, (double) mhyk, (double) mhzk, (double) m2k, (double) denom, (double) tmp1);
 
-                real m2invk = 1.0/m2k;
+                real m2invk = 1.0f/m2k;
 
                 //calc_exponentials_q_one(elfac, denom, tmp1, eterm);
-                denom = 1.0/denom;
+                denom = 1.0f/denom;
                 tmp1 = exp(tmp1);
                 real etermk = elfac*tmp1*denom;
 
@@ -349,12 +335,12 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
                 p0->re  = d1*etermk;
                 p0->im  = d2*etermk;
 
-                struct2 = 2.0*(d1*d1+d2*d2);
+                struct2 = 2.0f*(d1*d1+d2*d2);
 
                 real tmp1k = etermk*struct2;
 
                 ets2     = corner_fac*tmp1k;
-                vfactor  = (factor*m2k + 1.0)*2.0*m2invk;
+                vfactor  = (factor*m2k + 1.0f) * 2.0f * m2invk;
                 energy  += ets2;
 
                 ets2vf   = ets2*vfactor;
@@ -386,7 +372,7 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
                 real tmp1  = -factor*m2k;
 
                 //calc_exponentials_q_one(elfac, denom, tmp1, eterm);
-                denom = 1.0/denom;
+                denom = 1.0f / denom;
                 tmp1 = exp(tmp1);
                 real etermk = elfac*tmp1*denom;
 
@@ -443,9 +429,9 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
     //real    factor = M_PI*M_PI/(ewaldcoeff*ewaldcoeff);
     //real    ets2, ets2vf;
     //real    eterm, vterm, d1, d2;
-    real energy = 0;
+    real energy = 0.0;
     //real    by, bz;
-    real    virxx = 0, virxy = 0, virxz = 0, viryy = 0, viryz = 0, virzz = 0;
+    real    virxx = 0.0, virxy = 0.0, virxz = 0.0, viryy = 0.0, viryz = 0.0, virzz = 0.0;
     //real    mhxk, mhyk, mhzk, m2k;
     //real    mk;
     //real    corner_fac;
@@ -474,11 +460,12 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
     int n = iyz1 - iyz0;
     int n_blocks = (n + block_size - 1) / block_size;
 
-#define MAGIC_6 6
+#define MAGIC_GRID_NUMBER 6
+    //yupinov
 
     int grid_n = local_size[YY] * local_size[ZZ] * local_size[XX];
     int grid_size = grid_n * sizeof(t_complex);
-    t_complex *grid_d = th_c(TH_ID_GRID, thread, grid_size * MAGIC_6, TH_LOC_CUDA); //6 grids!
+    t_complex *grid_d = th_c(TH_ID_GRID, thread, grid_size * MAGIC_GRID_NUMBER, TH_LOC_CUDA); //6 grids!
     real *pme_bsp_mod_x_d = th_a_cpy(TH_ID_BSP_MOD_X, thread, pme_bsp_mod[XX], nx * sizeof(real), TH_LOC_CUDA, s);
     real *pme_bsp_mod_y_d = th_a_cpy(TH_ID_BSP_MOD_Y, thread, pme_bsp_mod[YY], ny * sizeof(real), TH_LOC_CUDA, s);
     real *pme_bsp_mod_z_d = th_a_cpy(TH_ID_BSP_MOD_Z, thread, pme_bsp_mod[ZZ], nz * sizeof(real), TH_LOC_CUDA, s);
@@ -486,7 +473,7 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
     int virial_size = 6 * n * sizeof(real);
     real *energy_d = th_a(TH_ID_ENERGY, thread, energy_size, TH_LOC_CUDA);
     real *virial_d = th_a(TH_ID_VIRIAL, thread, virial_size, TH_LOC_CUDA);
-    for (int ig = 0; ig < MAGIC_6; ++ig)
+    for (int ig = 0; ig < MAGIC_GRID_NUMBER; ++ig)
         th_cpy(grid_d + ig * grid_n, grid[ig], grid_size, TH_LOC_CUDA, s);
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_solve, s);
@@ -505,7 +492,7 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_stop(gpu_events_solve, s, ewcsPME_SOLVE, 0);
 #endif
-    for (int ig = 0; ig < MAGIC_6; ++ig)
+    for (int ig = 0; ig < MAGIC_GRID_NUMBER; ++ig)
         th_cpy(grid[ig], grid_d + ig * grid_n, grid_size, TH_LOC_HOST, s);
 
     if (bEnerVir)
@@ -521,32 +508,16 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
             virxz += virial_h[j++];
             viryz += virial_h[j++];
         }
-#ifdef DEBUG_PME_GPU
-        if (check_vs_cpu(solve_gpu_flags))
-        {
-            real t;
-            t = 0.25*virxx; check_real("vlxx", &t, &work_vir_lj[XX][XX], 1, false);
-            t = 0.25*viryy; check_real("vlyy", &t, &work_vir_lj[YY][YY], 1, false);
-            t = 0.25*virzz; check_real("vlzz", &t, &work_vir_lj[ZZ][ZZ], 1, false);
-            t = 0.25*virxy; check_real("vlxy", &t, &work_vir_lj[XX][YY], 1, false);
-            t = 0.25*virxz; check_real("vlxz", &t, &work_vir_lj[XX][ZZ], 1, false);
-            t = 0.25*viryz; check_real("vlyz", &t, &work_vir_lj[YY][ZZ], 1, false);
-            t = 0.25*virxy; check_real("vjxy", &t, &work_vir_lj[YY][XX], 1, false);
-            t = 0.25*virxz; check_real("vjxz", &t, &work_vir_lj[ZZ][XX], 1, false);
-            t = 0.25*viryz; check_real("vjyz", &t, &work_vir_lj[ZZ][YY], 1, false);
-            t = 0.5*energy; check_real("enerl", &t, &*work_energy_lj, 1, false);
-        }
-#endif
 
-        work_vir_lj[XX][XX] = 0.25*virxx;
-        work_vir_lj[YY][YY] = 0.25*viryy;
-        work_vir_lj[ZZ][ZZ] = 0.25*virzz;
-        work_vir_lj[XX][YY] = work_vir_lj[YY][XX] = 0.25*virxy;
-        work_vir_lj[XX][ZZ] = work_vir_lj[ZZ][XX] = 0.25*virxz;
-        work_vir_lj[YY][ZZ] = work_vir_lj[ZZ][YY] = 0.25*viryz;
+        work_vir_lj[XX][XX] = 0.25 * virxx;
+        work_vir_lj[YY][YY] = 0.25 * viryy;
+        work_vir_lj[ZZ][ZZ] = 0.25 * virzz;
+        work_vir_lj[XX][YY] = work_vir_lj[YY][XX] = 0.25 * virxy;
+        work_vir_lj[XX][ZZ] = work_vir_lj[ZZ][XX] = 0.25 * virxz;
+        work_vir_lj[YY][ZZ] = work_vir_lj[ZZ][YY] = 0.25 * viryz;
 
         /* This energy should be corrected for a charged system */
-        *work_energy_lj = 0.5*energy;
+        *work_energy_lj = 0.5 * energy;
     }
     /* Return the loop count */
     return local_ndata[YY]*local_ndata[XX];
@@ -576,9 +547,8 @@ __global__ void solve_pme_lj_yzx_iyz_loop_kernel
     //(void) maxkz; // unused
 
 
-    real energy = 0;
-    real    virxx = 0, virxy = 0, virxz = 0, viryy = 0, viryz = 0, virzz = 0;
-
+    real energy = 0.0f;
+    real virxx = 0.0f, virxy = 0.0f, virxz = 0.0f, viryy = 0.0f, viryz = 0.0f, virzz = 0.0f;
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int iyz = iyz0 + i;
@@ -599,8 +569,8 @@ __global__ void solve_pme_lj_yzx_iyz_loop_kernel
             my = (ky - ny);
         }
 
-        real by = 3.0*vol*pme_bsp_mod_YY[ky]
-                / (M_PI*sqrt(M_PI)*ewaldcoeff*ewaldcoeff*ewaldcoeff);
+        real by = 3.0f * vol * pme_bsp_mod_YY[ky]
+                / (M_PI*sqrt(M_PI)*ewaldcoeff*ewaldcoeff*ewaldcoeff); //yupinov double!
 
         int kz = iz + local_offset_ZZ;
 
@@ -609,10 +579,10 @@ __global__ void solve_pme_lj_yzx_iyz_loop_kernel
         real bz = pme_bsp_mod_ZZ[kz];
 
         /* 0.5 correction for corner points */
-        real corner_fac = 1;
+        real corner_fac = 1.0f;
         if (kz == 0 || kz == (nz+1)/2)
         {
-            corner_fac = 0.5;
+            corner_fac = 0.5f;
         }
 
         int kxstart = local_offset_XX;
@@ -644,15 +614,15 @@ __global__ void solve_pme_lj_yzx_iyz_loop_kernel
                 real tmp2k  = sqrt(factor*m2k);
 
                 //calc_exponentials_lj_one(tmp1k, tmp2k, denomk); // r tmp2 d
-                denomk = 1.0/denomk;
+                denomk = 1.0f / denomk;
                 tmp1k = exp(tmp1k);
                 real mk = tmp2k;
                 tmp2k = SQRT_M_PI * mk * erfcf(mk);
 
                 m2k   = factor*m2k;
-                real eterm = -((1.0 - 2.0*m2k)*tmp1k
-                               + 2.0*m2k*tmp2k);
-                real vterm    = 3.0*(-tmp1k + tmp2k);
+                real eterm = -((1.0f - 2.0f * m2k) * tmp1k
+                               + 2.0f * m2k * tmp2k);
+                real vterm    = 3.0f * (-tmp1k + tmp2k);
                 tmp1k = eterm*denomk;
                 tmp2k = vterm*denomk;
 
@@ -666,7 +636,7 @@ __global__ void solve_pme_lj_yzx_iyz_loop_kernel
                     p0->re  = d1*eterm;
                     p0->im  = d2*eterm;
 
-                    real struct2 = 2.0*(d1*d1+d2*d2);
+                    real struct2 = 2.0f * (d1 * d1 + d2 * d2);
 
                     tmp1k = eterm*struct2;
                     tmp2k = vterm*struct2;
@@ -676,7 +646,7 @@ __global__ void solve_pme_lj_yzx_iyz_loop_kernel
                     //real *struct2 = denom;
                     real  str2;
 
-                    real struct2k = 0.0;
+                    real struct2k = 0.0f;
 
                     /* Due to symmetry we only need to calculate 4 of the 7 terms */
                     for (int ig = 0; ig <= 3; ++ig)
@@ -686,7 +656,7 @@ __global__ void solve_pme_lj_yzx_iyz_loop_kernel
 
                         t_complex *p0k    = grid_v/*[ig]*/ + ig*grid_size + iy*local_size_ZZ*local_size_XX + iz*local_size_XX + (kx - kxstart);
                         t_complex *p1k    = grid_v/*[6-ig]*/ + (6-ig)*grid_size + iy*local_size_ZZ*local_size_XX + iz*local_size_XX + (kx - kxstart);
-                        scale = 2.0*lb_scale_factor_symm_gpu[ig];
+                        scale = 2.0f * lb_scale_factor_symm_gpu[ig];
                         struct2k += scale*(p0k->re*p1k->re + p0k->im*p1k->im);
                     }
                     for (int ig = 0; ig <= 6; ++ig)
@@ -711,7 +681,7 @@ __global__ void solve_pme_lj_yzx_iyz_loop_kernel
                 }
 
                 real ets2     = corner_fac*tmp1k;
-                vterm    = 2.0*factor*tmp2k;
+                vterm    = 2.0f * factor*tmp2k;
                 energy  += ets2;
                 real ets2vf   = corner_fac*vterm;
                 virxx   += ets2vf*mhxk*mhxk - ets2;
@@ -743,14 +713,14 @@ __global__ void solve_pme_lj_yzx_iyz_loop_kernel
                 real tmp2k  = sqrt(factor*m2k);
 
                 //calc_exponentials_lj_one(tmp1k, tmp2k, denomk); // r tmp2 d
-                denomk = 1.0/denomk;
+                denomk = 1.0f / denomk;
                 tmp1k = exp(tmp1k);
                 real mk = tmp2k;
                 tmp2k = SQRT_M_PI * mk * erfcf(mk); //yupinov std::erfc? gmx_erfc?
 
                 m2k    = factor*m2k;
-                real eterm  = -((1.0 - 2.0*m2k)*tmp1k
-                                + 2.0*m2k*tmp2k);
+                real eterm  = -((1.0f - 2.0f*m2k)*tmp1k
+                                + 2.0f*m2k*tmp2k);
                 tmp1k = eterm*denomk;
 
                 int gcount = (bLB ? 7 : 1);

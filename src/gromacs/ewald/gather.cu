@@ -33,7 +33,7 @@ extern gpu_events gpu_events_gather;
             int index_xy = index_x+(j0[i]+ithy)*pnz;      \
             real ty       = thy[iorder+ithy];                  \
             real dy       = dthy[iorder+ithy];                 \
-            real fxy1     = 0, fz1 = 0;		   \
+            real fxy1     = 0.0f, fz1 = 0.0f;		   \
                                                \
             for (int ithz = 0; (ithz < order); ithz++)      \
             {                                      \
@@ -61,9 +61,9 @@ static __global__ void gather_f_bsplines_kernel
   if (i < n)
   {
     real coefficient = coefficient_v[i];
-    real fx     = 0;
-    real fy     = 0;
-    real fz     = 0;
+    real fx     = 0.0f;
+    real fy     = 0.0f;
+    real fz     = 0.0f;
     int iorder = i*order;
     int idim = i * DIM;
 
@@ -127,7 +127,7 @@ void gather_f_bsplines_gpu_2_pre
             atc_f[i][ZZ] = 0;
         }
 
-        if (coefficient_i != 0.0)
+        if (coefficient_i != 0.0f)
         {
             atc_f_compacted[oo * DIM + XX] = atc_f[i][XX];
             atc_f_compacted[oo * DIM + YY] = atc_f[i][YY];
