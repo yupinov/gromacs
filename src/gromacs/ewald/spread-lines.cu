@@ -72,7 +72,7 @@ __global__ void spread_kernel_lines
  const real * __restrict__ fshx, const real * __restrict__ fshy,
  const int * __restrict__ nnx, const int * __restrict__ nny, const int * __restrict__ nnz,
  const real * __restrict__ xptr, const real * __restrict__ yptr, const real * __restrict__ zptr,
- const real * __restrict__ coefficient,
+ const real * __restrict__ coefficientGlobal,
  real * __restrict__ grid, real * __restrict__ theta, real * __restrict__ dtheta, int * __restrict__ idx, //yupinov
  int n)
 {
@@ -97,6 +97,7 @@ __global__ void spread_kernel_lines
     __shared__ real fxptr[particlesPerBlock];
     __shared__ real fyptr[particlesPerBlock];
     __shared__ real fzptr[particlesPerBlock];
+    __shared__ real coefficient[particlesPerBlock];
 
     __shared__ real theta_shared[3 * order * particlesPerBlock];
     __shared__ real dtheta_shared[3 * order * particlesPerBlock];
@@ -136,6 +137,7 @@ __global__ void spread_kernel_lines
         idxyptr[localParticleIndex] = nny[tiy];
         idxzptr[localParticleIndex] = nnz[tiz];
 
+        coefficient[localParticleIndex] = coefficientGlobal[globalParticleIndex]; //staging for both parts
 
 
         idx[globalParticleIndex * DIM + 0] = idxxptr[localParticleIndex];
@@ -147,7 +149,7 @@ __global__ void spread_kernel_lines
 
         // CALCSPLINE
 
-        if (coefficient[globalParticleIndex] != 0.0f) //yupinov how bad is this conditional?
+        if (coefficient[localParticleIndex] != 0.0f) //yupinov how bad is this conditional?
         {
             real dr, div;
             real data[order];
@@ -225,7 +227,7 @@ __global__ void spread_kernel_lines
     ithz = threadIdx.z;
 
     //globalParticleIndex
-    if ((globalParticleIndex < n) && (coefficient[globalParticleIndex] != 0.0f)) //yupinov store checks
+    if ((globalParticleIndex < n) && (coefficient[localParticleIndex] != 0.0f)) //yupinov store checks
     {
         const int i0  = idxxptr[localParticleIndex] - offx; //?
         const int j0  = idxyptr[localParticleIndex] - offy;
@@ -242,7 +244,7 @@ __global__ void spread_kernel_lines
         for (ithx = 0; (ithx < order); ithx++)
         {
             index_x = (i0 + ithx) * pny * pnz;
-            valx = coefficient[globalParticleIndex] * thx[ithx];
+            valx = coefficient[localParticleIndex] * thx[ithx];
             /*
             #pragma unroll
             for (ithy = 0; (ithy < order); ithy++)
@@ -294,19 +296,6 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     real *theta_d = th_a(TH_ID_THETA, thread, size_order_dim, TH_LOC_CUDA);
     real *dtheta_d = th_a(TH_ID_DTHETA, thread, size_order_dim, TH_LOC_CUDA);
 
-    // G2T
-    /*
-    int *g2tx_h = pme->pmegrid[grid_index].g2t[XX];
-    int *g2ty_h = pme->pmegrid[grid_index].g2t[YY];
-    int *g2tz_h = pme->pmegrid[grid_index].g2t[ZZ];
-    int *g2tx_d = th_i(TH_ID_G2T, thread, 3 * n32 * sizeof(int), TH_LOC_CUDA);
-    int *g2ty_d = g2tx_d + n32;
-    int *g2tz_d = g2ty_d + n32;
-    cudaMemcpy(g2tx_d, g2tx_h, n * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(g2ty_d, g2ty_h, n * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(g2tz_d, g2tz_h, n * sizeof(int), cudaMemcpyHostToDevice);
-    */
-
     // IDXPTR
     int idx_size = n * DIM * sizeof(int);
     int *idx_d = th_i(TH_ID_IDXPTR, thread, idx_size, TH_LOC_CUDA); //why is it not stored?
@@ -344,15 +333,6 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     // COEFFICIENT
     real *coefficient_d = th_a_cpy(TH_ID_COEFFICIENT, thread, atc->coefficient, n * sizeof(real), TH_LOC_CUDA, s); //yupinov compact here as weel?
-
-    // GRID
-    /*
-    for (int i = 0; i < ndatatot; i++)
-    {
-      // FIX clear grid on device instead
-      grid[i] = 0;
-    }
-    */
 
     real *grid_d = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_CUDA);
     stat = cudaMemsetAsync(grid_d, 0, size_grid, s); //yupinov

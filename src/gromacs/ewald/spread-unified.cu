@@ -358,7 +358,7 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     dim3 dimGrid(n_blocks, 1, 1);
     dim3 dimBlock(order, order, D);
     */
-    const int particlesPerBlock = warp_size;
+    const int particlesPerBlock = 2 * warp_size;
     //const int D = 2;
     dim3 nBlocks((n + particlesPerBlock - 1) / particlesPerBlock, 1, 1);
     //dim3 dimBlock(order, order, D); //each block has 32 threads now to hand 32 particlesPerBlock

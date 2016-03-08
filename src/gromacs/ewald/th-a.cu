@@ -16,7 +16,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pme)
 // creating PME stream with no priority => small hole, only memcpy hidden, memset is synced (?)
 // creating PME steram with highest priority (out of 2, lol) => actually works in parallel
 // but still, a lot of spread D2H even in the last case....
-// in short, priority doesn't hurt, but only shows up on TEsla/... (compute >= 35)
+// in short, priority doesn't hurt, but only shows up on Tesla
 #if GMX_CUDA_VERSION >= 5050
     int highest_priority;
     int lowest_priority;
