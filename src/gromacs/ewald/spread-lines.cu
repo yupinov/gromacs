@@ -47,10 +47,7 @@
 #include <cuda_runtime.h>
 
 typedef real *splinevec[DIM];
-#ifdef DEBUG_PME_GPU
-extern gpu_flags spread_gpu_flags;
-extern gpu_flags spread_bunching_gpu_flags;
-#endif
+
 #ifdef DEBUG_PME_TIMINGS_GPU
 extern gpu_events gpu_events_spread;
 #endif

@@ -20,10 +20,6 @@
 #define SQRT_M_PI real(2.0f / M_2_SQRTPI)
 //yupinov check if these constants work
 
-
-#ifdef DEBUG_PME_GPU
-extern gpu_flags solve_gpu_flags;
-#endif
 #ifdef DEBUG_PME_TIMINGS_GPU
 extern gpu_events gpu_events_solve;
 #endif

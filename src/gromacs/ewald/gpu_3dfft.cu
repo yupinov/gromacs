@@ -17,9 +17,6 @@
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 
-#ifdef DEBUG_PME_GPU
-extern gpu_flags fft_gpu_flags;
-#endif
 #ifdef DEBUG_PME_TIMINGS_GPU
 extern gpu_events gpu_events_fft_r2c;
 extern gpu_events gpu_events_fft_c2r;

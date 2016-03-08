@@ -47,10 +47,6 @@
 #include <cuda_runtime.h>
 
 typedef real *splinevec[DIM];
-#ifdef DEBUG_PME_GPU
-extern gpu_flags spread_gpu_flags;
-extern gpu_flags spread_bunching_gpu_flags;
-#endif
 #ifdef DEBUG_PME_TIMINGS_GPU
 extern gpu_events gpu_events_spread;
 #endif
@@ -236,13 +232,7 @@ void spread3_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
   // GRID CHECK
   int ndatatot = nx*ny*nz;
   int size_grid = ndatatot * sizeof(real);
-#ifdef DEBUG_PME_GPU
-  real *grid_check;
-  if (check_vs_cpu_j(spread_gpu_flags, 3)) {
-    grid_check = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_HOST);
-    memcpy(grid_check, pmegrid, ndatatot * sizeof(real));
-  }
-#endif
+
   // G2T
   int *g2tx_h = pme->pmegrid[grid_index].g2t[XX];
   int *g2ty_h = pme->pmegrid[grid_index].g2t[YY];
@@ -331,41 +321,5 @@ void spread3_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 #ifdef DEBUG_PME_TIMINGS_GPU
   events_record_stop(gpu_events_spread, ewcsPME_SPREAD, 3);
 #endif
-#ifdef DEBUG_PME_GPU
-  if (check_vs_cpu_j(spread_gpu_flags, 3)) {
-    print_mutex.lock();
-    fprintf(stderr, "Check %d  (%d x %d x %d)\n",
-	    thread, nx, ny, nz);
-    for (int i = 0; i < ndatatot; ++i) {
-      real diff = grid_check[i];
-      real cpu_v = grid_check[i];
-      cudaMemcpy(&grid_check[i], &grid_d[i], sizeof(real), cudaMemcpyDeviceToHost);
-      diff -= grid_check[i];
-      real gpu_v = grid_check[i];
-      if (diff != 0) {
-	real absdiff = fabs(diff) / fabs(cpu_v);
-	if (absdiff > .000001) {
-	  fprintf(stderr, "%dppm", (int) (absdiff * 1e6));
-	  if (absdiff > .0001) {
-	    fprintf(stderr, " value %f ", cpu_v);
-	  }
-	} else {
-	  fprintf(stderr, "~");
-	}
-	//fprintf(stderr, "(%f - %f)", cpu_v, gpu_v);
-      } else {
-	if (gpu_v == 0) {
-	  fprintf(stderr, "0");
-	} else {
-	  fprintf(stderr, "=");
-	}
-      }
-      if ((i + 1) % nz == 0) {
-	fprintf(stderr, "\n");
-      }
-    }
-    print_mutex.unlock();
-  }
-  #endif
-  cudaMemcpy(grid, grid_d, size_grid, cudaMemcpyDeviceToHost); //yupinov part of check?
+  cudaMemcpy(grid, grid_d, size_grid, cudaMemcpyDeviceToHost);
 }

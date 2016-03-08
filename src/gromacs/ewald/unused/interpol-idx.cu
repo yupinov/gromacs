@@ -19,9 +19,7 @@ enum TH_V_ID {
 };
 
 static thread_vectors TH_V(32, ID_END);
-#ifdef DEBUG_PME_GPU
-extern gpu_flags interpol_gpu_flags;
-#endif
+
 #ifdef DEBUG_PME_TIMINGS_GPU
 extern gpu_events gpu_events_interpol_idx;
 #endif
@@ -124,17 +122,6 @@ void calc_interpolation_idx_gpu_core
         {
             int *idxptr = idxptr_v[i];
             real *fptr   = fptr_v[i];
-#ifdef DEBUG_PME_GPU
-            if (check_vs_cpu(interpol_gpu_flags))
-            {
-                check_int("calc:idxx", &idxptr_h[ix], &idxptr[XX], 1, false);
-                check_int("calc:idxy", &idxptr_h[iy], &idxptr[YY], 1, false);
-                check_int("calc:idxz", &idxptr_h[iz], &idxptr[ZZ], 1, false);
-                check_real("calc:fx", &fptr_h[ix], &fptr[XX], 1, false);
-                check_real("calc:fy", &fptr_h[iy], &fptr[YY], 1, false);
-                check_real("calc:fz", &fptr_h[iz], &fptr[ZZ], 1, false);
-            }
-#endif
             idxptr[XX] = idxptr_h[ix];
             idxptr[YY] = idxptr_h[iy];
             idxptr[ZZ] = idxptr_h[iz];
@@ -142,6 +129,7 @@ void calc_interpolation_idx_gpu_core
             fptr[YY] = fptr_h[iy];
             fptr[ZZ] = fptr_h[iz];
             ++ix; ++iy; ++iz;
+            //was a checking loop?
         }
     }
 }
