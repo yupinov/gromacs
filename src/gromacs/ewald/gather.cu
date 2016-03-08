@@ -54,49 +54,45 @@ static __global__ void gather_f_bsplines_kernel
  real *thx, real *thy, real *thz, real *dthx, real *dthy, real *dthz,
  real *atc_f, real *coefficient_v, int *i0, int *j0, int *k0)
 {
-  /* sum forces for local particles */
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i < n)
-  {
-    real coefficient = coefficient_v[i];
-    real fx     = 0.0f;
-    real fy     = 0.0f;
-    real fz     = 0.0f;
-    int iorder = i*order;
-    int idim = i * DIM;
-
-    switch (order)
+    /* sum forces for local particles */
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n)
     {
-    case 4:
-      DO_FSPLINE(4);
-      break;
-    case 5:
-      DO_FSPLINE(5);
-      break;
-    default:
-      DO_FSPLINE(order);
-      break;
+        real coefficient = coefficient_v[i];
+        real fx     = 0.0f;
+        real fy     = 0.0f;
+        real fz     = 0.0f;
+        int iorder = i*order;
+        int idim = i * DIM;
+
+        switch (order)
+        {
+        case 4:
+            DO_FSPLINE(4);
+            break;
+        case 5:
+            DO_FSPLINE(5);
+            break;
+        default:
+            DO_FSPLINE(order);
+            break;
+        }
+
+
+        atc_f[idim + XX] += -coefficient * ( fx * nx * rxx );
+        atc_f[idim + YY] += -coefficient * ( fx * nx * ryx + fy * ny * ryy );
+        atc_f[idim + ZZ] += -coefficient * ( fx * nx * rzx + fy * ny * rzy + fz * nz * rzz );
+
+        /* Since the energy and not forces are interpolated
+         * the net force might not be exactly zero.
+         * This can be solved by also interpolating F, but
+         * that comes at a cost.
+         * A better hack is to remove the net force every
+         * step, but that must be done at a higher level
+         * since this routine doesn't see all atoms if running
+         * in parallel. Don't know how important it is?  EL 990726
+         */
     }
-
-
-    atc_f[idim + XX] += -coefficient*( fx*nx*rxx );
-    atc_f[idim + YY] += -coefficient*( fx*nx*ryx + fy*ny*ryy );
-    atc_f[idim + ZZ] += -coefficient*( fx*nx*rzx + fy*ny*rzy + fz*nz*rzz );
-
-    /*printf("kernel coeff=%f f=%f,%f,%f\n",
-	   (double) coefficient,
-	   (double) fx, (double) fy, (double) fz);*/
-
-    /* Since the energy and not forces are interpolated
-     * the net force might not be exactly zero.
-     * This can be solved by also interpolating F, but
-     * that comes at a cost.
-     * A better hack is to remove the net force every
-     * step, but that must be done at a higher level
-     * since this routine doesn't see all atoms if running
-     * in parallel. Don't know how important it is?  EL 990726
-     */
-  }
 }
 
 void gather_f_bsplines_gpu_2_pre
