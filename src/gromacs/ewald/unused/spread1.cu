@@ -47,10 +47,7 @@
 
 #define PME_ORDER_MAX 12
 typedef real *splinevec[DIM];
-#ifdef DEBUG_PME_GPU
-extern gpu_flags spread_gpu_flags;
-extern gpu_flags spread_bunching_gpu_flags;
-#endif
+
 #ifdef DEBUG_PME_TIMINGS_GPU
 extern gpu_events gpu_events_spread;
 #endif
@@ -111,14 +108,6 @@ void spread1_coefficients_bsplines_thread_gpu_2
     if (!spline_n)
         return;
     int size_grid = ndatatot * sizeof(real);
-#ifdef DEBUG_PME_GPU
-    real *grid_check;
-    if (check_vs_cpu_j(spread_gpu_flags, 1))
-    {
-        grid_check = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_HOST);
-        memcpy(grid_check, grid, ndatatot * sizeof(real));
-    }
-#endif
     for (int i = 0; i < ndatatot; i++)
     {
       // FIX clear grid on device instead
@@ -217,16 +206,6 @@ void spread1_coefficients_bsplines_thread_gpu_2
     CU_LAUNCH_ERR("spread1_coefficients_kernel");
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_stop(gpu_events_spread, ewcsPME_SPREAD, 1);
-#endif
-#ifdef DEBUG_PME_GPU
-    if (check_vs_cpu_j(spread_gpu_flags, 1))
-    {
-        print_mutex.lock(); //yupinov mutex - multilevel?
-        fprintf(stderr, "Check %d  (%d x %d x %d)\n", thread, pnx, pny, pnz);
-        print_mutex.unlock();
-        for (int i = 0; i < ndatatot; i+=pnz)
-            check_real(NULL, &grid_d[i], &grid_check[i], pnz, true);//, true);
-    }
 #endif
     stat = cudaMemcpy(grid, grid_d, size_grid, cudaMemcpyDeviceToHost);
     CU_RET_ERR(stat, "cudaMemcpy spread1 error");

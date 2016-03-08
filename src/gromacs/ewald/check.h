@@ -2,7 +2,6 @@
 #define GMX_EWALD_CHECK_H
 
 #ifdef DEBUG_PME_GPU
-//#define DEBUG_PME_TIMINGS_GPU
 
 #include "gromacs/utility/basedefinitions.h"
 

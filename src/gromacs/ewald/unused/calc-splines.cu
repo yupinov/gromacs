@@ -53,9 +53,7 @@ typedef float real;
 
 #define PME_ORDER_MAX 12
 typedef real *splinevec[DIM];
-#ifdef DEBUG_PME_GPU
-extern gpu_flags calcspline_gpu_flags;
-#endif
+
 #ifdef DEBUG_PME_TIMINGS_GPU
 extern gpu_events gpu_events_calcspline;
 #endif
@@ -261,13 +259,6 @@ void make_bsplines_gpu(splinevec theta, splinevec dtheta, int order,
     CU_LAUNCH_ERR("make_bsplines_kernel");
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_stop(gpu_events_calcspline, ewcsPME_CALCSPLINE, 0);
-#endif
-#ifdef DEBUG_PME_GPU
-    if (check_vs_cpu(calcspline_gpu_flags))
-    {
-        for (int j = 0; j < DIM; ++j)
-            check_real("theta", theta_d + j * nr * order, &theta[j][0], order, true);
-    }
 #endif
 
     for (int j = 0; j < DIM; ++j)

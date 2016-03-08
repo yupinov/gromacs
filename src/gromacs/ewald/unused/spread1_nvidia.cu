@@ -47,10 +47,6 @@
 
 #define PME_ORDER_MAX 12
 typedef real *splinevec[DIM];
-#ifdef DEBUG_PME_GPU
-extern gpu_flags spread_gpu_flags;
-extern gpu_flags spread_bunching_gpu_flags;
-#endif
 #ifdef DEBUG_PME_TIMINGS_GPU
 extern gpu_events gpu_events_spread;
 #endif
@@ -169,13 +165,6 @@ void spread1_nvidia_coefficients_bsplines_thread_gpu_2
 
     int ndatatot = pnx*pny*pnz;
     int size_grid = ndatatot * sizeof(real);
-#ifdef DEBUG_PME_GPU
-    real *grid_check;
-    if (check_vs_cpu_j(spread_gpu_flags, 1)) {
-      grid_check = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_HOST);
-      memcpy(grid_check, grid, ndatatot * sizeof(real));
-    }
-#endif
     for (int i = 0; i < ndatatot; i++)
     {
       // FIX clear grid on device instead
@@ -264,47 +253,6 @@ void spread1_nvidia_coefficients_bsplines_thread_gpu_2
 
 #ifdef DEBUG_PME_TIMINGS_GPU
   events_record_stop(gpu_events_spread, ewcsPME_SPREAD, 1);
-#endif
-#ifdef DEBUG_PME_GPU
-  if (check_vs_cpu_j(spread_gpu_flags, 1)) {
-    print_mutex.lock();
-    int num_errors = 0;
-    for (int i = 0; i < ndatatot; ++i) {
-      real diff = grid_check[i];
-      real cpu_v = grid_check[i];
-      cudaMemcpy(&grid_check[i], &grid_d[i], sizeof(real), cudaMemcpyDeviceToHost);
-      diff -= grid_check[i];
-      real gpu_v = grid_check[i];
-      if (fabs(diff) > 1E-8f)
-      {
-        real absdiff = fabs(diff) / fabs(cpu_v);
-        if (absdiff > 1E-5f) {
-          ++num_errors;
-          fprintf(stderr, "Check %d  (%d x %d x %d)\n",
-            thread, pnx, pny, pnz);
-            fprintf(stderr, "\t %d ppm ", (int) (absdiff * 1e6));
-            fprintf(stderr, " value %f\n", cpu_v);
-        }
-        //else {
-        //  fprintf(stderr, "~\n");
-        //}
-        //fprintf(stderr, "(%f - %f)", cpu_v, gpu_v);
-      }
-      //else
-      //{
-      //      if (gpu_v == 0) {
-      //        fprintf(stderr, "0");
-      //      } else {
-      //        fprintf(stderr, "=");
-      //      }
-      //}
-      //if ((i + 1) % pnz == 0) {
-      //  fprintf(stderr, "\n");
-      //}
-    }
-    fprintf(stderr, "#PME Errors = %d\n", num_errors);
-    print_mutex.unlock();
-  }
 #endif
   cudaMemcpy(grid, grid_d, size_grid, cudaMemcpyDeviceToHost);
 }

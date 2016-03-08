@@ -108,11 +108,6 @@ static const char *wcn[ewcNR] =
     "Comm. coord.", "Born radii", "Force", "Wait + Comm. F", "PME mesh",
     "PME redist. X/F", "PME spread/gather", "PME 3D-FFT", "PME 3D-FFT Comm.", "PME solve LJ", "PME solve Elec",
     "PME wait for PP",
-#ifdef DEBUG_PME_GPU
-    "PME mesh [CPU]",
-        "PME redist. X/F [CPU]", "PME spread/gather [CPU]", "PME 3D-FFT [CPU]", "PME 3D-FFT Comm. [CPU]", "PME solve LJ [CPU]", "PME solve Elec [CPU]",
-        "PME wait for PP [CPU]",
-#endif
     "Wait + Recv. PME F", "Wait GPU nonlocal", "Wait GPU local", "NB X/F buffer ops.",
     "Vsite spread", "COM pull force",
     "Write traj.", "Update", "Constraints", "Comm. energies",
@@ -142,16 +137,6 @@ static const char *wcsn[ewcsNR] =
     "Solve",
     "FFT c2r",
     "Gather",
-#ifdef DEBUG_PME_GPU
-    "Interpolation [CPU]",
-    "Spline [CPU]",
-    "Spread [CPU]",
-    "Spline/spread [CPU]",
-    "FFT r2c [CPU]",
-    "Solve [CPU]",
-    "PME fft c2r [CPU]",
-    "Gather [CPU]",
-#endif
 };
 
 gmx_bool wallcycle_have_counter(void)

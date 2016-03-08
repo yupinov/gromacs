@@ -47,10 +47,6 @@
 
 #define PME_ORDER_MAX 12 //yupinov - what's this
 typedef real *splinevec[DIM];
-#ifdef DEBUG_PME_GPU
-extern gpu_flags spread_gpu_flags;
-extern gpu_flags spread_bunching_gpu_flags;
-#endif
 #ifdef DEBUG_PME_TIMINGS_GPU
 extern gpu_events gpu_events_spread;
 #endif
@@ -211,14 +207,7 @@ void spread_coefficients_bsplines_thread_gpu_2
         return;
     int ndatatot = pnx*pny*pnz;
     int size_grid = ndatatot * sizeof(real);
-#ifdef DEBUG_PME_GPU
-    real *grid_check;
-    if (check_vs_cpu(spread_gpu_flags))
-    {
-      grid_check = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_HOST);
-      memcpy(grid_check, grid, ndatatot * sizeof(real));
-    }
-#endif
+
     for (int i = 0; i < ndatatot; i++)
     {
       // FIX clear grid on device instead
@@ -248,13 +237,10 @@ void spread_coefficients_bsplines_thread_gpu_2
     real *thz_d = th_a(TH_ID_THZ, thread, size_real * order, TH_LOC_CUDA);
 
     int oo = 0;
-#ifdef DEBUG_PME_GPU
-    if (check_vs_cpu(spread_bunching_gpu_flags))
-    {
-      try_bunching(pnx, pny, pnz,
+
+     try_bunching(pnx, pny, pnz,
 		   atc_idx, spline_ind, spline_n, atc_coefficient, atc_n_foo);
-    }
-#endif
+
     //yupinov what is this "bunching"? (found only in spread.cu)
     for (int ii = 0; ii < spline_n; ii++)
     {
@@ -328,56 +314,7 @@ void spread_coefficients_bsplines_thread_gpu_2
 #ifdef DEBUG_PME_TIMINGS_GPU
   events_record_stop(gpu_events_spread, ewcsPME_SPREAD, 0);
 #endif
-  #ifdef DEBUG_PME_GPU
-  if (check_vs_cpu(spread_gpu_flags))
-  {
-      print_mutex.lock();
-      fprintf(stderr, "Check %d  (%d x %d x %d)\n", thread, pnx, pny, pnz);
-      for (int i = 0; i < ndatatot; ++i) {
-          real diff = grid_check[i];
-          real cpu_v = grid_check[i];
-          stat = cudaMemcpy(&grid_check[i], &grid_d[i], sizeof(real), cudaMemcpyDeviceToHost);
-          CU_RET_ERR(stat, "cudaMemcpy spread error");
-          diff -= grid_check[i];
-          real gpu_v = grid_check[i];
-          if (diff != 0)
-          {
-              real absdiff = fabs(diff) / fabs(cpu_v);
-              if (absdiff > .000001)
-              {
-                  fprintf(stderr, "%dppm", (int) (absdiff * 1e6));
-                  if (absdiff > .0001)
-                  {
-                      fprintf(stderr, " value %f ", cpu_v);
-                  }
-              }
-              else
-              {
-                  fprintf(stderr, "~");
-              }
-              //fprintf(stderr, "(%f - %f)", cpu_v, gpu_v);
-          }
-          /*
-          else
-          {
-              if (gpu_v == 0)
-              {
-                  fprintf(stderr, "0");
-              }
-              else
-              {
-                  fprintf(stderr, "=");
-              }
-          }
-          */
-          if ((i + 1) % pnz == 0)
-          {
-              ;//fprintf(stderr, "\n");
-          }
-      }
-      print_mutex.unlock();
-  }
-#endif
+
   stat = cudaMemcpy(grid, grid_d, size_grid, cudaMemcpyDeviceToHost);
   CU_RET_ERR(stat, "cudaMemcpy spread error");
 }

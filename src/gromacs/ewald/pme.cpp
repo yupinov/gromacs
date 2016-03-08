@@ -575,9 +575,6 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     }
     //yupinov bGPU not checked everywhere! have to refactor
     pme->bGPU        = bPMEGPU;
-    #ifdef DEBUG_PME_GPU
-    pme->bGPU        = true; //yupinov don't touch
-    #endif
 
     pme->nthread = nthread;
     //yupinov: gather_f, and other things are not currently written for multi-threading...

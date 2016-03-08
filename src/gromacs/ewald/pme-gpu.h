@@ -154,13 +154,6 @@ inline int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t gmx_unused *pme,
     gmx_bool bGPU = pme->bGPU;
     int wcycle_id = ewcPME_FFT;
     int wsubcycle_id = (dir == GMX_FFT_REAL_TO_COMPLEX) ? ewcsPME_FFT_R2C : ewcsPME_FFT_C2R;  //yupinov - this is 1 thread!
-#ifdef DEBUG_PME_GPU
-    if (!bGPU)
-    {
-        wcycle_id = ewcPME_FFT_CPU;
-        wsubcycle_id = (dir == GMX_FFT_REAL_TO_COMPLEX) ? ewcsPME_FFT_R2C_CPU : ewcsPME_FFT_C2R_CPU;
-    }
-#endif
 
     if (thread == 0)
     {
