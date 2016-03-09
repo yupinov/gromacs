@@ -61,178 +61,6 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
  const real * __restrict__ pme_bsp_mod_ZZ,
  t_complex * __restrict__ grid,
  real ewaldcoeff, real vol,
- real * __restrict__ energy_v, real * __restrict__ virial_v);
-
-
-void solve_pme_yzx_gpu(real pme_epsilon_r,
-		      int nx, int ny, int nz,
-		      ivec complex_order, ivec local_ndata, ivec local_offset, ivec local_size,
-		      real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
-		      //real *mhx, real *mhy, real *mhz, real *m2, real *denom, real *tmp1, real *eterm, real *m2inv,
-		      splinevec pme_bsp_mod,
-		      matrix work_vir_q, real *work_energy_q,
-		      t_complex *grid,
-		      real ewaldcoeff, real vol,
-		      gmx_bool bEnerVir,
-              gmx_pme_t *pme,
-              int nthread, int thread, t_complex *complexFFTGridSavedOnDevice)
-{
-    cudaStream_t s = pme->gpu->pmeStream;
-    /* do recip sum over local cells in grid */
-    /* y major, z middle, x minor or continuous */
-    //t_complex *p0;
-    //int     kx, ky, kz, maxkx, maxky, maxkz;
-    // real    mx, my, mz;
-    //real    factor = M_PI*M_PI/(ewaldcoeff*ewaldcoeff);
-    //real    ets2, struct2, vfactor, ets2vf;
-    //real    d1, d2;
-    real energy = 0;
-    //real    by, bz;
-    real    virxx = 0, virxy = 0, virxz = 0, viryy = 0, viryz = 0, virzz = 0;
-    //real    mhxk, mhyk, mhzk, m2k;
-    //real    corner_fac;
-    real    elfac;
-
-    elfac = ONE_4PI_EPS0/pme_epsilon_r;
-
-    /* Dimensions should be identical for A/B grid, so we just use A here */
-    /*
-      TODO: Dimensions are passed in for now. call complex limits elsewhere?
-    gmx_parallel_3dfft_complex_limits(pme->pfft_setup[PME_GRID_QA],
-                                      complex_order,
-                                      local_ndata,
-                                      local_offset,
-                                      local_size);
-    gmx_parallel_3dfft_complex_limits_gpu(pme->pfft_setup_gpu[PME_GRID_QA],
-                                      complex_order,
-                                      local_ndata,
-                                      local_offset,
-                                      local_size);
-    */
-
-
-
-
-    //ndata nsize discrepancy?
-    int n = local_ndata[YY] * local_ndata[ZZ] * local_ndata[XX];
-
-    const int blockSize = warp_size;
-    //yupinov align minor dimension!
-    dim3 blocks(local_ndata[YY], local_ndata[ZZ], (local_ndata[XX] + blockSize - 1) / blockSize);
-    dim3 threads(1, 1, blockSize);
-
-    //cudaError_t stat = cudaMemcpyToSymbol( sqrt_M_PI_d, &sqrt_M_PI, sizeof(real));  //yupinov - this is an overkill!
-    //CU_RET_ERR(stat, "solve cudaMemcpyToSymbol");
-    //printf("local_size[XX] %d local_ndata[XX] %d\n", local_size[XX], local_ndata[XX]);
-    //printf("local_size[YY] %d local_ndata[YY] %d\n", local_size[YY], local_ndata[YY]);
-    //printf("local_size[ZZ] %d local_ndata[ZZ] %d\n", local_size[ZZ], local_ndata[ZZ]);
-    int grid_n = local_size[YY] * local_size[ZZ] * local_size[XX];
-    int grid_size = grid_n * sizeof(t_complex);
-
-    real *pme_bsp_mod_x_d = th_a_cpy(TH_ID_BSP_MOD_X, thread, pme_bsp_mod[XX], nx * sizeof(real), TH_LOC_CUDA, s);
-    real *pme_bsp_mod_y_d = th_a_cpy(TH_ID_BSP_MOD_Y, thread, pme_bsp_mod[YY], ny * sizeof(real), TH_LOC_CUDA, s);
-    real *pme_bsp_mod_z_d = th_a_cpy(TH_ID_BSP_MOD_Z, thread, pme_bsp_mod[ZZ], nz * sizeof(real), TH_LOC_CUDA, s);
-
-    int energy_size = n * sizeof(real);
-    int virial_size = 6 * n * sizeof(real);
-    real *energy_d = th_a(TH_ID_ENERGY, thread, energy_size, TH_LOC_CUDA);
-    real *virial_d = th_a(TH_ID_VIRIAL, thread, virial_size, TH_LOC_CUDA);
-
-    t_complex *workingGrid = complexFFTGridSavedOnDevice;
-    gmx_bool gridIsOnDevice = (workingGrid != NULL);
-    if (!gridIsOnDevice)
-    {
-        t_complex *grid_d = th_c_cpy(TH_ID_GRID, thread, grid, grid_size, TH_LOC_CUDA, s); //no need to copy?
-        //launch blocks while copying?
-        workingGrid = grid_d;
-    }
-#ifdef DEBUG_PME_TIMINGS_GPU
-    events_record_start(gpu_events_solve, s);
-#endif
-    //too little blocks: 44 vs 16*7 processors
-    if (bEnerVir)
-        solve_pme_yzx_iyz_loop_kernel<TRUE><<<blocks, threads, 0, s>>>
-          (local_ndata[YY], local_ndata[ZZ], local_ndata[XX],
-           local_offset[XX], local_offset[YY], local_offset[ZZ],
-           local_size[XX], local_size[YY], local_size[ZZ],
-           nx, ny, nz, rxx, ryx, ryy, rzx, rzy, rzz,
-           elfac,
-           pme_bsp_mod_x_d, pme_bsp_mod_y_d, pme_bsp_mod_z_d,
-           workingGrid, ewaldcoeff, vol,
-           energy_d, virial_d);
-    else
-        solve_pme_yzx_iyz_loop_kernel<FALSE><<<blocks, threads, 0, s>>>
-          (local_ndata[YY], local_ndata[ZZ], local_ndata[XX],
-           local_offset[XX], local_offset[YY], local_offset[ZZ],
-           local_size[XX], local_size[YY], local_size[ZZ],
-           nx, ny, nz, rxx, ryx, ryy, rzx, rzy, rzz,
-           elfac,
-           pme_bsp_mod_x_d, pme_bsp_mod_y_d, pme_bsp_mod_z_d,
-           workingGrid, ewaldcoeff, vol,
-           energy_d, virial_d);
-    CU_LAUNCH_ERR("solve_pme_yzx_iyz_loop_kernel");
-#ifdef DEBUG_PME_TIMINGS_GPU
-    events_record_stop(gpu_events_solve, s, ewcsPME_SOLVE, 0);
-#endif
-
-    //if (!gridIsOnDevice) //yupinov?
-    {
-        th_cpy(grid, workingGrid, grid_size, TH_LOC_HOST, s);
-    }
-
-    if (bEnerVir)
-    {
-        real *energy_h = th_a_cpy(TH_ID_ENERGY, thread, energy_d, energy_size, TH_LOC_HOST, s);
-        real *virial_h = th_a_cpy(TH_ID_VIRIAL, thread, virial_d, virial_size, TH_LOC_HOST, s);
-        //yupinov - workaround for a zero point - do in kernel?
-        memset(energy_h, 0, sizeof(real));
-        memset(virial_h, 0, 6 * sizeof(real));
-
-        for (int i = 0, j = 0; i < n; ++i)
-        {
-            energy += energy_h[i];
-            virxx += virial_h[j++];
-            viryy += virial_h[j++];
-            virzz += virial_h[j++];
-            virxy += virial_h[j++];
-            virxz += virial_h[j++];
-            viryz += virial_h[j++];
-        }
-
-        /* Update virial with local values.
-         * The virial is symmetric by definition.
-         * this virial seems ok for isotropic scaling, but I'm
-         * experiencing problems on semiisotropic membranes.
-         * IS THAT COMMENT STILL VALID??? (DvdS, 2001/02/07).
-         */
-        work_vir_q[XX][XX] = 0.25 * virxx;
-        work_vir_q[YY][YY] = 0.25 * viryy;
-        work_vir_q[ZZ][ZZ] = 0.25 * virzz;
-        work_vir_q[XX][YY] = work_vir_q[YY][XX] = 0.25 * virxy;
-        work_vir_q[XX][ZZ] = work_vir_q[ZZ][XX] = 0.25 * virxz;
-        work_vir_q[YY][ZZ] = work_vir_q[ZZ][YY] = 0.25 * viryz;
-
-        /* This energy should be corrected for a charged system */
-        *work_energy_q = 0.5 * energy;
-    }
-    /* Return the loop count */
-    //return local_ndata[YY]*local_ndata[XX]; //yupinov why
-}
-
-template<const gmx_bool bEnerVir>
-__global__ void solve_pme_yzx_iyz_loop_kernel
-(int local_ndata_YY, int local_ndata_ZZ, int local_ndata_XX,
- int local_offset_XX, int local_offset_YY, int local_offset_ZZ,
- int local_size_XX, int local_size_YY, int local_size_ZZ,
- int nx, int ny, int nz,
- real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
- real elfac,
- //splinevec pme_bsp_mod,
- const real * __restrict__ pme_bsp_mod_XX,
- const real * __restrict__ pme_bsp_mod_YY,
- const real * __restrict__ pme_bsp_mod_ZZ,
- t_complex * __restrict__ grid,
- real ewaldcoeff, real vol,
  real * __restrict__ energy_v, real * __restrict__ virial_v)
 {
     const real factor = M_PI*M_PI/(ewaldcoeff*ewaldcoeff);
@@ -407,6 +235,162 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
             }
         }
     }
+}
+
+
+void solve_pme_yzx_gpu(real pme_epsilon_r,
+		      int nx, int ny, int nz,
+		      ivec complex_order, ivec local_ndata, ivec local_offset, ivec local_size,
+		      real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
+		      //real *mhx, real *mhy, real *mhz, real *m2, real *denom, real *tmp1, real *eterm, real *m2inv,
+		      splinevec pme_bsp_mod,
+		      matrix work_vir_q, real *work_energy_q,
+		      t_complex *grid,
+		      real ewaldcoeff, real vol,
+		      gmx_bool bEnerVir,
+              gmx_pme_t *pme,
+              int nthread, int thread, t_complex *complexFFTGridSavedOnDevice)
+{
+    cudaStream_t s = pme->gpu->pmeStream;
+    /* do recip sum over local cells in grid */
+    /* y major, z middle, x minor or continuous */
+    //t_complex *p0;
+    //int     kx, ky, kz, maxkx, maxky, maxkz;
+    // real    mx, my, mz;
+    //real    factor = M_PI*M_PI/(ewaldcoeff*ewaldcoeff);
+    //real    ets2, struct2, vfactor, ets2vf;
+    //real    d1, d2;
+    real energy = 0;
+    //real    by, bz;
+    real    virxx = 0, virxy = 0, virxz = 0, viryy = 0, viryz = 0, virzz = 0;
+    //real    mhxk, mhyk, mhzk, m2k;
+    //real    corner_fac;
+    real    elfac;
+
+    elfac = ONE_4PI_EPS0/pme_epsilon_r;
+
+    /* Dimensions should be identical for A/B grid, so we just use A here */
+    /*
+      TODO: Dimensions are passed in for now. call complex limits elsewhere?
+    gmx_parallel_3dfft_complex_limits(pme->pfft_setup[PME_GRID_QA],
+                                      complex_order,
+                                      local_ndata,
+                                      local_offset,
+                                      local_size);
+    gmx_parallel_3dfft_complex_limits_gpu(pme->pfft_setup_gpu[PME_GRID_QA],
+                                      complex_order,
+                                      local_ndata,
+                                      local_offset,
+                                      local_size);
+    */
+
+
+
+
+    //ndata nsize discrepancy?
+    int n = local_ndata[YY] * local_ndata[ZZ] * local_ndata[XX];
+
+    const int blockSize = warp_size;
+    //yupinov align minor dimension!
+    dim3 blocks(local_ndata[YY], local_ndata[ZZ], (local_ndata[XX] + blockSize - 1) / blockSize);
+    dim3 threads(1, 1, blockSize);
+
+    //cudaError_t stat = cudaMemcpyToSymbol( sqrt_M_PI_d, &sqrt_M_PI, sizeof(real));  //yupinov - this is an overkill!
+    //CU_RET_ERR(stat, "solve cudaMemcpyToSymbol");
+    //printf("local_size[XX] %d local_ndata[XX] %d\n", local_size[XX], local_ndata[XX]);
+    //printf("local_size[YY] %d local_ndata[YY] %d\n", local_size[YY], local_ndata[YY]);
+    //printf("local_size[ZZ] %d local_ndata[ZZ] %d\n", local_size[ZZ], local_ndata[ZZ]);
+    int grid_n = local_size[YY] * local_size[ZZ] * local_size[XX];
+    int grid_size = grid_n * sizeof(t_complex);
+
+    real *pme_bsp_mod_x_d = th_a_cpy(TH_ID_BSP_MOD_X, thread, pme_bsp_mod[XX], nx * sizeof(real), TH_LOC_CUDA, s);
+    real *pme_bsp_mod_y_d = th_a_cpy(TH_ID_BSP_MOD_Y, thread, pme_bsp_mod[YY], ny * sizeof(real), TH_LOC_CUDA, s);
+    real *pme_bsp_mod_z_d = th_a_cpy(TH_ID_BSP_MOD_Z, thread, pme_bsp_mod[ZZ], nz * sizeof(real), TH_LOC_CUDA, s);
+
+    int energy_size = n * sizeof(real);
+    int virial_size = 6 * n * sizeof(real);
+    real *energy_d = th_a(TH_ID_ENERGY, thread, energy_size, TH_LOC_CUDA);
+    real *virial_d = th_a(TH_ID_VIRIAL, thread, virial_size, TH_LOC_CUDA);
+
+    t_complex *workingGrid = complexFFTGridSavedOnDevice;
+    gmx_bool gridIsOnDevice = (workingGrid != NULL);
+    if (!gridIsOnDevice)
+    {
+        t_complex *grid_d = th_c_cpy(TH_ID_GRID, thread, grid, grid_size, TH_LOC_CUDA, s); //no need to copy?
+        //launch blocks while copying?
+        workingGrid = grid_d;
+    }
+#ifdef DEBUG_PME_TIMINGS_GPU
+    events_record_start(gpu_events_solve, s);
+#endif
+    //too little blocks: 44 vs 16*7 processors
+    if (bEnerVir)
+        solve_pme_yzx_iyz_loop_kernel<TRUE><<<blocks, threads, 0, s>>>
+          (local_ndata[YY], local_ndata[ZZ], local_ndata[XX],
+           local_offset[XX], local_offset[YY], local_offset[ZZ],
+           local_size[XX], local_size[YY], local_size[ZZ],
+           nx, ny, nz, rxx, ryx, ryy, rzx, rzy, rzz,
+           elfac,
+           pme_bsp_mod_x_d, pme_bsp_mod_y_d, pme_bsp_mod_z_d,
+           workingGrid, ewaldcoeff, vol,
+           energy_d, virial_d);
+    else
+        solve_pme_yzx_iyz_loop_kernel<FALSE><<<blocks, threads, 0, s>>>
+          (local_ndata[YY], local_ndata[ZZ], local_ndata[XX],
+           local_offset[XX], local_offset[YY], local_offset[ZZ],
+           local_size[XX], local_size[YY], local_size[ZZ],
+           nx, ny, nz, rxx, ryx, ryy, rzx, rzy, rzz,
+           elfac,
+           pme_bsp_mod_x_d, pme_bsp_mod_y_d, pme_bsp_mod_z_d,
+           workingGrid, ewaldcoeff, vol,
+           energy_d, virial_d);
+    CU_LAUNCH_ERR("solve_pme_yzx_iyz_loop_kernel");
+#ifdef DEBUG_PME_TIMINGS_GPU
+    events_record_stop(gpu_events_solve, s, ewcsPME_SOLVE, 0);
+#endif
+
+    //if (!gridIsOnDevice) //yupinov?
+    {
+        th_cpy(grid, workingGrid, grid_size, TH_LOC_HOST, s);
+    }
+
+    if (bEnerVir)
+    {
+        real *energy_h = th_a_cpy(TH_ID_ENERGY, thread, energy_d, energy_size, TH_LOC_HOST, s);
+        real *virial_h = th_a_cpy(TH_ID_VIRIAL, thread, virial_d, virial_size, TH_LOC_HOST, s);
+        //yupinov - workaround for a zero point - do in kernel?
+        memset(energy_h, 0, sizeof(real));
+        memset(virial_h, 0, 6 * sizeof(real));
+
+        for (int i = 0, j = 0; i < n; ++i)
+        {
+            energy += energy_h[i];
+            virxx += virial_h[j++];
+            viryy += virial_h[j++];
+            virzz += virial_h[j++];
+            virxy += virial_h[j++];
+            virxz += virial_h[j++];
+            viryz += virial_h[j++];
+        }
+
+        /* Update virial with local values.
+         * The virial is symmetric by definition.
+         * this virial seems ok for isotropic scaling, but I'm
+         * experiencing problems on semiisotropic membranes.
+         * IS THAT COMMENT STILL VALID??? (DvdS, 2001/02/07).
+         */
+        work_vir_q[XX][XX] = 0.25 * virxx;
+        work_vir_q[YY][YY] = 0.25 * viryy;
+        work_vir_q[ZZ][ZZ] = 0.25 * virzz;
+        work_vir_q[XX][YY] = work_vir_q[YY][XX] = 0.25 * virxy;
+        work_vir_q[XX][ZZ] = work_vir_q[ZZ][XX] = 0.25 * virxz;
+        work_vir_q[YY][ZZ] = work_vir_q[ZZ][YY] = 0.25 * viryz;
+
+        /* This energy should be corrected for a charged system */
+        *work_energy_q = 0.5 * energy;
+    }
+    /* Return the loop count */
+    //return local_ndata[YY]*local_ndata[XX]; //yupinov why
 }
 
 
