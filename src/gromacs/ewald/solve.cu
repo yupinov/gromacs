@@ -49,7 +49,7 @@ static const __constant__ real lb_scale_factor_symm_gpu[] = { 2.0/64, 12.0/64, 3
 
 template<const gmx_bool bEnerVir>
 __global__ void solve_pme_yzx_iyz_loop_kernel
-(int iyz0, int iyz1, int local_ndata_ZZ, int local_ndata_XX,
+(int local_ndata_YY, int local_ndata_ZZ, int local_ndata_XX,
  int local_offset_XX, int local_offset_YY, int local_offset_ZZ,
  int local_size_XX, int local_size_YY, int local_size_ZZ,
  int nx, int ny, int nz,
@@ -82,7 +82,6 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     /* y major, z middle, x minor or continuous */
     //t_complex *p0;
     //int     kx, ky, kz, maxkx, maxky, maxkz;
-    int     iyz0, iyz1; //, iyz, iy, iz, kxstart, kxend;
     // real    mx, my, mz;
     //real    factor = M_PI*M_PI/(ewaldcoeff*ewaldcoeff);
     //real    ets2, struct2, vfactor, ets2vf;
@@ -114,13 +113,13 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
 
 
 
+    //ndata nsize discrepancy?
+    int n = local_ndata[YY] * local_ndata[ZZ] * local_ndata[XX];
 
-    iyz0 = local_ndata[YY]*local_ndata[ZZ]* thread   /nthread;
-    iyz1 = local_ndata[YY]*local_ndata[ZZ]*(thread+1)/nthread;
-
-    const int block_size = warp_size;
-    int n = iyz1 - iyz0;
-    int n_blocks = (n + block_size - 1) / block_size;
+    const int blockSize = warp_size;
+    //yupinov align minor dimension!
+    dim3 blocks(local_ndata[YY], local_ndata[ZZ], (local_ndata[XX] + blockSize - 1) / blockSize);
+    dim3 threads(1, 1, blockSize);
 
     //cudaError_t stat = cudaMemcpyToSymbol( sqrt_M_PI_d, &sqrt_M_PI, sizeof(real));  //yupinov - this is an overkill!
     //CU_RET_ERR(stat, "solve cudaMemcpyToSymbol");
@@ -147,13 +146,13 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
         //launch blocks while copying?
         workingGrid = grid_d;
     }
-    //fprintf(stderr, "grid copy after\n");
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_solve, s);
 #endif
+    //too little blocks: 44 vs 16*7 processors
     if (bEnerVir)
-        solve_pme_yzx_iyz_loop_kernel<TRUE><<<n_blocks, block_size, 0, s>>>
-          (iyz0, iyz1, local_ndata[ZZ], local_ndata[XX],
+        solve_pme_yzx_iyz_loop_kernel<TRUE><<<blocks, threads, 0, s>>>
+          (local_ndata[YY], local_ndata[ZZ], local_ndata[XX],
            local_offset[XX], local_offset[YY], local_offset[ZZ],
            local_size[XX], local_size[YY], local_size[ZZ],
            nx, ny, nz, rxx, ryx, ryy, rzx, rzy, rzz,
@@ -162,8 +161,8 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
            workingGrid, ewaldcoeff, vol,
            energy_d, virial_d);
     else
-        solve_pme_yzx_iyz_loop_kernel<FALSE><<<n_blocks, block_size, 0, s>>>
-          (iyz0, iyz1, local_ndata[ZZ], local_ndata[XX],
+        solve_pme_yzx_iyz_loop_kernel<FALSE><<<blocks, threads, 0, s>>>
+          (local_ndata[YY], local_ndata[ZZ], local_ndata[XX],
            local_offset[XX], local_offset[YY], local_offset[ZZ],
            local_size[XX], local_size[YY], local_size[ZZ],
            nx, ny, nz, rxx, ryx, ryy, rzx, rzy, rzz,
@@ -185,6 +184,10 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     {
         real *energy_h = th_a_cpy(TH_ID_ENERGY, thread, energy_d, energy_size, TH_LOC_HOST, s);
         real *virial_h = th_a_cpy(TH_ID_VIRIAL, thread, virial_d, virial_size, TH_LOC_HOST, s);
+        //yupinov - workaround for a zero point - do in kernel?
+        memset(energy_h, 0, sizeof(real));
+        memset(virial_h, 0, 6 * sizeof(real));
+
         for (int i = 0, j = 0; i < n; ++i)
         {
             energy += energy_h[i];
@@ -218,7 +221,7 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
 
 template<const gmx_bool bEnerVir>
 __global__ void solve_pme_yzx_iyz_loop_kernel
-(int iyz0, int iyz1, int local_ndata_ZZ, int local_ndata_XX,
+(int local_ndata_YY, int local_ndata_ZZ, int local_ndata_XX,
  int local_offset_XX, int local_offset_YY, int local_offset_ZZ,
  int local_size_XX, int local_size_YY, int local_size_ZZ,
  int nx, int ny, int nz,
@@ -237,19 +240,34 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
     int maxkx = (nx+1)/2;
     int maxky = (ny+1)/2;
     //int maxkz = nz/2+1;
-    //(void) maxkz; // unused
 
 
     real energy = 0.0f;
     real virxx = 0.0f, virxy = 0.0f, virxz = 0.0f, viryy = 0.0f, viryz = 0.0f, virzz = 0.0f;
 
+    // grid: 1024 * 1024 * 64
+    // threads: 1024
+    // so say, blockIdx.x/y are major/middle coordinates of the line
+    // blockIdx.z * blockDim.z  + threadIdx.z is cell index in the line
 
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    int iyz = iyz0 + i;
-    if (iyz < iyz1)
+    const int indexMajor = blockIdx.x * blockDim.x + threadIdx.x;  //Y in YZX
+    const int indexMiddle = blockIdx.y * blockDim.y + threadIdx.y;  //Z in YZX
+    const int indexMinor = blockIdx.z * blockDim.z + threadIdx.z;  //X in YZX
+
+    if ((indexMajor < local_ndata_YY) && (indexMiddle < local_ndata_ZZ) && (indexMinor < local_ndata_XX))
     {
-        int iy = iyz/local_ndata_ZZ;
-        int iz = iyz - iy*local_ndata_ZZ;
+        //int iy = iyz/local_ndata_ZZ;
+        //int iz = iyz - iy*local_ndata_ZZ;
+        int iy = indexMajor;
+        int iz = indexMiddle;
+        int ix = indexMinor;
+
+        //int i = blockIdx.x * blockDim.x + threadIdx.x;
+        int i = (iy * local_ndata_ZZ + iz) * local_ndata_XX + ix;
+        //yupinov do a reduction!
+
+
+        //yupinov :localoffset might be a failure point for MPI!
 
         int ky = iy + local_offset_YY;
         real my;
@@ -278,123 +296,116 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
             corner_fac = 0.5f;
         }
 
-        t_complex *p0 = grid + iy*local_size_ZZ*local_size_XX + iz*local_size_XX;
+        t_complex *p0 = grid + iy * local_size_ZZ * local_size_XX + iz * local_size_XX + ix;
 
-        int kxstart;
         // FIXME: avoid warp divergence for the (0,0,0) point (how bad is it?)
         /* We should skip the k-space point (0,0,0) */
         /* Note that since here x is the minor index, local_offset[XX]=0 */
-        if (local_offset_XX > 0 || ky > 0 || kz > 0)
-        {
-            kxstart = local_offset_XX;
-        }
-        else
-        {
-            kxstart = local_offset_XX + 1;
-            p0++;
-        }
-        int kxend = local_offset_XX + local_ndata_XX;
-
+        int kx = local_offset_XX + ix;
+        const gmx_bool notZeroPoint = (kx > 0 || ky > 0 || kz > 0);
+        //yupinov why not revert this point's action on CPU?
         real mx, mhxk, mhyk, mhzk, m2k;
         real ets2, struct2, vfactor, ets2vf;
 
-        if (bEnerVir)
+        if (notZeroPoint) //yupinov
         {
-            /* More expensive inner loop, especially because of the storage
-             * of the mh elements in array's.
-             * Because x is the minor grid index, all mh elements
-             * depend on kx for triclinic unit cells.
-             */
-
-            // /* Two explicit loops to avoid a conditional inside the loop */
-            // NOTE: on gpu, keep the conditional. shouldn't be too bad?
-            for (int kx = kxstart; kx < kxend; kx++, p0++)
+            if (bEnerVir)
             {
-                //if (i == 0) { printf("solve_kernel %d\n", kx); }
-                mx = kx < maxkx ? kx : (kx - nx);
+                /* More expensive inner loop, especially because of the storage
+                 * of the mh elements in array's.
+                 * Because x is the minor grid index, all mh elements
+                 * depend on kx for triclinic unit cells.
+                 */
 
-                mhxk      = mx * rxx;
-                mhyk      = mx * ryx + my * ryy;
-                mhzk      = mx * rzx + my * rzy + mz * rzz;
-                m2k       = mhxk*mhxk + mhyk*mhyk + mhzk*mhzk;
-                //mhx[kx]   = mhxk;
-                //mhy[kx]   = mhyk;
-                //mhz[kx]   = mhzk;
-                //m2[kx]    = m2k;
-                real denom = m2k*bz*by*pme_bsp_mod_XX[kx];
-                real tmp1  = -factor*m2k;
+                // /* Two explicit loops to avoid a conditional inside the loop */
+                // NOTE: on gpu, keep the conditional. shouldn't be too bad?
+                //for (int kx = kxstart; kx < kxend; kx++, p0++)
+                {
+                    mx = kx < maxkx ? kx : (kx - nx);
 
-                //if (iyz == iyz0 && kx == kxstart)
-                    ;//printf("SOLVE_gpu mhxk %f mhyk %f mhzk %f m2k %f denom %f tmp1 %f\n", (double) mhxk, (double) mhyk, (double) mhzk, (double) m2k, (double) denom, (double) tmp1);
+                    mhxk      = mx * rxx;
+                    mhyk      = mx * ryx + my * ryy;
+                    mhzk      = mx * rzx + my * rzy + mz * rzz;
+                    m2k       = mhxk*mhxk + mhyk*mhyk + mhzk*mhzk;
+                    //mhx[kx]   = mhxk;
+                    //mhy[kx]   = mhyk;
+                    //mhz[kx]   = mhzk;
+                    //m2[kx]    = m2k;
+                    real denom = m2k*bz*by*pme_bsp_mod_XX[kx];
+                    real tmp1  = -factor*m2k;
 
-                real m2invk = 1.0f / m2k;
+                    real m2invk = 1.0f / m2k;
 
-                //calc_exponentials_q_one(elfac, denom, tmp1, eterm);
-                denom = 1.0f / denom;
-                tmp1 = expf(tmp1);
-                real etermk = elfac*tmp1*denom;
+                    //calc_exponentials_q_one(elfac, denom, tmp1, eterm);
+                    denom = 1.0f / denom;
+                    tmp1 = expf(tmp1);
+                    real etermk = elfac*tmp1*denom;
 
-                real d1      = p0->re;
-                real d2      = p0->im;
+                    real d1      = p0->re;
+                    real d2      = p0->im;
 
-                p0->re  = d1 * etermk;
-                p0->im  = d2 * etermk;
+                    p0->re  = d1 * etermk;
+                    p0->im  = d2 * etermk;
 
-                struct2 = 2.0f * (d1 * d1 + d2 * d2);
+                    struct2 = 2.0f * (d1 * d1 + d2 * d2);
 
-                real tmp1k = etermk*struct2;
+                    real tmp1k = etermk*struct2;
 
-                ets2     = corner_fac * tmp1k;
-                vfactor  = (factor * m2k + 1.0f) * 2.0f * m2invk;
-                energy  += ets2;
+                    ets2     = corner_fac * tmp1k;
+                    vfactor  = (factor * m2k + 1.0f) * 2.0f * m2invk;
+                    energy  += ets2;
 
-                ets2vf   = ets2 *vfactor;
-                virxx   += ets2vf * mhxk * mhxk - ets2;
-                virxy   += ets2vf * mhxk * mhyk;
-                virxz   += ets2vf * mhxk * mhzk;
-                viryy   += ets2vf * mhyk * mhyk - ets2;
-                viryz   += ets2vf * mhyk * mhzk;
-                virzz   += ets2vf * mhzk * mhzk - ets2;
+                    ets2vf   = ets2 *vfactor;
+                    virxx   = ets2vf * mhxk * mhxk - ets2;
+                    virxy   = ets2vf * mhxk * mhyk;
+                    virxz   = ets2vf * mhxk * mhzk;
+                    viryy   = ets2vf * mhyk * mhyk - ets2;
+                    viryz   = ets2vf * mhyk * mhzk;
+                    virzz   = ets2vf * mhzk * mhzk - ets2;
+
+                    energy_v[i] = energy;
+                    virial_v[6*i+0] = virxx;
+                    virial_v[6*i+1] = viryy;
+                    virial_v[6*i+2] = virzz;
+                    virial_v[6*i+3] = virxy;
+                    virial_v[6*i+4] = virxz;
+                    virial_v[6*i+5] = viryz;
+                }
+            }
+            else
+            {
+                /* We don't need to calculate the energy and the virial.
+                 * In this case the triclinic overhead is small.
+                 */
+
+                /* Two explicit loops to avoid a conditional inside the loop */
+                // NOTE: on gpu, keep the conditional. shouldn't be too bad?
+                //for (int kx = kxstart; kx < kxend; kx++, p0++)
+
+                //yup - now each thread does Re and Im of a grid point => 16 threads in a block? should stride!
+                {
+                    mx = kx < maxkx ? kx : (kx - nx);
+
+                    mhxk      = mx * rxx;
+                    mhyk      = mx * ryx + my * ryy;
+                    mhzk      = mx * rzx + my * rzy + mz * rzz;
+                    m2k       = mhxk*mhxk + mhyk*mhyk + mhzk*mhzk;
+                    real denom = m2k*bz*by*pme_bsp_mod_XX[kx];
+                    real tmp1  = -factor*m2k;
+
+                    //calc_exponentials_q_one(elfac, denom, tmp1, eterm);
+                    denom = 1.0f / denom;
+                    tmp1 = exp(tmp1);
+                    real etermk = elfac*tmp1*denom;
+
+                    real d1      = p0->re;
+                    real d2      = p0->im;
+
+                    p0->re  = d1*etermk;
+                    p0->im  = d2*etermk;
+                }
             }
         }
-        else
-        {
-            /* We don't need to calculate the energy and the virial.
-             * In this case the triclinic overhead is small.
-             */
-
-            /* Two explicit loops to avoid a conditional inside the loop */
-            // NOTE: on gpu, keep the conditional. shouldn't be too bad?
-            for (int kx = kxstart; kx < kxend; kx++, p0++)
-            {
-                mx = kx < maxkx ? kx : (kx - nx);
-
-                mhxk      = mx * rxx;
-                mhyk      = mx * ryx + my * ryy;
-                mhzk      = mx * rzx + my * rzy + mz * rzz;
-                m2k       = mhxk*mhxk + mhyk*mhyk + mhzk*mhzk;
-                real denom = m2k*bz*by*pme_bsp_mod_XX[kx];
-                real tmp1  = -factor*m2k;
-
-                //calc_exponentials_q_one(elfac, denom, tmp1, eterm);
-                denom = 1.0f / denom;
-                tmp1 = exp(tmp1);
-                real etermk = elfac*tmp1*denom;
-
-                real d1      = p0->re;
-                real d2      = p0->im;
-
-                p0->re  = d1*etermk;
-                p0->im  = d2*etermk;
-            }
-        }
-        energy_v[i] = energy;
-        virial_v[6*i+0] = virxx;
-        virial_v[6*i+1] = viryy;
-        virial_v[6*i+2] = virzz;
-        virial_v[6*i+3] = virxy;
-        virial_v[6*i+4] = virxz;
-        virial_v[6*i+5] = viryz;
     }
 }
 
@@ -500,11 +511,16 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
     for (int ig = 0; ig < MAGIC_GRID_NUMBER; ++ig)
         th_cpy(grid[ig], grid_d + ig * grid_n, grid_size, TH_LOC_HOST, s);
 
-    if (bEnerVir)
+    if (bEnerVir) //yupinov check if it works!
     {
         real *energy_h = th_a_cpy(TH_ID_ENERGY, thread, energy_d, energy_size, TH_LOC_HOST, s);
         real *virial_h = th_a_cpy(TH_ID_VIRIAL, thread, virial_d, virial_size, TH_LOC_HOST, s);
-        for (int i = 0, j = 0; i < n; ++i) {
+        //yupinov - workaround for a zero point - do in kernel?
+        memset(energy_h, 0, sizeof(real));
+        memset(virial_h, 0, 6 * sizeof(real));
+
+        for (int i = 0, j = 0; i < n; ++i)
+        {
             energy += energy_h[i];
             virxx += virial_h[j++];
             viryy += virial_h[j++];
