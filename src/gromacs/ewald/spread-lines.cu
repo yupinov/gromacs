@@ -653,7 +653,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
 
     //const int particlesPerBlock = warp_size;
-    const int blockSize = 2 * warp_size; //yupinov: 3 > 4 > 2 on my GTX 660 TI;
+    const int blockSize = 4 * warp_size; //yupinov: 3 > 4 > 2 on my GTX 660 TI;
     const int particlesPerBlock = blockSize / order / order; //was 32, now 2 for order==4 ->round up=>
     //this is the number of particles for SPREAD, btw
     dim3 nBlocks((n + blockSize - 1) / blockSize * order * order, 1, 1);
