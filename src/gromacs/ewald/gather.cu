@@ -244,7 +244,7 @@ void gather_f_bsplines_gpu_2
     real *dtheta_y_d = th_a_cpy(TH_ID_DTHY, thread, dtheta_y_compacted, size_splines, TH_LOC_CUDA, s);
     real *dtheta_z_d = th_a_cpy(TH_ID_DTHZ, thread, dtheta_z_compacted, size_splines, TH_LOC_CUDA, s);
 
-    int block_size = 2 * warp_size;
+    int block_size = 4 * warp_size;
     int n_blocks = (n + block_size - 1) / block_size;
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_gather, s);
