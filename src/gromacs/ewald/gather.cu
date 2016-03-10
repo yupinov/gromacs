@@ -22,34 +22,43 @@ extern gpu_events gpu_events_gather;
 #define DO_FSPLINE(order)                      \
     for (int ithx = 0; (ithx < order); ithx++)              \
     {                                              \
-        const int index_x = (i0[i]+ithx)*pny*pnz;               \
-        const real tx      = thx[iorder+ithx];                       \
-        const real dx      = dthx[iorder+ithx];                      \
+        const int index_x = (i0[globalIndex] + ithx) * pny * pnz;               \
+        const real tx = thx[thetaOffset + ithx];                       \
+        const real dx = dthx[thetaOffset + ithx];                      \
                                                \
         for (int ithy = 0; (ithy < order); ithy++)          \
         {                                          \
-            const int index_xy = index_x+(j0[i]+ithy)*pnz;      \
-            const real ty       = thy[iorder+ithy];                  \
-            const real dy       = dthy[iorder+ithy];                 \
-            real fxy1     = 0.0f; \
+            const int index_xy = index_x+(j0[globalIndex]+ithy)*pnz;      \
+            const real ty = thy[thetaOffset + ithy];                  \
+            const real dy = dthy[thetaOffset + ithy];                 \
+            real fxy1 = 0.0f; \
             real fz1 = 0.0f;		   \
                                                \
+            /*for (int ithz = 0; (ithz < order); ithz++)    */  \
+            /*   gridValue[particlesPerBlock * ithz + localIndex] = grid[index_xy+(k0[globalIndex]+ithz)];*/\
             for (int ithz = 0; (ithz < order); ithz++)      \
             {                                      \
                 /*printf(" INDEX %d %d %d\n", (i0[i] + ithx), (j0[i]+ithy), (k0[i]+ithz));*/\
-                const real gval  = grid[index_xy+(k0[i]+ithz)];  \
-                fxy1 += thz[iorder+ithz]*gval;            \
-                fz1  += dthz[iorder+ithz]*gval;           \
+                /*gridValue[localIndex] = grid[index_xy+(k0[globalIndex]+ithz)]; */ \
+                /*fxy1 += thz[thetaOffset + ithz] * gridValue[particlesPerBlock * ithz + localIndex];  */          \
+                /*fz1  += dthz[thetaOffset + ithz] * gridValue[particlesPerBlock * ithz + localIndex];    */       \
+                const real gridValue = grid[index_xy+(k0[globalIndex]+ithz)];  \
+                fxy1 += thz[thetaOffset + ithz] * gridValue; \
+                fz1  += dthz[thetaOffset + ithz] * gridValue; \
             }                                      \
-            fx += dx*ty*fxy1;                      \
-            fy += tx*dy*fxy1;                      \
-            fz += tx*ty*fz1;                       \
+            fx[localIndex] += dx * ty * fxy1;                      \
+            fy[localIndex] += tx * dy * fxy1;                      \
+            fz[localIndex] += tx * ty * fz1;                       \
         }                                          \
     }
 
-
+template <const int particlesPerBlock, const int order>
+//__launch_bounds__(4 * warp_size, 16)
+//yupinov - with this, on my GTX 660 Ti, occupancy is 0.84, but it's slower by what, 20%?
+//same for minblocks = 14
+//without it, it's faster, but occupancy is 0.52 out of 62.5
 static __global__ void gather_f_bsplines_kernel
-(const real * __restrict__ grid, const int order, const int n,
+(const real * __restrict__ grid, const int n,
  const int nx, const int ny, const int nz, const int pnx, const int pny, const int pnz,
  const real rxx, const real ryx, const real ryy, const real rzx, const real rzy, const real rzz,
  const real * __restrict__ thx, const real * __restrict__ thy, const real * __restrict__ thz,
@@ -58,32 +67,41 @@ static __global__ void gather_f_bsplines_kernel
  const int * __restrict__ i0, const int * __restrict__ j0, const int * __restrict__ k0)
 {
     /* sum forces for local particles */
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n)
+    const int localIndex = threadIdx.x;
+    const int globalIndex = blockIdx.x * blockDim.x + threadIdx.x;
+
+    __shared__ real fx[particlesPerBlock];
+    __shared__ real fy[particlesPerBlock];
+    __shared__ real fz[particlesPerBlock];
+    __shared__ real coefficient[particlesPerBlock];
+
+    //__shared__ real gridValue[order * particlesPerBlock];
+
+    if (globalIndex < n)
     {
-        const real coefficient = coefficient_v[i];
-        real fx     = 0.0f;
-        real fy     = 0.0f;
-        real fz     = 0.0f;
-        int iorder = i*order;
-        int idim = i * DIM;
+        coefficient[localIndex] = coefficient_v[globalIndex];
+        fx[localIndex] = 0.0f;
+        fy[localIndex] = 0.0f;
+        fz[localIndex] = 0.0f;
+        const int thetaOffset = globalIndex * order;
+        const int idim = globalIndex * DIM;
 
         switch (order)
         {
-        case 4:
-            DO_FSPLINE(4);
-            break;
-        case 5:
-            DO_FSPLINE(5);
-            break;
-        default:
-            DO_FSPLINE(order);
-            break;
+            case 4:
+                DO_FSPLINE(4);
+                break;
+            case 5:
+                DO_FSPLINE(5);
+                break;
+            default:
+                DO_FSPLINE(order);
+                break;
         }
 
-        atc_f[idim + XX] += -coefficient * ( fx * nx * rxx );
-        atc_f[idim + YY] += -coefficient * ( fx * nx * ryx + fy * ny * ryy );
-        atc_f[idim + ZZ] += -coefficient * ( fx * nx * rzx + fy * ny * rzy + fz * nz * rzz );
+        atc_f[idim + XX] += -coefficient[localIndex] * ( fx[localIndex] * nx * rxx );
+        atc_f[idim + YY] += -coefficient[localIndex] * ( fx[localIndex] * nx * ryx + fy[localIndex] * ny * ryy );
+        atc_f[idim + ZZ] += -coefficient[localIndex] * ( fx[localIndex] * nx * rzx + fy[localIndex] * ny * rzy + fz[localIndex] * nz * rzz );
 
         /* Since the energy and not forces are interpolated
          * the net force might not be exactly zero.
@@ -137,7 +155,7 @@ void gather_f_bsplines_gpu_2_pre
 
 void gather_f_bsplines_gpu_2
 (real *grid, gmx_bool bClearF,
- int order,
+ const int order,
  int nx, int ny, int nz, int pnx, int pny, int pnz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
  int *spline_ind, int spline_n,
@@ -244,20 +262,21 @@ void gather_f_bsplines_gpu_2
     real *dtheta_y_d = th_a_cpy(TH_ID_DTHY, thread, dtheta_y_compacted, size_splines, TH_LOC_CUDA, s);
     real *dtheta_z_d = th_a_cpy(TH_ID_DTHZ, thread, dtheta_z_compacted, size_splines, TH_LOC_CUDA, s);
 
-    int block_size = 4 * warp_size;
-    int n_blocks = (n + block_size - 1) / block_size;
+    const int blockSize = 4 * warp_size;
+    int n_blocks = (n + blockSize - 1) / blockSize;
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_gather, s);
 #endif
-    gather_f_bsplines_kernel<<<n_blocks, block_size, 0, s>>>
-      (grid_d,
-       order, n,
-       nx, ny, nz, pnx, pny, pnz,
-       rxx, ryx, ryy, rzx, rzy, rzz,
-       theta_x_d, theta_y_d, theta_z_d,
-       dtheta_x_d, dtheta_y_d, dtheta_z_d,
-       atc_f_d, coefficients_d,
-       i0_d, j0_d, k0_d);
+    if (order == 4) //yupinov
+        gather_f_bsplines_kernel<blockSize, 4> <<<n_blocks, blockSize, 0, s>>>
+          (grid_d,
+           n,
+           nx, ny, nz, pnx, pny, pnz,
+           rxx, ryx, ryy, rzx, rzy, rzz,
+           theta_x_d, theta_y_d, theta_z_d,
+           dtheta_x_d, dtheta_y_d, dtheta_z_d,
+           atc_f_d, coefficients_d,
+           i0_d, j0_d, k0_d);
     CU_LAUNCH_ERR("gather_f_bsplines_kernel");
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_stop(gpu_events_gather, s, ewcsPME_GATHER, 0);
