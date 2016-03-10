@@ -73,19 +73,12 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
     real energy = 0.0f;
     real virxx = 0.0f, virxy = 0.0f, virxz = 0.0f, viryy = 0.0f, viryz = 0.0f, virzz = 0.0f;
 
-    // grid: 1024 * 1024 * 64
-    // threads: 1024
-    // so say, blockIdx.x/y are major/middle coordinates of the line
-    // blockIdx.z * blockDim.z  + threadIdx.z is cell index in the line
-
-    const int indexMajor = blockIdx.x * blockDim.x + threadIdx.x;  //Y in YZX
+    const int indexMinor = blockIdx.x * blockDim.x + threadIdx.x;  //X in YZX -
     const int indexMiddle = blockIdx.y * blockDim.y + threadIdx.y;  //Z in YZX
-    const int indexMinor = blockIdx.z * blockDim.z + threadIdx.z;  //X in YZX
+    const int indexMajor = blockIdx.z * blockDim.z + threadIdx.z;  //Y in YZX
 
     if ((indexMajor < local_ndata_YY) && (indexMiddle < local_ndata_ZZ) && (indexMinor < local_ndata_XX))
     {
-        //int iy = iyz/local_ndata_ZZ;
-        //int iz = iyz - iy*local_ndata_ZZ;
         int iy = indexMajor;
         int iz = indexMiddle;
         int ix = indexMinor;
@@ -93,7 +86,6 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
         //int i = blockIdx.x * blockDim.x + threadIdx.x;
         int i = (iy * local_ndata_ZZ + iz) * local_ndata_XX + ix;
         //yupinov do a reduction!
-
 
         //yupinov :localoffset might be a failure point for MPI!
 
@@ -126,16 +118,14 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
 
         t_complex *p0 = grid + iy * local_size_ZZ * local_size_XX + iz * local_size_XX + ix;
 
-        // FIXME: avoid warp divergence for the (0,0,0) point (how bad is it?)
         /* We should skip the k-space point (0,0,0) */
         /* Note that since here x is the minor index, local_offset[XX]=0 */
         int kx = local_offset_XX + ix;
         const gmx_bool notZeroPoint = (kx > 0 || ky > 0 || kz > 0);
-        //yupinov why not revert this point's action on CPU?
         real mx, mhxk, mhyk, mhzk, m2k;
         real ets2, struct2, vfactor, ets2vf;
 
-        if (notZeroPoint) //yupinov
+        if (notZeroPoint) // this skips just one point in the whole grid!
         {
             if (bEnerVir)
             {
@@ -145,8 +135,6 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
                  * depend on kx for triclinic unit cells.
                  */
 
-                // /* Two explicit loops to avoid a conditional inside the loop */
-                // NOTE: on gpu, keep the conditional. shouldn't be too bad?
                 //for (int kx = kxstart; kx < kxend; kx++, p0++)
                 {
                     mx = kx < maxkx ? kx : (kx - nx);
@@ -205,12 +193,8 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
                 /* We don't need to calculate the energy and the virial.
                  * In this case the triclinic overhead is small.
                  */
-
-                /* Two explicit loops to avoid a conditional inside the loop */
-                // NOTE: on gpu, keep the conditional. shouldn't be too bad?
                 //for (int kx = kxstart; kx < kxend; kx++, p0++)
-
-                //yup - now each thread does Re and Im of a grid point => 16 threads in a block? should stride!
+                //yupinov - now each thread does Re and Im of a grid point => 16 threads in a block? should stride!
                 {
                     mx = kx < maxkx ? kx : (kx - nx);
 
@@ -260,14 +244,14 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     //real    factor = M_PI*M_PI/(ewaldcoeff*ewaldcoeff);
     //real    ets2, struct2, vfactor, ets2vf;
     //real    d1, d2;
-    real energy = 0;
+    real energy = 0.0;
     //real    by, bz;
-    real    virxx = 0, virxy = 0, virxz = 0, viryy = 0, viryz = 0, virzz = 0;
+    real    virxx = 0.0, virxy = 0.0, virxz = 0.0, viryy = 0.0, viryz = 0.0, virzz = 0.0;
     //real    mhxk, mhyk, mhzk, m2k;
     //real    corner_fac;
     real    elfac;
 
-    elfac = ONE_4PI_EPS0/pme_epsilon_r;
+    elfac = ONE_4PI_EPS0 / pme_epsilon_r;
 
     /* Dimensions should be identical for A/B grid, so we just use A here */
     /*
@@ -290,10 +274,24 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     //ndata nsize discrepancy?
     int n = local_ndata[YY] * local_ndata[ZZ] * local_ndata[XX];
 
-    const int blockSize = warp_size;
+    const int blockSize = 4 * warp_size;
+    // GTX 660 Ti, 20160310
+    // number, occupancy, time from cudaEvents:
+    // 0.5  0.24  0.181
+    // 1    0.24  0.110
+    // 2    0.43  0.082
+    // 4    0.89  0.080
+    // 8    0.80  0.084
+
     //yupinov align minor dimension!
+
+    /*
     dim3 blocks(local_ndata[YY], local_ndata[ZZ], (local_ndata[XX] + blockSize - 1) / blockSize);
     dim3 threads(1, 1, blockSize);
+    */
+    // Z-dimension is too small, so instead of YZX we do XZY sizing
+    dim3 blocks((local_ndata[XX] + blockSize - 1) / blockSize, local_ndata[ZZ], local_ndata[YY]);
+    dim3 threads(blockSize, 1, 1);
 
     //cudaError_t stat = cudaMemcpyToSymbol( sqrt_M_PI_d, &sqrt_M_PI, sizeof(real));  //yupinov - this is an overkill!
     //CU_RET_ERR(stat, "solve cudaMemcpyToSymbol");
@@ -316,14 +314,13 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     gmx_bool gridIsOnDevice = (workingGrid != NULL);
     if (!gridIsOnDevice)
     {
-        t_complex *grid_d = th_c_cpy(TH_ID_GRID, thread, grid, grid_size, TH_LOC_CUDA, s); //no need to copy?
+        t_complex *grid_d = th_c_cpy(TH_ID_GRID, thread, grid, grid_size, TH_LOC_CUDA, s);
         //launch blocks while copying?
         workingGrid = grid_d;
     }
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_solve, s);
 #endif
-    //too little blocks: 44 vs 16*7 processors
     if (bEnerVir)
         solve_pme_yzx_iyz_loop_kernel<TRUE><<<blocks, threads, 0, s>>>
           (local_ndata[YY], local_ndata[ZZ], local_ndata[XX],
