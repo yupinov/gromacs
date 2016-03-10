@@ -224,9 +224,7 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
 
 void solve_pme_yzx_gpu(real pme_epsilon_r,
 		      int nx, int ny, int nz,
-		      ivec complex_order, ivec local_ndata, ivec local_offset, ivec local_size,
-		      real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
-		      //real *mhx, real *mhy, real *mhz, real *m2, real *denom, real *tmp1, real *eterm, real *m2inv,
+              ivec complex_order, ivec local_ndata, ivec local_offset, ivec local_size,
 		      splinevec pme_bsp_mod,
 		      matrix work_vir_q, real *work_energy_q,
 		      t_complex *grid,
@@ -250,6 +248,14 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     //real    mhxk, mhyk, mhzk, m2k;
     //real    corner_fac;
     real    elfac;
+
+    real rxx = pme->recipbox[XX][XX];
+    real ryx = pme->recipbox[YY][XX];
+    real ryy = pme->recipbox[YY][YY];
+    real rzx = pme->recipbox[ZZ][XX];
+    real rzy = pme->recipbox[ZZ][YY];
+    real rzz = pme->recipbox[ZZ][ZZ];
+
 
     elfac = ONE_4PI_EPS0 / pme_epsilon_r;
 
