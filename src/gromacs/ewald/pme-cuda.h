@@ -1,4 +1,3 @@
-
 #ifndef PMECUDAH
 #define PMECUDAH
 #include "pme-internal.h"
@@ -8,4 +7,6 @@ struct gmx_pme_cuda_t
 };
 
 //yupinov dealloc
+
+
 #endif

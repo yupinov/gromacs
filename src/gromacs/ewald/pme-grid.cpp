@@ -871,7 +871,7 @@ static void dump_grid(FILE *fp,
 {
     int x, y, z;
         //yupinov - not sure about the sizes here
-    // nz is 48 for cfft grid of 25, isn't tha tskipping teh last one
+    // nz is 48 for cfft grid of 25, isn't that skipping the last one
     //mz is 25 - bad!
     for (x = 0; x < nx; x++)
     {

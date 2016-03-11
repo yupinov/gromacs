@@ -212,11 +212,13 @@ __global__ void transpose_xyz_yzx_kernel(int nx, int ny, int nz,
     int z = blockIdx.z * blockDim.z + threadIdx.z;
     if ((x < nx) && (y < ny) && (z < (nz / 2 + 1)))
     {
-        int idx1 = (x * ny + y) * (nz / 2 + 1) + z; //XYZ index into the first complex plane.
-        int idx2 = ((ny + y) * (nz / 2 + 1) + z) * nx + x; //YZX-index into second complex plane
+        int idx1 = (x * ny + y) * (nz / 2 + 1) + z; //XYZ index into the first complex plane
+        int idx2 = -1;
+        if (cfftgridDimOrdering == XYZ)
+            idx2 = idx1 + nx * ny * (nz / 2 + 1); //XYZ-index into the second complex plane
+        else if(cfftgridDimOrdering == YZX)
+            idx2 = ((ny + y) * (nz / 2 + 1) + z) * nx + x; //YZX-index into the second complex plane
 
-        //if (idx1 == 2)
-        //    printf ("index %d %d %d %d %d %f %f\n", x, y, z, idx1, idx2, cdata[idx1].x, cdata[idx1].y);
 
         if (forward)
         {

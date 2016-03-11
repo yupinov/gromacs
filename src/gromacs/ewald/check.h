@@ -21,6 +21,13 @@ void print_lock();
 void print_unlock();
 #endif
 
+enum
+{
+    YZX,
+    XYZ,
+    INVALID
+};
+const int cfftgridDimOrdering = YZX;
 
 #ifdef DEBUG_PME_TIMINGS_GPU
 

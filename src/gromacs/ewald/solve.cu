@@ -26,12 +26,6 @@ extern gpu_events gpu_events_solve;
 typedef real *splinevec[DIM];
 
 
-enum
-{
-    YZX,
-    XYZ,
-    INVALID
-} ordering;
 
 /* Pascal triangle coefficients used in solve_pme_lj_yzx, only need to do 4 calculations due to symmetry */
 static const __constant__ real lb_scale_factor_symm_gpu[] = { 2.0/64, 12.0/64, 30.0/64, 20.0/64 }; //yupinov copied from pme-internal
@@ -59,21 +53,23 @@ template<const gmx_bool bEnerVir>
 __global__ void solve_pme_yzx_iyz_loop_kernel
 (int local_ndata_YY, int local_ndata_ZZ, int local_ndata_XX,
  int local_offset_XX, int local_offset_YY, int local_offset_ZZ,
- int local_size_XX, int local_size_YY, int local_size_ZZ,
+ int local_size_XX, /*int local_size_YY,*/ int local_size_ZZ,
  int nx, int ny, int nz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
- real elfac,
+ const real elfac,
  //splinevec pme_bsp_mod,
  const real * __restrict__ pme_bsp_mod_XX,
  const real * __restrict__ pme_bsp_mod_YY,
  const real * __restrict__ pme_bsp_mod_ZZ,
  t_complex * __restrict__ grid,
- real ewaldcoeff, real vol,
+ const real ewaldcoeff, real vol,
  real * __restrict__ energy_v, real * __restrict__ virial_v)
 {
     const real factor = M_PI*M_PI/(ewaldcoeff*ewaldcoeff);
 
     int maxkx = (nx+1)/2;
+    if (cfftgridDimOrdering == XYZ)
+        maxkx = (nx+2)/2; // [0 25]; -26] fixed, no maxkx required at all
     int maxky = (ny+1)/2;
     //int maxkz = nz/2+1;
 
@@ -113,12 +109,20 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
 
         int kz = iz + local_offset_ZZ;
 
+
+
         real mz = kz;
+
+
+        if (cfftgridDimOrdering == XYZ)
+            mz = (kz < (nz + 1) / 2) ? kz : (kz - nz);
+
 
         real bz = pme_bsp_mod_ZZ[kz];
 
         /* 0.5 correction for corner points */
         real corner_fac = 1.0f;
+        //printf("NZ %d\n", nz);
         if (kz == 0 || kz == (nz+1) / 2)
         {
             corner_fac = 0.5f;
@@ -133,6 +137,26 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
         real mx, mhxk, mhyk, mhzk, m2k;
         real ets2, struct2, vfactor, ets2vf;
 
+        mx = kx < maxkx ? kx : (kx - nx);
+        real indep_mx, indep_my, indep_mz;
+        if (cfftgridDimOrdering == YZX)
+        {
+            indep_mx = mx;
+            indep_my = my;
+            indep_mz = mz;
+        }
+        else
+        {
+            indep_mx = my;
+            indep_my = mz;
+            indep_mz = mx;
+        }
+
+
+        const gmx_bool debugPrint = false; (indep_mx == 49) && (indep_my > 50) && (indep_mz == 0);
+        //if ((indep_mx == -50) && (indep_mz == 26)) //mz
+        //if ((indep_mz == 0) && (indep_my == 51))
+           // printf("%g %g %g %d %d %g\n", indep_mx, indep_my, indep_mz, kz, nz, mz);
         if (notZeroPoint) // this skips just one point in the whole grid!
         {
             if (bEnerVir)
@@ -145,12 +169,32 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
 
                 //for (int kx = kxstart; kx < kxend; kx++, p0++)
                 {
-                    mx = kx < maxkx ? kx : (kx - nx);
+                    //mx = kx < maxkx ? kx : (kx - nx);
 
-                    mhxk      = mx * rxx;
-                    mhyk      = mx * ryx + my * ryy;
-                    mhzk      = mx * rzx + my * rzy + mz * rzz;
-                    m2k       = mhxk*mhxk + mhyk*mhyk + mhzk*mhzk;
+                    mhxk      = indep_mx * rxx;
+                    mhyk      = indep_mx * ryx + indep_my * ryy;
+                    mhzk      = indep_mx * rzx + indep_my * rzy + indep_mz * rzz;
+
+                    /*
+                    else //XYZ
+                    {
+                        // x is Z
+                        // z is Y
+                        // y is X
+
+                        // mx is actually over Z;
+                        // my is actually over X;
+                        // mz is actually over Y;
+
+                        mhxk      = my * rxx;
+                        mhyk      = my * ryx + mz * ryy;
+                        mhzk      = my * rzx + mz * rzy + mx * rzz;
+                    }
+                    */
+
+                    m2k       = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
+                    if (debugPrint)
+                       printf("!!! %g %g %g = %g\n", mhxk, mhyk, mhzk, m2k);
                     //mhx[kx]   = mhxk;
                     //mhy[kx]   = mhyk;
                     //mhz[kx]   = mhzk;
@@ -179,14 +223,13 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
                     vfactor  = (factor * m2k + 1.0f) * 2.0f * m2invk;
                     energy  += ets2;
 
-                    ets2vf   = ets2 *vfactor;
+                    ets2vf   = ets2 * vfactor;
                     virxx   = ets2vf * mhxk * mhxk - ets2;
                     virxy   = ets2vf * mhxk * mhyk;
                     virxz   = ets2vf * mhxk * mhzk;
                     viryy   = ets2vf * mhyk * mhyk - ets2;
                     viryz   = ets2vf * mhyk * mhzk;
                     virzz   = ets2vf * mhzk * mhzk - ets2;
-
                     energy_v[i] = energy;
                     virial_v[6*i+0] = virxx;
                     virial_v[6*i+1] = viryy;
@@ -194,6 +237,14 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
                     virial_v[6*i+3] = virxy;
                     virial_v[6*i+4] = virxz;
                     virial_v[6*i+5] = viryz;
+                    if (debugPrint)
+                        printf("%g %g %g corner factor %g\n", indep_mx, indep_my, indep_mz, corner_fac);
+                    if (debugPrint)
+                        printf("cell energy is %g, value %g %g\n", energy, d1, d2);
+
+                    // for X/Z etermk, grid, temp1k is correct
+                    // corner_fac and energy is wrong! but it's nto just corner_fac
+                    // for Y everything is correct
                 }
             }
             else
@@ -206,11 +257,11 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
                 {
                     mx = kx < maxkx ? kx : (kx - nx);
 
-                    mhxk      = mx * rxx;
-                    mhyk      = mx * ryx + my * ryy;
-                    mhzk      = mx * rzx + my * rzy + mz * rzz;
-                    m2k       = mhxk*mhxk + mhyk*mhyk + mhzk*mhzk;
-                    real denom = m2k*bz*by*pme_bsp_mod_XX[kx];
+                    mhxk      = indep_mx * rxx;
+                    mhyk      = indep_mx * ryx + indep_my * ryy;
+                    mhzk      = indep_mx * rzx + indep_my * rzy + indep_mz * rzz;
+                    m2k       = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
+                    real denom = m2k * bz * by * pme_bsp_mod_XX[kx];
                     real tmp1  = -factor*m2k;
 
                     //calc_exponentials_q_one(elfac, denom, tmp1, eterm);
@@ -223,12 +274,15 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
 
                     p0->re  = d1*etermk;
                     p0->im  = d2*etermk;
+                    //if (debugPrint)
+                    //    printf("%d %d %d %g %g %g\n", ix, iy, iz, etermk, d1, p0->re);
                 }
             }
         }
     }
 }
 
+#include <assert.h>
 
 void solve_pme_yzx_gpu(real pme_epsilon_r,
 		      int nx, int ny, int nz,
@@ -241,13 +295,12 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
               gmx_pme_t *pme,
               int nthread, int thread, t_complex *complexFFTGridSavedOnDevice)
 {
-    const int ordering = YZX;
-    const int minorDim = (ordering == XYZ) ? ZZ : XX;
-    const int middleDim = (ordering == XYZ) ? YY : ZZ;
-    const int majorDim = (ordering == XYZ) ? XX : YY;
-    const int nMinor = (ordering == XYZ) ? pme->nkz : pme->nkx;
-    const int nMajor = (ordering == XYZ) ? pme->nkx : pme->nky;
-    const int nMiddle = (ordering == XYZ) ? pme->nky : pme->nkz;
+    const int minorDim = (cfftgridDimOrdering == XYZ) ? ZZ : XX;
+    const int middleDim = (cfftgridDimOrdering == XYZ) ? YY : ZZ;
+    const int majorDim = (cfftgridDimOrdering == XYZ) ? XX : YY;
+    const int nMinor = (cfftgridDimOrdering == XYZ) ? pme->nkz : pme->nkx;
+    const int nMajor = (cfftgridDimOrdering == XYZ) ? pme->nkx : pme->nky;
+    const int nMiddle = (cfftgridDimOrdering == XYZ) ? pme->nky : pme->nkz;
 
     cudaStream_t s = pme->gpu->pmeStream;
     /* do recip sum over local cells in grid */
@@ -265,20 +318,24 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     //real    corner_fac;
     real    elfac;
 
-    /*
+
     real rxx = pme->recipbox[XX][XX];
     real ryx = pme->recipbox[YY][XX];
     real ryy = pme->recipbox[YY][YY];
     real rzx = pme->recipbox[ZZ][XX];
     real rzy = pme->recipbox[ZZ][YY];
     real rzz = pme->recipbox[ZZ][ZZ];
-    */
+
+    /*
     real rxx = pme->recipbox[minorDim][minorDim];
     real ryx = pme->recipbox[majorDim][minorDim];
     real ryy = pme->recipbox[majorDim][majorDim];
     real rzx = pme->recipbox[middleDim][minorDim];
     real rzy = pme->recipbox[middleDim][majorDim];
     real rzz = pme->recipbox[middleDim][middleDim];
+    */
+
+    //printf("%g %g %g %g %g %g\n", rxx, ryx, ryy, rzx, rzy, rzz);
 
 
     elfac = ONE_4PI_EPS0 / pme_epsilon_r;
@@ -299,9 +356,6 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     */
 
 
-
-
-    //ndata nsize discrepancy?
     int n = local_ndata[majorDim] * local_ndata[middleDim] * local_ndata[minorDim];
 
     const int blockSize = 4 * warp_size;
@@ -332,6 +386,10 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     int grid_n = local_size[majorDim] * local_size[middleDim] * local_size[minorDim];
     int grid_size = grid_n * sizeof(t_complex);
 
+    //printf("%d %d %d\n", nMinor, nMajor, nMiddle);
+    //printf(", grid data size %d", n); //100 * 52 * 27
+    //printf("\n");
+
     real *bspModMinor_d = th_a_cpy(TH_ID_BSP_MOD_X, thread, pme_bsp_mod[minorDim], nMinor * sizeof(real), TH_LOC_CUDA, s);
     real *bspModMajor_d = th_a_cpy(TH_ID_BSP_MOD_Y, thread, pme_bsp_mod[majorDim], nMajor * sizeof(real), TH_LOC_CUDA, s);
     real *bspModMiddle_d = th_a_cpy(TH_ID_BSP_MOD_Z, thread, pme_bsp_mod[middleDim], nMiddle * sizeof(real), TH_LOC_CUDA, s);
@@ -356,7 +414,7 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
         solve_pme_yzx_iyz_loop_kernel<TRUE><<<blocks, threads, 0, s>>>
           (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim],
            local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
-           local_size[minorDim], local_size[majorDim], local_size[middleDim],
+           local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
            nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
            elfac,
            bspModMinor_d, bspModMajor_d, bspModMiddle_d,
@@ -366,7 +424,7 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
         solve_pme_yzx_iyz_loop_kernel<FALSE><<<blocks, threads, 0, s>>>
           (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
            local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
-           local_size[minorDim], local_size[majorDim], local_size[middleDim],
+           local_size[minorDim], /*local_size[majorDim],*/local_size[middleDim],
            nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
            elfac,
            bspModMinor_d, bspModMajor_d, bspModMiddle_d,
@@ -416,6 +474,7 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
 
         /* This energy should be corrected for a charged system */
         *work_energy_q = 0.5 * energy;
+        printf("EN %g\n", *work_energy_q);
     }
     /* Return the loop count */
     //return local_ndata[YY]*local_ndata[XX]; //yupinov why
