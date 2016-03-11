@@ -1,0 +1,74 @@
+      :-) GROMACS - gmx mdrun, 2016-dev-20160304-ccef989-dirty-unknown (-:
+
+                            GROMACS is written by:
+     Emile Apol      Rossen Apostolov  Herman J.C. Berendsen    Par Bjelkmar   
+ Aldert van Buuren   Rudi van Drunen     Anton Feenstra    Gerrit Groenhof  
+ Christoph Junghans   Anca Hamuraru    Vincent Hindriksen Dimitrios Karkoulis
+    Peter Kasson        Jiri Kraus      Carsten Kutzner      Per Larsson    
+  Justin A. Lemkul   Magnus Lundborg   Pieter Meulenhoff    Erik Marklund   
+   Teemu Murtola       Szilard Pall       Sander Pronk      Roland Schulz   
+  Alexey Shvetsov     Michael Shirts     Alfons Sijbers     Peter Tieleman  
+  Teemu Virolainen  Christian Wennberg    Maarten Wolf   
+                           and the project leaders:
+        Mark Abraham, Berk Hess, Erik Lindahl, and David van der Spoel
+
+Copyright (c) 1991-2000, University of Groningen, The Netherlands.
+Copyright (c) 2001-2015, The GROMACS development team at
+Uppsala University, Stockholm University and
+the Royal Institute of Technology, Sweden.
+check out http://www.gromacs.org for more information.
+
+GROMACS is free software; you can redistribute it and/or modify it
+under the terms of the GNU Lesser General Public License
+as published by the Free Software Foundation; either version 2.1
+of the License, or (at your option) any later version.
+
+GROMACS:      gmx mdrun, version 2016-dev-20160304-ccef989-dirty-unknown
+Executable:   /home/yupinov/gromacs/master/build-from-qtcreator/bin/gmx
+Data prefix:  /home/yupinov/gromacs/master (source tree)
+Command line:
+  gmx mdrun -notunepme -pmegpu -nsteps 0 -resetstep 200 -g test_gpu
+
+
+Back Off! I just backed up test_gpu.log to ./#test_gpu.log.19#
+
+Running on 1 node with total 8 cores, 8 logical cores, 1 compatible GPU
+Hardware detected:
+  CPU info:
+    Vendor: Intel
+    Brand:  Intel(R) Core(TM) i7-4770 CPU @ 3.40GHz
+    SIMD instructions most likely to fit this hardware: AVX2_256
+    SIMD instructions selected at GROMACS compile time: AVX2_256
+  GPU info:
+    Number of GPUs detected: 1
+    #0: NVIDIA GeForce GTX 660 Ti, compute cap.: 3.0, ECC:  no, stat: compatible
+
+Reading file topol.tpr, VERSION 5.1 (single precision)
+Note: file tpx version 103, software tpx version 109
+Changing nstlist from 10 to 40, rlist from 1 to 1.101
+
+
+Overriding nsteps with value passed on the command line: 0 steps, 0 ps
+
+Using 1 MPI thread
+Using 8 OpenMP threads 
+
+1 compatible GPU is present, with ID 0
+1 GPU auto-selected for this run.
+Mapping of GPU ID to the 1 PP rank in this node: 0
+
+
+Back Off! I just backed up ener.edr to ./#ener.edr.28#
+starting mdrun 'Water'
+0 steps,      0.0 ps.
+
+-------------------------------------------------------
+Program:     gmx mdrun, version 2016-dev-20160304-ccef989-dirty-unknown
+Source file: src/gromacs/ewald/th-a.cu (line 137)
+
+Fatal error:
+PME cudaMemcpyDeviceToHost error: an illegal memory access was encountered
+
+For more information and tips for troubleshooting, please check the GROMACS
+website at http://www.gromacs.org/Documentation/Errors
+-------------------------------------------------------
