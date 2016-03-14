@@ -250,7 +250,7 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
               int nthread, int thread, t_complex *complexFFTGridSavedOnDevice)
 {
      /* do recip sum over local cells in grid */
-    const gmx_bool YZXOrdering = true; //yupinov
+    const gmx_bool YZXOrdering = false; //yupinov fix pecularities in solve
     /* true: y major, z middle, x minor or continuous - the CPU FFT way */
     /* false: x major, y middle, z minor - the single rank GPU cuFFT way */
     const int minorDim = !YZXOrdering ? ZZ : XX;

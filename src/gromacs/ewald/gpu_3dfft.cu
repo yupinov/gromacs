@@ -87,7 +87,7 @@ gmx_pme_t *pme)
 
     cudaError_t stat = cudaMalloc((void **) &setup->rdata, x * y * (z / 2 + 1) * 2 * sizeof(cufftReal));
     CU_RET_ERR(stat, "fft init cudaMalloc error");
-    stat = cudaMalloc((void **) &setup->cdata, x * y * (z / 2 + 1) * 2 * sizeof(cufftComplex)); //yupinov: there are 2 complex planes here - for transposing
+    stat = cudaMalloc((void **) &setup->cdata, x * y * (z / 2 + 1) * sizeof(cufftComplex));
     CU_RET_ERR(stat, "fft init cudaMalloc error"); //yupinov check all cuFFT errors
 
     *pfft_setup = setup;
@@ -237,7 +237,7 @@ void transpose_xyz_yzx(int nx, int ny, int nz,
     dim3 dimBlock(block_size, 1, 1);
     transpose_xyz_yzx_kernel<<<dimGrid, dimBlock, 0, s>>>(nx, ny, nz, cdata, forward);
     CU_LAUNCH_ERR("transpose_xyz_yzx_kernel");
-    //printf("hello transpose\n");
+    printf("hello transpose\n");
     //cudaMemcpy(cdata, cdata + nx * ny * (nz/2+1), nx * ny * (nz/2+1) * sizeof(cufftComplex), cudaMemcpyDeviceToDevice);
 }
 
@@ -301,8 +301,7 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
         cufftResult_t result = cufftExecR2C(setup->planR2C, setup->rdata, setup->cdata);
         if (result)
             fprintf(stderr, "cufft R2C error %d\n", result);
-        // FIXME: -> y major, z middle, x minor or continuous
-        transpose_xyz_yzx(x, y, z, setup->cdata, true, pme);
+        //transpose_xyz_yzx(x, y, z, setup->cdata, true, pme);
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_stop(gpu_events_fft_r2c, s, ewcsPME_FFT_R2C, 0);
         #endif
@@ -310,12 +309,12 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     else
     {
         //yupinov no second transfer
-        th_cpy(setup->cdata + x * y * (z / 2 + 1), setup->complex_data, x * y * (z / 2 + 1) * sizeof(t_complex), TH_LOC_CUDA, s);
+        th_cpy(setup->cdata, setup->complex_data, x * y * (z / 2 + 1) * sizeof(t_complex), TH_LOC_CUDA, s);
         // FIXME: y major, z middle, x minor or continuous ->
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_start(gpu_events_fft_c2r, s);
         #endif
-        transpose_xyz_yzx(x, y, z, setup->cdata, false, pme);
+        //transpose_xyz_yzx(x, y, z, setup->cdata, false, pme);
         cufftResult_t result = cufftExecC2R(setup->planC2R, setup->cdata, setup->rdata);
         if (result)
             fprintf(stderr, "cufft C2R error %d\n", result);
@@ -326,7 +325,7 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
 
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {
-        cufftComplex *complexFFTGrid = setup->cdata + x * y * (z / 2 + 1);
+        cufftComplex *complexFFTGrid = setup->cdata;
         if (!complexFFTGridSavedOnDevice)
             th_cpy(setup->complex_data, complexFFTGrid, x * y * (z / 2 + 1) * sizeof(t_complex), TH_LOC_HOST, s);
         else
