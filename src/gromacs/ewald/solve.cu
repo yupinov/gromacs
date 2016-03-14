@@ -18,7 +18,7 @@
 #include "pme-cuda.h"
 
 #define SQRT_M_PI real(2.0f / M_2_SQRTPI)
-//yupinov check if these constants work
+//yupinov check if these constants workf
 
 #ifdef DEBUG_PME_TIMINGS_GPU
 extern gpu_events gpu_events_solve;
@@ -55,29 +55,27 @@ template<
         //yupinov - now GPU solve works in a XYZ mode, while original solve worked in YZX order;
         // should be set to true when we do multi-rank GPU PME
         >
-__global__ void solve_pme_yzx_iyz_loop_kernel
+__global__ void solve_pme_kernel
 (const int localCountMajor, const int localCountMiddle, const int localCountMinor,
  const int localOffsetMinor, const int localOffsetMajor, const int localOffsetMiddle,
  const int localSizeMinor, /*const int localSizeMajor,*/ const int localSizeMiddle,
- int nx, int ny, int nz,
+ const int nMinor, const int nMajor, const int nMiddle,
  const real rxx, const real ryx, const real ryy, const real rzx, const real rzy, const real rzz,
  const real elfac,
- //splinevec pme_bsp_mod,
- const real * __restrict__ pme_bsp_mod_XX,
- const real * __restrict__ pme_bsp_mod_YY,
- const real * __restrict__ pme_bsp_mod_ZZ,
+ const real * __restrict__ BSplineModuleMinor,
+ const real * __restrict__ BSplineModuleMajor,
+ const real * __restrict__ BSplineModuleMiddle,
  t_complex * __restrict__ grid,
- const real ewaldcoeff, real vol,
+ const real ewaldcoeff, const real volume,
  real * __restrict__ energy_v, real * __restrict__ virial_v)
 {
-    const real factor = M_PI*M_PI/(ewaldcoeff*ewaldcoeff);
+    const real factor = M_PI * M_PI / (ewaldcoeff * ewaldcoeff);
 
-    int maxkx = (nx + 1) / 2;
+    int maxkMinor = (nMinor + 1) / 2;
     if (!YZXOrdering) //yupinov - don't really understand it
-        maxkx = (nx + 2) / 2; // [0 25]; -26] fixed, no maxkx required at all
-    int maxky = (ny + 1) / 2;
+        maxkMinor = (nMinor + 2) / 2; // [0 25]; -26] fixed, no maxkx required at all
+    int maxkMajor = (nMajor + 1) / 2;
     //int maxkz = nz / 2 + 1;
-
 
     real energy = 0.0f;
     real virxx = 0.0f, virxy = 0.0f, virxz = 0.0f, viryy = 0.0f, viryz = 0.0f, virzz = 0.0f;
@@ -88,69 +86,58 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
 
     if ((indexMajor < localCountMajor) && (indexMiddle < localCountMiddle) && (indexMinor < localCountMinor))
     {
-        int iz = indexMiddle;
-        int ix = indexMinor;
-
-        //int i = blockIdx.x * blockDim.x + threadIdx.x;
-        int i = (indexMajor * localCountMiddle + iz) * localCountMinor + ix;
         //yupinov do a reduction!
 
         //yupinov :localoffset might be a failure point for MPI!
 
-        int ky = indexMajor + localOffsetMajor;
-        real my = (ky < maxky) ? ky : (ky - ny);
+        const int kMajor = indexMajor + localOffsetMajor;
+        const real mMajor = (kMajor < maxkMajor) ? kMajor : (kMajor - nMajor);
 
-        real by = M_PI * vol * pme_bsp_mod_YY[ky];
-
-        int kz = iz + localOffsetMiddle;
-        real mz = kz;
-
+        const int kMiddle = indexMiddle + localOffsetMiddle;
+        real mMiddle = kMiddle;
 
         if (!YZXOrdering)
-            mz = (kz < (nz + 1) / 2) ? kz : (kz - nz);
+            mMiddle = (kMiddle < (nMiddle + 1) / 2) ? kMiddle : (kMiddle - nMiddle);
 
+        const real bMajorMiddle = M_PI * volume * BSplineModuleMajor[kMajor] * BSplineModuleMiddle[kMiddle];
 
-        real bz = pme_bsp_mod_ZZ[kz];
-
-        t_complex *p0 = grid + indexMajor * localSizeMiddle * localSizeMinor + iz * localSizeMinor + ix;
+        t_complex *p0 = grid + (indexMajor * localSizeMiddle + indexMiddle) * localSizeMinor + indexMinor;
 
         /* We should skip the k-space point (0,0,0) */
-        /* Note that since here x is the minor index, local_offset[XX]=0 */
-        int kx = localOffsetMinor + ix;
-        const gmx_bool notZeroPoint = (kx > 0 || ky > 0 || kz > 0);
-        real mx, mhxk, mhyk, mhzk, m2k;
+        /* Note that since here x is the minor index, local_offset[XX]=0 */ //yupinov what
+
+        int kMinor = localOffsetMinor + indexMinor;
+        const gmx_bool notZeroPoint = (kMinor > 0 || kMajor > 0 || kMiddle > 0);
+        real mMinor, mhxk, mhyk, mhzk, m2k;
         real ets2, struct2, vfactor, ets2vf;
 
-        mx = kx < maxkx ? kx : (kx - nx);
-        real indep_mx, indep_my, indep_mz;
+        mMinor = kMinor < maxkMinor ? kMinor : (kMinor - nMinor);
+        real mX, mY, mZ;
         if (YZXOrdering)
         {
-            indep_mx = mx;
-            indep_my = my;
-            indep_mz = mz;
+            mX = mMinor;
+            mY = mMajor;
+            mZ = mMiddle;
         }
         else
         {
-            // mx is actually over Z;
-            // my is actually over X;
-            // mz is actually over Y;
-            indep_mx = my;
-            indep_my = mz;
-            indep_mz = mx;
+            mX = mMajor;
+            mY = mMiddle;
+            mZ = mMinor;
         }
 
-        /* 0.5 correction for corner points of a Z dimension*/
+        /* 0.5 correction for corner points of a Z dimension */
         real corner_fac = 1.0f;
         if (YZXOrdering)
         {
-            if (kz == 0 || kz == (nz + 1) / 2)
+            if (kMiddle == 0 || kMiddle == (nMiddle + 1) / 2)
             {
                 corner_fac = 0.5f;
             }
         }
         else
         {
-            if (kx == 0 || kx == (nx + 1) / 2)
+            if (kMinor == 0 || kMinor == (nMinor + 1) / 2)
             {
                 corner_fac = 0.5f;
             }
@@ -168,14 +155,14 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
 
                 //for (int kx = kxstart; kx < kxend; kx++, p0++)
                 {
-                    //mx = kx < maxkx ? kx : (kx - nx);
+                    //mx = kMinor < maxkMinor ? kMinor : (kMinor - nMinor);
 
-                    mhxk      = indep_mx * rxx;
-                    mhyk      = indep_mx * ryx + indep_my * ryy;
-                    mhzk      = indep_mx * rzx + indep_my * rzy + indep_mz * rzz;
+                    mhxk      = mX * rxx;
+                    mhyk      = mX * ryx + mY * ryy;
+                    mhzk      = mX * rzx + mY * rzy + mZ * rzz;
 
                     m2k       = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
-                    real denom = m2k * bz * by * pme_bsp_mod_XX[kx];
+                    real denom = m2k * bMajorMiddle * BSplineModuleMinor[kMinor];
                     real tmp1  = -factor * m2k;
 
                     real m2invk = 1.0f / m2k;
@@ -185,15 +172,15 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
                     tmp1 = expf(tmp1);
                     real etermk = elfac * tmp1 * denom;
 
-                    real d1      = p0->re;
-                    real d2      = p0->im;
+                    real d1 = p0->re;
+                    real d2 = p0->im;
 
                     p0->re  = d1 * etermk;
                     p0->im  = d2 * etermk;
 
                     struct2 = 2.0f * (d1 * d1 + d2 * d2);
 
-                    real tmp1k = etermk*struct2;
+                    real tmp1k = etermk * struct2;
 
                     ets2     = corner_fac * tmp1k;
                     vfactor  = (factor * m2k + 1.0f) * 2.0f * m2invk;
@@ -206,6 +193,8 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
                     viryy   = ets2vf * mhyk * mhyk - ets2;
                     viryz   = ets2vf * mhyk * mhzk;
                     virzz   = ets2vf * mhzk * mhzk - ets2;
+
+                    const int i = (indexMajor * localCountMiddle + indexMiddle) * localCountMinor + indexMinor;
                     energy_v[i] = energy;
                     virial_v[6 * i + 0] = virxx;
                     virial_v[6 * i + 1] = viryy;
@@ -223,32 +212,31 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
                 //for (int kx = kxstart; kx < kxend; kx++, p0++)
                 //yupinov - now each thread does Re and Im of a grid point => 16 threads in a block? should stride!
                 {
-                    mx = kx < maxkx ? kx : (kx - nx);
+                    //mMinor = kMinor < maxkMinor ? kMinor : (kMinor - nMinor);
+                    //update mX as well!
 
-                    mhxk      = indep_mx * rxx;
-                    mhyk      = indep_mx * ryx + indep_my * ryy;
-                    mhzk      = indep_mx * rzx + indep_my * rzy + indep_mz * rzz;
+                    mhxk      = mX * rxx;
+                    mhyk      = mX * ryx + mY * ryy;
+                    mhzk      = mX * rzx + mY * rzy + mZ * rzz;
                     m2k       = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
-                    real denom = m2k * bz * by * pme_bsp_mod_XX[kx];
+                    real denom = m2k * bMajorMiddle * BSplineModuleMinor[kMinor];
                     real tmp1  = -factor * m2k;
 
                     //calc_exponentials_q_one(elfac, denom, tmp1, eterm);
                     denom = 1.0f / denom;
                     tmp1 = exp(tmp1);
-                    real etermk = elfac*tmp1*denom;
+                    real etermk = elfac * tmp1 * denom;
 
-                    real d1      = p0->re;
-                    real d2      = p0->im;
+                    real d1 = p0->re;
+                    real d2 = p0->im;
 
-                    p0->re  = d1 * etermk;
-                    p0->im  = d2 * etermk;
+                    p0->re = d1 * etermk;
+                    p0->im = d2 * etermk;
                 }
             }
         }
     }
 }
-
-#include <assert.h>
 
 void solve_pme_yzx_gpu(real pme_epsilon_r,
 		      int nx, int ny, int nz,
@@ -261,7 +249,10 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
               gmx_pme_t *pme,
               int nthread, int thread, t_complex *complexFFTGridSavedOnDevice)
 {
+     /* do recip sum over local cells in grid */
     const gmx_bool YZXOrdering = true; //yupinov
+    /* true: y major, z middle, x minor or continuous - the CPU FFT way */
+    /* false: x major, y middle, z minor - the single rank GPU cuFFT way */
     const int minorDim = !YZXOrdering ? ZZ : XX;
     const int middleDim = !YZXOrdering ? YY : ZZ;
     const int majorDim = !YZXOrdering ? XX : YY;
@@ -270,21 +261,10 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     const int nMiddle = !YZXOrdering ? pme->nky : pme->nkz;
 
     cudaStream_t s = pme->gpu->pmeStream;
-    /* do recip sum over local cells in grid */
-    /* y major, z middle, x minor or continuous */
-    //t_complex *p0;
-    //int     kx, ky, kz, maxkx, maxky, maxkz;
-    // real    mx, my, mz;
-    //real    factor = M_PI*M_PI/(ewaldcoeff*ewaldcoeff);
-    //real    ets2, struct2, vfactor, ets2vf;
-    //real    d1, d2;
-    real energy = 0.0;
-    //real    by, bz;
-    real    virxx = 0.0, virxy = 0.0, virxz = 0.0, viryy = 0.0, viryz = 0.0, virzz = 0.0;
-    //real    mhxk, mhyk, mhzk, m2k;
-    //real    corner_fac;
-    real    elfac;
 
+    real energy = 0.0;
+    real virxx = 0.0, virxy = 0.0, virxz = 0.0, viryy = 0.0, viryz = 0.0, virzz = 0.0;
+    const real elfac = ONE_4PI_EPS0 / pme_epsilon_r;
 
     real rxx = pme->recipbox[XX][XX];
     real ryx = pme->recipbox[YY][XX];
@@ -293,21 +273,8 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     real rzy = pme->recipbox[ZZ][YY];
     real rzz = pme->recipbox[ZZ][ZZ];
 
-    /*
-    real rxx = pme->recipbox[minorDim][minorDim];
-    real ryx = pme->recipbox[majorDim][minorDim];
-    real ryy = pme->recipbox[majorDim][majorDim];
-    real rzx = pme->recipbox[middleDim][minorDim];
-    real rzy = pme->recipbox[middleDim][majorDim];
-    real rzz = pme->recipbox[middleDim][middleDim];
-    */
-
-    //printf("%g %g %g %g %g %g\n", rxx, ryx, ryy, rzx, rzy, rzz);
-
-
-    elfac = ONE_4PI_EPS0 / pme_epsilon_r;
-
     /* Dimensions should be identical for A/B grid, so we just use A here */
+
     /*
       TODO: Dimensions are passed in for now. call complex limits elsewhere?
     gmx_parallel_3dfft_complex_limits(pme->pfft_setup[PME_GRID_QA],
@@ -322,9 +289,6 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
                                       local_size);
     */
 
-
-    int n = local_ndata[majorDim] * local_ndata[middleDim] * local_ndata[minorDim];
-
     const int blockSize = 4 * warp_size;
     // GTX 660 Ti, 20160310
     // number, occupancy, time from cudaEvents:
@@ -334,37 +298,24 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     // 4    0.89  0.080
     // 8    0.80  0.084
 
-    //yupinov align minor dimension!
-
-    /*
-    dim3 blocks(local_ndata[YY], local_ndata[ZZ], (local_ndata[XX] + blockSize - 1) / blockSize);
-    dim3 threads(1, 1, blockSize);
-    */
-    // Z-dimension is too small, so instead of YZX we do XZY sizing
-
+    // Z-dimension is too small in CUDA limitations (64 on CC30?), so instead of major-middle-minor sizing we do minor-middle-major
     dim3 blocks((local_ndata[minorDim] + blockSize - 1) / blockSize, local_ndata[middleDim], local_ndata[majorDim]);
     dim3 threads(blockSize, 1, 1);
 
-    //cudaError_t stat = cudaMemcpyToSymbol( sqrt_M_PI_d, &sqrt_M_PI, sizeof(real));  //yupinov - this is an overkill!
-    //CU_RET_ERR(stat, "solve cudaMemcpyToSymbol");
-    //printf("local_size[XX] %d local_ndata[XX] %d\n", local_size[XX], local_ndata[XX]);
-    //printf("local_size[YY] %d local_ndata[YY] %d\n", local_size[YY], local_ndata[YY]);
-    //printf("local_size[ZZ] %d local_ndata[ZZ] %d\n", local_size[ZZ], local_ndata[ZZ]);
-    int grid_n = local_size[majorDim] * local_size[middleDim] * local_size[minorDim];
-    int grid_size = grid_n * sizeof(t_complex);
+    //yupinov align minor dimension with cachelines!
 
-    //printf("%d %d %d\n", nMinor, nMajor, nMiddle);
-    //printf(", grid data size %d", n); //100 * 52 * 27
-    //printf("\n");
+    const int n = local_ndata[majorDim] * local_ndata[middleDim] * local_ndata[minorDim];
+    const int grid_n = local_size[majorDim] * local_size[middleDim] * local_size[minorDim];
+    const int grid_size = grid_n * sizeof(t_complex);
 
-    real *bspModMinor_d = th_a_cpy(TH_ID_BSP_MOD_X, thread, pme_bsp_mod[minorDim], nMinor * sizeof(real), TH_LOC_CUDA, s);
-    real *bspModMajor_d = th_a_cpy(TH_ID_BSP_MOD_Y, thread, pme_bsp_mod[majorDim], nMajor * sizeof(real), TH_LOC_CUDA, s);
-    real *bspModMiddle_d = th_a_cpy(TH_ID_BSP_MOD_Z, thread, pme_bsp_mod[middleDim], nMiddle * sizeof(real), TH_LOC_CUDA, s);
+    real *bspModMinor_d = th_a_cpy(TH_ID_BSP_MOD_MINOR, thread, pme_bsp_mod[minorDim], nMinor * sizeof(real), TH_LOC_CUDA, s);
+    real *bspModMajor_d = th_a_cpy(TH_ID_BSP_MOD_MAJOR, thread, pme_bsp_mod[majorDim], nMajor * sizeof(real), TH_LOC_CUDA, s);
+    real *bspModMiddle_d = th_a_cpy(TH_ID_BSP_MOD_MIDDLE, thread, pme_bsp_mod[middleDim], nMiddle * sizeof(real), TH_LOC_CUDA, s);
 
-    int energy_size = n * sizeof(real);
-    int virial_size = 6 * n * sizeof(real);
-    real *energy_d = th_a(TH_ID_ENERGY, thread, energy_size, TH_LOC_CUDA);
-    real *virial_d = th_a(TH_ID_VIRIAL, thread, virial_size, TH_LOC_CUDA);
+    const int energySize = n * sizeof(real);
+    const int virialSize = 6 * n * sizeof(real);
+    real *energy_d = th_a(TH_ID_ENERGY, thread, energySize, TH_LOC_CUDA);
+    real *virial_d = th_a(TH_ID_VIRIAL, thread, virialSize, TH_LOC_CUDA);
 
     t_complex *workingGrid = complexFFTGridSavedOnDevice;
     gmx_bool gridIsOnDevice = (workingGrid != NULL);
@@ -378,7 +329,7 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     events_record_start(gpu_events_solve, s);
 #endif
     if (bEnerVir)
-        solve_pme_yzx_iyz_loop_kernel<TRUE, YZXOrdering> <<<blocks, threads, 0, s>>>
+        solve_pme_kernel<TRUE, YZXOrdering> <<<blocks, threads, 0, s>>>
           (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim],
            local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
            local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
@@ -388,7 +339,7 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
            workingGrid, ewaldcoeff, vol,
            energy_d, virial_d);
     else
-        solve_pme_yzx_iyz_loop_kernel<FALSE, YZXOrdering> <<<blocks, threads, 0, s>>>
+        solve_pme_kernel<FALSE, YZXOrdering> <<<blocks, threads, 0, s>>>
           (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
            local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
            local_size[minorDim], /*local_size[majorDim],*/local_size[middleDim],
@@ -397,7 +348,7 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
            bspModMinor_d, bspModMajor_d, bspModMiddle_d,
            workingGrid, ewaldcoeff, vol,
            energy_d, virial_d);
-    CU_LAUNCH_ERR("solve_pme_yzx_iyz_loop_kernel");
+    CU_LAUNCH_ERR("solve_pme_kernel");
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_stop(gpu_events_solve, s, ewcsPME_SOLVE, 0);
 #endif
@@ -409,8 +360,8 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
 
     if (bEnerVir)
     {
-        real *energy_h = th_a_cpy(TH_ID_ENERGY, thread, energy_d, energy_size, TH_LOC_HOST, s);
-        real *virial_h = th_a_cpy(TH_ID_VIRIAL, thread, virial_d, virial_size, TH_LOC_HOST, s);
+        real *energy_h = th_a_cpy(TH_ID_ENERGY, thread, energy_d, energySize, TH_LOC_HOST, s);
+        real *virial_h = th_a_cpy(TH_ID_VIRIAL, thread, virial_d, virialSize, TH_LOC_HOST, s);
         //yupinov - workaround for a zero point - do in kernel?
         memset(energy_h, 0, sizeof(real));
         memset(virial_h, 0, 6 * sizeof(real));
@@ -426,18 +377,12 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
             viryz += virial_h[j++];
         }
 
-        /* Update virial with local values.
-         * The virial is symmetric by definition.
-         * this virial seems ok for isotropic scaling, but I'm
-         * experiencing problems on semiisotropic membranes.
-         * IS THAT COMMENT STILL VALID??? (DvdS, 2001/02/07).
-         */
-        work_vir_q[minorDim][minorDim] = 0.25 * virxx;
-        work_vir_q[majorDim][majorDim] = 0.25 * viryy;
-        work_vir_q[middleDim][middleDim] = 0.25 * virzz;
-        work_vir_q[minorDim][majorDim] = work_vir_q[majorDim][minorDim] = 0.25 * virxy;
-        work_vir_q[minorDim][middleDim] = work_vir_q[middleDim][minorDim] = 0.25 * virxz;
-        work_vir_q[majorDim][middleDim] = work_vir_q[middleDim][majorDim] = 0.25 * viryz;
+        work_vir_q[XX][XX] = 0.25 * virxx;
+        work_vir_q[YY][YY] = 0.25 * viryy;
+        work_vir_q[ZZ][ZZ] = 0.25 * virzz;
+        work_vir_q[XX][YY] = work_vir_q[YY][XX] = 0.25 * virxy;
+        work_vir_q[XX][ZZ] = work_vir_q[ZZ][XX] = 0.25 * virxz;
+        work_vir_q[YY][ZZ] = work_vir_q[ZZ][YY] = 0.25 * viryz;
 
         /* This energy should be corrected for a charged system */
         *work_energy_q = 0.5 * energy;
@@ -453,7 +398,7 @@ __global__ void solve_pme_lj_yzx_iyz_loop_kernel
  int local_size_XX, int local_size_YY, int local_size_ZZ,
  int nx, int ny, int nz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
- //real elfac,
+ //real ,
  //splinevec pme_bsp_mod,
  real *pme_bsp_mod_XX, real *pme_bsp_mod_YY, real *pme_bsp_mod_ZZ,
  t_complex *grid_v, gmx_bool bLB,
@@ -519,9 +464,9 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
     int grid_n = local_size[YY] * local_size[ZZ] * local_size[XX];
     int grid_size = grid_n * sizeof(t_complex);
     t_complex *grid_d = th_c(TH_ID_GRID, thread, grid_size * MAGIC_GRID_NUMBER, TH_LOC_CUDA); //6 grids!
-    real *pme_bsp_mod_x_d = th_a_cpy(TH_ID_BSP_MOD_X, thread, pme_bsp_mod[XX], nx * sizeof(real), TH_LOC_CUDA, s);
-    real *pme_bsp_mod_y_d = th_a_cpy(TH_ID_BSP_MOD_Y, thread, pme_bsp_mod[YY], ny * sizeof(real), TH_LOC_CUDA, s);
-    real *pme_bsp_mod_z_d = th_a_cpy(TH_ID_BSP_MOD_Z, thread, pme_bsp_mod[ZZ], nz * sizeof(real), TH_LOC_CUDA, s);
+    real *pme_bsp_mod_x_d = th_a_cpy(TH_ID_BSP_MOD_MINOR, thread, pme_bsp_mod[XX], nx * sizeof(real), TH_LOC_CUDA, s);
+    real *pme_bsp_mod_y_d = th_a_cpy(TH_ID_BSP_MOD_MAJOR, thread, pme_bsp_mod[YY], ny * sizeof(real), TH_LOC_CUDA, s);
+    real *pme_bsp_mod_z_d = th_a_cpy(TH_ID_BSP_MOD_MIDDLE, thread, pme_bsp_mod[ZZ], nz * sizeof(real), TH_LOC_CUDA, s);
     int energy_size = n * sizeof(real);
     int virial_size = 6 * n * sizeof(real);
     real *energy_d = th_a(TH_ID_ENERGY, thread, energy_size, TH_LOC_CUDA);
@@ -536,7 +481,7 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
        local_offset[XX], local_offset[YY], local_offset[ZZ],
        local_size[XX], local_size[YY], local_size[ZZ],
        nx, ny, nz, rxx, ryx, ryy, rzx, rzy, rzz,
-       //elfac,
+       //,
        //pme_bsp_mod,
        pme_bsp_mod_x_d, pme_bsp_mod_y_d, pme_bsp_mod_z_d,
        grid_d, bLB, ewaldcoeff, vol, bEnerVir,
@@ -588,7 +533,7 @@ __global__ void solve_pme_lj_yzx_iyz_loop_kernel
  int local_size_XX, int local_size_YY, int local_size_ZZ,
  int nx, int ny, int nz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
- //real elfac,
+ //real ,
  //splinevec pme_bsp_mod,
  real *pme_bsp_mod_XX, real *pme_bsp_mod_YY, real *pme_bsp_mod_ZZ,
  t_complex *grid_v, gmx_bool bLB,
