@@ -22,7 +22,6 @@ extern gpu_events gpu_events_fft_r2c;
 extern gpu_events gpu_events_fft_c2r;
 #endif
 
-#include "pme-internal.h" //yupinov pme passed everywhere
 #include "pme-cuda.h"
 
 #include "th-a.cuh"
@@ -49,6 +48,8 @@ struct gmx_parallel_3dfft_gpu
     cufftReal *rdata;
     cufftComplex *cdata;
 };
+
+//yupinov warn against double precision
 
 void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup,
                                    ivec                      ndata,
@@ -87,8 +88,12 @@ gmx_pme_t *pme)
 
     cudaError_t stat = cudaMalloc((void **) &setup->rdata, x * y * (z / 2 + 1) * 2 * sizeof(cufftReal));
     CU_RET_ERR(stat, "fft init cudaMalloc error");
+#ifdef PME_CUFFT_INPLACE
+    setup->cdata = (cufftComplex *)setup->rdata;
+#else
     stat = cudaMalloc((void **) &setup->cdata, x * y * (z / 2 + 1) * sizeof(cufftComplex));
     CU_RET_ERR(stat, "fft init cudaMalloc error"); //yupinov check all cuFFT errors
+#endif
 
     *pfft_setup = setup;
 

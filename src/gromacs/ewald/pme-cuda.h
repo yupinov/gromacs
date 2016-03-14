@@ -8,5 +8,7 @@ struct gmx_pme_cuda_t
 
 //yupinov dealloc
 
+//#define PME_CUFFT_INPLACE //yupinov - doesn't seem to affect performance much?
+
 
 #endif
