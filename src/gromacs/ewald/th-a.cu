@@ -38,11 +38,12 @@ void pme_gpu_init(gmx_pme_gpu_t **pme)
 static std::vector<int> th_size(TH_LOC_END * TH_ID_END * TH);
 static std::vector<void *> th_p(TH_LOC_END * TH_ID_END * TH);
 
-static const bool th_a_print = false;
+static bool th_a_print = false;
 
 template <typename T>
 T *th_t(th_id id, int thread, int size, th_loc loc)
 {
+    //yupinov different size mistake!
     cudaError_t stat;
     int i = (loc * TH_ID_END + id) * TH + thread;
     if (th_size[i] < size || size == 0) //delete
@@ -64,6 +65,8 @@ T *th_t(th_id id, int thread, int size, th_loc loc)
         }
         if (size > 0)
         {
+            if (th_size[i] != 0)
+                printf("asked to realloc %d into %d with ID %d\n", th_size[i], size, id);
             if (th_a_print)
                 printf("asked to alloc %d", size);
             size = size * 1.02; //yupinov overalloc

@@ -321,7 +321,7 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     gmx_bool gridIsOnDevice = (workingGrid != NULL);
     if (!gridIsOnDevice)
     {
-        t_complex *grid_d = th_c_cpy(TH_ID_GRID, thread, grid, grid_size, TH_LOC_CUDA, s);
+        t_complex *grid_d = th_c_cpy(TH_ID_COMPLEX_GRID, thread, grid, grid_size, TH_LOC_CUDA, s);
         //launch blocks while copying?
         workingGrid = grid_d;
     }
@@ -463,7 +463,7 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
 
     int grid_n = local_size[YY] * local_size[ZZ] * local_size[XX];
     int grid_size = grid_n * sizeof(t_complex);
-    t_complex *grid_d = th_c(TH_ID_GRID, thread, grid_size * MAGIC_GRID_NUMBER, TH_LOC_CUDA); //6 grids!
+    t_complex *grid_d = th_c(TH_ID_COMPLEX_GRID, thread, grid_size * MAGIC_GRID_NUMBER, TH_LOC_CUDA); //6 grids!
     real *pme_bsp_mod_x_d = th_a_cpy(TH_ID_BSP_MOD_MINOR, thread, pme_bsp_mod[XX], nx * sizeof(real), TH_LOC_CUDA, s);
     real *pme_bsp_mod_y_d = th_a_cpy(TH_ID_BSP_MOD_MAJOR, thread, pme_bsp_mod[YY], ny * sizeof(real), TH_LOC_CUDA, s);
     real *pme_bsp_mod_z_d = th_a_cpy(TH_ID_BSP_MOD_MIDDLE, thread, pme_bsp_mod[ZZ], nz * sizeof(real), TH_LOC_CUDA, s);

@@ -173,7 +173,7 @@ void gather_f_bsplines_gpu_2
         return;
 
     int size_grid = ndatatot * sizeof(real);
-    real *grid_d = th_a_cpy(TH_ID_GRID, thread, grid, size_grid, TH_LOC_CUDA, s);
+    real *grid_d = th_a_cpy(TH_ID_REAL_GRID_WITH_OVERLAP, thread, grid, size_grid, TH_LOC_CUDA, s);
 
     //copy order?
     //compacting, and size....

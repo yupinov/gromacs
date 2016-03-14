@@ -86,13 +86,12 @@ gmx_pme_t *pme)
 
     int x = setup->n[0], y = setup->n[1], z = setup->n[2];
 
-    cudaError_t stat = cudaMalloc((void **) &setup->rdata, x * y * (z / 2 + 1) * 2 * sizeof(cufftReal));
-    CU_RET_ERR(stat, "fft init cudaMalloc error");
+    setup->rdata = th_a(TH_ID_REAL_GRID, 0, x * y * (z / 2 + 1) * 2 * sizeof(cufftReal), TH_LOC_CUDA);
+
 #ifdef PME_CUFFT_INPLACE
-    setup->cdata = (cufftComplex *)setup->rdata;
+    setup->cdata = (cufftComplex *)setup->rdata; //yupinov - no, jsut set ID's to same!
 #else
-    stat = cudaMalloc((void **) &setup->cdata, x * y * (z / 2 + 1) * sizeof(cufftComplex));
-    CU_RET_ERR(stat, "fft init cudaMalloc error"); //yupinov check all cuFFT errors
+    setup->cdata = (cufftComplex *)th_c(TH_ID_COMPLEX_GRID, 0, x * y * (z / 2 + 1) * 2 * sizeof(cufftReal), TH_LOC_CUDA);
 #endif
 
     *pfft_setup = setup;
@@ -301,16 +300,16 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
 
 void gmx_parallel_3dfft_destroy_gpu(gmx_parallel_3dfft_gpu_t pfft_setup)
 {
-  //fprintf(stderr, "3dfft_destroy_gpu\n");
-  gmx_parallel_3dfft_gpu_t setup = pfft_setup;
+    //fprintf(stderr, "3dfft_destroy_gpu\n");
+    gmx_parallel_3dfft_gpu_t setup = pfft_setup;
 
-  cufftDestroy(setup->planR2C);
-  cufftDestroy(setup->planC2R);
+    cufftDestroy(setup->planR2C);
+    cufftDestroy(setup->planC2R);
+    printf("free\n"); //yupinov
+    cudaError_t stat = cudaFree((void **)setup->rdata);
+    CU_RET_ERR(stat, "cudaFree error");
+    stat = cudaFree((void **)setup->cdata);
+    CU_RET_ERR(stat, "cudaFree error");
 
-  cudaError_t stat = cudaFree((void **)setup->rdata);
-  CU_RET_ERR(stat, "cudaFree error");
-  stat = cudaFree((void **)setup->cdata);
-  CU_RET_ERR(stat, "cudaFree error");
-
-  delete setup;
+    delete setup;
 }

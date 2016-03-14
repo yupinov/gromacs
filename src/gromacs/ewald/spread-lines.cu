@@ -633,7 +633,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     // COEFFICIENT
     real *coefficient_d = th_a_cpy(TH_ID_COEFFICIENT, thread, atc->coefficient, n * sizeof(real), TH_LOC_CUDA, s); //yupinov compact here as weel?
 
-    real *grid_d = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_CUDA);
+    real *grid_d = th_a(TH_ID_REAL_GRID_WITH_OVERLAP, thread, size_grid, TH_LOC_CUDA);
     stat = cudaMemsetAsync(grid_d, 0, size_grid, s); //yupinov
     CU_RET_ERR(stat, "cudaMemsetAsync spread error");
     #ifdef DEBUG_PME_TIMINGS_GPU

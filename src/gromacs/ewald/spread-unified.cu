@@ -285,19 +285,6 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     real *theta_d = th_a(TH_ID_THETA, thread, size_order_dim, TH_LOC_CUDA);
     real *dtheta_d = th_a(TH_ID_DTHETA, thread, size_order_dim, TH_LOC_CUDA);
 
-    // G2T
-    /*
-    int *g2tx_h = pme->pmegrid[grid_index].g2t[XX];
-    int *g2ty_h = pme->pmegrid[grid_index].g2t[YY];
-    int *g2tz_h = pme->pmegrid[grid_index].g2t[ZZ];
-    int *g2tx_d = th_i(TH_ID_G2T, thread, 3 * n32 * sizeof(int), TH_LOC_CUDA);
-    int *g2ty_d = g2tx_d + n32;
-    int *g2tz_d = g2ty_d + n32;
-    cudaMemcpy(g2tx_d, g2tx_h, n * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(g2ty_d, g2ty_h, n * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(g2tz_d, g2tz_h, n * sizeof(int), cudaMemcpyHostToDevice);
-    */
-
     // IDXPTR
     int idx_size = n * DIM * sizeof(int);
     int *idx_d = th_i(TH_ID_IDXPTR, thread, idx_size, TH_LOC_CUDA); //why is it not stored?
@@ -345,7 +332,7 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     }
     */
 
-    real *grid_d = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_CUDA);
+    real *grid_d = th_a(TH_ID_REAL_GRID_WITH_OVERLAP, thread, size_grid, TH_LOC_CUDA);
     stat = cudaMemsetAsync(grid_d, 0, size_grid, s); //yupinov
     CU_RET_ERR(stat, "cudaMemsetAsync spread error");
     #ifdef DEBUG_PME_TIMINGS_GPU
