@@ -87,15 +87,9 @@ gmx_pme_t *pme)
     int x = setup->n[0], y = setup->n[1], z = setup->n[2];
 
     setup->rdata = th_a(TH_ID_REAL_GRID, 0, x * y * (z / 2 + 1) * 2 * sizeof(cufftReal), TH_LOC_CUDA);
-
-#ifdef PME_CUFFT_INPLACE
-    setup->cdata = (cufftComplex *)setup->rdata; //yupinov - no, jsut set ID's to same!
-#else
     setup->cdata = (cufftComplex *)th_c(TH_ID_COMPLEX_GRID, 0, x * y * (z / 2 + 1) * 2 * sizeof(cufftReal), TH_LOC_CUDA);
-#endif
 
     *pfft_setup = setup;
-
 
     cufftResult_t result;
     /*
@@ -153,13 +147,13 @@ gmx_pme_t *pme)
     result = cufftSetStream(setup->planR2C, s);
     if (result != CUFFT_SUCCESS)
     {
-        fprintf(stderr, "cufft planR2RC error %d\n", result);
+        fprintf(stderr, "cufft planR2C error %d\n", result);
         setup = NULL;
     }
     result = cufftSetStream(setup->planC2R, s);
     if (result != CUFFT_SUCCESS)
     {
-        fprintf(stderr, "cufft planR2RC error %d\n", result);
+        fprintf(stderr, "cufft planC2R stream error %d\n", result);
         setup = NULL;
     }
 }

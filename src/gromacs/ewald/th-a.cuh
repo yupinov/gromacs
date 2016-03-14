@@ -1,6 +1,8 @@
 #ifndef GMX_EWALD_TH_A_H
 #define GMX_EWALD_TH_A_H
 
+#include "pme-cuda.h"
+
 #include "gromacs/utility/real.h"
 #include "gromacs/math/gmxcomplex.h"
 
@@ -11,7 +13,9 @@ enum th_id
 
   TH_ID_REAL_GRID_WITH_OVERLAP,
   TH_ID_REAL_GRID,
+#ifndef PME_CUFFT_INPLACE
   TH_ID_COMPLEX_GRID, //yupinov fix all this!
+#endif
   TH_ID_I0, TH_ID_J0, TH_ID_K0,
   TH_ID_THX, TH_ID_THY, TH_ID_THZ,
 
@@ -30,6 +34,12 @@ enum th_id
 
   TH_ID_END
 };
+
+
+#ifdef PME_CUFFT_INPLACE
+#define TH_ID_COMPLEX_GRID TH_ID_REAL_GRID
+#endif
+
 
 enum th_loc
 {
