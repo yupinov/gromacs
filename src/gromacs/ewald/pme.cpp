@@ -66,6 +66,7 @@
  * It might seem an overkill, but better safe than sorry.
  * /Erik 001109
  */
+//yupinov ^
 
 #include "gmxpre.h"
 
