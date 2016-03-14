@@ -864,6 +864,7 @@ int solve_pme_lj_yzx(struct gmx_pme_t *pme, t_complex **grid, gmx_bool bLB,
     }
 
     //yupinov hack call separately!
+    /*
     if (pme->bGPU)
         solve_pme_lj_yzx_gpu(nx, ny, nz,
                  complex_order, local_ndata, local_offset, local_size,
@@ -872,6 +873,7 @@ int solve_pme_lj_yzx(struct gmx_pme_t *pme, t_complex **grid, gmx_bool bLB,
                  pme->bsp_mod,
                  work->vir_lj, &work->energy_lj,
                  grid, bLB, ewaldcoeff, vol, bEnerVir, pme,nthread, thread);
+    */
 
     /* Return the loop count */
     return local_ndata[YY]*local_ndata[XX];

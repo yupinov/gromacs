@@ -120,14 +120,6 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
 
         real bz = pme_bsp_mod_ZZ[kz];
 
-        /* 0.5 correction for corner points */
-        real corner_fac = 1.0f;
-        //printf("NZ %d\n", nz);
-        if (kz == 0 || kz == (nz+1) / 2)
-        {
-            corner_fac = 0.5f;
-        }
-
         t_complex *p0 = grid + iy * local_size_ZZ * local_size_XX + iz * local_size_XX + ix;
 
         /* We should skip the k-space point (0,0,0) */
@@ -147,16 +139,29 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
         }
         else
         {
+            // mx is actually over Z;
+            // my is actually over X;
+            // mz is actually over Y;
+
             indep_mx = my;
             indep_my = mz;
             indep_mz = mx;
         }
 
+        /* 0.5 correction for corner points */
+        real corner_fac = 1.0f;
+        if (cfftgridDimOrdering == YZX)
+            if (kz == 0 || kz == (nz+1) / 2)
+            {
+                corner_fac = 0.5f;
+            }
 
-        const gmx_bool debugPrint = false; (indep_mx == 49) && (indep_my > 50) && (indep_mz == 0);
-        //if ((indep_mx == -50) && (indep_mz == 26)) //mz
-        //if ((indep_mz == 0) && (indep_my == 51))
-           // printf("%g %g %g %d %d %g\n", indep_mx, indep_my, indep_mz, kz, nz, mz);
+        if (cfftgridDimOrdering == XYZ)
+            if (kx == 0 || kx == (nx+1) / 2)
+            {
+                corner_fac = 0.5f;
+            }
+
         if (notZeroPoint) // this skips just one point in the whole grid!
         {
             if (bEnerVir)
@@ -175,30 +180,7 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
                     mhyk      = indep_mx * ryx + indep_my * ryy;
                     mhzk      = indep_mx * rzx + indep_my * rzy + indep_mz * rzz;
 
-                    /*
-                    else //XYZ
-                    {
-                        // x is Z
-                        // z is Y
-                        // y is X
-
-                        // mx is actually over Z;
-                        // my is actually over X;
-                        // mz is actually over Y;
-
-                        mhxk      = my * rxx;
-                        mhyk      = my * ryx + mz * ryy;
-                        mhzk      = my * rzx + mz * rzy + mx * rzz;
-                    }
-                    */
-
                     m2k       = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
-                    if (debugPrint)
-                       printf("!!! %g %g %g = %g\n", mhxk, mhyk, mhzk, m2k);
-                    //mhx[kx]   = mhxk;
-                    //mhy[kx]   = mhyk;
-                    //mhz[kx]   = mhzk;
-                    //m2[kx]    = m2k;
                     real denom = m2k*bz*by*pme_bsp_mod_XX[kx];
                     real tmp1  = -factor*m2k;
 
@@ -237,14 +219,6 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
                     virial_v[6*i+3] = virxy;
                     virial_v[6*i+4] = virxz;
                     virial_v[6*i+5] = viryz;
-                    if (debugPrint)
-                        printf("%g %g %g corner factor %g\n", indep_mx, indep_my, indep_mz, corner_fac);
-                    if (debugPrint)
-                        printf("cell energy is %g, value %g %g\n", energy, d1, d2);
-
-                    // for X/Z etermk, grid, temp1k is correct
-                    // corner_fac and energy is wrong! but it's nto just corner_fac
-                    // for Y everything is correct
                 }
             }
             else
@@ -274,8 +248,6 @@ __global__ void solve_pme_yzx_iyz_loop_kernel
 
                     p0->re  = d1*etermk;
                     p0->im  = d2*etermk;
-                    //if (debugPrint)
-                    //    printf("%d %d %d %g %g %g\n", ix, iy, iz, etermk, d1, p0->re);
                 }
             }
         }
@@ -474,7 +446,6 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
 
         /* This energy should be corrected for a charged system */
         *work_energy_q = 0.5 * energy;
-        printf("EN %g\n", *work_energy_q);
     }
     /* Return the loop count */
     //return local_ndata[YY]*local_ndata[XX]; //yupinov why

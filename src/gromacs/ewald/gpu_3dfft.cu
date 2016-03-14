@@ -219,7 +219,6 @@ __global__ void transpose_xyz_yzx_kernel(int nx, int ny, int nz,
         else if(cfftgridDimOrdering == YZX)
             idx2 = ((ny + y) * (nz / 2 + 1) + z) * nx + x; //YZX-index into the second complex plane
 
-
         if (forward)
         {
             cdata[idx2] = cdata[idx1];
@@ -241,6 +240,7 @@ void transpose_xyz_yzx(int nx, int ny, int nz,
     dim3 dimBlock(block_size, 1, 1);
     transpose_xyz_yzx_kernel<<<dimGrid, dimBlock, 0, s>>>(nx, ny, nz, cdata, forward);
     CU_LAUNCH_ERR("transpose_xyz_yzx_kernel");
+    //printf("hello transpose\n");
     //cudaMemcpy(cdata, cdata + nx * ny * (nz/2+1), nx * ny * (nz/2+1) * sizeof(cufftComplex), cudaMemcpyDeviceToDevice);
 }
 
