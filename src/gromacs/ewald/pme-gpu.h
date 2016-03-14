@@ -151,7 +151,7 @@ inline int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t gmx_unused *pme,
                            t_complex **complexFFTGridSavedOnDevice = NULL)
 {
     int res = 0;
-    gmx_bool bGPU = pme->bGPU;
+    gmx_bool bGPUFFT = pme->bGPUFFT;
     int wcycle_id = ewcPME_FFT;
     int wsubcycle_id = (dir == GMX_FFT_REAL_TO_COMPLEX) ? ewcsPME_FFT_R2C : ewcsPME_FFT_C2R;  //yupinov - this is 1 thread!
 
@@ -161,7 +161,7 @@ inline int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t gmx_unused *pme,
         wallcycle_sub_start(wcycle, wsubcycle_id);
     }
 
-    if (bGPU)
+    if (bGPUFFT)
     {
         if (thread == 0)
             gmx_parallel_3dfft_execute_gpu(pme->pfft_setup_gpu[grid_index], dir, thread, wcycle, pme, complexFFTGridSavedOnDevice);

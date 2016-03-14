@@ -575,7 +575,10 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
         pme->bPPnode = (cr->duty & DUTY_PP);
     }
     //yupinov bGPU not checked everywhere! have to refactor
-    pme->bGPU        = bPMEGPU;
+    pme->bGPU    = bPMEGPU && MASTER(cr);
+    // only a single rank does PME GPU currently - bugs
+    pme->bGPUFFT = bPMEGPU && !PAR(cr);
+    //yupinov currently cuFFT is only used for a single rank - maybe check DD instead?
 
     pme->nthread = nthread;
     //yupinov: gather_f, and other things are not currently written for multi-threading...
@@ -770,7 +773,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
                                     &pme->fftgrid[i], &pme->cfftgrid[i],
                                     pme->mpi_comm_d,
                                      bReproducible, pme->nthread);
-           if (pme->bGPU) //yupinov does not do proper separate init
+           if (pme->bGPUFFT) //yupinov does not do proper separate init
                 gmx_parallel_3dfft_init_gpu(&pme->pfft_setup_gpu[i], ndata,
                                                 &pme->fftgrid[i], &pme->cfftgrid[i],
                                                 pme->mpi_comm_d,
