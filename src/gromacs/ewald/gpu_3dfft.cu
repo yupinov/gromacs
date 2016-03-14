@@ -201,46 +201,6 @@ void gmx_parallel_3dfft_complex_limits_gpu(gmx_parallel_3dfft_gpu_t      pfft_se
     setup->local_size[2] = local_size[2];
 }
 
-__global__ void transpose_xyz_yzx_kernel(int nx, int ny, int nz,
-                                         cufftComplex *cdata,
-                                         bool forward)
-{
-    // transpose cdata to be contiguous in a y z x loop
-    // z-dim has nz/2 + 1 elems
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    int z = blockIdx.z * blockDim.z + threadIdx.z;
-    if ((x < nx) && (y < ny) && (z < (nz / 2 + 1)))
-    {
-        int idx1 = (x * ny + y) * (nz / 2 + 1) + z; //XYZ index into the first complex plane
-        int idx2 = -1;
-        idx2 = ((ny + y) * (nz / 2 + 1) + z) * nx + x; //YZX-index into the second complex plane
-
-        if (forward)
-        {
-            cdata[idx2] = cdata[idx1];
-        }
-        else
-        {
-            cdata[idx1] = cdata[idx2];
-        }
-    }
-}
-
-void transpose_xyz_yzx(int nx, int ny, int nz,
-                       cufftComplex *cdata,
-                       bool forward, gmx_pme_t *pme)
-{
-    cudaStream_t s = pme->gpu->pmeStream;
-    int block_size = warp_size;
-    dim3 dimGrid((nx + block_size - 1) / block_size, ny, nz / 2 + 1);
-    dim3 dimBlock(block_size, 1, 1);
-    transpose_xyz_yzx_kernel<<<dimGrid, dimBlock, 0, s>>>(nx, ny, nz, cdata, forward);
-    CU_LAUNCH_ERR("transpose_xyz_yzx_kernel");
-    printf("hello transpose\n");
-    //cudaMemcpy(cdata, cdata + nx * ny * (nz/2+1), nx * ny * (nz/2+1) * sizeof(cufftComplex), cudaMemcpyDeviceToDevice);
-}
-
 void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
                                    enum gmx_fft_direction  dir,
                                    int                     thread,
@@ -250,34 +210,15 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
 {
     cudaStream_t s = pme->gpu->pmeStream;
 
-    //fprintf(stderr, "3dfft_execute_gpu\n");
     gmx_parallel_3dfft_gpu_t setup = pfft_setup;
 
     int x = setup->n[0], y = setup->n[1], z = setup->n[2];
 
-    //int rank = 3, batch = 1;
-    /*fprintf(stderr, "FFT plan %dx%dx%d %s %p(%d)->%p(%d)\n", x, y, z,
-      dir == GMX_FFT_REAL_TO_COMPLEX ? "CUFFT_R2C" : "CUFFT_C2R",
-      setup->real_data, (int) sizeof(real),
-      setup->complex_data, (int) sizeof(t_complex));*/
-    /* FIX plan in advance (in init)
-  if (cufftPlanMany(&setup->plan, rank, setup->n,
-            NULL, 0, 0,
-            NULL, 0, 0,
-            dir == GMX_FFT_REAL_TO_COMPLEX ? CUFFT_R2C : CUFFT_C2R,
-            batch)
-      != CUFFT_SUCCESS) {
-    fprintf(stderr, "PLAN_MANY FAIL!!! %d %p\n", thread, &wcycle);
-    setup = NULL; // FIX
-  }
-  */
-
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
-    {
-        //yupinov hack for padded data
+    {      
         th_cpy(setup->rdata, setup->real_data, x * y * (z / 2 + 1) * 2 * sizeof(real), TH_LOC_CUDA, s);
         /*
-        if (thread == 0) // redundant - called in thread 0 already though
+        //yupinov hack for padded data
         {
             cufftReal *dest = setup->rdata;
             real *src = setup->real_data;
@@ -301,7 +242,6 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
         cufftResult_t result = cufftExecR2C(setup->planR2C, setup->rdata, setup->cdata);
         if (result)
             fprintf(stderr, "cufft R2C error %d\n", result);
-        //transpose_xyz_yzx(x, y, z, setup->cdata, true, pme);
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_stop(gpu_events_fft_r2c, s, ewcsPME_FFT_R2C, 0);
         #endif
@@ -310,11 +250,9 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     {
         //yupinov no second transfer
         th_cpy(setup->cdata, setup->complex_data, x * y * (z / 2 + 1) * sizeof(t_complex), TH_LOC_CUDA, s);
-        // FIXME: y major, z middle, x minor or continuous ->
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_start(gpu_events_fft_c2r, s);
         #endif
-        //transpose_xyz_yzx(x, y, z, setup->cdata, false, pme);
         cufftResult_t result = cufftExecC2R(setup->planC2R, setup->cdata, setup->rdata);
         if (result)
             fprintf(stderr, "cufft C2R error %d\n", result);
@@ -333,12 +271,9 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     }
     else
     {
-        //yupinov hack for padded data
-
         th_cpy(setup->real_data, setup->rdata, x * y * (z / 2 + 1) * 2 * sizeof(real), TH_LOC_HOST, s);
-
         /*
-        if (thread == 0) // redundant - called in thread 0 already though
+        //yupinov hack for padded data
         {
             real *dest = setup->real_data;
             cufftReal *src = setup->rdata;
@@ -354,7 +289,6 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
                  }
         }
         */
-
     }
     // FIX destroy plans after
     //cufftDestroy(setup->plan);
