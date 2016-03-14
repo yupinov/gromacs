@@ -214,10 +214,7 @@ __global__ void transpose_xyz_yzx_kernel(int nx, int ny, int nz,
     {
         int idx1 = (x * ny + y) * (nz / 2 + 1) + z; //XYZ index into the first complex plane
         int idx2 = -1;
-        if (cfftgridDimOrdering == XYZ)
-            idx2 = idx1 + nx * ny * (nz / 2 + 1); //XYZ-index into the second complex plane
-        else if(cfftgridDimOrdering == YZX)
-            idx2 = ((ny + y) * (nz / 2 + 1) + z) * nx + x; //YZX-index into the second complex plane
+        idx2 = ((ny + y) * (nz / 2 + 1) + z) * nx + x; //YZX-index into the second complex plane
 
         if (forward)
         {

@@ -21,13 +21,6 @@ void print_lock();
 void print_unlock();
 #endif
 
-enum
-{
-    YZX,
-    XYZ
-};
-#define cfftgridDimOrdering XYZ
-
 #ifdef DEBUG_PME_TIMINGS_GPU
 
 #include "gromacs/timing/wallcycle.h"
