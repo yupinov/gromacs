@@ -21,10 +21,10 @@ void pme_gpu_init(gmx_pme_gpu_t **pme)
     int highest_priority;
     int lowest_priority;
     stat = cudaDeviceGetStreamPriorityRange(&lowest_priority, &highest_priority);
-    CU_RET_ERR(stat, "cudaDeviceGetStreamPriorityRange failed");
+    CU_RET_ERR(stat, "PME cudaDeviceGetStreamPriorityRange failed");
     stat = cudaStreamCreateWithPriority(&(*pme)->pmeStream,
                                             //cudaStreamNonBlocking,
-                                            cudaStreamDefault, //yupinov why not ?
+                                            cudaStreamDefault,
                                             highest_priority);
     //yupinov: fighting with nbnxn non-local for highest priority - check on MPI!
     CU_RET_ERR(stat, "cudaStreamCreateWithPriority on PME stream failed");
