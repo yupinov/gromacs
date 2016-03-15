@@ -145,6 +145,7 @@ inline int gmx_parallel_3dfft_complex_limits_wrapper(struct gmx_pme_t *pme,
     res = gmx_parallel_3dfft_complex_limits(pme->pfft_setup[grid_index], complex_order, local_ndata, local_offset, local_size);
     if (pme->bGPUFFT)
         gmx_parallel_3dfft_complex_limits_gpu(pme->pfft_setup_gpu[grid_index], complex_order, local_ndata, local_offset, local_size);
+
     return res;
 }
 

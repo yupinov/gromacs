@@ -35,11 +35,13 @@ struct gmx_parallel_3dfft_gpu
     int                       nthreads;
 
     ivec                      complex_order;
-    ivec                      local_ndata;
     ivec                      local_offset;
     ivec                      local_size;
 
-    int n[3];
+    ivec ndata_real;
+    ivec size_real;
+    ivec size_complex;
+
     cufftHandle planR2C;
     cufftHandle planC2R;
     cufftReal *rdata;
@@ -57,6 +59,7 @@ gmx_bool                  bReproducible,
 int                       nthreads,
 gmx_pme_t *pme)
 {
+    cufftResult_t result;
     gmx_parallel_3dfft_gpu_t setup = new gmx_parallel_3dfft_gpu();
 
     //yupinov FIXME: this copies the already setup pointer, to check them after execute
@@ -77,52 +80,49 @@ gmx_pme_t *pme)
     fftgrid[fftidx] = pmegrid[pmeidx];
     // TODO: align cufft minor dim to 128 bytes
    */
-    setup->n[0] = ndata[0];
-    setup->n[1] = ndata[1];
-    setup->n[2] = ndata[2]; //yupinov ZZ
-
-    int x = setup->n[0], y = setup->n[1], z = setup->n[2];
-
-    setup->rdata = PMEFetchRealArray(PME_ID_REAL_GRID, 0, x * y * (z / 2 + 1) * 2 * sizeof(cufftReal), ML_DEVICE);
-    setup->cdata = (cufftComplex *)PMEFetchComplexArray(PME_ID_COMPLEX_GRID, 0, x * y * (z / 2 + 1) * 2 * sizeof(cufftReal), ML_DEVICE);
+    setup->ndata_real[0] = ndata[XX];
+    setup->ndata_real[1] = ndata[YY];
+    setup->ndata_real[2] = ndata[ZZ]; //yupinov ZZ
 
     *pfft_setup = setup;
 
-    cufftResult_t result;
+    setup->size_real[XX] = setup->ndata_real[XX];
+    setup->size_real[YY] = setup->ndata_real[YY];
+    setup->size_real[ZZ] = (setup->ndata_real[ZZ] / 2 + 1) * 2;
+
+    setup->size_complex[XX] = setup->ndata_real[XX];
+    setup->size_complex[YY] = setup->ndata_real[YY];
+    setup->size_complex[ZZ] = setup->ndata_real[ZZ] / 2 + 1;
+
+    const int gridSizeComplex = setup->size_complex[XX] * setup->size_complex[YY] * setup->size_complex[ZZ];
+    const int gridSizeReal = setup->size_real[XX] * setup->size_real[YY] * setup->size_real[ZZ];
+
+    setup->rdata = PMEFetchRealArray(PME_ID_REAL_GRID, 0, gridSizeReal * sizeof(cufftReal), ML_DEVICE);
+    setup->cdata = (cufftComplex *)PMEFetchComplexArray(PME_ID_COMPLEX_GRID, 0, gridSizeComplex * sizeof(cufftComplex), ML_DEVICE);
+
+    const int rank = 3, batch = 1;
+
     /*
-    result = cufftPlan3d(&setup->planR2C, setup->n[0], setup->n[1], setup->n[2], CUFFT_R2C);
+    result = cufftPlan3d(&setup->planR2C, setup->ndata_real[XX], setup->ndata_real[YY], setup->ndata_real[ZZ], CUFFT_R2C);
     if (result != CUFFT_SUCCESS)
         gmx_fatal(FARGS, "cufftPlan3d R2C error %d\n", result);
 
-    result = cufftPlan3d(&setup->planC2R, setup->n[0], setup->n[1], setup->n[2], CUFFT_C2R);
+    result = cufftPlan3d(&setup->planC2R, setup->ndata_real[XX], setup->ndata_real[YY], setup->ndata_real[ZZ], CUFFT_C2R);
     if (result != CUFFT_SUCCESS)
         gmx_fatal(FARGS, "cufftPlan3d C2R error %d\n", result);
     */
 
-    int rembed[3];
-    rembed[0] = setup->n[XX];
-    rembed[1] = setup->n[YY];
-    rembed[2] = setup->n[ZZ];
-    rembed[2] = (rembed[2] / 2 + 1) * 2;
-    int cembed[3];
-    cembed[0] = setup->n[XX];
-    cembed[1] = setup->n[YY];
-    cembed[2] = setup->n[ZZ];
-    cembed[2] = (cembed[2] / 2 + 1);
-
-    const int rank = 3, batch = 1;
-
-    result = cufftPlanMany(&setup->planR2C, rank, setup->n,
-                                       rembed, 1, rembed[0] * rembed[1] * rembed[2],
-                                       cembed, 1, cembed[0] * cembed[1] * cembed[2],
+    result = cufftPlanMany(&setup->planR2C, rank, setup->ndata_real,
+                                       setup->size_real, 1, gridSizeReal,
+                                       setup->size_complex, 1, gridSizeComplex,
                                        CUFFT_R2C,
                                        batch);
     if (result != CUFFT_SUCCESS)
         gmx_fatal(FARGS, "cufftPlanMany R2C error %d\n", result);
 
-    result = cufftPlanMany(&setup->planC2R, rank, setup->n,
-                                       cembed, 1, cembed[0] * cembed[1] * cembed[2],
-                                       rembed, 1, rembed[0] * rembed[1] * rembed[2],
+    result = cufftPlanMany(&setup->planC2R, rank, setup->ndata_real,
+                                       setup->size_complex, 1, gridSizeComplex,
+                                       setup->size_real, 1, gridSizeReal,
                                        CUFFT_C2R,
                                        batch);
     if (result != CUFFT_SUCCESS)
@@ -138,45 +138,43 @@ gmx_pme_t *pme)
         gmx_fatal(FARGS, "cufftSetStream C2R error %d\n", result);
 }
 
-void gmx_parallel_3dfft_real_limits_gpu(gmx_parallel_3dfft_gpu_t      pfft_setup,
+void gmx_parallel_3dfft_real_limits_gpu(gmx_parallel_3dfft_gpu_t      setup,
                                        ivec                      local_ndata,
                                        ivec                      local_offset,
                                        ivec                      local_size)
 {
-    //fprintf(stderr, "3dfft_real_limits_gpu\n");
-    gmx_parallel_3dfft_gpu_t setup = pfft_setup;
-    setup->local_ndata[0] = local_ndata[0];
-    setup->local_ndata[1] = local_ndata[1];
-    setup->local_ndata[2] = local_ndata[2];
+    local_ndata[0] = setup->ndata_real[0];
+    local_ndata[1] = setup->ndata_real[1];
+    local_ndata[2] = setup->ndata_real[2];
+    local_size[0] = setup->size_real[0];
+    local_size[1] = setup->size_real[1];
+    local_size[2] = setup->size_real[2];
+
+    //yupinov
     setup->local_offset[0] = local_offset[0];
     setup->local_offset[1] = local_offset[1];
     setup->local_offset[2] = local_offset[2];
-    setup->local_size[0] = local_size[0];
-    setup->local_size[1] = local_size[1];
-    setup->local_size[2] = local_size[2];
 }
 
-void gmx_parallel_3dfft_complex_limits_gpu(gmx_parallel_3dfft_gpu_t      pfft_setup,
+void gmx_parallel_3dfft_complex_limits_gpu(gmx_parallel_3dfft_gpu_t      setup,
                                           ivec                      complex_order,
                                           ivec                      local_ndata,
                                           ivec                      local_offset,
                                           ivec                      local_size)
 {
+    local_ndata[0] = setup->ndata_real[0];
+    local_ndata[1] = setup->ndata_real[1];
+    local_ndata[2] = setup->ndata_real[2] / 2 + 1;
+    local_size[0] = setup->size_complex[0];
+    local_size[1] = setup->size_complex[1];
+    local_size[2] = setup->size_complex[2];
     //yupinov why are they here
-    //fprintf(stderr, "3dfft_complex_limits_gpu\n");
-    gmx_parallel_3dfft_gpu_t setup = pfft_setup;
     setup->complex_order[0] = complex_order[0];
     setup->complex_order[1] = complex_order[1];
     setup->complex_order[2] = complex_order[2];
-    setup->local_ndata[0] = local_ndata[0];
-    setup->local_ndata[1] = local_ndata[1];
-    setup->local_ndata[2] = local_ndata[2];
     setup->local_offset[0] = local_offset[0];
     setup->local_offset[1] = local_offset[1];
     setup->local_offset[2] = local_offset[2];
-    setup->local_size[0] = local_size[0];
-    setup->local_size[1] = local_size[1];
-    setup->local_size[2] = local_size[2];
 }
 
 void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
@@ -187,7 +185,7 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
 
     gmx_parallel_3dfft_gpu_t setup = pfft_setup;
 
-    int x = setup->n[0], y = setup->n[1], z = setup->n[2];
+    int x = setup->ndata_real[0], y = setup->ndata_real[1], z = setup->ndata_real[2];
 
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {      

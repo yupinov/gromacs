@@ -14,7 +14,7 @@ struct gmx_pme_cuda_t
 //yupinov dealloc
 //yupinov grid indices with tags?
 
-#define PME_CUFFT_INPLACE
+//#define PME_CUFFT_INPLACE
 //yupinov - seems to perform same?
 
 
