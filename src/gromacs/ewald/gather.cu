@@ -125,9 +125,9 @@ void gather_f_bsplines_gpu_2_pre
     // compact atc_f before cpu calcucation
 
     int size_forces = DIM * spline_n * sizeof(real);
-    real *atc_f_compacted = th_a(TH_ID_F, thread, size_forces, TH_LOC_HOST); //yupinov fixed allocation size - not actually compacted, same for i_compacted
+    real *atc_f_compacted = PMEFetchRealArray(PME_ID_F, thread, size_forces, ML_HOST); //yupinov fixed allocation size - not actually compacted, same for i_compacted
     int size_indices = spline_n * sizeof(int);
-    int *atc_i_compacted = th_i(TH_ID_I, thread, size_indices, TH_LOC_HOST);
+    int *atc_i_compacted = PMEFetchIntegerArray(PME_ID_I, thread, size_indices, ML_HOST);
 
     int oo = 0;
     for (int ii = 0; ii < spline_n; ii++)
@@ -173,7 +173,7 @@ void gather_f_bsplines_gpu_2
         return;
 
     int size_grid = ndatatot * sizeof(real);
-    real *grid_d = th_a_cpy(TH_ID_REAL_GRID_WITH_OVERLAP, thread, grid, size_grid, TH_LOC_CUDA, s);
+    real *grid_d = PMEFetchAndCopyRealArray(PME_ID_REAL_GRID_WITH_OVERLAP, thread, grid, size_grid, ML_DEVICE, s);
 
     //copy order?
     //compacting, and size....
@@ -184,22 +184,22 @@ void gather_f_bsplines_gpu_2
     int size_splines = order * n * sizeof(int);
 
 
-    real *atc_f_compacted = th_a(TH_ID_F, thread, -1, TH_LOC_HOST); //but that's wrong! realloc
+    real *atc_f_compacted = PMEFetchRealArray(PME_ID_F, thread, -1, ML_HOST); //but that's wrong! realloc
 
-    int *atc_i_compacted = th_i(TH_ID_I, thread, -1, TH_LOC_HOST);  //way to get sizes from th-a?
-    real *coefficients_compacted = th_a(TH_ID_COEFFICIENT, thread, size_coefficients, TH_LOC_HOST);
+    int *atc_i_compacted = PMEFetchIntegerArray(PME_ID_I, thread, -1, ML_HOST);  //way to get sizes from th-a?
+    real *coefficients_compacted = PMEFetchRealArray(PME_ID_COEFFICIENT, thread, size_coefficients, ML_HOST);
     //yupinov reuse H_ID_COEFFICIENT and other stuff from before solve?
 
-    int *i0_compacted = th_i(TH_ID_I0, thread, size_indices, TH_LOC_HOST); //yupinov these are IDXPTR, actually. maybe split it?
-    int *j0_compacted = th_i(TH_ID_J0, thread, size_indices, TH_LOC_HOST);
-    int *k0_compacted = th_i(TH_ID_K0, thread, size_indices, TH_LOC_HOST);
+    int *i0_compacted = PMEFetchIntegerArray(PME_ID_I0, thread, size_indices, ML_HOST); //yupinov these are IDXPTR, actually. maybe split it?
+    int *j0_compacted = PMEFetchIntegerArray(PME_ID_J0, thread, size_indices, ML_HOST);
+    int *k0_compacted = PMEFetchIntegerArray(PME_ID_K0, thread, size_indices, ML_HOST);
 
-    real *theta_x_compacted = th_a(TH_ID_THX, thread, size_splines, TH_LOC_HOST);
-    real *theta_y_compacted = th_a(TH_ID_THY, thread, size_splines, TH_LOC_HOST);
-    real *theta_z_compacted = th_a(TH_ID_THZ, thread, size_splines, TH_LOC_HOST);
-    real *dtheta_x_compacted = th_a(TH_ID_DTHX, thread, size_splines, TH_LOC_HOST);
-    real *dtheta_y_compacted = th_a(TH_ID_DTHY, thread, size_splines, TH_LOC_HOST);
-    real *dtheta_z_compacted = th_a(TH_ID_DTHZ, thread, size_splines, TH_LOC_HOST);
+    real *theta_x_compacted = PMEFetchRealArray(PME_ID_THX, thread, size_splines, ML_HOST);
+    real *theta_y_compacted = PMEFetchRealArray(PME_ID_THY, thread, size_splines, ML_HOST);
+    real *theta_z_compacted = PMEFetchRealArray(PME_ID_THZ, thread, size_splines, ML_HOST);
+    real *dtheta_x_compacted = PMEFetchRealArray(PME_ID_DTHX, thread, size_splines, ML_HOST);
+    real *dtheta_y_compacted = PMEFetchRealArray(PME_ID_DTHY, thread, size_splines, ML_HOST);
+    real *dtheta_z_compacted = PMEFetchRealArray(PME_ID_DTHZ, thread, size_splines, ML_HOST);
 
     int oo = 0;
     for (int ii = 0; ii < spline_n; ii++)
@@ -248,19 +248,19 @@ void gather_f_bsplines_gpu_2
     size_forces = DIM * n * sizeof(real);
     size_splines = order * n * sizeof(int);
 
-    real *atc_f_d = th_a_cpy(TH_ID_F, thread, atc_f_compacted, size_forces, TH_LOC_CUDA, s);
-    real *coefficients_d = th_a_cpy(TH_ID_COEFFICIENT, thread, coefficients_compacted, size_coefficients, TH_LOC_CUDA, s);
+    real *atc_f_d = PMEFetchAndCopyRealArray(PME_ID_F, thread, atc_f_compacted, size_forces, ML_DEVICE, s);
+    real *coefficients_d = PMEFetchAndCopyRealArray(PME_ID_COEFFICIENT, thread, coefficients_compacted, size_coefficients, ML_DEVICE, s);
 
-    int *i0_d = th_i_cpy(TH_ID_I0, thread, i0_compacted, size_indices, TH_LOC_CUDA, s);
-    int *j0_d = th_i_cpy(TH_ID_J0, thread, j0_compacted, size_indices, TH_LOC_CUDA, s);
-    int *k0_d = th_i_cpy(TH_ID_K0, thread, k0_compacted, size_indices, TH_LOC_CUDA, s);
+    int *i0_d = PMEFetchAndCopyIntegerArray(PME_ID_I0, thread, i0_compacted, size_indices, ML_DEVICE, s);
+    int *j0_d = PMEFetchAndCopyIntegerArray(PME_ID_J0, thread, j0_compacted, size_indices, ML_DEVICE, s);
+    int *k0_d = PMEFetchAndCopyIntegerArray(PME_ID_K0, thread, k0_compacted, size_indices, ML_DEVICE, s);
 
-    real *theta_x_d = th_a_cpy(TH_ID_THX, thread, theta_x_compacted, size_splines, TH_LOC_CUDA, s);
-    real *theta_y_d = th_a_cpy(TH_ID_THY, thread, theta_y_compacted, size_splines, TH_LOC_CUDA, s);
-    real *theta_z_d = th_a_cpy(TH_ID_THZ, thread, theta_z_compacted, size_splines, TH_LOC_CUDA, s);
-    real *dtheta_x_d = th_a_cpy(TH_ID_DTHX, thread, dtheta_x_compacted, size_splines, TH_LOC_CUDA, s);
-    real *dtheta_y_d = th_a_cpy(TH_ID_DTHY, thread, dtheta_y_compacted, size_splines, TH_LOC_CUDA, s);
-    real *dtheta_z_d = th_a_cpy(TH_ID_DTHZ, thread, dtheta_z_compacted, size_splines, TH_LOC_CUDA, s);
+    real *theta_x_d = PMEFetchAndCopyRealArray(PME_ID_THX, thread, theta_x_compacted, size_splines, ML_DEVICE, s);
+    real *theta_y_d = PMEFetchAndCopyRealArray(PME_ID_THY, thread, theta_y_compacted, size_splines, ML_DEVICE, s);
+    real *theta_z_d = PMEFetchAndCopyRealArray(PME_ID_THZ, thread, theta_z_compacted, size_splines, ML_DEVICE, s);
+    real *dtheta_x_d = PMEFetchAndCopyRealArray(PME_ID_DTHX, thread, dtheta_x_compacted, size_splines, ML_DEVICE, s);
+    real *dtheta_y_d = PMEFetchAndCopyRealArray(PME_ID_DTHY, thread, dtheta_y_compacted, size_splines, ML_DEVICE, s);
+    real *dtheta_z_d = PMEFetchAndCopyRealArray(PME_ID_DTHZ, thread, dtheta_z_compacted, size_splines, ML_DEVICE, s);
 
     const int blockSize = 4 * warp_size;
     int n_blocks = (n + blockSize - 1) / blockSize;
@@ -282,7 +282,7 @@ void gather_f_bsplines_gpu_2
     events_record_stop(gpu_events_gather, s, ewcsPME_GATHER, 0);
 #endif
 
-    th_cpy(atc_f_compacted, atc_f_d, size_forces, TH_LOC_HOST, s);
+    PMECopy(atc_f_compacted, atc_f_d, size_forces, ML_HOST, s);
 
     for (int ii = 0; ii < n; ii++)  // iterating over compacted particles
     {

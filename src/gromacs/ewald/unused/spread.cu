@@ -214,27 +214,27 @@ void spread_coefficients_bsplines_thread_gpu_2
         grid[i] = 0;
     }
 
-    real *grid_d = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_CUDA);
+    real *grid_d = th_a(PME_ID_GRID, thread, size_grid, TH_LOC_CUDA);
     cudaError_t stat = cudaMemcpy(grid_d, grid, size_grid, cudaMemcpyHostToDevice);
     CU_RET_ERR(stat, "cudaMemcpy spread error");
 
     int size_real = spline_n * sizeof(real);
     int size_int = spline_n * sizeof(int);
-    int *i0 = th_i(TH_ID_I0, thread, size_int, TH_LOC_HOST);
-    int *j0 = th_i(TH_ID_J0, thread, size_int, TH_LOC_HOST);
-    int *k0 = th_i(TH_ID_K0, thread, size_int, TH_LOC_HOST);
-    real *coefficient = th_a(TH_ID_COEFFICIENT, thread, size_real, TH_LOC_HOST);
-    real *thx = th_a(TH_ID_THX, thread, size_real * order, TH_LOC_HOST);
-    real *thy = th_a(TH_ID_THY, thread, size_real * order, TH_LOC_HOST);
-    real *thz = th_a(TH_ID_THZ, thread, size_real * order, TH_LOC_HOST);
+    int *i0 = th_i(PME_ID_I0, thread, size_int, TH_LOC_HOST);
+    int *j0 = th_i(PME_ID_J0, thread, size_int, TH_LOC_HOST);
+    int *k0 = th_i(PME_ID_K0, thread, size_int, TH_LOC_HOST);
+    real *coefficient = th_a(PME_ID_COEFFICIENT, thread, size_real, TH_LOC_HOST);
+    real *thx = th_a(PME_ID_THX, thread, size_real * order, TH_LOC_HOST);
+    real *thy = th_a(PME_ID_THY, thread, size_real * order, TH_LOC_HOST);
+    real *thz = th_a(PME_ID_THZ, thread, size_real * order, TH_LOC_HOST);
 
-    int *i0_d = th_i(TH_ID_I0, thread, size_int, TH_LOC_CUDA);
-    int *j0_d = th_i(TH_ID_J0, thread, size_int, TH_LOC_CUDA);
-    int *k0_d = th_i(TH_ID_K0, thread, size_int, TH_LOC_CUDA);
-    real *coefficient_d = th_a(TH_ID_COEFFICIENT, thread, size_real, TH_LOC_CUDA);
-    real *thx_d = th_a(TH_ID_THX, thread, size_real * order, TH_LOC_CUDA);
-    real *thy_d = th_a(TH_ID_THY, thread, size_real * order, TH_LOC_CUDA);
-    real *thz_d = th_a(TH_ID_THZ, thread, size_real * order, TH_LOC_CUDA);
+    int *i0_d = th_i(PME_ID_I0, thread, size_int, TH_LOC_CUDA);
+    int *j0_d = th_i(PME_ID_J0, thread, size_int, TH_LOC_CUDA);
+    int *k0_d = th_i(PME_ID_K0, thread, size_int, TH_LOC_CUDA);
+    real *coefficient_d = th_a(PME_ID_COEFFICIENT, thread, size_real, TH_LOC_CUDA);
+    real *thx_d = th_a(PME_ID_THX, thread, size_real * order, TH_LOC_CUDA);
+    real *thy_d = th_a(PME_ID_THY, thread, size_real * order, TH_LOC_CUDA);
+    real *thz_d = th_a(PME_ID_THZ, thread, size_real * order, TH_LOC_CUDA);
 
     int oo = 0;
 

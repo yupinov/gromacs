@@ -309,18 +309,18 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     const int grid_n = local_size[majorDim] * local_size[middleDim] * local_size[minorDim];
     const int grid_size = grid_n * sizeof(t_complex);
 
-    real *bspModMinor_d = th_a_cpy(TH_ID_BSP_MOD_MINOR, thread, pme_bsp_mod[minorDim], nMinor * sizeof(real), TH_LOC_CUDA, s);
-    real *bspModMajor_d = th_a_cpy(TH_ID_BSP_MOD_MAJOR, thread, pme_bsp_mod[majorDim], nMajor * sizeof(real), TH_LOC_CUDA, s);
-    real *bspModMiddle_d = th_a_cpy(TH_ID_BSP_MOD_MIDDLE, thread, pme_bsp_mod[middleDim], nMiddle * sizeof(real), TH_LOC_CUDA, s);
+    real *bspModMinor_d = PMEFetchAndCopyRealArray(PME_ID_BSP_MOD_MINOR, thread, pme_bsp_mod[minorDim], nMinor * sizeof(real), ML_DEVICE, s);
+    real *bspModMajor_d = PMEFetchAndCopyRealArray(PME_ID_BSP_MOD_MAJOR, thread, pme_bsp_mod[majorDim], nMajor * sizeof(real), ML_DEVICE, s);
+    real *bspModMiddle_d = PMEFetchAndCopyRealArray(PME_ID_BSP_MOD_MIDDLE, thread, pme_bsp_mod[middleDim], nMiddle * sizeof(real), ML_DEVICE, s);
 
     const int energySize = n * sizeof(real);
     const int virialSize = 6 * n * sizeof(real);
-    real *energy_d = th_a(TH_ID_ENERGY, thread, energySize, TH_LOC_CUDA);
-    real *virial_d = th_a(TH_ID_VIRIAL, thread, virialSize, TH_LOC_CUDA);
+    real *energy_d = PMEFetchRealArray(PME_ID_ENERGY, thread, energySize, ML_DEVICE);
+    real *virial_d = PMEFetchRealArray(PME_ID_VIRIAL, thread, virialSize, ML_DEVICE);
 
-    t_complex *grid_d = th_c(TH_ID_COMPLEX_GRID, thread, grid_size, TH_LOC_CUDA);
+    t_complex *grid_d = PMEFetchComplexArray(PME_ID_COMPLEX_GRID, thread, grid_size, ML_DEVICE);
     if (!pme->gpu->keepGPUDataBetweenR2CAndSolve)
-        th_cpy(grid_d, grid, grid_size, TH_LOC_CUDA, s);
+        PMECopy(grid_d, grid, grid_size, ML_DEVICE, s);
 
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_solve, s);
@@ -352,13 +352,13 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
 
     if (!pme->gpu->keepGPUDataBetweenSolveAndC2R)
     {
-        th_cpy(grid, grid_d, grid_size, TH_LOC_HOST, s);
+        PMECopy(grid, grid_d, grid_size, ML_HOST, s);
     }
 
     if (bEnerVir)
     {
-        real *energy_h = th_a_cpy(TH_ID_ENERGY, thread, energy_d, energySize, TH_LOC_HOST, s);
-        real *virial_h = th_a_cpy(TH_ID_VIRIAL, thread, virial_d, virialSize, TH_LOC_HOST, s);
+        real *energy_h = PMEFetchAndCopyRealArray(PME_ID_ENERGY, thread, energy_d, energySize, ML_HOST, s);
+        real *virial_h = PMEFetchAndCopyRealArray(PME_ID_VIRIAL, thread, virial_d, virialSize, ML_HOST, s);
         //yupinov - workaround for a zero point - do in kernel?
         memset(energy_h, 0, sizeof(real));
         memset(virial_h, 0, 6 * sizeof(real));
@@ -460,16 +460,16 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
 
     int grid_n = local_size[YY] * local_size[ZZ] * local_size[XX];
     int grid_size = grid_n * sizeof(t_complex);
-    t_complex *grid_d = th_c(TH_ID_COMPLEX_GRID, thread, grid_size * MAGIC_GRID_NUMBER, TH_LOC_CUDA); //6 grids!
-    real *pme_bsp_mod_x_d = th_a_cpy(TH_ID_BSP_MOD_MINOR, thread, pme_bsp_mod[XX], nx * sizeof(real), TH_LOC_CUDA, s);
-    real *pme_bsp_mod_y_d = th_a_cpy(TH_ID_BSP_MOD_MAJOR, thread, pme_bsp_mod[YY], ny * sizeof(real), TH_LOC_CUDA, s);
-    real *pme_bsp_mod_z_d = th_a_cpy(TH_ID_BSP_MOD_MIDDLE, thread, pme_bsp_mod[ZZ], nz * sizeof(real), TH_LOC_CUDA, s);
+    t_complex *grid_d = PMEFetchComplexArray(PME_ID_COMPLEX_GRID, thread, grid_size * MAGIC_GRID_NUMBER, ML_DEVICE); //6 grids!
+    real *pme_bsp_mod_x_d = PMEFetchAndCopyRealArray(PME_ID_BSP_MOD_MINOR, thread, pme_bsp_mod[XX], nx * sizeof(real), ML_DEVICE, s);
+    real *pme_bsp_mod_y_d = PMEFetchAndCopyRealArray(PME_ID_BSP_MOD_MAJOR, thread, pme_bsp_mod[YY], ny * sizeof(real), ML_DEVICE, s);
+    real *pme_bsp_mod_z_d = PMEFetchAndCopyRealArray(PME_ID_BSP_MOD_MIDDLE, thread, pme_bsp_mod[ZZ], nz * sizeof(real), ML_DEVICE, s);
     int energy_size = n * sizeof(real);
     int virial_size = 6 * n * sizeof(real);
-    real *energy_d = th_a(TH_ID_ENERGY, thread, energy_size, TH_LOC_CUDA);
-    real *virial_d = th_a(TH_ID_VIRIAL, thread, virial_size, TH_LOC_CUDA);
+    real *energy_d = PMEFetchRealArray(PME_ID_ENERGY, thread, energy_size, ML_DEVICE);
+    real *virial_d = PMEFetchRealArray(PME_ID_VIRIAL, thread, virial_size, ML_DEVICE);
     for (int ig = 0; ig < MAGIC_GRID_NUMBER; ++ig)
-        th_cpy(grid_d + ig * grid_n, grid[ig], grid_size, TH_LOC_CUDA, s);
+        PMECopy(grid_d + ig * grid_n, grid[ig], grid_size, ML_DEVICE, s);
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_solve, s);
 #endif
@@ -488,12 +488,12 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
     events_record_stop(gpu_events_solve, s, ewcsPME_SOLVE, 0);
 #endif
     for (int ig = 0; ig < MAGIC_GRID_NUMBER; ++ig)
-        th_cpy(grid[ig], grid_d + ig * grid_n, grid_size, TH_LOC_HOST, s);
+        PMECopy(grid[ig], grid_d + ig * grid_n, grid_size, ML_HOST, s);
 
     if (bEnerVir) //yupinov check if it works!
     {
-        real *energy_h = th_a_cpy(TH_ID_ENERGY, thread, energy_d, energy_size, TH_LOC_HOST, s);
-        real *virial_h = th_a_cpy(TH_ID_VIRIAL, thread, virial_d, virial_size, TH_LOC_HOST, s);
+        real *energy_h = PMEFetchAndCopyRealArray(PME_ID_ENERGY, thread, energy_d, energy_size, ML_HOST, s);
+        real *virial_h = PMEFetchAndCopyRealArray(PME_ID_VIRIAL, thread, virial_d, virial_size, ML_HOST, s);
         //yupinov - workaround for a zero point - do in kernel?
         memset(energy_h, 0, sizeof(real));
         memset(virial_h, 0, 6 * sizeof(real));

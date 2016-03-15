@@ -212,14 +212,14 @@ void make_bsplines_gpu(splinevec theta, splinevec dtheta, int order,
     int size_order = order * size;
     int size_order_dim = order * size_dim;
 
-    real *theta_d = th_a(TH_ID_THETA, thread, size_order_dim, TH_LOC_CUDA);
+    real *theta_d = th_a(PME_ID_THETA, thread, size_order_dim, TH_LOC_CUDA);
     //cudaMalloc((void **) &theta_d, size_order_dim);
-    real *dtheta_d = th_a(TH_ID_DTHETA, thread, size_order_dim, TH_LOC_CUDA);
+    real *dtheta_d = th_a(PME_ID_DTHETA, thread, size_order_dim, TH_LOC_CUDA);
     //cudaMalloc((void **) &dtheta_d, size_order_dim);
 
-    real *fractx_d = th_a(TH_ID_FRACTX, thread, size_dim, TH_LOC_CUDA);
+    real *fractx_d = th_a(PME_ID_FRACTX, thread, size_dim, TH_LOC_CUDA);
     //cudaMalloc((void **) &fractx_d, size_dim);
-    real *fractx_h = th_a(TH_ID_FRACTX, thread, size_dim, TH_LOC_HOST);
+    real *fractx_h = th_a(PME_ID_FRACTX, thread, size_dim, TH_LOC_HOST);
     //real *fractx_h = (real *) malloc(size_dim);
     for (int i = 0; i < nr; ++i)
     {
@@ -230,9 +230,9 @@ void make_bsplines_gpu(splinevec theta, splinevec dtheta, int order,
     }
     cudaError_t stat = cudaMemcpy(fractx_d, fractx_h, size_dim, cudaMemcpyHostToDevice);
     CU_RET_ERR(stat, "cudaMemcpy splines error");
-    real *coefficient_d = th_a(TH_ID_COEFFICIENT, thread, size, TH_LOC_CUDA);
+    real *coefficient_d = th_a(PME_ID_COEFFICIENT, thread, size, TH_LOC_CUDA);
     //cudaMalloc((void **) &coefficient_d, size);
-    real *coefficient_h = th_a(TH_ID_COEFFICIENT, thread, size, TH_LOC_HOST);
+    real *coefficient_h = th_a(PME_ID_COEFFICIENT, thread, size, TH_LOC_HOST);
     //real *coefficient_h = (real *) malloc(size);
     for (int i = 0; i < nr; ++i)
     {

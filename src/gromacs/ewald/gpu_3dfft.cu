@@ -86,8 +86,8 @@ gmx_pme_t *pme)
 
     int x = setup->n[0], y = setup->n[1], z = setup->n[2];
 
-    setup->rdata = th_a(TH_ID_REAL_GRID, 0, x * y * (z / 2 + 1) * 2 * sizeof(cufftReal), TH_LOC_CUDA);
-    setup->cdata = (cufftComplex *)th_c(TH_ID_COMPLEX_GRID, 0, x * y * (z / 2 + 1) * 2 * sizeof(cufftReal), TH_LOC_CUDA);
+    setup->rdata = PMEFetchRealArray(PME_ID_REAL_GRID, 0, x * y * (z / 2 + 1) * 2 * sizeof(cufftReal), ML_DEVICE);
+    setup->cdata = (cufftComplex *)PMEFetchComplexArray(PME_ID_COMPLEX_GRID, 0, x * y * (z / 2 + 1) * 2 * sizeof(cufftReal), ML_DEVICE);
 
     *pfft_setup = setup;
 
@@ -214,7 +214,7 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {      
         if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
-            th_cpy(setup->rdata, setup->real_data, x * y * (z / 2 + 1) * 2 * sizeof(real), TH_LOC_CUDA, s);
+            PMECopy(setup->rdata, setup->real_data, x * y * (z / 2 + 1) * 2 * sizeof(real), ML_DEVICE, s);
         /*
         //yupinov hack for padded data
         {
@@ -247,7 +247,7 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     else
     {
         if (!pme->gpu->keepGPUDataBetweenSolveAndC2R)
-            th_cpy(setup->cdata, setup->complex_data, x * y * (z / 2 + 1) * sizeof(t_complex), TH_LOC_CUDA, s);
+            PMECopy(setup->cdata, setup->complex_data, x * y * (z / 2 + 1) * sizeof(t_complex), ML_DEVICE, s);
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_start(gpu_events_fft_c2r, s);
         #endif
@@ -262,12 +262,12 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {
         if (!pme->gpu->keepGPUDataBetweenR2CAndSolve)
-            th_cpy(setup->complex_data, setup->cdata, x * y * (z / 2 + 1) * sizeof(t_complex), TH_LOC_HOST, s);
+            PMECopy(setup->complex_data, setup->cdata, x * y * (z / 2 + 1) * sizeof(t_complex), ML_HOST, s);
     }
     else
     {
         if (!pme->gpu->keepGPUDataBetweenC2RAndGather)
-            th_cpy(setup->real_data, setup->rdata, x * y * (z / 2 + 1) * 2 * sizeof(real), TH_LOC_HOST, s);
+            PMECopy(setup->real_data, setup->rdata, x * y * (z / 2 + 1) * 2 * sizeof(real), ML_HOST, s);
         /*
         //yupinov hack for padded data
         {

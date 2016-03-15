@@ -237,7 +237,7 @@ void spread3_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
   int *g2tx_h = pme->pmegrid[grid_index].g2t[XX];
   int *g2ty_h = pme->pmegrid[grid_index].g2t[YY];
   int *g2tz_h = pme->pmegrid[grid_index].g2t[ZZ];
-  int *g2tx_d = th_i(TH_ID_G2T, thread, 3 * n32 * sizeof(int), TH_LOC_CUDA);
+  int *g2tx_d = th_i(PME_ID_G2T, thread, 3 * n32 * sizeof(int), TH_LOC_CUDA);
   int *g2ty_d = g2tx_d + n32;
   int *g2tz_d = g2ty_d + n32;
   cudaMemcpy(g2tx_d, g2tx_h, n * sizeof(int), cudaMemcpyHostToDevice);
@@ -245,13 +245,13 @@ void spread3_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
   cudaMemcpy(g2tz_d, g2tz_h, n * sizeof(int), cudaMemcpyHostToDevice);
 
   // FSH
-  real *fshx_d = th_a(TH_ID_FSH, thread, 5 * (nx + ny) * sizeof(real), TH_LOC_CUDA);
+  real *fshx_d = th_a(PME_ID_FSH, thread, 5 * (nx + ny) * sizeof(real), TH_LOC_CUDA);
   real *fshy_d = fshx_d + 5 * nx;
   cudaMemcpy(fshx_d, pme->fshx, 5 * nx * sizeof(real), cudaMemcpyHostToDevice);
   cudaMemcpy(fshy_d, pme->fshy, 5 * ny * sizeof(real), cudaMemcpyHostToDevice);
 
   // NN
-  int *nnx_d = th_i(TH_ID_NN, thread, 5 * (nx + ny + nz) * sizeof(int), TH_LOC_CUDA);
+  int *nnx_d = th_i(PME_ID_NN, thread, 5 * (nx + ny + nz) * sizeof(int), TH_LOC_CUDA);
   int *nny_d = nnx_d + nx;
   int *nnz_d = nny_d + ny;
   cudaMemcpy(nnx_d, pme->nnx, 5 * nx * sizeof(int), cudaMemcpyHostToDevice);
@@ -259,8 +259,8 @@ void spread3_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
   cudaMemcpy(nnz_d, pme->nnz, 5 * nx * sizeof(int), cudaMemcpyHostToDevice);
 
   // XPTR
-  real *xptr_h = th_a(TH_ID_XPTR, thread, 3 * n32 * sizeof(real), TH_LOC_HOST);
-  real *xptr_d = th_a(TH_ID_XPTR, thread, 3 * n32 * sizeof(real), TH_LOC_CUDA);
+  real *xptr_h = th_a(PME_ID_XPTR, thread, 3 * n32 * sizeof(real), TH_LOC_HOST);
+  real *xptr_d = th_a(PME_ID_XPTR, thread, 3 * n32 * sizeof(real), TH_LOC_CUDA);
   real *yptr_d = xptr_d + n32;
   real *zptr_d = yptr_d + n32;
   {
@@ -276,7 +276,7 @@ void spread3_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
   cudaMemcpy(xptr_d, xptr_h, 3 * n32 * sizeof(real), cudaMemcpyHostToDevice);
 
   // COEFFICIENT
-  real *coefficient_d = th_a(TH_ID_COEFFICIENT, thread, n * sizeof(real), TH_LOC_CUDA);
+  real *coefficient_d = th_a(PME_ID_COEFFICIENT, thread, n * sizeof(real), TH_LOC_CUDA);
   cudaMemcpy(coefficient_d, atc->coefficient, n * sizeof(real), cudaMemcpyHostToDevice);
 
   // GRID
@@ -285,7 +285,7 @@ void spread3_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
       // FIX clear grid on device instead
       grid[i] = 0;
     }
-  real *grid_d = th_a(TH_ID_GRID, thread, size_grid, TH_LOC_CUDA);
+  real *grid_d = th_a(PME_ID_GRID, thread, size_grid, TH_LOC_CUDA);
   cudaMemcpy(grid_d, grid, size_grid, cudaMemcpyHostToDevice);
 #ifdef DEBUG_PME_TIMINGS_GPU
   events_record_start(gpu_events_spread);

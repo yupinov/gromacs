@@ -3,8 +3,9 @@
 #include "th-a.cuh"
 #include "gromacs/gpu_utils/cudautils.cuh"
 
-
 #include "pme-cuda.h"
+
+#include <assert.h>
 
 void pme_gpu_update_flags(
         gmx_pme_gpu_t *pmeGPU,
@@ -20,10 +21,8 @@ void pme_gpu_update_flags(
     pmeGPU->keepGPUDataBetweenC2RAndGather = keepGPUDataBetweenC2RAndGather;
 }
 
-
 void pme_gpu_init(gmx_pme_gpu_t **pmeGPU)
 {
-    //gmx_pme_gpu_t **pmeGPU = &pme->gpu;
     *pmeGPU = new gmx_pme_gpu_t;
     cudaError_t stat;
 //yupinov dealloc@
@@ -47,101 +46,102 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU)
     pme_gpu_update_flags(*pmeGPU, false, false, false, false);
 }
 
+#define MAXTAGS 1
 
+static std::vector<int> PMEStorageSizes(ML_END_INVALID * PME_ID_END_INVALID * MAXTAGS);
+static std::vector<void *> PMEStoragePointers(ML_END_INVALID * PME_ID_END_INVALID * MAXTAGS);
 
-static std::vector<int> th_size(TH_LOC_END * TH_ID_END * TH);
-static std::vector<void *> th_p(TH_LOC_END * TH_ID_END * TH);
-
-static bool th_a_print = false;
+static bool debugMemoryPrint = false;
 
 template <typename T>
-T *th_t(th_id id, int thread, int size, th_loc loc)
+T *PMEFetch(PMEDataID id, int unusedTag, int size, MemLocType location)
 {
     //yupinov different size mistake!
+    assert(unusedTag == 0);
     cudaError_t stat;
-    int i = (loc * TH_ID_END + id) * TH + thread;
-    if (th_size[i] < size || size == 0) //delete
+    int i = (location * PME_ID_END_INVALID + id) * MAXTAGS + unusedTag;
+    if (PMEStorageSizes[i] < size || size == 0) //delete
     {
-        if (th_p[i])
+        if (PMEStoragePointers[i])
         {
-            if (th_a_print)
-                fprintf(stderr, "free! %p\n", th_p[i]);
-            if (loc == TH_LOC_CUDA)
+            if (debugMemoryPrint)
+                fprintf(stderr, "free! %p\n", PMEStoragePointers[i]);
+            if (location == ML_DEVICE)
             {
-                stat = cudaFree(th_p[i]);
+                stat = cudaFree(PMEStoragePointers[i]);
                 CU_RET_ERR(stat, "PME cudaFree error");
             }
             else
             {
-                delete[] (T *) th_p[i];
+                delete[] (T *) PMEStoragePointers[i];
             }
-            th_p[i] = NULL;
+            PMEStoragePointers[i] = NULL;
         }
         if (size > 0)
         {
-            if (th_size[i] != 0)
-                printf("asked to realloc %d into %d with ID %d\n", th_size[i], size, id);
-            if (th_a_print)
+            if (PMEStorageSizes[i] != 0)
+                printf("asked to realloc %d into %d with ID %d\n", PMEStorageSizes[i], size, id);
+            if (debugMemoryPrint)
                 printf("asked to alloc %d", size);
             size = size * 1.02; //yupinov overalloc
-            if (th_a_print)
+            if (debugMemoryPrint)
                 printf(", actually allocating %d\n", size);
-            if (loc == TH_LOC_CUDA)
+            if (location == ML_DEVICE)
             {
-                stat = cudaMalloc((void **) &th_p[i], size);
+                stat = cudaMalloc((void **) &PMEStoragePointers[i], size);
                 CU_RET_ERR(stat, "PME cudaMalloc error");
             }
             else
             {
-                th_p[i] = new T[size / sizeof(T)]; //yupinov cudaHostMalloc?
+                PMEStoragePointers[i] = new T[size / sizeof(T)]; //yupinov cudaHostMalloc?
             }
-            th_size[i] = size;
+            PMEStorageSizes[i] = size;
         }
     }
-    return (T *) th_p[i];
+    return (T *) PMEStoragePointers[i];
 }
 
-real *th_a(th_id id, int thread, int size, th_loc loc)
+real *PMEFetchRealArray(PMEDataID id, int unusedTag, int size, MemLocType location)
 {
-    return th_t<real>(id, thread, size, loc);
+    return PMEFetch<real>(id, unusedTag, size, location);
 }
 
-t_complex *th_c(th_id id, int thread, int size, th_loc loc)
+t_complex *PMEFetchComplexArray(PMEDataID id, int unusedTag, int size, MemLocType location)
 {
-    return th_t<t_complex>(id, thread, size, loc);
+    return PMEFetch<t_complex>(id, unusedTag, size, location);
 }
 
-int *th_i(th_id id, int thread, int size, th_loc loc)
+int *PMEFetchIntegerArray(PMEDataID id, int unusedTag, int size, MemLocType location)
 {
-    return th_t<int>(id, thread, size, loc);
+    return PMEFetch<int>(id, unusedTag, size, location);
 }
 
 template <typename T>
-T *th_t_cpy(th_id id, int thread, void *src, int size, th_loc loc, cudaStream_t s)
+T *PMEFetchAndCopy(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s)
 {
-    T *result = th_t<T>(id, thread, size, loc);
-    th_cpy(result, src, size, loc, s);
+    T *result = PMEFetch<T>(id, unusedTag, size, location);
+    PMECopy(result, src, size, location, s);
     return result;
 }
 
-t_complex *th_c_cpy(th_id id, int thread, void *src, int size, th_loc loc, cudaStream_t s)
+t_complex *PMEFetchAndCopyComplexArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s)
 {
-    return th_t_cpy<t_complex>(id, thread, src, size, loc, s);
+    return PMEFetchAndCopy<t_complex>(id, unusedTag, src, size, location, s);
 }
 
-real *th_a_cpy(th_id id, int thread, void *src, int size, th_loc loc, cudaStream_t s)
+real *PMEFetchAndCopyRealArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s)
 {
-    return th_t_cpy<real>(id, thread, src, size, loc, s);
+    return PMEFetchAndCopy<real>(id, unusedTag, src, size, location, s);
 }
 
-int *th_i_cpy(th_id id, int thread, void *src, int size, th_loc loc, cudaStream_t s)
+int *PMEFetchAndCopyIntegerArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s)
 {
-    return th_t_cpy<int>(id, thread, src, size, loc, s);
+    return PMEFetchAndCopy<int>(id, unusedTag, src, size, location, s);
 }
 
-void th_cpy(void *dest, void *src, int size, th_loc dest_loc, cudaStream_t s) //yupinov move everything onto this function - or not
+void PMECopy(void *dest, void *src, int size, MemLocType destination, cudaStream_t s) //yupinov move everything onto this function - or not
 {
-    if (dest_loc == TH_LOC_CUDA)
+    if (destination == ML_DEVICE)
     {
         //cudaError_t stat = cudaMemcpy(dest, src, size, cudaMemcpyHostToDevice);
         cudaError_t stat = cudaMemcpyAsync(dest, src, size, cudaMemcpyHostToDevice, s);

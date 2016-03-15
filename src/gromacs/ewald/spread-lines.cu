@@ -592,30 +592,30 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     int size_order = order * n * sizeof(real);
     int size_order_dim = size_order * DIM;
-    real *theta_d = th_a(TH_ID_THETA, thread, size_order_dim, TH_LOC_CUDA);
-    real *dtheta_d = th_a(TH_ID_DTHETA, thread, size_order_dim, TH_LOC_CUDA);
+    real *theta_d = PMEFetchRealArray(PME_ID_THETA, thread, size_order_dim, ML_DEVICE);
+    real *dtheta_d = PMEFetchRealArray(PME_ID_DTHETA, thread, size_order_dim, ML_DEVICE);
 
     // IDXPTR
     int idx_size = n * DIM * sizeof(int);
-    int *idx_d = th_i(TH_ID_IDXPTR, thread, idx_size, TH_LOC_CUDA); //why is it not stored?
+    int *idx_d = PMEFetchIntegerArray(PME_ID_IDXPTR, thread, idx_size, ML_DEVICE); //why is it not stored?
 
     // FSH
-    real *fshx_d = th_a(TH_ID_FSH, thread, 5 * (nx + ny) * sizeof(real), TH_LOC_CUDA);
+    real *fshx_d = PMEFetchRealArray(PME_ID_FSH, thread, 5 * (nx + ny) * sizeof(real), ML_DEVICE);
     real *fshy_d = fshx_d + 5 * nx;
-    th_cpy(fshx_d, pme->fshx, 5 * nx * sizeof(real), TH_LOC_CUDA, s);
-    th_cpy(fshy_d, pme->fshy, 5 * ny * sizeof(real), TH_LOC_CUDA, s);
+    PMECopy(fshx_d, pme->fshx, 5 * nx * sizeof(real), ML_DEVICE, s);
+    PMECopy(fshy_d, pme->fshy, 5 * ny * sizeof(real), ML_DEVICE, s);
 
     // NN
-    int *nnx_d = th_i(TH_ID_NN, thread, 5 * (nx + ny + nz) * sizeof(int), TH_LOC_CUDA);
+    int *nnx_d = PMEFetchIntegerArray(PME_ID_NN, thread, 5 * (nx + ny + nz) * sizeof(int), ML_DEVICE);
     int *nny_d = nnx_d + 5 * nx;
     int *nnz_d = nny_d + 5 * ny;
-    th_cpy(nnx_d, pme->nnx, 5 * nx * sizeof(int), TH_LOC_CUDA, s);
-    th_cpy(nny_d, pme->nny, 5 * ny * sizeof(int), TH_LOC_CUDA, s);
-    th_cpy(nnz_d, pme->nnz, 5 * nz * sizeof(int), TH_LOC_CUDA, s);
+    PMECopy(nnx_d, pme->nnx, 5 * nx * sizeof(int), ML_DEVICE, s);
+    PMECopy(nny_d, pme->nny, 5 * ny * sizeof(int), ML_DEVICE, s);
+    PMECopy(nnz_d, pme->nnz, 5 * nz * sizeof(int), ML_DEVICE, s);
 
     // XPTR
-    real *xptr_h = th_a(TH_ID_XPTR, thread, 3 * n_blocked * sizeof(real), TH_LOC_HOST);
-    real *xptr_d = th_a(TH_ID_XPTR, thread, 3 * n_blocked * sizeof(real), TH_LOC_CUDA);
+    real *xptr_h = PMEFetchRealArray(PME_ID_XPTR, thread, 3 * n_blocked * sizeof(real), ML_HOST);
+    real *xptr_d = PMEFetchRealArray(PME_ID_XPTR, thread, 3 * n_blocked * sizeof(real), ML_DEVICE);
     real *yptr_d = xptr_d + n_blocked;
     real *zptr_d = yptr_d + n_blocked;
     {
@@ -628,12 +628,12 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
           xptr_h[iz++] = xptr[ZZ];
         }
     }
-    th_cpy(xptr_d, xptr_h, 3 * n_blocked * sizeof(real), TH_LOC_CUDA, s);
+    PMECopy(xptr_d, xptr_h, 3 * n_blocked * sizeof(real), ML_DEVICE, s);
 
     // COEFFICIENT
-    real *coefficient_d = th_a_cpy(TH_ID_COEFFICIENT, thread, atc->coefficient, n * sizeof(real), TH_LOC_CUDA, s); //yupinov compact here as weel?
+    real *coefficient_d = PMEFetchAndCopyRealArray(PME_ID_COEFFICIENT, thread, atc->coefficient, n * sizeof(real), ML_DEVICE, s); //yupinov compact here as weel?
 
-    real *grid_d = th_a(TH_ID_REAL_GRID_WITH_OVERLAP, thread, size_grid, TH_LOC_CUDA);
+    real *grid_d = PMEFetchRealArray(PME_ID_REAL_GRID_WITH_OVERLAP, thread, size_grid, ML_DEVICE);
     stat = cudaMemsetAsync(grid_d, 0, size_grid, s); //yupinov
     CU_RET_ERR(stat, "cudaMemsetAsync spread error");
     #ifdef DEBUG_PME_TIMINGS_GPU
@@ -723,13 +723,13 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
   events_record_stop(gpu_events_spread, s, ewcsPME_SPREAD, 3);
 #endif
   if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
-    th_cpy(grid, grid_d, size_grid, TH_LOC_HOST, s);
+    PMECopy(grid, grid_d, size_grid, ML_HOST, s);
   for (int j = 0; j < DIM; ++j)
   {
-      th_cpy(atc->spline[thread].dtheta[j], dtheta_d + j * n * order, size_order, TH_LOC_HOST, s);
-      th_cpy(atc->spline[thread].theta[j], theta_d + j * n * order, size_order, TH_LOC_HOST, s);
+      PMECopy(atc->spline[thread].dtheta[j], dtheta_d + j * n * order, size_order, ML_HOST, s);
+      PMECopy(atc->spline[thread].theta[j], theta_d + j * n * order, size_order, ML_HOST, s);
   }
-  th_cpy(atc->idx, idx_d, idx_size, TH_LOC_HOST, s);
+  PMECopy(atc->idx, idx_d, idx_size, ML_HOST, s);
 //yupinov free, keep allocated
   /*
   cudaFree(theta_d);

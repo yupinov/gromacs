@@ -6,57 +6,58 @@
 #include "gromacs/utility/real.h"
 #include "gromacs/math/gmxcomplex.h"
 
-const int TH = 32;
-enum th_id
+// identifiers for PME data stored on GPU
+enum PMEDataID
 {
-  TH_ID_THETA = 1, TH_ID_DTHETA, TH_ID_FRACTX, TH_ID_COEFFICIENT,
+    PME_ID_THETA = 1, PME_ID_DTHETA, PME_ID_FRACTX, PME_ID_COEFFICIENT,
 
-  //yupinov fix unnecesary memory usage
-  TH_ID_REAL_GRID_WITH_OVERLAP, // this is pme->grid
-  TH_ID_REAL_GRID, //this is fftgrid
+    //yupinov fix unnecesary memory usage
+    PME_ID_REAL_GRID_WITH_OVERLAP, // this is pme->grid
+    PME_ID_REAL_GRID, //this is fftgrid
 #ifndef PME_CUFFT_INPLACE
-  TH_ID_COMPLEX_GRID, //this is cfftgrid
+    PME_ID_COMPLEX_GRID, //this is cfftgrid
 #endif
-  TH_ID_I0, TH_ID_J0, TH_ID_K0,
-  TH_ID_THX, TH_ID_THY, TH_ID_THZ,
+    PME_ID_I0, PME_ID_J0, PME_ID_K0,
+    PME_ID_THX, PME_ID_THY, PME_ID_THZ,
 
-  // interpol_idx
-  TH_ID_FSH,
-  TH_ID_NN,
-  TH_ID_XPTR,
+    // interpol_idx
+    PME_ID_FSH,
+    PME_ID_NN,
+    PME_ID_XPTR,
 
-  TH_ID_IDXPTR, //yupinov added - a duplicate of TH_ID_I0, TH_ID_J0, TH_ID_K0,
-  TH_ID_F,
-  TH_ID_I,
-  TH_ID_DTHX, TH_ID_DTHY, TH_ID_DTHZ,
-  TH_ID_BSP_MOD_MINOR, TH_ID_BSP_MOD_MAJOR, TH_ID_BSP_MOD_MIDDLE,
-  TH_ID_ENERGY,
-  TH_ID_VIRIAL,
+    PME_ID_IDXPTR, //yupinov added - a duplicate of PME_ID_I0, PME_ID_J0, PME_ID_K0,
+    PME_ID_F,
+    PME_ID_I,
+    PME_ID_DTHX, PME_ID_DTHY, PME_ID_DTHZ,
+    PME_ID_BSP_MOD_MINOR, PME_ID_BSP_MOD_MAJOR, PME_ID_BSP_MOD_MIDDLE,
+    PME_ID_ENERGY,
+    PME_ID_VIRIAL,
 
-  TH_ID_END
+    PME_ID_END_INVALID
 };
-
 #ifdef PME_CUFFT_INPLACE
-#define TH_ID_COMPLEX_GRID TH_ID_REAL_GRID
-//fftgdrid and cfftgrid are the same - doesn't seem to affect the performance much
+#define PME_ID_COMPLEX_GRID PME_ID_REAL_GRID
+//fftgdrid and cfftgrid are the same- doesn't seem to affect the performance much
 #endif
 
-
-enum th_loc
+enum MemLocType
 {
-  TH_LOC_HOST, TH_LOC_CUDA, TH_LOC_END
+    ML_HOST, ML_DEVICE, ML_END_INVALID
 };
 
-real *th_a(th_id id, int thread, int size = -1, th_loc loc = TH_LOC_END);
-int *th_i(th_id id, int thread, int size = -1, th_loc loc = TH_LOC_END);
-t_complex *th_c(th_id id, int thread, int size = -1, th_loc loc = TH_LOC_END);
+//yupinov - look into ML_HOST being under-used
 
-void th_cpy(void *dest, void *src, int size, th_loc dest_loc, cudaStream_t s); //yupinov alloc as well
+real *PMEFetchRealArray(PMEDataID id, int unusedTag, int size = -1, MemLocType location = ML_END_INVALID);
+int *PMEFetchIntegerArray(PMEDataID id, int unusedTag, int size = -1, MemLocType location = ML_END_INVALID);
+t_complex *PMEFetchComplexArray(PMEDataID id, int unusedTag, int size = -1, MemLocType location = ML_END_INVALID);
+//yupinov warn on wrong param
 
-int *th_i_cpy(th_id id, int thread, void *src, int size, th_loc loc, cudaStream_t s);
-real *th_a_cpy(th_id id, int thread, void *src, int size, th_loc loc, cudaStream_t s);
-t_complex *th_c_cpy(th_id id, int thread, void *src, int size, th_loc loc, cudaStream_t s);
+void PMECopy(void *dest, void *src, int size, MemLocType destination, cudaStream_t s); //yupinov alloc as well
 
-//yupinov warn o nwrong param
+int *PMEFetchAndCopyIntegerArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s);
+real *PMEFetchAndCopyRealArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s);
+t_complex *PMEFetchAndCopyComplexArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s);
+
+
 
 #endif
