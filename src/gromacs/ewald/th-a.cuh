@@ -11,10 +11,11 @@ enum th_id
 {
   TH_ID_THETA = 1, TH_ID_DTHETA, TH_ID_FRACTX, TH_ID_COEFFICIENT,
 
-  TH_ID_REAL_GRID_WITH_OVERLAP,
-  TH_ID_REAL_GRID,
+  //yupinov fix unnecesary memory usage
+  TH_ID_REAL_GRID_WITH_OVERLAP, // this is pme->grid
+  TH_ID_REAL_GRID, //this is fftgrid
 #ifndef PME_CUFFT_INPLACE
-  TH_ID_COMPLEX_GRID, //yupinov fix all this!
+  TH_ID_COMPLEX_GRID, //this is cfftgrid
 #endif
   TH_ID_I0, TH_ID_J0, TH_ID_K0,
   TH_ID_THX, TH_ID_THY, TH_ID_THZ,
@@ -35,9 +36,9 @@ enum th_id
   TH_ID_END
 };
 
-
 #ifdef PME_CUFFT_INPLACE
 #define TH_ID_COMPLEX_GRID TH_ID_REAL_GRID
+//fftgdrid and cfftgrid are the same - doesn't seem to affect the performance much
 #endif
 
 
