@@ -92,6 +92,8 @@ gmx_pme_t *pme)
     setup->size_complex[XX] = setup->ndata_real[XX];
     setup->size_complex[YY] = setup->ndata_real[YY];
     setup->size_complex[ZZ] = setup->ndata_real[ZZ] / 2 + 1;
+    const int alignment = warp_size; //yupinov change it so it's in X for YZX solve!
+    setup->size_complex[ZZ] = (setup->size_complex[ZZ] + alignment - 1) / alignment * alignment;
 
     const int gridSizeComplex = setup->size_complex[XX] * setup->size_complex[YY] * setup->size_complex[ZZ];
     const int gridSizeReal = setup->size_real[XX] * setup->size_real[YY] * setup->size_real[ZZ];
