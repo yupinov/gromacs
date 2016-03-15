@@ -587,7 +587,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     int n = atc->n;
     int n_blocked = (n + warp_size - 1) / warp_size * warp_size;
-    int ndatatot = pnx*pny*pnz;
+    int ndatatot = pnx * pny * pnz;
     int size_grid = ndatatot * sizeof(real);
 
     int size_order = order * n * sizeof(real);
@@ -722,7 +722,8 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 #ifdef DEBUG_PME_TIMINGS_GPU
   events_record_stop(gpu_events_spread, s, ewcsPME_SPREAD, 3);
 #endif
-  th_cpy(grid, grid_d, size_grid, TH_LOC_HOST, s);
+  if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
+    th_cpy(grid, grid_d, size_grid, TH_LOC_HOST, s);
   for (int j = 0; j < DIM; ++j)
   {
       th_cpy(atc->spline[thread].dtheta[j], dtheta_d + j * n * order, size_order, TH_LOC_HOST, s);

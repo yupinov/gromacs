@@ -5,6 +5,22 @@
 
 
 #include "pme-cuda.h"
+
+void pme_gpu_update_flags(
+        gmx_pme_gpu_t *pmeGPU,
+        gmx_bool keepGPUDataBetweenSpreadAndR2C,
+        gmx_bool keepGPUDataBetweenR2CAndSolve,
+        gmx_bool keepGPUDataBetweenSolveAndC2R,
+        gmx_bool keepGPUDataBetweenC2RAndGather
+        )
+{
+    pmeGPU->keepGPUDataBetweenSpreadAndR2C = keepGPUDataBetweenSpreadAndR2C;
+    pmeGPU->keepGPUDataBetweenR2CAndSolve = keepGPUDataBetweenR2CAndSolve;
+    pmeGPU->keepGPUDataBetweenSolveAndC2R = keepGPUDataBetweenSolveAndC2R;
+    pmeGPU->keepGPUDataBetweenC2RAndGather = keepGPUDataBetweenC2RAndGather;
+}
+
+
 void pme_gpu_init(gmx_pme_gpu_t **pmeGPU)
 {
     //gmx_pme_gpu_t **pmeGPU = &pme->gpu;
@@ -27,19 +43,10 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU)
     stat = cudaStreamCreate(&(*pme)->pmeStream);
     CU_RET_ERR(stat, "PME cudaStreamCreate error");
 #endif
+
+    pme_gpu_update_flags(*pmeGPU, false, false, false, false);
 }
 
-void pme_gpu_update_flags(
-        gmx_pme_gpu_t *pmeGPU,
-        gmx_bool keepGPUDataBetweenSpreadAndR2C,
-        gmx_bool keepGPUDataBetweenR2CAndSolve,
-        gmx_bool keepGPUDataBetweenSolveAndC2R
-        )
-{
-    pmeGPU->keepGPUDataBetweenSpreadAndR2C = keepGPUDataBetweenSpreadAndR2C;
-    pmeGPU->keepGPUDataBetweenR2CAndSolve = keepGPUDataBetweenR2CAndSolve;
-    pmeGPU->keepGPUDataBetweenSolveAndC2R = keepGPUDataBetweenSolveAndC2R;
-}
 
 
 static std::vector<int> th_size(TH_LOC_END * TH_ID_END * TH);

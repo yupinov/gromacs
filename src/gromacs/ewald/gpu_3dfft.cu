@@ -213,7 +213,8 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
 
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {      
-        th_cpy(setup->rdata, setup->real_data, x * y * (z / 2 + 1) * 2 * sizeof(real), TH_LOC_CUDA, s);
+        if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
+            th_cpy(setup->rdata, setup->real_data, x * y * (z / 2 + 1) * 2 * sizeof(real), TH_LOC_CUDA, s);
         /*
         //yupinov hack for padded data
         {
@@ -245,8 +246,8 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     }
     else
     {
-        //yupinov no second transfer
-        th_cpy(setup->cdata, setup->complex_data, x * y * (z / 2 + 1) * sizeof(t_complex), TH_LOC_CUDA, s);
+        if (!pme->gpu->keepGPUDataBetweenSolveAndC2R)
+            th_cpy(setup->cdata, setup->complex_data, x * y * (z / 2 + 1) * sizeof(t_complex), TH_LOC_CUDA, s);
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_start(gpu_events_fft_c2r, s);
         #endif
@@ -265,7 +266,8 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     }
     else
     {
-        th_cpy(setup->real_data, setup->rdata, x * y * (z / 2 + 1) * 2 * sizeof(real), TH_LOC_HOST, s);
+        if (!pme->gpu->keepGPUDataBetweenC2RAndGather)
+            th_cpy(setup->real_data, setup->rdata, x * y * (z / 2 + 1) * 2 * sizeof(real), TH_LOC_HOST, s);
         /*
         //yupinov hack for padded data
         {
@@ -284,8 +286,6 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
         }
         */
     }
-    // FIX destroy plans after
-    //cufftDestroy(setup->plan);
 }
 
 void gmx_parallel_3dfft_destroy_gpu(gmx_parallel_3dfft_gpu_t pfft_setup)

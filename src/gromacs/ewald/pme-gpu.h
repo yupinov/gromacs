@@ -112,9 +112,10 @@ CUDA_FUNC_QUALIFIER void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_
 CUDA_FUNC_QUALIFIER void pme_gpu_init(gmx_pme_gpu_t **pmeGPU) CUDA_FUNC_TERM
 CUDA_FUNC_QUALIFIER void pme_gpu_update_flags(
         gmx_pme_gpu_t *pmeGPU,
-        gmx_bool fftgridIsOnDeviceBetweenSpreadAndR2C,
-        gmx_bool cfftgridIsOnDeviceBetweenR2CAndSolve,
-        gmx_bool cfftgridIsOnDeviceBetweenSolveAndC2R
+        gmx_bool keepGPUDataBetweenSpreadAndR2C,
+        gmx_bool keepGPUDataBetweenR2CAndSolve,
+        gmx_bool keepGPUDataBetweenSolveAndC2R,
+        gmx_bool keepGPUDataBetweenC2RAndGather
         ) CUDA_FUNC_TERM
 //yupinov - this isn't just about grids though
 

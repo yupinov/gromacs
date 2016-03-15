@@ -1070,13 +1070,19 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     cr->nodeid, atc->n);
         }
 
-        //yupinov wrap/unwrap kernels
         if (pme->bGPU)
         {
-            gmx_bool keepGPUDataBetweenSpreadAndR2C = pme->bGPUFFT;
+            //yupinov - these are not checked anywhere yet
+            gmx_bool keepGPUDataBetweenSpreadAndR2C = false; //yupinov -> no wrap kernels! different grids! pme->bGPUFFT;
             gmx_bool keepGPUDataBetweenR2CAndSolve = false; //pme->bGPUFFT && (grid_index < DO_Q); // no LJ support
-            gmx_bool keepGPUDataBetweenSolveAndR2C = false; //keepGPUDataBetweenR2CAndSolve && bBackFFT;
-            pme_gpu_update_flags(pme->gpu, keepGPUDataBetweenSpreadAndR2C, keepGPUDataBetweenR2CAndSolve, keepGPUDataBetweenSolveAndR2C);
+            gmx_bool keepGPUDataBetweenSolveAndC2R = false; //keepGPUDataBetweenR2CAndSolve && bBackFFT;;
+            gmx_bool keepGPUDataBetweenC2RAndGather = false; //pme->bGPUFFT
+            pme_gpu_update_flags(pme->gpu,
+                                 keepGPUDataBetweenSpreadAndR2C,
+                                 keepGPUDataBetweenR2CAndSolve,
+                                 keepGPUDataBetweenSolveAndC2R,
+                                 keepGPUDataBetweenC2RAndGather
+                                 );
         }
 
         if (flags & GMX_PME_SPREAD)
