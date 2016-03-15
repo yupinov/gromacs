@@ -59,6 +59,10 @@ T *PMEFetch(PMEDataID id, int unusedTag, int size, MemLocType location)
     assert(unusedTag == 0);
     cudaError_t stat;
     int i = (location * PME_ID_END_INVALID + id) * MAXTAGS + unusedTag;
+
+    if ((PMEStorageSizes[i] > 0) && (size > 0) && (size != PMEStorageSizes[i]))
+        printf("asked to realloc %d into %d with ID %d\n", PMEStorageSizes[i], size, id);
+
     if (PMEStorageSizes[i] < size || size == 0) //delete
     {
         if (PMEStoragePointers[i])
@@ -78,8 +82,6 @@ T *PMEFetch(PMEDataID id, int unusedTag, int size, MemLocType location)
         }
         if (size > 0)
         {
-            if (PMEStorageSizes[i] != 0)
-                printf("asked to realloc %d into %d with ID %d\n", PMEStorageSizes[i], size, id);
             if (debugMemoryPrint)
                 printf("asked to alloc %d", size);
             size = size * 1.02; //yupinov overalloc
