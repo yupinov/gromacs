@@ -7,7 +7,6 @@
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 #include <cuda.h>
 
-#include "th-a.cuh"
 #include "check.h"
 
 #include "pme-internal.h"

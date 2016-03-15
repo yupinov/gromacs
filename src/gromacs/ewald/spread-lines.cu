@@ -54,8 +54,6 @@ extern gpu_events gpu_events_spread;
 #include "thread_mpi/mutex.h"
 
 #include "pme-cuda.h"
-#include "th-a.cuh"
-
 
 static tMPI::mutex print_mutex; //yupinov
 

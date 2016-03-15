@@ -54,12 +54,8 @@ extern gpu_events gpu_events_spread;
 #include "thread_mpi/mutex.h"
 
 #include "pme-cuda.h"
-#include "th-a.cuh"
-
 
 static tMPI::mutex print_mutex; //yupinov
-
-
 
 /* This has to be a macro to enable full compiler optimization with xlC (and probably others too) */
 

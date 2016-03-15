@@ -11,9 +11,7 @@
 
 #include <cuda.h>
 
-#include "th-a.cuh"
 #include "check.h"
-
 
 #include "pme-cuda.h"
 

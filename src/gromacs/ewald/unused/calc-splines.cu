@@ -199,8 +199,6 @@ __global__ void make_bsplines_kernel_42(real *theta, real *dtheta,
 
 /* ######## */
 
-#include "th-a.cuh"
-
 void make_bsplines_gpu(splinevec theta, splinevec dtheta, int order,
 		       rvec fractx[], int nr, int ind[], real coefficient[],
                gmx_bool bDoSplines, int thread)

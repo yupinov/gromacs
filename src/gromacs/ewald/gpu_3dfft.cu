@@ -24,9 +24,6 @@ extern gpu_events gpu_events_fft_c2r;
 
 #include "pme-cuda.h"
 
-#include "th-a.cuh"
-
-
 struct gmx_parallel_3dfft_gpu
 {
     real *real_data;

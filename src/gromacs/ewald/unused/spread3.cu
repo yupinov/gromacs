@@ -50,11 +50,6 @@ typedef real *splinevec[DIM];
 #ifdef DEBUG_PME_TIMINGS_GPU
 extern gpu_events gpu_events_spread;
 #endif
-#include "thread_mpi/mutex.h"
-
-#include "th-a.cuh"
-
-static tMPI::mutex print_mutex;
 
 
 template <int order, int N, int K, int D>

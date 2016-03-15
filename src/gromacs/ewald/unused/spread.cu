@@ -131,8 +131,6 @@ __global__ void spread_coefficients_kernel_n(int order,
   }
 }
 
-#include "th-a.cuh"
-
 static tMPI::mutex print_mutex;
 
 void try_bunching(int pnx, int pny, int pnz,

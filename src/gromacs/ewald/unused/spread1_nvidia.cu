@@ -151,8 +151,6 @@ __global__ void spread1_coefficients_kernel_O(
   }
 }
 
-#include "th-a.cuh"
-
 static tMPI::mutex print_mutex;
 
 void spread1_nvidia_coefficients_bsplines_thread_gpu_2

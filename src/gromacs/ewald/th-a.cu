@@ -1,6 +1,5 @@
 #include <vector>
 #include <stdio.h>
-#include "th-a.cuh"
 #include "gromacs/gpu_utils/cudautils.cuh"
 
 #include "pme-cuda.h"
