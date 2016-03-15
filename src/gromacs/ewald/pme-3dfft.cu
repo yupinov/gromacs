@@ -181,8 +181,6 @@ void gmx_parallel_3dfft_complex_limits_gpu(gmx_parallel_3dfft_gpu_t      pfft_se
 
 void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
                                    enum gmx_fft_direction  dir,
-                                   int                     thread,
-                                   gmx_wallcycle_t         wcycle,
                                    gmx_pme_t *pme)
 {
     cudaStream_t s = pme->gpu->pmeStream;

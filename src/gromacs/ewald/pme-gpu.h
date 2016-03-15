@@ -54,8 +54,6 @@ CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_complex_limits_gpu(gmx_parallel_3dff
 
 CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t gmx_unused pfft_setup,
                            enum gmx_fft_direction gmx_unused dir,
-                           int             gmx_unused        thread,
-                           gmx_wallcycle_t   gmx_unused      wcycle,
                             gmx_pme_t *pme) CUDA_FUNC_TERM
 
 
@@ -170,7 +168,7 @@ inline int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t gmx_unused *pme,
     if (bGPUFFT)
     {
         if (thread == 0)
-            gmx_parallel_3dfft_execute_gpu(pme->pfft_setup_gpu[grid_index], dir, thread, wcycle, pme);
+            gmx_parallel_3dfft_execute_gpu(pme->pfft_setup_gpu[grid_index], dir, pme);
     }
     else
         res = gmx_parallel_3dfft_execute(pme->pfft_setup[grid_index], dir, thread, wcycle);
