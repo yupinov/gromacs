@@ -1070,6 +1070,15 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     cr->nodeid, atc->n);
         }
 
+        //yupinov wrap/unwrap kernels
+        if (pme->bGPU)
+        {
+            gmx_bool keepGPUDataBetweenSpreadAndR2C = pme->bGPUFFT;
+            gmx_bool keepGPUDataBetweenR2CAndSolve = false; //pme->bGPUFFT && (grid_index < DO_Q); // no LJ support
+            gmx_bool keepGPUDataBetweenSolveAndR2C = false; //keepGPUDataBetweenR2CAndSolve && bBackFFT;
+            pme_gpu_update_flags(pme->gpu, keepGPUDataBetweenSpreadAndR2C, keepGPUDataBetweenR2CAndSolve, keepGPUDataBetweenSolveAndR2C);
+        }
+
         if (flags & GMX_PME_SPREAD)
         {
             wallcycle_start(wcycle, ewcPME_SPREADGATHER);
@@ -1132,9 +1141,8 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     */
 
                     /* do 3d-fft */
-                    t_complex *complexFFTGridSavedOnDevice = NULL;
                     gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_REAL_TO_COMPLEX,
-                                               thread, wcycle); //pme->bGPU ? &complexFFTGridSavedOnDevice : NULL);
+                                               thread, wcycle);
                     where();
 
                     /*
@@ -1157,7 +1165,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                             solve_pme_yzx(pme, cfftgrid, ewaldcoeff_q,
                                           box[XX][XX]*box[YY][YY]*box[ZZ][ZZ],
                                           bCalcEnerVir,
-                                          pme->nthread, thread, complexFFTGridSavedOnDevice);
+                                          pme->nthread, thread);
                     }
                     else
                     {

@@ -5,24 +5,19 @@
 
 
 #include "pme-cuda.h"
-void pme_gpu_init(gmx_pme_gpu_t **pme)
+void pme_gpu_init(gmx_pme_gpu_t **pmeGPU)
 {
-    *pme = new gmx_pme_gpu_t;
+    //gmx_pme_gpu_t **pmeGPU = &pme->gpu;
+    *pmeGPU = new gmx_pme_gpu_t;
     cudaError_t stat;
 //yupinov dealloc@
 
-// there are 3 situations (all tested with a single rank):
-// no priority support => big hole between nbnxn and spread3
-// creating PME stream with no priority => small hole, only memcpy hidden, memset is synced (?)
-// creating PME steram with highest priority (out of 2, lol) => actually works in parallel
-// but still, a lot of spread D2H even in the last case....
-// in short, priority doesn't hurt, but only shows up on Tesla
 #if GMX_CUDA_VERSION >= 5050
     int highest_priority;
     int lowest_priority;
     stat = cudaDeviceGetStreamPriorityRange(&lowest_priority, &highest_priority);
     CU_RET_ERR(stat, "PME cudaDeviceGetStreamPriorityRange failed");
-    stat = cudaStreamCreateWithPriority(&(*pme)->pmeStream,
+    stat = cudaStreamCreateWithPriority(&(*pmeGPU)->pmeStream,
                                             //cudaStreamNonBlocking,
                                             cudaStreamDefault,
                                             highest_priority);
@@ -32,6 +27,18 @@ void pme_gpu_init(gmx_pme_gpu_t **pme)
     stat = cudaStreamCreate(&(*pme)->pmeStream);
     CU_RET_ERR(stat, "PME cudaStreamCreate error");
 #endif
+}
+
+void pme_gpu_update_flags(
+        gmx_pme_gpu_t *pmeGPU,
+        gmx_bool keepGPUDataBetweenSpreadAndR2C,
+        gmx_bool keepGPUDataBetweenR2CAndSolve,
+        gmx_bool keepGPUDataBetweenSolveAndC2R
+        )
+{
+    pmeGPU->keepGPUDataBetweenSpreadAndR2C = keepGPUDataBetweenSpreadAndR2C;
+    pmeGPU->keepGPUDataBetweenR2CAndSolve = keepGPUDataBetweenR2CAndSolve;
+    pmeGPU->keepGPUDataBetweenSolveAndC2R = keepGPUDataBetweenSolveAndC2R;
 }
 
 

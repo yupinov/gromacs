@@ -246,8 +246,7 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
 		      t_complex *grid,
 		      real ewaldcoeff, real vol,
 		      gmx_bool bEnerVir,
-              gmx_pme_t *pme,
-              int nthread, int thread, t_complex *complexFFTGridSavedOnDevice)
+              gmx_pme_t *pme)
 {
      /* do recip sum over local cells in grid */
     const gmx_bool YZXOrdering = false; //yupinov fix pecularities in solve
@@ -260,6 +259,8 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     const int nMajor = !YZXOrdering ? pme->nkx : pme->nky;
     const int nMiddle = !YZXOrdering ? pme->nky : pme->nkz;
 
+
+    const int thread = 0;
     cudaStream_t s = pme->gpu->pmeStream;
 
     real energy = 0.0;
@@ -317,14 +318,10 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     real *energy_d = th_a(TH_ID_ENERGY, thread, energySize, TH_LOC_CUDA);
     real *virial_d = th_a(TH_ID_VIRIAL, thread, virialSize, TH_LOC_CUDA);
 
-    t_complex *workingGrid = complexFFTGridSavedOnDevice;
-    gmx_bool gridIsOnDevice = (workingGrid != NULL);
-    if (!gridIsOnDevice)
-    {
-        t_complex *grid_d = th_c_cpy(TH_ID_COMPLEX_GRID, thread, grid, grid_size, TH_LOC_CUDA, s);
-        //launch blocks while copying?
-        workingGrid = grid_d;
-    }
+    t_complex *grid_d = th_c(TH_ID_COMPLEX_GRID, thread, grid_size, TH_LOC_CUDA);
+    if (!pme->gpu->keepGPUDataBetweenR2CAndSolve)
+        th_cpy(grid_d, grid, grid_size, TH_LOC_CUDA, s);
+
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_solve, s);
 #endif
@@ -336,7 +333,7 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
            nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
            elfac,
            bspModMinor_d, bspModMajor_d, bspModMiddle_d,
-           workingGrid, ewaldcoeff, vol,
+           grid_d, ewaldcoeff, vol,
            energy_d, virial_d);
     else
         solve_pme_kernel<FALSE, YZXOrdering> <<<blocks, threads, 0, s>>>
@@ -346,16 +343,16 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
            nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
            elfac,
            bspModMinor_d, bspModMajor_d, bspModMiddle_d,
-           workingGrid, ewaldcoeff, vol,
+           grid_d, ewaldcoeff, vol,
            energy_d, virial_d);
     CU_LAUNCH_ERR("solve_pme_kernel");
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_stop(gpu_events_solve, s, ewcsPME_SOLVE, 0);
 #endif
 
-    //if (!gridIsOnDevice) //yupinov?
+    if (!pme->gpu->keepGPUDataBetweenSolveAndC2R)
     {
-        th_cpy(grid, workingGrid, grid_size, TH_LOC_HOST, s);
+        th_cpy(grid, grid_d, grid_size, TH_LOC_HOST, s);
     }
 
     if (bEnerVir)

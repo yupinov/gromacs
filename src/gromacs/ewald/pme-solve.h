@@ -72,7 +72,7 @@ void get_pme_ener_vir_lj(struct pme_solve_work_t *work, int nthread,
 int solve_pme_yzx(struct gmx_pme_t *pme, t_complex *grid,
                   real ewaldcoeff, real vol,
                   gmx_bool bEnerVir,
-                  int nthread, int thread, t_complex *complexFFTGridSavedOnDevice);
+                  int nthread, int thread);
 
 int solve_pme_lj_yzx(struct gmx_pme_t *pme, t_complex **grid, gmx_bool bLB,
                      real ewaldcoeff, real vol,

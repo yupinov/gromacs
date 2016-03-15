@@ -203,8 +203,7 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
                                    enum gmx_fft_direction  dir,
                                    int                     thread,
                                    gmx_wallcycle_t         wcycle,
-                                   gmx_pme_t *pme,
-                                   t_complex **complexFFTGridSavedOnDevice)
+                                   gmx_pme_t *pme)
 {
     cudaStream_t s = pme->gpu->pmeStream;
 
@@ -261,11 +260,8 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
 
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {
-        cufftComplex *complexFFTGrid = setup->cdata;
-        if (!complexFFTGridSavedOnDevice)
-            th_cpy(setup->complex_data, complexFFTGrid, x * y * (z / 2 + 1) * sizeof(t_complex), TH_LOC_HOST, s);
-        else
-            *complexFFTGridSavedOnDevice = (t_complex *)complexFFTGrid;
+        if (!pme->gpu->keepGPUDataBetweenR2CAndSolve)
+            th_cpy(setup->complex_data, setup->cdata, x * y * (z / 2 + 1) * sizeof(t_complex), TH_LOC_HOST, s);
     }
     else
     {
