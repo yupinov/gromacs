@@ -60,7 +60,7 @@ T *PMEFetch(PMEDataID id, int unusedTag, int size, MemLocType location)
     cudaError_t stat;
     int i = (location * PME_ID_END_INVALID + id) * MAXTAGS + unusedTag;
 
-    if ((PMEStorageSizes[i] > 0) && (size > 0) && (size != PMEStorageSizes[i]))
+    if ((PMEStorageSizes[i] > 0) && (size > 0) && (size > PMEStorageSizes[i]))
         printf("asked to realloc %d into %d with ID %d\n", PMEStorageSizes[i], size, id);
 
     if (PMEStorageSizes[i] < size || size == 0) //delete

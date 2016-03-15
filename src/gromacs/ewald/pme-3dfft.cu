@@ -36,7 +36,6 @@ struct gmx_parallel_3dfft_gpu
 
     ivec                      complex_order;
     ivec                      local_offset;
-    ivec                      local_size;
 
     ivec ndata_real;
     ivec size_real;
