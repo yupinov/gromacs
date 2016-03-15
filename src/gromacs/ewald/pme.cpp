@@ -1086,7 +1086,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
 
             if (!pme->bUseThreads)
             {
-                wrap_periodic_pmegrid(pme, grid);
+                wrap_periodic_pmegrid(pme, grid); //yupinov - why is thsi not a kernel!
 
                 /* sum contributions to local grid from other nodes */
 #if GMX_MPI
