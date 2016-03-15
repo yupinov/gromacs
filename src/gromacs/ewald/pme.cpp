@@ -1073,10 +1073,11 @@ int gmx_pme_do(struct gmx_pme_t *pme,
         if (pme->bGPU)
         {
             //yupinov - these are not checked anywhere yet
+            //check for spread and solve flags here as well!
             gmx_bool keepGPUDataBetweenSpreadAndR2C = false; //yupinov -> no wrap kernels! different grids! pme->bGPUFFT;
-            gmx_bool keepGPUDataBetweenR2CAndSolve = false; //pme->bGPUFFT && (grid_index < DO_Q); // no LJ support
-            gmx_bool keepGPUDataBetweenSolveAndC2R = false; //keepGPUDataBetweenR2CAndSolve && bBackFFT;;
-            gmx_bool keepGPUDataBetweenC2RAndGather = false; //pme->bGPUFFT
+            gmx_bool keepGPUDataBetweenR2CAndSolve = pme->bGPUFFT && (grid_index < DO_Q); // no LJ support
+            gmx_bool keepGPUDataBetweenSolveAndC2R = keepGPUDataBetweenR2CAndSolve && bBackFFT;
+            gmx_bool keepGPUDataBetweenC2RAndGather = false; //pme->bGPUFFT, bCalcF!
             pme_gpu_update_flags(pme->gpu,
                                  keepGPUDataBetweenSpreadAndR2C,
                                  keepGPUDataBetweenR2CAndSolve,
