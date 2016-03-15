@@ -577,7 +577,6 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     int nx = pme->nkx, ny = pme->nky, nz = pme->nkz;
     //int nx = pmegrid->s[XX], ny = pmegrid->s[YY], nz = pmegrid->s[ZZ];
-    real *grid = pmegrid->grid;
     const int order = pmegrid->order;
     int thread = 0;
 
@@ -721,7 +720,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
   events_record_stop(gpu_events_spread, s, ewcsPME_SPREAD, 3);
 #endif
   if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
-    PMECopy(grid, grid_d, size_grid, ML_HOST, s);
+    PMECopy(pmegrid->grid, grid_d, size_grid, ML_HOST, s);
   for (int j = 0; j < DIM; ++j)
   {
       PMECopy(atc->spline[thread].dtheta[j], dtheta_d + j * n * order, size_order, ML_HOST, s);

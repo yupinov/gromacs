@@ -575,21 +575,17 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
         pme->bPPnode = (cr->duty & DUTY_PP);
     }
 
-    pme->bGPU    = bPMEGPU && MASTER(cr);
-    // only a single rank does PME GPU currently - bugs
+    pme->bGPU    = bPMEGPU && (pme->nodeid == 0);
+    // only a single rank does PME GPU currently - small steps
 
-    pme->bGPUFFT = bPMEGPU && !PAR(cr);
-    //yupinov currently cuFFT is only used for a single rank - maybe check DD instead?
-
-    pme->nthread = nthread;
-    //yupinov: gather_f, and other things are not currently written for multi-threading...
-    // have to prove this doesn't hurt performance - what if we're turning off some OpenMP regions?
-    // maybe introduce a separate nthreads_gpu variable to manipulate GPU code only?
-    if (pme->bGPU)
-        pme->nthread = 1;
+    pme->bGPUFFT = pme->bGPU && (pme->nnodes == 1);
+    // currently cuFFT is only used for a single rank
+    // some Internet people have succeeded in MPI cuFFT, but I dare not venture there - Iupinov
 
     if (pme->bGPU)
         pme_gpu_init(&pme->gpu);
+
+    pme->nthread = (pme->bGPU) ? 1 : nthread;
 
     /* Check if any of the PME MPI ranks uses threads */
     use_threads = (pme->nthread > 1 ? 1 : 0);
