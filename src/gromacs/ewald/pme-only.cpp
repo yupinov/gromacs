@@ -230,6 +230,7 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
         clear_mat(vir_q);
         clear_mat(vir_lj);
 
+        //yupinov
         gmx_pme_do(pme, 0, natoms, x_pp, f_pp,
                    chargeA, chargeB, c6A, c6B, sigmaA, sigmaB, box,
                    cr, maxshift_x, maxshift_y, mynrnb, wcycle,
