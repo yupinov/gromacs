@@ -92,17 +92,11 @@ gmx_pme_t *pme)
     /*
     result = cufftPlan3d(&setup->planR2C, setup->n[0], setup->n[1], setup->n[2], CUFFT_R2C);
     if (result != CUFFT_SUCCESS)
-    {
-        fprintf(stderr, "cufft planR2C error %d\n", result);
-        setup = NULL; //yupinov FIX
-    }
+        gmx_fatal(FARGS, "cufftPlan3d R2C error %d\n", result);
 
     result = cufftPlan3d(&setup->planC2R, setup->n[0], setup->n[1], setup->n[2], CUFFT_C2R);
     if (result != CUFFT_SUCCESS)
-    {
-        fprintf(stderr, "cufft planC2R error %d\n", result);
-        setup = NULL; // FIX
-    }
+        gmx_fatal(FARGS, "cufftPlan3d C2R error %d\n", result);
     */
 
     int rembed[3];
@@ -116,18 +110,15 @@ gmx_pme_t *pme)
     cembed[2] = setup->n[ZZ];
     cembed[2] = (cembed[2] / 2 + 1);
 
-    int rank = 3, batch = 1;
+    const int rank = 3, batch = 1;
 
     result = cufftPlanMany(&setup->planR2C, rank, setup->n,
                                        rembed, 1, rembed[0] * rembed[1] * rembed[2],
                                        cembed, 1, cembed[0] * cembed[1] * cembed[2],
                                        CUFFT_R2C,
-                                      batch);
+                                       batch);
     if (result != CUFFT_SUCCESS)
-    {
-        fprintf(stderr, "cufft planR2RC error %d\n", result); //yupinov throw fatalerror
-        setup = NULL; // FIX
-    }
+        gmx_fatal(FARGS, "cufftPlanMany R2C error %d\n", result);
 
     result = cufftPlanMany(&setup->planC2R, rank, setup->n,
                                        cembed, 1, cembed[0] * cembed[1] * cembed[2],
@@ -135,24 +126,16 @@ gmx_pme_t *pme)
                                        CUFFT_C2R,
                                        batch);
     if (result != CUFFT_SUCCESS)
-    {
-        fprintf(stderr, "cufft planC2R error %d\n", result);
-        setup = NULL; // FIX
-    }
+        gmx_fatal(FARGS, "cufftPlanMany C2R error %d\n", result);
 
     cudaStream_t s = pme->gpu->pmeStream;
     result = cufftSetStream(setup->planR2C, s);
     if (result != CUFFT_SUCCESS)
-    {
-        fprintf(stderr, "cufft planR2C error %d\n", result);
-        setup = NULL;
-    }
+        gmx_fatal(FARGS, "cufftSetStream R2C error %d\n", result);
+
     result = cufftSetStream(setup->planC2R, s);
     if (result != CUFFT_SUCCESS)
-    {
-        fprintf(stderr, "cufft planC2R stream error %d\n", result);
-        setup = NULL;
-    }
+        gmx_fatal(FARGS, "cufftSetStream C2R error %d\n", result);
 }
 
 void gmx_parallel_3dfft_real_limits_gpu(gmx_parallel_3dfft_gpu_t      pfft_setup,
