@@ -247,7 +247,8 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
               gmx_pme_t *pme)
 {
      /* do recip sum over local cells in grid */
-    const gmx_bool YZXOrdering = false; //yupinov fix pecularities in solve
+    const gmx_bool YZXOrdering = !pme->bGPUFFT;
+    //yupinov fix pecularities in solve
     /* true: y major, z middle, x minor or continuous - the CPU FFT way */
     /* false: x major, y middle, z minor - the single rank GPU cuFFT way */
     const int minorDim = !YZXOrdering ? ZZ : XX;
@@ -323,26 +324,52 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_solve, s);
 #endif
-    if (bEnerVir)
-        solve_pme_kernel<TRUE, YZXOrdering> <<<blocks, threads, 0, s>>>
-          (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim],
-           local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
-           local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-           nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
-           elfac,
-           bspModMinor_d, bspModMajor_d, bspModMiddle_d,
-           grid_d, ewaldcoeff, vol,
-           energy_d, virial_d);
+    if (YZXOrdering)
+    {
+        if (bEnerVir)
+            solve_pme_kernel<TRUE, TRUE> <<<blocks, threads, 0, s>>>
+              (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim],
+               local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
+               local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
+               nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
+               elfac,
+               bspModMinor_d, bspModMajor_d, bspModMiddle_d,
+               grid_d, ewaldcoeff, vol,
+               energy_d, virial_d);
+        else
+            solve_pme_kernel<FALSE, TRUE> <<<blocks, threads, 0, s>>>
+              (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
+               local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
+               local_size[minorDim], /*local_size[majorDim],*/local_size[middleDim],
+               nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
+               elfac,
+               bspModMinor_d, bspModMajor_d, bspModMiddle_d,
+               grid_d, ewaldcoeff, vol,
+               energy_d, virial_d);
+    }
     else
-        solve_pme_kernel<FALSE, YZXOrdering> <<<blocks, threads, 0, s>>>
-          (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
-           local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
-           local_size[minorDim], /*local_size[majorDim],*/local_size[middleDim],
-           nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
-           elfac,
-           bspModMinor_d, bspModMajor_d, bspModMiddle_d,
-           grid_d, ewaldcoeff, vol,
-           energy_d, virial_d);
+    {
+        if (bEnerVir)
+            solve_pme_kernel<TRUE, FALSE> <<<blocks, threads, 0, s>>>
+              (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim],
+               local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
+               local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
+               nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
+               elfac,
+               bspModMinor_d, bspModMajor_d, bspModMiddle_d,
+               grid_d, ewaldcoeff, vol,
+               energy_d, virial_d);
+        else
+            solve_pme_kernel<FALSE, FALSE> <<<blocks, threads, 0, s>>>
+              (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
+               local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
+               local_size[minorDim], /*local_size[majorDim],*/local_size[middleDim],
+               nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
+               elfac,
+               bspModMinor_d, bspModMajor_d, bspModMiddle_d,
+               grid_d, ewaldcoeff, vol,
+               energy_d, virial_d);
+    }
     CU_LAUNCH_ERR("solve_pme_kernel");
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_stop(gpu_events_solve, s, ewcsPME_SOLVE, 0);

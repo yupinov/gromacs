@@ -574,9 +574,10 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
         }
         pme->bPPnode = (cr->duty & DUTY_PP);
     }
-    //yupinov bGPU not checked everywhere! have to refactor
+
     pme->bGPU    = bPMEGPU && MASTER(cr);
     // only a single rank does PME GPU currently - bugs
+
     pme->bGPUFFT = bPMEGPU && !PAR(cr);
     //yupinov currently cuFFT is only used for a single rank - maybe check DD instead?
 
