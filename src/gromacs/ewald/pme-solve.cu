@@ -13,8 +13,11 @@
 
 #include "check.h"
 
+
 #include "pme-cuda.h"
 #include "pme-gpu.h"
+#include "pme-internal.h"
+#include "pme-solve.h"
 
 #define SQRT_M_PI real(2.0f / M_2_SQRTPI)
 //yupinov check if these constants workf
@@ -237,14 +240,23 @@ __global__ void solve_pme_kernel
     }
 }
 
-void solve_pme_yzx_gpu(real pme_epsilon_r,
-		      splinevec pme_bsp_mod,
-		      matrix work_vir_q, real *work_energy_q,
-		      t_complex *grid,
-		      real ewaldcoeff, real vol,
-		      gmx_bool bEnerVir,
-              gmx_pme_t *pme)
+void solve_pme_yzx_gpu(struct gmx_pme_t *pme, t_complex *grid,
+                       real ewaldcoeff, real vol,
+                       gmx_bool bEnerVir, int thread)
 {
+    /* do recip sum over local cells in grid */
+
+    if (thread != 0) //yupinov check everywhere inside!
+        return;
+
+    //yupinov bEnerVir
+
+    cudaStream_t s = pme->gpu->pmeStream;
+
+    struct pme_solve_work_t *work = &pme->solve_work[thread];
+    real *work_energy_q = &(work->energy_q);
+    matrix &work_vir_q = work->vir_q;
+
     ivec complex_order, local_ndata, local_offset, local_size;
     /* Dimensions should be identical for A/B grid, so we just use A here */
     gmx_parallel_3dfft_complex_limits_wrapper(pme, PME_GRID_QA,//pme->pfft_setup_gpu[PME_GRID_QA],
@@ -254,8 +266,6 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
                                       local_size);
     //yupinov replace with gmx_parallel_3dfft_complex_limits_gpu
 
-
-    /* do recip sum over local cells in grid */
     const gmx_bool YZXOrdering = !pme->bGPUFFT;
     //yupinov fix pecularities in solve
     /* true: y major, z middle, x minor or continuous - the CPU FFT way */
@@ -267,13 +277,9 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     const int nMajor = !YZXOrdering ? pme->nkx : pme->nky;
     const int nMiddle = !YZXOrdering ? pme->nky : pme->nkz;
 
-
-    const int thread = 0;
-    cudaStream_t s = pme->gpu->pmeStream;
-
     real energy = 0.0;
     real virxx = 0.0, virxy = 0.0, virxz = 0.0, viryy = 0.0, viryz = 0.0, virzz = 0.0;
-    const real elfac = ONE_4PI_EPS0 / pme_epsilon_r;
+    const real elfac = ONE_4PI_EPS0 / pme->epsilon_r;
 
     real rxx = pme->recipbox[XX][XX];
     real ryx = pme->recipbox[YY][XX];
@@ -281,22 +287,6 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     real rzx = pme->recipbox[ZZ][XX];
     real rzy = pme->recipbox[ZZ][YY];
     real rzz = pme->recipbox[ZZ][ZZ];
-
-    /* Dimensions should be identical for A/B grid, so we just use A here */
-
-    /*
-      TODO: Dimensions are passed in for now. call complex limits elsewhere?
-    gmx_parallel_3dfft_complex_limits(pme->pfft_setup[PME_GRID_QA],
-                                      complex_order,
-                                      local_ndata,
-                                      local_offset,
-                                      local_size);
-    gmx_parallel_3dfft_complex_limits_gpu(pme->pfft_setup_gpu[PME_GRID_QA],
-                                      complex_order,
-                                      local_ndata,
-                                      local_offset,
-                                      local_size);
-    */
 
     const int blockSize = 4 * warp_size;
     // GTX 660 Ti, 20160310
@@ -317,9 +307,9 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
     const int grid_n = local_size[majorDim] * local_size[middleDim] * local_size[minorDim];
     const int grid_size = grid_n * sizeof(t_complex);
 
-    real *bspModMinor_d = PMEFetchAndCopyRealArray(PME_ID_BSP_MOD_MINOR, thread, pme_bsp_mod[minorDim], nMinor * sizeof(real), ML_DEVICE, s);
-    real *bspModMajor_d = PMEFetchAndCopyRealArray(PME_ID_BSP_MOD_MAJOR, thread, pme_bsp_mod[majorDim], nMajor * sizeof(real), ML_DEVICE, s);
-    real *bspModMiddle_d = PMEFetchAndCopyRealArray(PME_ID_BSP_MOD_MIDDLE, thread, pme_bsp_mod[middleDim], nMiddle * sizeof(real), ML_DEVICE, s);
+    real *bspModMinor_d = PMEFetchAndCopyRealArray(PME_ID_BSP_MOD_MINOR, thread, pme->bsp_mod[minorDim], nMinor * sizeof(real), ML_DEVICE, s);
+    real *bspModMajor_d = PMEFetchAndCopyRealArray(PME_ID_BSP_MOD_MAJOR, thread, pme->bsp_mod[majorDim], nMajor * sizeof(real), ML_DEVICE, s);
+    real *bspModMiddle_d = PMEFetchAndCopyRealArray(PME_ID_BSP_MOD_MIDDLE, thread, pme->bsp_mod[middleDim], nMiddle * sizeof(real), ML_DEVICE, s);
 
     const int energySize = n * sizeof(real);
     const int virialSize = 6 * n * sizeof(real);

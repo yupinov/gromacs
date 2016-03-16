@@ -1166,7 +1166,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     if (grid_index < DO_Q)
                     {
                         loop_count =
-                            solve_pme_yzx(pme, cfftgrid, ewaldcoeff_q,
+                            solve_pme_yzx_wrapper(pme, cfftgrid, ewaldcoeff_q,
                                           box[XX][XX]*box[YY][YY]*box[ZZ][ZZ],
                                           bCalcEnerVir,
                                           pme->nthread, thread);

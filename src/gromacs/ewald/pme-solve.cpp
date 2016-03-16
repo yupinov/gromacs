@@ -60,27 +60,6 @@
 
 using namespace gmx; // TODO: Remove when this file is moved into gmx namespace
 
-struct pme_solve_work_t
-{
-    /* work data for solve_pme */
-    int      nalloc;
-    real *   mhx;
-    real *   mhy;
-    real *   mhz;
-    real *   m2;
-    real *   denom;
-    real *   tmp1_alloc;
-    real *   tmp1;
-    real *   tmp2;
-    real *   eterm;
-    real *   m2inv;
-
-    real     energy_q;
-    matrix   vir_q;
-    real     energy_lj;
-    matrix   vir_lj;
-};
-
 static void realloc_work(struct pme_solve_work_t *work, int nkx)
 {
     if (nkx > work->nalloc)
@@ -315,19 +294,6 @@ int solve_pme_yzx(struct gmx_pme_t *pme, t_complex *grid,
 
     elfac = ONE_4PI_EPS0/pme->epsilon_r;
 
-    if (pme->bGPU)
-    {
-        if (thread == 0)
-            solve_pme_yzx_gpu(pme->epsilon_r,
-              pme->bsp_mod,
-              pme->solve_work[thread].vir_q, &(pme->solve_work[thread].energy_q),
-              grid, ewaldcoeff, vol, bEnerVir, pme);
-              // all these parameters instead of pme?
-    //yupinov rework structure!
-    }
-    else
-    {
-
     nx = pme->nkx;
     ny = pme->nky;
     nz = pme->nkz;
@@ -362,6 +328,7 @@ int solve_pme_yzx(struct gmx_pme_t *pme, t_complex *grid,
 
     iyz0 = local_ndata[YY]*local_ndata[ZZ]* thread   /nthread;
     iyz1 = local_ndata[YY]*local_ndata[ZZ]*(thread+1)/nthread;
+
     for (iyz = iyz0; iyz < iyz1; iyz++)
     {
         iy = iyz/local_ndata[ZZ];
@@ -546,7 +513,6 @@ int solve_pme_yzx(struct gmx_pme_t *pme, t_complex *grid,
 
         /* This energy should be corrected for a charged system */
         work->energy_q = 0.5*energy;
-    }
     }
     /* Return the loop count */
     return local_ndata[YY]*local_ndata[XX];

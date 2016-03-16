@@ -39,7 +39,29 @@
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
 
-struct pme_solve_work_t;
+#include "pme-gpu.h"
+
+struct pme_solve_work_t
+{
+    /* work data for solve_pme */
+    int      nalloc;
+    real *   mhx;
+    real *   mhy;
+    real *   mhz;
+    real *   m2;
+    real *   denom;
+    real *   tmp1_alloc;
+    real *   tmp1;
+    real *   tmp2;
+    real *   eterm;
+    real *   m2inv;
+
+    real     energy_q;
+    matrix   vir_q;
+    real     energy_lj;
+    matrix   vir_lj;
+};
+
 struct gmx_pme_t;
 
 /*! \brief Allocates array of work structures
@@ -93,6 +115,19 @@ inline int solve_pme_lj_yzx_wrapper(struct gmx_pme_t *pme, t_complex **grid, gmx
     else
     */
         res = solve_pme_lj_yzx(pme, grid, bLB,ewaldcoeff, vol, bEnerVir, nthread, thread);
+    return res;
+}
+
+inline int solve_pme_yzx_wrapper(struct gmx_pme_t *pme, t_complex *grid,
+                  real ewaldcoeff, real vol,
+                  gmx_bool bEnerVir,
+                  int nthread, int thread)
+{
+    int res = 0;
+    if (pme->bGPU)
+        solve_pme_yzx_gpu(pme, grid, ewaldcoeff, vol, bEnerVir, thread);
+    else
+        res = solve_pme_yzx(pme, grid, ewaldcoeff, vol, bEnerVir, nthread, thread);
     return res;
 }
 
