@@ -467,8 +467,6 @@ __global__ void spread_kernel
 (int nx, int ny, int nz,
  int start_ix, int start_iy, int start_iz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
- //int *g2tx, int *g2ty, int *g2tz,
- const real * __restrict__ fshx, const real * __restrict__ fshy,
  const int * __restrict__ nnx, const int * __restrict__ nny, const int * __restrict__ nnz,
  const real * __restrict__ xptr, const real * __restrict__ yptr, const real * __restrict__ zptr,
  const real * __restrict__ coefficientGlobal,
@@ -646,10 +644,15 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     int *idx_d = PMEFetchIntegerArray(PME_ID_IDXPTR, thread, idx_size, ML_DEVICE); //why is it not stored?
 
     // FSH
-    real *fshx_d = PMEFetchRealArray(PME_ID_FSH, thread, 5 * (nx + ny) * sizeof(real), ML_DEVICE);
-    real *fshy_d = fshx_d + 5 * nx;
-    PMECopy(fshx_d, pme->fshx, 5 * nx * sizeof(real), ML_DEVICE, s);
-    PMECopy(fshy_d, pme->fshy, 5 * ny * sizeof(real), ML_DEVICE, s);
+    real *fshx_d = NULL;
+    real *fshy_d = NULL;
+    if (bCalcSplines)
+    {
+        fshx_d = PMEFetchRealArray(PME_ID_FSH, thread, 5 * (nx + ny) * sizeof(real), ML_DEVICE);
+        fshy_d = fshx_d + 5 * nx;
+        PMECopy(fshx_d, pme->fshx, 5 * nx * sizeof(real), ML_DEVICE, s);
+        PMECopy(fshy_d, pme->fshy, 5 * ny * sizeof(real), ML_DEVICE, s);
+     }
 
     // NN
     int *nnx_d = PMEFetchIntegerArray(PME_ID_NN, thread, 5 * (nx + ny + nz) * sizeof(int), ML_DEVICE);
@@ -749,7 +752,6 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                                                                              pme->recipbox[ZZ][XX],
                                                                              pme->recipbox[ZZ][YY],
                                                                              pme->recipbox[ZZ][ZZ],
-                                                                             fshx_d, fshy_d,
                                                                              nnx_d, nny_d, nnz_d,
                                                                              xptr_d, yptr_d, zptr_d,
                                                                              coefficient_d,
