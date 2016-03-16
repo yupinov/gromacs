@@ -316,7 +316,6 @@ int solve_pme_yzx(struct gmx_pme_t *pme, t_complex *grid,
     maxky = (ny+1)/2;
 
     work  = &pme->solve_work[thread];
-
     mhx   = work->mhx;
     mhy   = work->mhy;
     mhz   = work->mhz;
@@ -514,6 +513,7 @@ int solve_pme_yzx(struct gmx_pme_t *pme, t_complex *grid,
         /* This energy should be corrected for a charged system */
         work->energy_q = 0.5*energy;
     }
+
     /* Return the loop count */
     return local_ndata[YY]*local_ndata[XX];
 }
