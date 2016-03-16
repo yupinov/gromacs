@@ -111,7 +111,6 @@ __global__ void solve_pme_kernel
         int kMinor = localOffsetMinor + indexMinor;
         const gmx_bool notZeroPoint = (kMinor > 0 || kMajor > 0 || kMiddle > 0);
         real mMinor, mhxk, mhyk, mhzk, m2k;
-        real ets2, struct2, vfactor, ets2vf;
 
         mMinor = kMinor < maxkMinor ? kMinor : (kMinor - nMinor);
         real mX, mY, mZ;
@@ -146,49 +145,43 @@ __global__ void solve_pme_kernel
         }
 
         if (notZeroPoint) // this skips just one point in the whole grid!
-        {
-            if (bEnerVir)
+        {     
+            //for (int kx = kxstart; kx < kxend; kx++, p0++)
             {
-                /* More expensive inner loop, especially because of the storage
-                 * of the mh elements in array's.
-                 * Because x is the minor grid index, all mh elements
-                 * depend on kx for triclinic unit cells.
-                 */
+                //mx = kMinor < maxkMinor ? kMinor : (kMinor - nMinor);
 
-                //for (int kx = kxstart; kx < kxend; kx++, p0++)
+                mhxk      = mX * rxx;
+                mhyk      = mX * ryx + mY * ryy;
+                mhzk      = mX * rzx + mY * rzy + mZ * rzz;
+
+                m2k       = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
+                real denom = m2k * bMajorMiddle * BSplineModuleMinor[kMinor];
+                real tmp1  = -factor * m2k;
+
+                //calc_exponentials_q_one(elfac, denom, tmp1, eterm);
+                denom = 1.0f / denom;
+                tmp1 = expf(tmp1);
+                real etermk = elfac * tmp1 * denom;
+
+                real d1 = p0->re;
+                real d2 = p0->im;
+
+                p0->re  = d1 * etermk;
+                p0->im  = d2 * etermk;
+
+                if (bEnerVir)
                 {
-                    //mx = kMinor < maxkMinor ? kMinor : (kMinor - nMinor);
-
-                    mhxk      = mX * rxx;
-                    mhyk      = mX * ryx + mY * ryy;
-                    mhzk      = mX * rzx + mY * rzy + mZ * rzz;
-
-                    m2k       = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
-                    real denom = m2k * bMajorMiddle * BSplineModuleMinor[kMinor];
-                    real tmp1  = -factor * m2k;
-
                     real m2invk = 1.0f / m2k;
 
-                    //calc_exponentials_q_one(elfac, denom, tmp1, eterm);
-                    denom = 1.0f / denom;
-                    tmp1 = expf(tmp1);
-                    real etermk = elfac * tmp1 * denom;
-
-                    real d1 = p0->re;
-                    real d2 = p0->im;
-
-                    p0->re  = d1 * etermk;
-                    p0->im  = d2 * etermk;
-
-                    struct2 = 2.0f * (d1 * d1 + d2 * d2);
+                    real struct2 = 2.0f * (d1 * d1 + d2 * d2);
 
                     real tmp1k = etermk * struct2;
 
-                    ets2     = corner_fac * tmp1k;
-                    vfactor  = (factor * m2k + 1.0f) * 2.0f * m2invk;
-                    energy  += ets2;
+                    real ets2 = corner_fac * tmp1k;
+                    real vfactor = (factor * m2k + 1.0f) * 2.0f * m2invk;
+                    energy += ets2;
 
-                    ets2vf   = ets2 * vfactor;
+                    real ets2vf  = ets2 * vfactor;
                     virxx   = ets2vf * mhxk * mhxk - ets2;
                     virxy   = ets2vf * mhxk * mhyk;
                     virxz   = ets2vf * mhxk * mhzk;
@@ -206,36 +199,8 @@ __global__ void solve_pme_kernel
                     virial_v[6 * i + 5] = viryz;
                 }
             }
-            else
-            {
-                /* We don't need to calculate the energy and the virial.
-                 * In this case the triclinic overhead is small.
-                 */
-                //for (int kx = kxstart; kx < kxend; kx++, p0++)
-                //yupinov - now each thread does Re and Im of a grid point => 16 threads in a block? should stride!
-                {
-                    //mMinor = kMinor < maxkMinor ? kMinor : (kMinor - nMinor);
-                    //update mX as well!
-
-                    mhxk      = mX * rxx;
-                    mhyk      = mX * ryx + mY * ryy;
-                    mhzk      = mX * rzx + mY * rzy + mZ * rzz;
-                    m2k       = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
-                    real denom = m2k * bMajorMiddle * BSplineModuleMinor[kMinor];
-                    real tmp1  = -factor * m2k;
-
-                    //calc_exponentials_q_one(elfac, denom, tmp1, eterm);
-                    denom = 1.0f / denom;
-                    tmp1 = exp(tmp1);
-                    real etermk = elfac * tmp1 * denom;
-
-                    real d1 = p0->re;
-                    real d2 = p0->im;
-
-                    p0->re = d1 * etermk;
-                    p0->im = d2 * etermk;
-                }
-            }
+            //yupinov - now each thread does Re and Im of a grid point
+            // => 16 threads in a block? should stride?
         }
     }
 }
