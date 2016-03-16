@@ -61,7 +61,8 @@ extern gpu_events gpu_events_spread;
 template <
         const int order,
         const int particlesPerBlock,
-        const gmx_bool bCalcSplines
+        const gmx_bool bCalcSplines,
+        const gmx_bool bDoSplines
         >
 __global__ void spline_and_spread_kernel
 (int nx, int ny, int nz,
@@ -148,7 +149,7 @@ __global__ void spline_and_spread_kernel
 
             // CALCSPLINE
 
-            if (coefficient[localParticleIndex] != 0.0f) //yupinov how bad is this conditional?
+            if (bDoSplines || (coefficient[localParticleIndex] != 0.0f)) //yupinov how bad is this conditional?
             {
                 real dr, div;
                 real data[order];
@@ -297,7 +298,8 @@ __global__ void spline_and_spread_kernel
 
 template <
         const int order,
-        const int particlesPerBlock
+        const int particlesPerBlock,
+        const gmx_bool bDoSplines
         >
 __global__ void spline_kernel
 (int nx, int ny, int nz,
@@ -383,7 +385,7 @@ __global__ void spline_kernel
 
         // CALCSPLINE
 
-        if (coefficient[localParticleIndex] != 0.0f) //yupinov how bad is this conditional?
+        if (bDoSplines || (coefficient[localParticleIndex] != 0.0f)) //yupinov how bad is this conditional?
         {
             real dr, div;
             real data[order];
@@ -593,14 +595,22 @@ __global__ void spread_kernel
 
 void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
          int grid_index,
-         pmegrid_t *pmegrid, const gmx_bool bCalcSplines
+         pmegrid_t *pmegrid,
+         const gmx_bool bCalcSplines,
+         const gmx_bool bSpread,
+         const gmx_bool bDoSplines
                               )//yupinov, gmx_bool bCalcSplines, gmx_bool bSpread, gmx_bool bDoSplines)
 //yupinov templating!
 //real *fftgrid
 //added:, gmx_wallcycle_t wcycle)
 {
+    const gmx_bool separateKernels = false;
+
     const int thread = 0;
-    //yupinov bCalcSplines is always true - untested, unfinished
+    //yupinov
+    // bCalcSplines is always true - untested, unfinished
+    // bDoSplines is always false - untested
+    //printf("%s\n", bDoSplines ? "TRUEEEEEE" : "false");
 
 
     cudaError_t stat;
@@ -684,6 +694,8 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     //const int particlesPerBlock = warp_size;
     const int blockSize = 4 * warp_size; //yupinov: 3 > 4 > 2 on my GTX 660 TI;
     const int particlesPerBlock = blockSize / order / order; //was 32, now 2 for order==4 ->round up=>
+    //duplicated below!
+
     //this is the number of particles for SPREAD, btw
     dim3 nBlocks((n + blockSize - 1) / blockSize * order * order, 1, 1);
     //dim3 dimBlock(order, order, D); //each block has 32 threads now to hand 32 particlesPerBlock
@@ -692,11 +704,34 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     switch (order)
     {
         case 4:
-            const int particlesPerBlock2 = blockSize / 4 / 4;
+            if (separateKernels)
+            {
+                if (bCalcSplines)
+                {
+                    if (bDoSplines)
+                        gmx_fatal(FARGS, "the code for bDoSplines==true was not tested!");
+                    else
+                    {
+                        spline_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocks, dimBlock, 0, s>>>
+                                                                            (nx, ny, nz,
+                                                                             pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
+                                                                             pme->recipbox[XX][XX],
+                                                                             pme->recipbox[YY][XX],
+                                                                             pme->recipbox[YY][YY],
+                                                                             pme->recipbox[ZZ][XX],
+                                                                             pme->recipbox[ZZ][YY],
+                                                                             pme->recipbox[ZZ][ZZ],
+                                                                             fshx_d, fshy_d,
+                                                                             nnx_d, nny_d, nnz_d,
+                                                                             xptr_d, yptr_d, zptr_d,
+                                                                             coefficient_d,
+                                                                             grid_d, theta_d, dtheta_d, idx_d,
+                                                                             n);
+                    }
 
-            if (bCalcSplines)
-            {
-                spline_and_spread_kernel<4, particlesPerBlock2, TRUE> <<<nBlocks, dimBlock, 0, s>>>
+                    CU_LAUNCH_ERR("spline_kernel");
+                }
+                spread_kernel<4, blockSize / 4 / 4> <<<nBlocks, dimBlock, 0, s>>>
                                                                         (nx, ny, nz,
                                                                          pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
                                                                          pme->recipbox[XX][XX],
@@ -711,64 +746,43 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                                                                          coefficient_d,
                                                                          grid_d, theta_d, dtheta_d, idx_d,
                                                                          n);
+                CU_LAUNCH_ERR("spread_kernel");
             }
-            else
+            else //a single monster kernel here
             {
-                spline_and_spread_kernel<4, particlesPerBlock2, FALSE> <<<nBlocks, dimBlock, 0, s>>>
-                                                                        (nx, ny, nz,
-                                                                         pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
-                                                                         pme->recipbox[XX][XX],
-                                                                         pme->recipbox[YY][XX],
-                                                                         pme->recipbox[YY][YY],
-                                                                         pme->recipbox[ZZ][XX],
-                                                                         pme->recipbox[ZZ][YY],
-                                                                         pme->recipbox[ZZ][ZZ],
-                                                                         fshx_d, fshy_d,
-                                                                         nnx_d, nny_d, nnz_d,
-                                                                         xptr_d, yptr_d, zptr_d,
-                                                                         coefficient_d,
-                                                                         grid_d, theta_d, dtheta_d, idx_d,
-                                                                         n);
+                if (bCalcSplines)
+                {
+                    if (bDoSplines)
+                        gmx_fatal(FARGS, "the code for bDoSplines==true was not tested!");
+                    else
+                    {
+                        spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, FALSE> <<<nBlocks, dimBlock, 0, s>>>
+                                                                            (nx, ny, nz,
+                                                                             pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
+                                                                             pme->recipbox[XX][XX],
+                                                                             pme->recipbox[YY][XX],
+                                                                             pme->recipbox[YY][YY],
+                                                                             pme->recipbox[ZZ][XX],
+                                                                             pme->recipbox[ZZ][YY],
+                                                                             pme->recipbox[ZZ][ZZ],
+                                                                             fshx_d, fshy_d,
+                                                                             nnx_d, nny_d, nnz_d,
+                                                                             xptr_d, yptr_d, zptr_d,
+                                                                             coefficient_d,
+                                                                             grid_d, theta_d, dtheta_d, idx_d,
+                                                                             n);
+                    }
+                }
+                else
+                    gmx_fatal(FARGS, "the code for bCalcSplines==false was not tested!"); //yupinov
+
+                CU_LAUNCH_ERR("spline_and_spread_kernel");
+
             }
-            CU_LAUNCH_ERR("spline_and_spread_kernel");
-            /*
-            if (bCalcSplines)
-            {
-                spline_kernel<4, particlesPerBlock2><<<nBlocks, dimBlock, 0, s>>>
-                                                                        (nx, ny, nz,
-                                                                         pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
-                                                                         pme->recipbox[XX][XX],
-                                                                         pme->recipbox[YY][XX],
-                                                                         pme->recipbox[YY][YY],
-                                                                         pme->recipbox[ZZ][XX],
-                                                                         pme->recipbox[ZZ][YY],
-                                                                         pme->recipbox[ZZ][ZZ],
-                                                                         fshx_d, fshy_d,
-                                                                         nnx_d, nny_d, nnz_d,
-                                                                         xptr_d, yptr_d, zptr_d,
-                                                                         coefficient_d,
-                                                                         grid_d, theta_d, dtheta_d, idx_d,
-                                                                         n);
-                CU_LAUNCH_ERR("spline_kernel");
-            }
-            spread_kernel<4, particlesPerBlock2><<<nBlocks, dimBlock, 0, s>>>
-                                                                    (nx, ny, nz,
-                                                                     pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
-                                                                     pme->recipbox[XX][XX],
-                                                                     pme->recipbox[YY][XX],
-                                                                     pme->recipbox[YY][YY],
-                                                                     pme->recipbox[ZZ][XX],
-                                                                     pme->recipbox[ZZ][YY],
-                                                                     pme->recipbox[ZZ][ZZ],
-                                                                     fshx_d, fshy_d,
-                                                                     nnx_d, nny_d, nnz_d,
-                                                                     xptr_d, yptr_d, zptr_d,
-                                                                     coefficient_d,
-                                                                     grid_d, theta_d, dtheta_d, idx_d,
-                                                                     n);
-            CU_LAUNCH_ERR("spread_kernel");
-            */
-            //yupinov different orders
+            break;
+
+        default:
+            gmx_fatal(FARGS, "the code for pme_order != 4 was not tested!"); //yupinov
     }
 
 
