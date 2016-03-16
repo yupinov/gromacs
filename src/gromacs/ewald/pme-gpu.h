@@ -184,15 +184,13 @@ inline int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t gmx_unused *pme,
 }
 
 CUDA_FUNC_QUALIFIER void solve_pme_yzx_gpu(real gmx_unused pme_epsilon_r,
-              int gmx_unused nx, int gmx_unused ny, int gmx_unused nz,
-              ivec gmx_unused complex_order, ivec gmx_unused local_ndata, ivec gmx_unused local_offset, ivec gmx_unused local_size,
               splinevec gmx_unused pme_bsp_mod,
               matrix gmx_unused work_vir_q, real gmx_unused *work_energy_q,
               t_complex gmx_unused *grid,
               real gmx_unused ewaldcoeff, real gmx_unused vol,
               gmx_bool gmx_unused bEnerVir,
              gmx_pme_t *pme) CUDA_FUNC_TERM
-CUDA_FUNC_QUALIFIER void solve_pme_lj_yzx_gpu(int gmx_unused nx, int gmx_unused ny, int gmx_unused nz,
+CUDA_FUNC_QUALIFIER int solve_pme_lj_yzx_gpu(int gmx_unused nx, int gmx_unused ny, int gmx_unused nz,
              ivec gmx_unused complex_order, ivec gmx_unused local_ndata, ivec gmx_unused local_offset, ivec gmx_unused local_size,
              real gmx_unused rxx, real gmx_unused ryx, gmx_unused real ryy, real gmx_unused rzx, real gmx_unused rzy, real gmx_unused rzz,
              //real *mhx, real *mhy, real *mhz, real *m2, real *denom, real *tmp1, real *tmp2,

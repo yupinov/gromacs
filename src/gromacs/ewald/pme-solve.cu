@@ -14,6 +14,7 @@
 #include "check.h"
 
 #include "pme-cuda.h"
+#include "pme-gpu.h"
 
 #define SQRT_M_PI real(2.0f / M_2_SQRTPI)
 //yupinov check if these constants workf
@@ -237,8 +238,6 @@ __global__ void solve_pme_kernel
 }
 
 void solve_pme_yzx_gpu(real pme_epsilon_r,
-		      int nx, int ny, int nz,
-              ivec complex_order, ivec local_ndata, ivec local_offset, ivec local_size,
 		      splinevec pme_bsp_mod,
 		      matrix work_vir_q, real *work_energy_q,
 		      t_complex *grid,
@@ -246,7 +245,17 @@ void solve_pme_yzx_gpu(real pme_epsilon_r,
 		      gmx_bool bEnerVir,
               gmx_pme_t *pme)
 {
-     /* do recip sum over local cells in grid */
+    ivec complex_order, local_ndata, local_offset, local_size;
+    /* Dimensions should be identical for A/B grid, so we just use A here */
+    gmx_parallel_3dfft_complex_limits_wrapper(pme, PME_GRID_QA,//pme->pfft_setup_gpu[PME_GRID_QA],
+                                      complex_order,
+                                      local_ndata,
+                                      local_offset,
+                                      local_size);
+    //yupinov replace with gmx_parallel_3dfft_complex_limits_gpu
+
+
+    /* do recip sum over local cells in grid */
     const gmx_bool YZXOrdering = !pme->bGPUFFT;
     //yupinov fix pecularities in solve
     /* true: y major, z middle, x minor or continuous - the CPU FFT way */
@@ -420,7 +429,7 @@ __global__ void solve_pme_lj_yzx_iyz_loop_kernel
  int local_size_XX, int local_size_YY, int local_size_ZZ,
  int nx, int ny, int nz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
- //real ,
+ //real elfac,
  //splinevec pme_bsp_mod,
  real *pme_bsp_mod_XX, real *pme_bsp_mod_YY, real *pme_bsp_mod_ZZ,
  t_complex *grid_v, gmx_bool bLB,
