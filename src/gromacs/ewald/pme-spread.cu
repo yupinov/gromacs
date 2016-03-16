@@ -310,12 +310,11 @@ __global__ void spline_kernel
 (int nx, int ny, int nz,
  int start_ix, int start_iy, int start_iz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
- //int *g2tx, int *g2ty, int *g2tz,
  const real * __restrict__ fshx, const real * __restrict__ fshy,
  const int * __restrict__ nnx, const int * __restrict__ nny, const int * __restrict__ nnz,
  const real * __restrict__ xptr, const real * __restrict__ yptr, const real * __restrict__ zptr,
  const real * __restrict__ coefficientGlobal,
- real * __restrict__ grid, real * __restrict__ theta, real * __restrict__ dtheta, int * __restrict__ idx, //yupinov
+ real * __restrict__ theta, real * __restrict__ dtheta, int * __restrict__ idx, //yupinov
  int n)
 {
 /*
@@ -643,7 +642,6 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     int idx_size = n * DIM * sizeof(int);
     int *idx_d = PMEFetchIntegerArray(PME_ID_IDXPTR, thread, idx_size, ML_DEVICE); //why is it not stored?
 
-    // FSH
     real *fshx_d = NULL;
     real *fshy_d = NULL;
     if (bCalcSplines)
@@ -679,12 +677,15 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     }
     PMECopy(xptr_d, xptr_h, 3 * n_blocked * sizeof(real), ML_DEVICE, s);
 
-    // COEFFICIENT
     real *coefficient_d = PMEFetchAndCopyRealArray(PME_ID_COEFFICIENT, thread, atc->coefficient, n * sizeof(real), ML_DEVICE, s); //yupinov compact here as weel?
 
-    real *grid_d = PMEFetchRealArray(PME_ID_REAL_GRID_WITH_OVERLAP, thread, size_grid, ML_DEVICE);
-    stat = cudaMemsetAsync(grid_d, 0, size_grid, s); //yupinov
-    CU_RET_ERR(stat, "cudaMemsetAsync spread error");
+    real *grid_d = NULL;
+    if (bSpread)
+    {
+        grid_d = PMEFetchRealArray(PME_ID_REAL_GRID_WITH_OVERLAP, thread, size_grid, ML_DEVICE);
+        stat = cudaMemsetAsync(grid_d, 0, size_grid, s); //yupinov
+        CU_RET_ERR(stat, "cudaMemsetAsync spread error");
+    }
     #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_spread, s);
     #endif
@@ -735,7 +736,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                                                                              nnx_d, nny_d, nnz_d,
                                                                              xptr_d, yptr_d, zptr_d,
                                                                              coefficient_d,
-                                                                             grid_d, theta_d, dtheta_d, idx_d,
+                                                                             theta_d, dtheta_d, idx_d,
                                                                              n);
                     }
 
