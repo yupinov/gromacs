@@ -342,10 +342,6 @@ __global__ void spline_kernel
 
     __shared__ real theta_shared[3 * order * particlesPerBlock];
     __shared__ real dtheta_shared[3 * order * particlesPerBlock];
-    //printf("%d %d %d %d %d %d\n", blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z);
-
-    int ithx, index_x, ithy, index_xy, ithz, index_xyz;
-    real valx, valxy;
 
     int localParticleIndex = threadIdx.x;
 
