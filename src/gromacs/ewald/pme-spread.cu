@@ -61,8 +61,9 @@ extern gpu_events gpu_events_spread;
 template <
         const int order,
         const int particlesPerBlock,
-        const gmx_bool bCalcSplines,
-        const gmx_bool bDoSplines
+        const gmx_bool bCalcSplines, // first part
+        const gmx_bool bDoSplines,   // bypassing conditional in the first part
+        const gmx_bool bSpread       // second part
         >
 __global__ void spline_and_spread_kernel
 (int nx, int ny, int nz,
@@ -109,12 +110,12 @@ __global__ void spline_and_spread_kernel
     int localParticleIndex = threadIdx.x;
 
     int globalParticleIndex = blockIdx.x * particlesPerBlock + localParticleIndex;
-    if (bCalcSplines) //yupinov test
+    if (bCalcSplines)
     {
         if ((globalParticleIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
         //yupinov - this is a single particle work!
         {
-            // INTERPOL_IDX
+            // INTERPOLATION INDICES
 
             /* Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes */
             real tx, ty, tz;
@@ -147,7 +148,7 @@ __global__ void spline_and_spread_kernel
 
             //printf("set %d %d %d %d\n", globalParticleIndex, idxxptr[localParticleIndex], idxyptr[localParticleIndex], idxzptr[localParticleIndex]);
 
-            // CALCSPLINE
+            // MAKE BSPLINES
 
             if (bDoSplines || (coefficient[localParticleIndex] != 0.0f)) //yupinov how bad is this conditional?
             {
@@ -220,7 +221,7 @@ __global__ void spline_and_spread_kernel
         }
         __syncthreads(); //yupinov do we need it?
     }
-    else //!bCalcSplines //yupinov copied from spread_kernel
+    else if (bSpread) //yupinov copied from spread_kernel - staging for a second part
     {
         int globalParticleIndex = blockIdx.x * particlesPerBlock + localParticleIndex;
         if ((globalParticleIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
@@ -243,10 +244,11 @@ __global__ void spline_and_spread_kernel
                 }
             }
 
-            coefficient[localParticleIndex] = coefficientGlobal[globalParticleIndex]; //staging for both parts
+            coefficient[localParticleIndex] = coefficientGlobal[globalParticleIndex];
         }
         __syncthreads(); //yupinov do we need it?
     }
+
 
     // SPREAD
 
@@ -255,38 +257,41 @@ __global__ void spline_and_spread_kernel
     ithz = threadIdx.z;
 
     //globalParticleIndex
-    if ((globalParticleIndex < n) && (coefficient[localParticleIndex] != 0.0f)) //yupinov store checks
+    if (bSpread)
     {
-        const int i0  = idxxptr[localParticleIndex] - offx; //?
-        const int j0  = idxyptr[localParticleIndex] - offy;
-        const int k0  = idxzptr[localParticleIndex] - offz;
-
-        //printf ("%d %d %d %d %d %d %d\n", blockIdx.x, threadIdx.x, threadIdx.y, threadIdx.z, i0, j0, k0);
-        const real *thx = theta_shared + (0 * particlesPerBlock + localParticleIndex) * order;
-        const real *thy = theta_shared + (1 * particlesPerBlock + localParticleIndex) * order;
-        const real *thz = theta_shared + (2 * particlesPerBlock + localParticleIndex) * order;
-
-        // switch (order) ?
-
-        #pragma unroll
-        for (ithx = 0; (ithx < order); ithx++)
+        if ((globalParticleIndex < n) && (coefficient[localParticleIndex] != 0.0f)) //yupinov store checks
         {
-            index_x = (i0 + ithx) * pny * pnz;
-            valx = coefficient[localParticleIndex] * thx[ithx];
-            /*
+            const int i0  = idxxptr[localParticleIndex] - offx; //?
+            const int j0  = idxyptr[localParticleIndex] - offy;
+            const int k0  = idxzptr[localParticleIndex] - offz;
+
+            //printf ("%d %d %d %d %d %d %d\n", blockIdx.x, threadIdx.x, threadIdx.y, threadIdx.z, i0, j0, k0);
+            const real *thx = theta_shared + (0 * particlesPerBlock + localParticleIndex) * order;
+            const real *thy = theta_shared + (1 * particlesPerBlock + localParticleIndex) * order;
+            const real *thz = theta_shared + (2 * particlesPerBlock + localParticleIndex) * order;
+
+            // switch (order) ?
+
             #pragma unroll
-            for (ithy = 0; (ithy < order); ithy++)
-            */
+            for (ithx = 0; (ithx < order); ithx++)
             {
-                valxy    = valx*thy[ithy];
-                index_xy = index_x+(j0+ithy)*pnz;
+                index_x = (i0 + ithx) * pny * pnz;
+                valx = coefficient[localParticleIndex] * thx[ithx];
                 /*
                 #pragma unroll
-                for (ithz = 0; (ithz < order); ithz++)
+                for (ithy = 0; (ithy < order); ithy++)
                 */
                 {
-                    index_xyz        = index_xy+(k0+ithz);
-                    atomicAdd(grid + index_xyz, valxy*thz[ithz]);
+                    valxy    = valx*thy[ithy];
+                    index_xy = index_x+(j0+ithy)*pnz;
+                    /*
+                    #pragma unroll
+                    for (ithz = 0; (ithz < order); ithz++)
+                    */
+                    {
+                        index_xyz        = index_xy+(k0+ithz);
+                        atomicAdd(grid + index_xyz, valxy*thz[ithz]);
+                    }
                 }
             }
         }
@@ -598,20 +603,22 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
          pmegrid_t *pmegrid,
          const gmx_bool bCalcSplines,
          const gmx_bool bSpread,
-         const gmx_bool bDoSplines
-                              )//yupinov, gmx_bool bCalcSplines, gmx_bool bSpread, gmx_bool bDoSplines)
+         const gmx_bool bDoSplines)
 //yupinov templating!
 //real *fftgrid
 //added:, gmx_wallcycle_t wcycle)
 {
     const gmx_bool separateKernels = false;
+    if (!bCalcSplines && !bSpread)
+        gmx_fatal(FARGS, "No splining or spreading to be done?"); //yupinov use of gmx_fatal
 
     const int thread = 0;
     //yupinov
     // bCalcSplines is always true - untested, unfinished
     // bDoSplines is always false - untested
-    //printf("%s\n", bDoSplines ? "TRUEEEEEE" : "false");
-
+    // bSpread is always true - untested, unfinished
+    // check bClearF as well
+    // fprintf(stderr, "%s\n", bSpread ? "TRUEEEEEE" : "false");
 
     cudaError_t stat;
     cudaStream_t s = pme->gpu->pmeStream;
@@ -731,32 +738,9 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
                     CU_LAUNCH_ERR("spline_kernel");
                 }
-                spread_kernel<4, blockSize / 4 / 4> <<<nBlocks, dimBlock, 0, s>>>
-                                                                        (nx, ny, nz,
-                                                                         pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
-                                                                         pme->recipbox[XX][XX],
-                                                                         pme->recipbox[YY][XX],
-                                                                         pme->recipbox[YY][YY],
-                                                                         pme->recipbox[ZZ][XX],
-                                                                         pme->recipbox[ZZ][YY],
-                                                                         pme->recipbox[ZZ][ZZ],
-                                                                         fshx_d, fshy_d,
-                                                                         nnx_d, nny_d, nnz_d,
-                                                                         xptr_d, yptr_d, zptr_d,
-                                                                         coefficient_d,
-                                                                         grid_d, theta_d, dtheta_d, idx_d,
-                                                                         n);
-                CU_LAUNCH_ERR("spread_kernel");
-            }
-            else //a single monster kernel here
-            {
-                if (bCalcSplines)
+                if (bSpread)
                 {
-                    if (bDoSplines)
-                        gmx_fatal(FARGS, "the code for bDoSplines==true was not tested!");
-                    else
-                    {
-                        spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, FALSE> <<<nBlocks, dimBlock, 0, s>>>
+                    spread_kernel<4, blockSize / 4 / 4> <<<nBlocks, dimBlock, 0, s>>>
                                                                             (nx, ny, nz,
                                                                              pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
                                                                              pme->recipbox[XX][XX],
@@ -771,6 +755,38 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                                                                              coefficient_d,
                                                                              grid_d, theta_d, dtheta_d, idx_d,
                                                                              n);
+
+                    CU_LAUNCH_ERR("spread_kernel");
+                }
+            }
+            else // a single monster kernel here
+            {
+                if (bCalcSplines)
+                {
+                    if (bDoSplines)
+                        gmx_fatal(FARGS, "the code for bDoSplines==true was not tested!");
+                    else
+                    {
+                        if (bSpread)
+                        {
+                            spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, FALSE, TRUE> <<<nBlocks, dimBlock, 0, s>>>
+                                                                            (nx, ny, nz,
+                                                                             pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
+                                                                             pme->recipbox[XX][XX],
+                                                                             pme->recipbox[YY][XX],
+                                                                             pme->recipbox[YY][YY],
+                                                                             pme->recipbox[ZZ][XX],
+                                                                             pme->recipbox[ZZ][YY],
+                                                                             pme->recipbox[ZZ][ZZ],
+                                                                             fshx_d, fshy_d,
+                                                                             nnx_d, nny_d, nnz_d,
+                                                                             xptr_d, yptr_d, zptr_d,
+                                                                             coefficient_d,
+                                                                             grid_d, theta_d, dtheta_d, idx_d,
+                                                                             n);
+                        }
+                        else
+                            gmx_fatal(FARGS, "the code for bSpread==false was not tested!");
                     }
                 }
                 else
