@@ -34,7 +34,6 @@
  * To help us fund GROMACS development, we humbly ask that you cite
  * the research papers on the package. Check out http://www.gromacs.org.
  */
-//yupinov unused file!
 #include "pme.h"
 #include "pme-internal.h"
 
@@ -46,22 +45,24 @@
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 #include <cuda_runtime.h>
 
-typedef real *splinevec[DIM];
-
 #ifdef DEBUG_PME_TIMINGS_GPU
 extern gpu_events gpu_events_spread;
 #endif
-#include "thread_mpi/mutex.h"
 
 #include "pme-cuda.h"
-
-static tMPI::mutex print_mutex; //yupinov
-
 
 
 //yupinov is the grid contiguous in x or in z?
 
-template <const int order, const int particlesPerBlock>
+//yupinov optimizing unused parameters away?
+//yupinov change allocations as well
+//have to debug all boolean params
+
+template <
+        const int order,
+        const int particlesPerBlock,
+        const gmx_bool bCalcSplines
+        >
 __global__ void spline_and_spread_kernel
 (int nx, int ny, int nz,
  int start_ix, int start_iy, int start_iz,
@@ -107,116 +108,144 @@ __global__ void spline_and_spread_kernel
     int localParticleIndex = threadIdx.x;
 
     int globalParticleIndex = blockIdx.x * particlesPerBlock + localParticleIndex;
-    if ((globalParticleIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
-    //yupinov - this is a single particle work!
-        //yup bDoSplines!
+    if (bCalcSplines) //yupinov test
     {
-        // INTERPOL_IDX
-
-        /* Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes */
-        real tx, ty, tz;
-        tx = nx * ( xptr[globalParticleIndex] * rxx + yptr[globalParticleIndex] * ryx + zptr[globalParticleIndex] * rzx + 2.0f );
-        ty = ny * (                                   yptr[globalParticleIndex] * ryy + zptr[globalParticleIndex] * rzy + 2.0f );
-        tz = nz * (                                                                     zptr[globalParticleIndex] * rzz + 2.0f );
-
-        int tix, tiy, tiz;
-        tix = (int)(tx);
-        tiy = (int)(ty);
-        tiz = (int)(tz);
-        /* Because decomposition only occurs in x and y,
-        * we never have a fraction correction in z.
-        */
-
-        fxptr[localParticleIndex] = tx - tix + fshx[tix];
-        fyptr[localParticleIndex] = ty - tiy + fshy[tiy];
-        fzptr[localParticleIndex] = tz - tiz;
-
-        idxxptr[localParticleIndex] = nnx[tix];
-        idxyptr[localParticleIndex] = nny[tiy];
-        idxzptr[localParticleIndex] = nnz[tiz];
-
-        coefficient[localParticleIndex] = coefficientGlobal[globalParticleIndex]; //staging for both parts
-
-
-        idx[globalParticleIndex * DIM + 0] = idxxptr[localParticleIndex];
-        idx[globalParticleIndex * DIM + 1] = idxyptr[localParticleIndex];
-        idx[globalParticleIndex * DIM + 2] = idxzptr[localParticleIndex];
-
-        //printf("set %d %d %d %d\n", globalParticleIndex, idxxptr[localParticleIndex], idxyptr[localParticleIndex], idxzptr[localParticleIndex]);
-
-
-        // CALCSPLINE
-
-        if (coefficient[localParticleIndex] != 0.0f) //yupinov how bad is this conditional?
+        if ((globalParticleIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
+        //yupinov - this is a single particle work!
         {
-            real dr, div;
-            real data[order];
+            // INTERPOL_IDX
 
-#pragma unroll
-            for (int j = 0; j < DIM; j++)
+            /* Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes */
+            real tx, ty, tz;
+            tx = nx * ( xptr[globalParticleIndex] * rxx + yptr[globalParticleIndex] * ryx + zptr[globalParticleIndex] * rzx + 2.0f );
+            ty = ny * (                                   yptr[globalParticleIndex] * ryy + zptr[globalParticleIndex] * rzy + 2.0f );
+            tz = nz * (                                                                     zptr[globalParticleIndex] * rzz + 2.0f );
+
+            int tix, tiy, tiz;
+            tix = (int)(tx);
+            tiy = (int)(ty);
+            tiz = (int)(tz);
+            /* Because decomposition only occurs in x and y,
+            * we never have a fraction correction in z.
+            */
+
+            fxptr[localParticleIndex] = tx - tix + fshx[tix];
+            fyptr[localParticleIndex] = ty - tiy + fshy[tiy];
+            fzptr[localParticleIndex] = tz - tiz;
+
+            idxxptr[localParticleIndex] = nnx[tix];
+            idxyptr[localParticleIndex] = nny[tiy];
+            idxzptr[localParticleIndex] = nnz[tiz];
+
+            coefficient[localParticleIndex] = coefficientGlobal[globalParticleIndex]; //staging for both parts
+
+
+            idx[globalParticleIndex * DIM + 0] = idxxptr[localParticleIndex];
+            idx[globalParticleIndex * DIM + 1] = idxyptr[localParticleIndex];
+            idx[globalParticleIndex * DIM + 2] = idxzptr[localParticleIndex];
+
+            //printf("set %d %d %d %d\n", globalParticleIndex, idxxptr[localParticleIndex], idxyptr[localParticleIndex], idxzptr[localParticleIndex]);
+
+            // CALCSPLINE
+
+            if (coefficient[localParticleIndex] != 0.0f) //yupinov how bad is this conditional?
             {
-                //dr  = fractx[i*DIM + j];
+                real dr, div;
+                real data[order];
 
-                dr = (j == 0) ? fxptr[localParticleIndex] : ((j == 1) ? fyptr[localParticleIndex] : fzptr[localParticleIndex]);
-
-                /* dr is relative offset from lower cell limit */
-                data[order - 1] = 0;
-                data[1]         = dr;
-                data[0]         = 1 - dr;
-
-#pragma unroll
-                for (int k = 3; k < order; k++)
+    #pragma unroll
+                for (int j = 0; j < DIM; j++)
                 {
-                    div         = 1.0f / (k - 1.0f);
-                    data[k - 1] = div * dr * data[k - 2];
-                    #pragma unroll
-                    for (int l = 1; l < (k - 1); l++)
+                    //dr  = fractx[i*DIM + j];
+
+                    dr = (j == 0) ? fxptr[localParticleIndex] : ((j == 1) ? fyptr[localParticleIndex] : fzptr[localParticleIndex]);
+
+                    /* dr is relative offset from lower cell limit */
+                    data[order - 1] = 0;
+                    data[1]         = dr;
+                    data[0]         = 1 - dr;
+
+    #pragma unroll
+                    for (int k = 3; k < order; k++)
                     {
-                        data[k - l - 1] = div * ((dr + l) * data[k - l - 2] + (k - l - dr) * data[k - l - 1]);
+                        div         = 1.0f / (k - 1.0f);
+                        data[k - 1] = div * dr * data[k - 2];
+                        #pragma unroll
+                        for (int l = 1; l < (k - 1); l++)
+                        {
+                            data[k - l - 1] = div * ((dr + l) * data[k - l - 2] + (k - l - dr) * data[k - l - 1]);
+                        }
+                        data[0] = div * (1 - dr) * data[0];
+                    }
+                    /* differentiate */
+                    const int thetaOffset = (j * particlesPerBlock + localParticleIndex) * order;
+                    dtheta_shared[thetaOffset] = -data[0];
+
+                    #pragma unroll
+                    for (int k = 1; k < order; k++)
+                    {
+                        dtheta_shared[thetaOffset + k] = data[k - 1] - data[k];
+                    }
+
+                    div             = 1.0f / (order - 1);
+                    data[order - 1] = div * dr * data[order - 2];
+    #pragma unroll
+                    for (int l = 1; l < (order - 1); l++)
+                    {
+                        data[order - l - 1] = div * ((dr + l) * data[order - l - 2] + (order - l - dr) * data[order - l - 1]);
                     }
                     data[0] = div * (1 - dr) * data[0];
-                }
-                /* differentiate */
-                const int thetaOffset = (j * particlesPerBlock + localParticleIndex) * order;
-                dtheta_shared[thetaOffset] = -data[0];
 
-                #pragma unroll
-                for (int k = 1; k < order; k++)
-                {
-                    dtheta_shared[thetaOffset + k] = data[k - 1] - data[k];
+    #pragma unroll
+                    for (int k = 0; k < order; k++)
+                    {
+                        theta_shared[thetaOffset + k] = data[k];
+                    }
                 }
-
-                div             = 1.0f / (order - 1);
-                data[order - 1] = div * dr * data[order - 2];
-#pragma unroll
-                for (int l = 1; l < (order - 1); l++)
+                //yupinov store to global
+    #pragma unroll
+                for (int j = 0; j < DIM; j++)
                 {
-                    data[order - l - 1] = div * ((dr + l) * data[order - l - 2] + (order - l - dr) * data[order - l - 1]);
-                }
-                data[0] = div * (1 - dr) * data[0];
-
-#pragma unroll
-                for (int k = 0; k < order; k++)
-                {
-                    theta_shared[thetaOffset + k] = data[k];
+                    const int thetaOffset = (j * particlesPerBlock + localParticleIndex) * order;
+                    const int thetaGlobalOffset = (j * n + globalParticleIndex) * order;
+    #pragma unroll
+                    for (int z = 0; z < order; z++)
+                    {
+                        theta[thetaGlobalOffset + z] = theta_shared[thetaOffset + z];
+                        dtheta[thetaGlobalOffset + z] = dtheta_shared[thetaOffset + z];
+                    }
                 }
             }
-            //yupinov store to global
-#pragma unroll
+        }
+        __syncthreads(); //yupinov do we need it?
+    }
+    else //!bCalcSplines //yupinov copied from spread_kernel
+    {
+        int globalParticleIndex = blockIdx.x * particlesPerBlock + localParticleIndex;
+        if ((globalParticleIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
+        //yupinov - this is a single particle work!
+        {
+
+            idxxptr[localParticleIndex] = idx[globalParticleIndex * DIM + 0];
+            idxyptr[localParticleIndex] = idx[globalParticleIndex * DIM + 1];
+            idxzptr[localParticleIndex] = idx[globalParticleIndex * DIM + 2];
+    #pragma unroll
             for (int j = 0; j < DIM; j++)
             {
                 const int thetaOffset = (j * particlesPerBlock + localParticleIndex) * order;
                 const int thetaGlobalOffset = (j * n + globalParticleIndex) * order;
-#pragma unroll
+    #pragma unroll
                 for (int z = 0; z < order; z++)
                 {
-                    theta[thetaGlobalOffset + z] = theta_shared[thetaOffset + z];
-                    dtheta[thetaGlobalOffset + z] = dtheta_shared[thetaOffset + z];
+                    theta_shared[thetaOffset + z] = theta[thetaGlobalOffset + z];
+                    dtheta_shared[thetaOffset + z] = dtheta[thetaGlobalOffset + z];
                 }
             }
+
+            coefficient[localParticleIndex] = coefficientGlobal[globalParticleIndex]; //staging for both parts
         }
+        __syncthreads(); //yupinov do we need it?
     }
-    __syncthreads(); //yupinov do we need it?
 
     // SPREAD
 
@@ -264,12 +293,12 @@ __global__ void spline_and_spread_kernel
 }
 
 
-
-
-
 // spline_and_spread split into spline and spread - as an experiment
 
-template <const int order, const int particlesPerBlock>
+template <
+        const int order,
+        const int particlesPerBlock
+        >
 __global__ void spline_kernel
 (int nx, int ny, int nz,
  int start_ix, int start_iy, int start_iz,
@@ -317,7 +346,6 @@ __global__ void spline_kernel
     int globalParticleIndex = blockIdx.x * particlesPerBlock + localParticleIndex;
     if ((globalParticleIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
     //yupinov - this is a single particle work!
-        //yup bDoSplines!
     {
         // INTERPOL_IDX
 
@@ -565,11 +593,16 @@ __global__ void spread_kernel
 
 void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
          int grid_index,
-         pmegrid_t *pmegrid)//yupinov, gmx_bool bCalcSplines, gmx_bool bSpread, gmx_bool bDoSplines)
+         pmegrid_t *pmegrid, const gmx_bool bCalcSplines
+                              )//yupinov, gmx_bool bCalcSplines, gmx_bool bSpread, gmx_bool bDoSplines)
 //yupinov templating!
 //real *fftgrid
 //added:, gmx_wallcycle_t wcycle)
 {
+    const int thread = 0;
+    //yupinov bCalcSplines is always true - untested, unfinished
+
+
     cudaError_t stat;
     cudaStream_t s = pme->gpu->pmeStream;
 
@@ -578,7 +611,6 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     int nx = pme->nkx, ny = pme->nky, nz = pme->nkz;
     //int nx = pmegrid->s[XX], ny = pmegrid->s[YY], nz = pmegrid->s[ZZ];
     const int order = pmegrid->order;
-    int thread = 0;
 
     const int pnx = nx + order - 1, pny = ny + order - 1, pnz = nz + order - 1; //yupinov fix me!
 
@@ -662,39 +694,63 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
         case 4:
             const int particlesPerBlock2 = blockSize / 4 / 4;
 
-            spline_and_spread_kernel<4, particlesPerBlock2><<<nBlocks, dimBlock, 0, s>>>
-                                                                    (nx, ny, nz,
-                                                                     pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
-                                                                     pme->recipbox[XX][XX],
-                                                                     pme->recipbox[YY][XX],
-                                                                     pme->recipbox[YY][YY],
-                                                                     pme->recipbox[ZZ][XX],
-                                                                     pme->recipbox[ZZ][YY],
-                                                                     pme->recipbox[ZZ][ZZ],
-                                                                     fshx_d, fshy_d,
-                                                                     nnx_d, nny_d, nnz_d,
-                                                                     xptr_d, yptr_d, zptr_d,
-                                                                     coefficient_d,
-                                                                     grid_d, theta_d, dtheta_d, idx_d,
-                                                                     n);
+            if (bCalcSplines)
+            {
+                spline_and_spread_kernel<4, particlesPerBlock2, TRUE> <<<nBlocks, dimBlock, 0, s>>>
+                                                                        (nx, ny, nz,
+                                                                         pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
+                                                                         pme->recipbox[XX][XX],
+                                                                         pme->recipbox[YY][XX],
+                                                                         pme->recipbox[YY][YY],
+                                                                         pme->recipbox[ZZ][XX],
+                                                                         pme->recipbox[ZZ][YY],
+                                                                         pme->recipbox[ZZ][ZZ],
+                                                                         fshx_d, fshy_d,
+                                                                         nnx_d, nny_d, nnz_d,
+                                                                         xptr_d, yptr_d, zptr_d,
+                                                                         coefficient_d,
+                                                                         grid_d, theta_d, dtheta_d, idx_d,
+                                                                         n);
+            }
+            else
+            {
+                spline_and_spread_kernel<4, particlesPerBlock2, FALSE> <<<nBlocks, dimBlock, 0, s>>>
+                                                                        (nx, ny, nz,
+                                                                         pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
+                                                                         pme->recipbox[XX][XX],
+                                                                         pme->recipbox[YY][XX],
+                                                                         pme->recipbox[YY][YY],
+                                                                         pme->recipbox[ZZ][XX],
+                                                                         pme->recipbox[ZZ][YY],
+                                                                         pme->recipbox[ZZ][ZZ],
+                                                                         fshx_d, fshy_d,
+                                                                         nnx_d, nny_d, nnz_d,
+                                                                         xptr_d, yptr_d, zptr_d,
+                                                                         coefficient_d,
+                                                                         grid_d, theta_d, dtheta_d, idx_d,
+                                                                         n);
+            }
             CU_LAUNCH_ERR("spline_and_spread_kernel");
             /*
-            spline_kernel<4, particlesPerBlock2><<<nBlocks, dimBlock, 0, s>>>
-                                                                    (nx, ny, nz,
-                                                                     pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
-                                                                     pme->recipbox[XX][XX],
-                                                                     pme->recipbox[YY][XX],
-                                                                     pme->recipbox[YY][YY],
-                                                                     pme->recipbox[ZZ][XX],
-                                                                     pme->recipbox[ZZ][YY],
-                                                                     pme->recipbox[ZZ][ZZ],
-                                                                     fshx_d, fshy_d,
-                                                                     nnx_d, nny_d, nnz_d,
-                                                                     xptr_d, yptr_d, zptr_d,
-                                                                     coefficient_d,
-                                                                     grid_d, theta_d, dtheta_d, idx_d,
-                                                                     n);
-            CU_LAUNCH_ERR("spline_kernel");
+            if (bCalcSplines)
+            {
+                spline_kernel<4, particlesPerBlock2><<<nBlocks, dimBlock, 0, s>>>
+                                                                        (nx, ny, nz,
+                                                                         pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
+                                                                         pme->recipbox[XX][XX],
+                                                                         pme->recipbox[YY][XX],
+                                                                         pme->recipbox[YY][YY],
+                                                                         pme->recipbox[ZZ][XX],
+                                                                         pme->recipbox[ZZ][YY],
+                                                                         pme->recipbox[ZZ][ZZ],
+                                                                         fshx_d, fshy_d,
+                                                                         nnx_d, nny_d, nnz_d,
+                                                                         xptr_d, yptr_d, zptr_d,
+                                                                         coefficient_d,
+                                                                         grid_d, theta_d, dtheta_d, idx_d,
+                                                                         n);
+                CU_LAUNCH_ERR("spline_kernel");
+            }
             spread_kernel<4, particlesPerBlock2><<<nBlocks, dimBlock, 0, s>>>
                                                                     (nx, ny, nz,
                                                                      pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,

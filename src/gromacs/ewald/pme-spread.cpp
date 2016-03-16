@@ -956,7 +956,7 @@ void spread_on_grid(struct gmx_pme_t *pme,
     if (pme->bGPU)
     {
         wallcycle_sub_start(wcycle, ewcsPME_INTERPCALCSPLINEANDSPREAD);
-        spread_on_grid_lines_gpu(pme, atc, grid_index, &grids->grid);
+        spread_on_grid_lines_gpu(pme, atc, grid_index, &grids->grid, bCalcSplines);
         wallcycle_sub_stop(wcycle, ewcsPME_INTERPCALCSPLINEANDSPREAD);
     //yupinov grid index here and everywhere else?
         //yupinov check flags

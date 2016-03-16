@@ -99,7 +99,8 @@ CUDA_FUNC_QUALIFIER void spread2_coefficients_bsplines_thread_gpu_2
 
 CUDA_FUNC_QUALIFIER void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
          int grid_index,
-         pmegrid_t *pmegrid) CUDA_FUNC_TERM
+         pmegrid_t *pmegrid,
+         const gmx_bool bCalcSplines) CUDA_FUNC_TERM
 
 
 CUDA_FUNC_QUALIFIER void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
