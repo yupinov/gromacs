@@ -102,26 +102,25 @@ __global__ void spline_and_spread_kernel
 
     __shared__ real theta_shared[3 * order * particlesPerBlock];
     __shared__ real dtheta_shared[3 * order * particlesPerBlock];
-    //printf("%d %d %d %d %d %d\n", blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z);
 
     int ithx, index_x, ithy, index_xy, ithz, index_xyz;
     real valx, valxy;
 
-    int localParticleIndex = threadIdx.x;
+    int localIndex = threadIdx.x;
 
-    int globalParticleIndex = blockIdx.x * particlesPerBlock + localParticleIndex;
+    int globalIndex = blockIdx.x * particlesPerBlock + localIndex;
     if (bCalcSplines)
     {
-        if ((globalParticleIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
+        if ((globalIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
         //yupinov - this is a single particle work!
         {
             // INTERPOLATION INDICES
 
             /* Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes */
             real tx, ty, tz;
-            tx = nx * ( xptr[globalParticleIndex] * rxx + yptr[globalParticleIndex] * ryx + zptr[globalParticleIndex] * rzx + 2.0f );
-            ty = ny * (                                   yptr[globalParticleIndex] * ryy + zptr[globalParticleIndex] * rzy + 2.0f );
-            tz = nz * (                                                                     zptr[globalParticleIndex] * rzz + 2.0f );
+            tx = nx * ( xptr[globalIndex] * rxx + yptr[globalIndex] * ryx + zptr[globalIndex] * rzx + 2.0f );
+            ty = ny * (                           yptr[globalIndex] * ryy + zptr[globalIndex] * rzy + 2.0f );
+            tz = nz * (                                                     zptr[globalIndex] * rzz + 2.0f );
 
             int tix, tiy, tiz;
             tix = (int)(tx);
@@ -131,26 +130,24 @@ __global__ void spline_and_spread_kernel
             * we never have a fraction correction in z.
             */
 
-            fxptr[localParticleIndex] = tx - tix + fshx[tix];
-            fyptr[localParticleIndex] = ty - tiy + fshy[tiy];
-            fzptr[localParticleIndex] = tz - tiz;
+            fxptr[localIndex] = tx - tix + fshx[tix];
+            fyptr[localIndex] = ty - tiy + fshy[tiy];
+            fzptr[localIndex] = tz - tiz;
 
-            idxxptr[localParticleIndex] = nnx[tix];
-            idxyptr[localParticleIndex] = nny[tiy];
-            idxzptr[localParticleIndex] = nnz[tiz];
+            idxxptr[localIndex] = nnx[tix];
+            idxyptr[localIndex] = nny[tiy];
+            idxzptr[localIndex] = nnz[tiz];
 
-            coefficient[localParticleIndex] = coefficientGlobal[globalParticleIndex]; //staging for both parts
+            coefficient[localIndex] = coefficientGlobal[globalIndex]; //staging for both parts
 
 
-            idx[globalParticleIndex * DIM + 0] = idxxptr[localParticleIndex];
-            idx[globalParticleIndex * DIM + 1] = idxyptr[localParticleIndex];
-            idx[globalParticleIndex * DIM + 2] = idxzptr[localParticleIndex];
-
-            //printf("set %d %d %d %d\n", globalParticleIndex, idxxptr[localParticleIndex], idxyptr[localParticleIndex], idxzptr[localParticleIndex]);
+            idx[globalIndex * DIM + 0] = idxxptr[localIndex];
+            idx[globalIndex * DIM + 1] = idxyptr[localIndex];
+            idx[globalIndex * DIM + 2] = idxzptr[localIndex];
 
             // MAKE BSPLINES
 
-            if (bDoSplines || (coefficient[localParticleIndex] != 0.0f)) //yupinov how bad is this conditional?
+            if (bDoSplines || (coefficient[localIndex] != 0.0f)) //yupinov how bad is this conditional?
             {
                 real dr, div;
                 real data[order];
@@ -160,7 +157,7 @@ __global__ void spline_and_spread_kernel
                 {
                     //dr  = fractx[i*DIM + j];
 
-                    dr = (j == 0) ? fxptr[localParticleIndex] : ((j == 1) ? fyptr[localParticleIndex] : fzptr[localParticleIndex]);
+                    dr = (j == 0) ? fxptr[localIndex] : ((j == 1) ? fyptr[localIndex] : fzptr[localIndex]);
 
                     /* dr is relative offset from lower cell limit */
                     data[order - 1] = 0;
@@ -180,7 +177,7 @@ __global__ void spline_and_spread_kernel
                         data[0] = div * (1 - dr) * data[0];
                     }
                     /* differentiate */
-                    const int thetaOffset = (j * particlesPerBlock + localParticleIndex) * order;
+                    const int thetaOffset = (j * particlesPerBlock + localIndex) * order;
                     dtheta_shared[thetaOffset] = -data[0];
 
                     #pragma unroll
@@ -208,8 +205,8 @@ __global__ void spline_and_spread_kernel
     #pragma unroll
                 for (int j = 0; j < DIM; j++)
                 {
-                    const int thetaOffset = (j * particlesPerBlock + localParticleIndex) * order;
-                    const int thetaGlobalOffset = (j * n + globalParticleIndex) * order;
+                    const int thetaOffset = (j * particlesPerBlock + localIndex) * order;
+                    const int thetaGlobalOffset = (j * n + globalIndex) * order;
     #pragma unroll
                     for (int z = 0; z < order; z++)
                     {
@@ -223,19 +220,17 @@ __global__ void spline_and_spread_kernel
     }
     else if (bSpread) //yupinov copied from spread_kernel - staging for a second part
     {
-        int globalParticleIndex = blockIdx.x * particlesPerBlock + localParticleIndex;
-        if ((globalParticleIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
+        if ((globalIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
         //yupinov - this is a single particle work!
         {
-
-            idxxptr[localParticleIndex] = idx[globalParticleIndex * DIM + 0];
-            idxyptr[localParticleIndex] = idx[globalParticleIndex * DIM + 1];
-            idxzptr[localParticleIndex] = idx[globalParticleIndex * DIM + 2];
+            idxxptr[localIndex] = idx[globalIndex * DIM + 0];
+            idxyptr[localIndex] = idx[globalIndex * DIM + 1];
+            idxzptr[localIndex] = idx[globalIndex * DIM + 2];
     #pragma unroll
             for (int j = 0; j < DIM; j++)
             {
-                const int thetaOffset = (j * particlesPerBlock + localParticleIndex) * order;
-                const int thetaGlobalOffset = (j * n + globalParticleIndex) * order;
+                const int thetaOffset = (j * particlesPerBlock + localIndex) * order;
+                const int thetaGlobalOffset = (j * n + globalIndex) * order;
     #pragma unroll
                 for (int z = 0; z < order; z++)
                 {
@@ -244,7 +239,7 @@ __global__ void spline_and_spread_kernel
                 }
             }
 
-            coefficient[localParticleIndex] = coefficientGlobal[globalParticleIndex];
+            coefficient[localIndex] = coefficientGlobal[globalIndex];
         }
         __syncthreads(); //yupinov do we need it?
     }
@@ -256,19 +251,18 @@ __global__ void spline_and_spread_kernel
     ithy = threadIdx.y;
     ithz = threadIdx.z;
 
-    //globalParticleIndex
     if (bSpread)
     {
-        if ((globalParticleIndex < n) && (coefficient[localParticleIndex] != 0.0f)) //yupinov store checks
+        if ((globalIndex < n) && (coefficient[localIndex] != 0.0f)) //yupinov store checks
         {
-            const int i0  = idxxptr[localParticleIndex] - offx; //?
-            const int j0  = idxyptr[localParticleIndex] - offy;
-            const int k0  = idxzptr[localParticleIndex] - offz;
+            const int i0  = idxxptr[localIndex] - offx; //?
+            const int j0  = idxyptr[localIndex] - offy;
+            const int k0  = idxzptr[localIndex] - offz;
 
             //printf ("%d %d %d %d %d %d %d\n", blockIdx.x, threadIdx.x, threadIdx.y, threadIdx.z, i0, j0, k0);
-            const real *thx = theta_shared + (0 * particlesPerBlock + localParticleIndex) * order;
-            const real *thy = theta_shared + (1 * particlesPerBlock + localParticleIndex) * order;
-            const real *thz = theta_shared + (2 * particlesPerBlock + localParticleIndex) * order;
+            const real *thx = theta_shared + (0 * particlesPerBlock + localIndex) * order;
+            const real *thy = theta_shared + (1 * particlesPerBlock + localIndex) * order;
+            const real *thz = theta_shared + (2 * particlesPerBlock + localIndex) * order;
 
             // switch (order) ?
 
@@ -276,7 +270,7 @@ __global__ void spline_and_spread_kernel
             for (ithx = 0; (ithx < order); ithx++)
             {
                 index_x = (i0 + ithx) * pny * pnz;
-                valx = coefficient[localParticleIndex] * thx[ithx];
+                valx = coefficient[localIndex] * thx[ithx];
                 /*
                 #pragma unroll
                 for (ithy = 0; (ithy < order); ithy++)
@@ -343,19 +337,19 @@ __global__ void spline_kernel
     __shared__ real theta_shared[3 * order * particlesPerBlock];
     __shared__ real dtheta_shared[3 * order * particlesPerBlock];
 
-    int localParticleIndex = threadIdx.x;
+    int localIndex = threadIdx.x;
 
-    int globalParticleIndex = blockIdx.x * particlesPerBlock + localParticleIndex;
-    if ((globalParticleIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
+    int globalIndex = blockIdx.x * particlesPerBlock + localIndex;
+    if ((globalIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
     //yupinov - this is a single particle work!
     {
         // INTERPOL_IDX
 
         /* Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes */
         real tx, ty, tz;
-        tx = nx * ( xptr[globalParticleIndex] * rxx + yptr[globalParticleIndex] * ryx + zptr[globalParticleIndex] * rzx + 2.0f );
-        ty = ny * (                                   yptr[globalParticleIndex] * ryy + zptr[globalParticleIndex] * rzy + 2.0f );
-        tz = nz * (                                                                     zptr[globalParticleIndex] * rzz + 2.0f );
+        tx = nx * ( xptr[globalIndex] * rxx + yptr[globalIndex] * ryx + zptr[globalIndex] * rzx + 2.0f );
+        ty = ny * (                           yptr[globalIndex] * ryy + zptr[globalIndex] * rzy + 2.0f );
+        tz = nz * (                                                     zptr[globalIndex] * rzz + 2.0f );
 
         int tix, tiy, tiz;
         tix = (int)(tx);
@@ -365,27 +359,24 @@ __global__ void spline_kernel
         * we never have a fraction correction in z.
         */
 
-        fxptr[localParticleIndex] = tx - tix + fshx[tix];
-        fyptr[localParticleIndex] = ty - tiy + fshy[tiy];
-        fzptr[localParticleIndex] = tz - tiz;
+        fxptr[localIndex] = tx - tix + fshx[tix];
+        fyptr[localIndex] = ty - tiy + fshy[tiy];
+        fzptr[localIndex] = tz - tiz;
 
-        idxxptr[localParticleIndex] = nnx[tix];
-        idxyptr[localParticleIndex] = nny[tiy];
-        idxzptr[localParticleIndex] = nnz[tiz];
+        idxxptr[localIndex] = nnx[tix];
+        idxyptr[localIndex] = nny[tiy];
+        idxzptr[localIndex] = nnz[tiz];
 
-        coefficient[localParticleIndex] = coefficientGlobal[globalParticleIndex]; //staging for both parts
+        coefficient[localIndex] = coefficientGlobal[globalIndex]; //staging for both parts
 
 
-        idx[globalParticleIndex * DIM + 0] = idxxptr[localParticleIndex];
-        idx[globalParticleIndex * DIM + 1] = idxyptr[localParticleIndex];
-        idx[globalParticleIndex * DIM + 2] = idxzptr[localParticleIndex];
-
-        //printf("set %d %d %d %d\n", globalParticleIndex, idxxptr[localParticleIndex], idxyptr[localParticleIndex], idxzptr[localParticleIndex]);
-
+        idx[globalIndex * DIM + 0] = idxxptr[localIndex];
+        idx[globalIndex * DIM + 1] = idxyptr[localIndex];
+        idx[globalIndex * DIM + 2] = idxzptr[localIndex];
 
         // CALCSPLINE
 
-        if (bDoSplines || (coefficient[localParticleIndex] != 0.0f)) //yupinov how bad is this conditional?
+        if (bDoSplines || (coefficient[localIndex] != 0.0f)) //yupinov how bad is this conditional?
         {
             real dr, div;
             real data[order];
@@ -395,7 +386,7 @@ __global__ void spline_kernel
             {
                 //dr  = fractx[i*DIM + j];
 
-                dr = (j == 0) ? fxptr[localParticleIndex] : ((j == 1) ? fyptr[localParticleIndex] : fzptr[localParticleIndex]);
+                dr = (j == 0) ? fxptr[localIndex] : ((j == 1) ? fyptr[localIndex] : fzptr[localIndex]);
 
                 /* dr is relative offset from lower cell limit */
                 data[order - 1] = 0;
@@ -415,7 +406,7 @@ __global__ void spline_kernel
                     data[0] = div * (1 - dr) * data[0];
                 }
                 /* differentiate */
-                const int thetaOffset = (j * particlesPerBlock + localParticleIndex) * order;
+                const int thetaOffset = (j * particlesPerBlock + localIndex) * order;
                 dtheta_shared[thetaOffset] = -data[0];
 
                 #pragma unroll
@@ -443,8 +434,8 @@ __global__ void spline_kernel
 #pragma unroll
             for (int j = 0; j < DIM; j++)
             {
-                const int thetaOffset = (j * particlesPerBlock + localParticleIndex) * order;
-                const int thetaGlobalOffset = (j * n + globalParticleIndex) * order;
+                const int thetaOffset = (j * particlesPerBlock + localIndex) * order;
+                const int thetaGlobalOffset = (j * n + globalIndex) * order;
 #pragma unroll
                 for (int z = 0; z < order; z++)
                 {
@@ -495,21 +486,21 @@ __global__ void spread_kernel
     int ithx, index_x, ithy, index_xy, ithz, index_xyz;
     real valx, valxy;
 
-    int localParticleIndex = threadIdx.x;
+    const int localIndex = threadIdx.x;
+    const int globalIndex = blockIdx.x * particlesPerBlock + localIndex;
 
-    int globalParticleIndex = blockIdx.x * particlesPerBlock + localParticleIndex;
-    if ((globalParticleIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
+    if ((globalIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
     //yupinov - this is a single particle work!
     {
 
-        idxxptr[localParticleIndex] = idx[globalParticleIndex * DIM + 0];
-        idxyptr[localParticleIndex] = idx[globalParticleIndex * DIM + 1];
-        idxzptr[localParticleIndex] = idx[globalParticleIndex * DIM + 2];
+        idxxptr[localIndex] = idx[globalIndex * DIM + 0];
+        idxyptr[localIndex] = idx[globalIndex * DIM + 1];
+        idxzptr[localIndex] = idx[globalIndex * DIM + 2];
 #pragma unroll
         for (int j = 0; j < DIM; j++)
         {
-            const int thetaOffset = (j * particlesPerBlock + localParticleIndex) * order;
-            const int thetaGlobalOffset = (j * n + globalParticleIndex) * order;
+            const int thetaOffset = (j * particlesPerBlock + localIndex) * order;
+            const int thetaGlobalOffset = (j * n + globalIndex) * order;
 #pragma unroll
             for (int z = 0; z < order; z++)
             {
@@ -518,7 +509,7 @@ __global__ void spread_kernel
             }
         }
 
-        coefficient[localParticleIndex] = coefficientGlobal[globalParticleIndex]; //staging for both parts
+        coefficient[localIndex] = coefficientGlobal[globalIndex]; //staging for both parts
     }
     __syncthreads(); //yupinov do we need it?
 
@@ -528,17 +519,16 @@ __global__ void spread_kernel
     ithy = threadIdx.y;
     ithz = threadIdx.z;
 
-    //globalParticleIndex
-    if ((globalParticleIndex < n) && (coefficient[localParticleIndex] != 0.0f)) //yupinov store checks
+    if ((globalIndex < n) && (coefficient[localIndex] != 0.0f)) //yupinov store checks
     {
-        const int i0  = idxxptr[localParticleIndex] - offx; //?
-        const int j0  = idxyptr[localParticleIndex] - offy;
-        const int k0  = idxzptr[localParticleIndex] - offz;
+        const int i0  = idxxptr[localIndex] - offx; //?
+        const int j0  = idxyptr[localIndex] - offy;
+        const int k0  = idxzptr[localIndex] - offz;
 
         //printf ("%d %d %d %d %d %d %d\n", blockIdx.x, threadIdx.x, threadIdx.y, threadIdx.z, i0, j0, k0);
-        const real *thx = theta_shared + (0 * particlesPerBlock + localParticleIndex) * order;
-        const real *thy = theta_shared + (1 * particlesPerBlock + localParticleIndex) * order;
-        const real *thz = theta_shared + (2 * particlesPerBlock + localParticleIndex) * order;
+        const real *thx = theta_shared + (0 * particlesPerBlock + localIndex) * order;
+        const real *thy = theta_shared + (1 * particlesPerBlock + localIndex) * order;
+        const real *thz = theta_shared + (2 * particlesPerBlock + localIndex) * order;
 
         // switch (order) ?
 
@@ -546,7 +536,7 @@ __global__ void spread_kernel
         for (ithx = 0; (ithx < order); ithx++)
         {
             index_x = (i0 + ithx) * pny * pnz;
-            valx = coefficient[localParticleIndex] * thx[ithx];
+            valx = coefficient[localIndex] * thx[ithx];
             /*
             #pragma unroll
             for (ithy = 0; (ithy < order); ithy++)
@@ -700,7 +690,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     //const int particlesPerBlock = warp_size;
     const int blockSize = 4 * warp_size; //yupinov: 3 > 4 > 2 on my GTX 660 TI;
-    const int particlesPerBlock = blockSize / order / order; //was 32, now 2 for order==4 ->round up=>
+    const int particlesPerBlock = blockSize / order / order;
     //duplicated below!
 
     //this is the number of particles for SPREAD, btw
