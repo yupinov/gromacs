@@ -36,9 +36,10 @@ static __global__ void pme_gather_kernel
 {
     /* sum forces for local particles */
 
-    // these are paricle indices
+    // these are particle indices - in shared and global memory
     const int localIndex = threadIdx.x;
     const int globalIndex = blockIdx.x * blockDim.x + threadIdx.x;
+
     const int particleDataSize = order * order;
     const int blockSize = particlesPerBlock * particleDataSize; //1 line per thread
     //yupinov -> this is actually not a full block size! with odd orders somethimg will break here!
@@ -51,6 +52,7 @@ static __global__ void pme_gather_kernel
     // spline Y/Z coordinates
     const int ithy = threadIdx.y;
     const int ithz = threadIdx.z;
+    //these are spline contribution indices - in shared memory, relative to the current particle, and to all the block's particles
     const int splineIndex = ithy * order + ithz;
     const int lineIndex = localIndex * particleDataSize + splineIndex;
 
