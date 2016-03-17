@@ -37,24 +37,22 @@ static __global__ void pme_gather_kernel
     /* sum forces for local particles */
 
     // these are particle indices - in shared and global memory
-    const int localIndex = threadIdx.x;
-    const int globalIndex = blockIdx.x * blockDim.x + threadIdx.x;
+    const int localIndex = threadIdx.z;
+    const int globalIndex = blockIdx.x * blockDim.z + threadIdx.z;
 
     const int particleDataSize = order * order;
     const int blockSize = particlesPerBlock * particleDataSize; //1 line per thread
-    //yupinov -> this is actually not a full block size! with odd orders somethimg will break here!
+    // with odd orders something might break here?
     __shared__ real fx[blockSize];
     __shared__ real fy[blockSize];
     __shared__ real fz[blockSize];
 
-    //__shared__ real gridValue[order * particlesPerBlock];
-
     // spline Y/Z coordinates
     const int ithy = threadIdx.y;
-    const int ithz = threadIdx.z;
-    //these are spline contribution indices - in shared memory, relative to the current particle, and to all the block's particles
-    const int splineIndex = ithy * order + ithz;
-    const int lineIndex = localIndex * particleDataSize + splineIndex;
+    const int ithz = threadIdx.x;
+    // these are spline contribution indices in shared memory
+    const int splineIndex = threadIdx.y * blockDim.x + threadIdx.x;   // relative to the current particle
+    const int lineIndex = (threadIdx.z * (blockDim.x * blockDim.y)) + splineIndex; // and to all the block's particles
 
     fx[lineIndex] = 0.0f;
     fy[lineIndex] = 0.0f;
@@ -64,9 +62,6 @@ static __global__ void pme_gather_kernel
 
     if (globalIndex < n)
     {
-        if (splineIndex == 0) //yupinov stupid
-            coefficient[localIndex] = coefficient_v[globalIndex];
-
         const int thetaOffset = globalIndex * order;
 
         for (int ithx = 0; (ithx < order); ithx++)
@@ -214,6 +209,7 @@ static __global__ void pme_gather_kernel
 
     if (splineIndex == 0) //yupinov stupid
     {
+        coefficient[localIndex] = coefficient_v[globalIndex];
         const int idim = globalIndex * DIM;
         const int sumIndex = localIndex * particleDataSize;
         fx[sumIndex] *= (real) nx;
@@ -375,7 +371,7 @@ void gather_f_bsplines_gpu_2
     const int blockSize = 4 * warp_size;
     const int particlesPerBlock = blockSize / order / order;
     dim3 nBlocks((n + blockSize - 1) / blockSize * order * order, 1, 1); //yupinov what does this mean?
-    dim3 dimBlock(particlesPerBlock, order, order);
+    dim3 dimBlock(order, order, particlesPerBlock);
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_gather, s);
 #endif
