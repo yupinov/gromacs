@@ -12,51 +12,20 @@
 #include "pme-internal.h"
 #include "pme-cuda.h"
 
-typedef real *splinevec[DIM];
-
 #ifdef DEBUG_PME_TIMINGS_GPU
 extern gpu_events gpu_events_gather;
-#endif
+#endif              \
 
-#define DO_FSPLINE(order)                      \
-    for (int ithx = 0; (ithx < order); ithx++)              \
-    {                                              \
-        const int index_x = (i0[globalIndex] + ithx) * pny * pnz;               \
-        const real tx = thx[thetaOffset + ithx];                       \
-        const real dx = dthx[thetaOffset + ithx];                      \
-                                               \
-        for (int ithy = 0; (ithy < order); ithy++)          \
-        {                                          \
-            const int index_xy = index_x+(j0[globalIndex]+ithy)*pnz;      \
-            const real ty = thy[thetaOffset + ithy];                  \
-            const real dy = dthy[thetaOffset + ithy];                 \
-            real fxy1 = 0.0f; \
-            real fz1 = 0.0f;		   \
-                                               \
-            /*for (int ithz = 0; (ithz < order); ithz++)    */  \
-            /*   gridValue[particlesPerBlock * ithz + localIndex] = grid[index_xy+(k0[globalIndex]+ithz)];*/\
-            for (int ithz = 0; (ithz < order); ithz++)      \
-            {                                      \
-                /*printf(" INDEX %d %d %d\n", (i0[i] + ithx), (j0[i]+ithy), (k0[i]+ithz));*/\
-                /*gridValue[localIndex] = grid[index_xy+(k0[globalIndex]+ithz)]; */ \
-                /*fxy1 += thz[thetaOffset + ithz] * gridValue[particlesPerBlock * ithz + localIndex];  */          \
-                /*fz1  += dthz[thetaOffset + ithz] * gridValue[particlesPerBlock * ithz + localIndex];    */       \
-                const real gridValue = grid[index_xy+(k0[globalIndex]+ithz)];  \
-                fxy1 += thz[thetaOffset + ithz] * gridValue; \
-                fz1  += dthz[thetaOffset + ithz] * gridValue; \
-            }                                      \
-            fx[localIndex] += dx * ty * fxy1;                      \
-            fy[localIndex] += tx * dy * fxy1;                      \
-            fz[localIndex] += tx * ty * fz1;                       \
-        }                                          \
-    }
-
-template <const int particlesPerBlock, const int order>
-//__launch_bounds__(4 * warp_size, 16)
+//yupinov - texture memory?
+template <
+        const int order,
+        const int particlesPerBlock
+        >
+__launch_bounds__(4 * warp_size, 16)
 //yupinov - with this, on my GTX 660 Ti, occupancy is 0.84, but it's slower by what, 20%?
 //same for minblocks = 14
 //without it, it's faster, but occupancy is 0.52 out of 62.5
-static __global__ void gather_f_bsplines_kernel
+static __global__ void pme_gather_kernel
 (const real * __restrict__ grid, const int n,
  const int nx, const int ny, const int nz, const int pnx, const int pny, const int pnz,
  const real rxx, const real ryx, const real ryy, const real rzx, const real rzy, const real rzz,
@@ -66,51 +35,191 @@ static __global__ void gather_f_bsplines_kernel
  const int * __restrict__ i0, const int * __restrict__ j0, const int * __restrict__ k0)
 {
     /* sum forces for local particles */
+
+    // these are paricle indices
     const int localIndex = threadIdx.x;
     const int globalIndex = blockIdx.x * blockDim.x + threadIdx.x;
-
-    __shared__ real fx[particlesPerBlock];
-    __shared__ real fy[particlesPerBlock];
-    __shared__ real fz[particlesPerBlock];
-    __shared__ real coefficient[particlesPerBlock];
+    const int particleDataSize = order * order;
+    const int blockSize = particlesPerBlock * particleDataSize; //1 line per thread
+    //yupinov -> this is actually not a full block size! with odd orders somethimg will break here!
+    __shared__ real fx[blockSize];
+    __shared__ real fy[blockSize];
+    __shared__ real fz[blockSize];
 
     //__shared__ real gridValue[order * particlesPerBlock];
 
+    // spline Y/Z coordinates
+    const int ithy = threadIdx.y;
+    const int ithz = threadIdx.z;
+    const int splineIndex = ithy * order + ithz;
+    const int lineIndex = localIndex * particleDataSize + splineIndex;
+
+    fx[lineIndex] = 0.0f;
+    fy[lineIndex] = 0.0f;
+    fz[lineIndex] = 0.0f;
+
+    __shared__ real coefficient[particlesPerBlock];
+
     if (globalIndex < n)
     {
-        coefficient[localIndex] = coefficient_v[globalIndex];
-        fx[localIndex] = 0.0f;
-        fy[localIndex] = 0.0f;
-        fz[localIndex] = 0.0f;
+        if (splineIndex == 0) //yupinov stupid
+            coefficient[localIndex] = coefficient_v[globalIndex];
+
         const int thetaOffset = globalIndex * order;
-        const int idim = globalIndex * DIM;
 
-        switch (order)
+        for (int ithx = 0; (ithx < order); ithx++)
         {
-            case 4:
-                DO_FSPLINE(4);
-                break;
-            case 5:
-                DO_FSPLINE(5);
-                break;
-            default:
-                DO_FSPLINE(order);
-                break;
+            const int index_x = (i0[globalIndex] + ithx) * pny * pnz;
+            const real tx = thx[thetaOffset + ithx];
+            const real dx = dthx[thetaOffset + ithx];
+
+            //for (int ithy = 0; (ithy < order); ithy++)
+            {
+                const int index_xy = index_x + (j0[globalIndex] + ithy) * pnz;
+                const real ty = thy[thetaOffset + ithy];
+                const real dy = dthy[thetaOffset + ithy];
+                real fxy1 = 0.0f;
+                real fz1 = 0.0f;
+
+                /*for (int ithz = 0; (ithz < order); ithz++)    */
+                /*   gridValue[particlesPerBlock * ithz + localIndex] = grid[index_xy + (k0[globalIndex] + ithz)];*/
+                //for (int ithz = 0; (ithz < order); ithz++)
+                {
+                    /*printf(" INDEX %d %d %d\n", (i0[i] + ithx), (j0[i]+ithy), (k0[i]+ithz));*/
+                    /*gridValue[localIndex] = grid[index_xy+(k0[globalIndex]+ithz)]; */
+                    /*fxy1 += thz[thetaOffset + ithz] * gridValue[particlesPerBlock * ithz + localIndex];  */
+                    /*fz1  += dthz[thetaOffset + ithz] * gridValue[particlesPerBlock * ithz + localIndex];    */
+                    const real gridValue = grid[index_xy + (k0[globalIndex] + ithz)];
+                    fxy1 += thz[thetaOffset + ithz] * gridValue;
+                    fz1  += dthz[thetaOffset + ithz] * gridValue;
+                }
+                //yupinov do a normal reduction here and below
+                fx[lineIndex] += dx * ty * fxy1;
+                fy[lineIndex] += tx * dy * fxy1;
+                fz[lineIndex] += tx * ty * fz1;
+                /*
+                atomicAdd(fx + localIndex, dx * ty * fxy1);
+                atomicAdd(fy + localIndex, tx * dy * fxy1);
+                atomicAdd(fz + localIndex, tx * ty * fz1);
+                */
+                /*
+                fx[localIndex] += dx * ty * fxy1;
+                fy[localIndex] += tx * dy * fxy1;
+                fz[localIndex] += tx * ty * fz1;
+                */
+            }
         }
+    }
+    __syncthreads(); // breaking globalIndex condition?
 
-        atc_f[idim + XX] += -coefficient[localIndex] * ( fx[localIndex] * nx * rxx );
-        atc_f[idim + YY] += -coefficient[localIndex] * ( fx[localIndex] * nx * ryx + fy[localIndex] * ny * ryy );
-        atc_f[idim + ZZ] += -coefficient[localIndex] * ( fx[localIndex] * nx * rzx + fy[localIndex] * ny * rzy + fz[localIndex] * nz * rzz );
+    // now particlesPerBlock have to sum order^2 contributions each
 
-        /* Since the energy and not forces are interpolated
-         * the net force might not be exactly zero.
-         * This can be solved by also interpolating F, but
-         * that comes at a cost.
-         * A better hack is to remove the net force every
-         * step, but that must be done at a higher level
-         * since this routine doesn't see all atoms if running
-         * in parallel. Don't know how important it is?  EL 990726
-         */
+    // do a simple reduction in shared mem
+    for (unsigned int s = 1; s < particleDataSize; s *= 2)//<<= 1)
+    {
+        if ((splineIndex % (2 * s) == 0) && (splineIndex + s < particleDataSize))
+        {
+            // order = 5 => splineIndex 24 (the last one) will get neighbour element without the second conditional
+            // unroll for different orders?
+            fx[lineIndex] += fx[lineIndex + s];
+            fy[lineIndex] += fy[lineIndex + s];
+            fz[lineIndex] += fz[lineIndex + s];
+        }
+        __syncthreads();
+    }
+
+
+    // below is the failed modified reduction #6
+    // from http://developer.download.nvidia.com/compute/cuda/1.1-Beta/x86_website/projects/reduction/doc/reduction.pdf
+    // (they have even better #7!)
+    /*
+    if (particleDataSize >= 512)
+    {
+        if (splineIndex < 256)
+        {
+            fx[lineIndex] += fx[lineIndex + 256];
+            fy[lineIndex] += fy[lineIndex + 256];
+            fz[lineIndex] += fz[lineIndex + 256];
+        }
+        __syncthreads();
+    }
+    if (particleDataSize >= 256)
+    {
+        if (splineIndex < 128)
+        {
+            fx[lineIndex] += fx[lineIndex + 128];
+            fy[lineIndex] += fy[lineIndex + 128];
+            fz[lineIndex] += fz[lineIndex + 128];
+        }
+        __syncthreads();
+    }
+    if (particleDataSize >= 128)
+    {
+        if (splineIndex < 64)
+        {
+            fx[lineIndex] += fx[lineIndex + 64];
+            fy[lineIndex] += fy[lineIndex + 64];
+            fz[lineIndex] += fz[lineIndex + 64];
+        }
+        __syncthreads();
+    }
+    //if (splineIndex < 32) //yupinov this is inside-warp-magic to not sync threads anymore - brings me mistakes?
+    {
+        if ((particleDataSize >= 64) && (splineIndex < 32))
+        {
+            fx[lineIndex] += fx[lineIndex + 32];
+            fy[lineIndex] += fy[lineIndex + 32];
+            fz[lineIndex] += fz[lineIndex + 32];
+        }
+        __syncthreads();
+        if ((particleDataSize >= 32) && (splineIndex < 16))
+        {
+            fx[lineIndex] += fx[lineIndex + 16];
+            fy[lineIndex] += fy[lineIndex + 16];
+            fz[lineIndex] += fz[lineIndex + 16];
+        }
+        __syncthreads();
+        if ((particleDataSize >= 16) && (splineIndex < 8))
+        {
+            fx[lineIndex] += fx[lineIndex +  8];
+            fy[lineIndex] += fy[lineIndex +  8];
+            fz[lineIndex] += fz[lineIndex +  8];
+        }
+        __syncthreads();
+        if ((particleDataSize >=  8) && (splineIndex < 4))
+        {
+            fx[lineIndex] += fx[lineIndex +  4];
+            fy[lineIndex] += fy[lineIndex +  4];
+            fz[lineIndex] += fz[lineIndex +  4];
+        }
+        __syncthreads();
+        if ((particleDataSize >=  4) && (splineIndex < 2))
+        {
+            fx[lineIndex] += fx[lineIndex +  2];
+            fy[lineIndex] += fy[lineIndex +  2];
+            fz[lineIndex] += fz[lineIndex +  2];
+        }
+        __syncthreads();
+        if ((particleDataSize >=  2) && (splineIndex == 0))
+        {
+            fx[lineIndex] += fx[lineIndex +  1];
+            fy[lineIndex] += fy[lineIndex +  1];
+            fz[lineIndex] += fz[lineIndex +  1];
+        }
+        __syncthreads();
+    }
+    */
+
+    if (splineIndex == 0) //yupinov stupid
+    {
+        const int idim = globalIndex * DIM;
+        const int sumIndex = localIndex * particleDataSize;
+        fx[sumIndex] *= (real) nx;
+        fy[sumIndex] *= (real) ny;
+        fz[sumIndex] *= (real) nz;
+        atc_f[idim + XX] += -coefficient[localIndex] * ( fx[sumIndex] * rxx );
+        atc_f[idim + YY] += -coefficient[localIndex] * ( fx[sumIndex] * ryx + fy[sumIndex] * ryy );
+        atc_f[idim + ZZ] += -coefficient[localIndex] * ( fx[sumIndex] * rzx + fy[sumIndex] * rzy + fz[sumIndex] * rzz );
     }
 }
 
@@ -262,12 +371,14 @@ void gather_f_bsplines_gpu_2
     real *dtheta_z_d = PMEFetchAndCopyRealArray(PME_ID_DTHZ, thread, dtheta_z_compacted, size_splines, ML_DEVICE, s);
 
     const int blockSize = 4 * warp_size;
-    int n_blocks = (n + blockSize - 1) / blockSize;
+    const int particlesPerBlock = blockSize / order / order;
+    dim3 nBlocks((n + blockSize - 1) / blockSize * order * order, 1, 1); //yupinov what does this mean?
+    dim3 dimBlock(particlesPerBlock, order, order);
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_gather, s);
 #endif
     if (order == 4) //yupinov
-        gather_f_bsplines_kernel<blockSize, 4> <<<n_blocks, blockSize, 0, s>>>
+        pme_gather_kernel<4, blockSize / 4 / 4> <<<nBlocks, dimBlock, 0, s>>>
           (grid_d,
            n,
            nx, ny, nz, pnx, pny, pnz,
@@ -276,6 +387,8 @@ void gather_f_bsplines_gpu_2
            dtheta_x_d, dtheta_y_d, dtheta_z_d,
            atc_f_d, coefficients_d,
            i0_d, j0_d, k0_d);
+    else
+        gmx_fatal(FARGS, "gather: orders other than 4 untested!");
     CU_LAUNCH_ERR("gather_f_bsplines_kernel");
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_stop(gpu_events_gather, s, ewcsPME_GATHER, 0);
