@@ -201,10 +201,11 @@ __global__ void pme_solve_kernel
     }
 }
 
-void solve_pme_yzx_gpu(struct gmx_pme_t *pme, t_complex *grid,
+void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                        real ewaldcoeff, real vol,
                        gmx_bool bEnerVir, int thread)
 {
+    const gmx_bool YZXOrdering = !pme->bGPUFFT;
     /* do recip sum over local cells in grid */
 
     if (thread != 0) //yupinov check everywhere inside!
@@ -225,7 +226,7 @@ void solve_pme_yzx_gpu(struct gmx_pme_t *pme, t_complex *grid,
                                       local_size);
     //yupinov replace with gmx_parallel_3dfft_complex_limits_gpu
 
-    const gmx_bool YZXOrdering = !pme->bGPUFFT;
+
 
     /* true: y major, z middle, x minor or continuous - the CPU FFT way */
     /* false: x major, y middle, z minor - the single rank GPU cuFFT way */

@@ -187,7 +187,7 @@ inline int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t gmx_unused *pme,
     return res;
 }
 
-CUDA_FUNC_QUALIFIER void solve_pme_yzx_gpu
+CUDA_FUNC_QUALIFIER void solve_pme_gpu
 (struct gmx_pme_t *pme, t_complex *grid,
                   real ewaldcoeff, real vol,
                   gmx_bool bEnerVir,
