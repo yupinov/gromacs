@@ -22,9 +22,6 @@ template <
         const int particlesPerBlock
         >
 __launch_bounds__(4 * warp_size, 16)
-//yupinov - with this, on my GTX 660 Ti, occupancy is 0.84, but it's slower by what, 20%?
-//same for minblocks = 14
-//without it, it's faster, but occupancy is 0.52 out of 62.5
 static __global__ void pme_gather_kernel
 (const real * __restrict__ grid, const int n,
  const int nx, const int ny, const int nz, const int pnx, const int pny, const int pnz,

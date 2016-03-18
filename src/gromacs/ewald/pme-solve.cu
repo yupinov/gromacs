@@ -25,7 +25,6 @@
 #ifdef DEBUG_PME_TIMINGS_GPU
 extern gpu_events gpu_events_solve;
 #endif
-typedef real *splinevec[DIM];
 
 
 
@@ -51,6 +50,8 @@ static const __constant__ real lb_scale_factor_symm_gpu[] = { 2.0/64, 12.0/64, 3
   tmp2 = sqrt_M_PI_d*mk*erfcf(mk);
   }*/
 
+#define THREADS_PER_BLOCK (4 * warp_size)
+
 template<
         const gmx_bool bEnerVir,
         const gmx_bool YZXOrdering
@@ -71,6 +72,17 @@ __global__ void pme_solve_kernel
  const real ewaldcoeff, const real volume,
  real * __restrict__ energy_v, real * __restrict__ virial_v)
 {
+    // if we're doing CPU FFT, the gridline is not necessarily padded to multiple 32 words
+    // we can pad it for GPU FFT (set alignment to 32 (or 16, again?)
+
+    int blockId = blockIdx.x
+             + blockIdx.y * gridDim.x
+             + gridDim.x * gridDim.y * blockIdx.z;
+    int threadId = blockId * (blockDim.x * blockDim.y * blockDim.z)
+                  + (threadIdx.z * (blockDim.x * blockDim.y))
+                  + (threadIdx.y * blockDim.x)
+                  + threadIdx.x;
+
     const real factor = M_PI * M_PI / (ewaldcoeff * ewaldcoeff);
 
     int maxkMinor = (nMinor + 1) / 2;
@@ -144,7 +156,7 @@ __global__ void pme_solve_kernel
             }
         }
 
-        if (notZeroPoint) // this skips just one point in the whole grid!
+        if (notZeroPoint) // this skips just one starting point in the whole grid on the rank 0. Not worth it to realign the grid?
         {     
             //for (int kx = kxstart; kx < kxend; kx++, p0++)
             {
@@ -250,18 +262,6 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     real rzy = pme->recipbox[ZZ][YY];
     real rzz = pme->recipbox[ZZ][ZZ];
 
-    const int blockSize = 4 * warp_size;
-    // GTX 660 Ti, 20160310
-    // number, occupancy, time from cudaEvents:
-    // 0.5  0.24  0.181
-    // 1    0.24  0.110
-    // 2    0.43  0.082
-    // 4    0.89  0.080
-    // 8    0.80  0.084
-
-    // Z-dimension is too small in CUDA limitations (64 on CC30?), so instead of major-middle-minor sizing we do minor-middle-major
-    dim3 blocks((local_ndata[minorDim] + blockSize - 1) / blockSize, local_ndata[middleDim], local_ndata[majorDim]);
-    dim3 threads(blockSize, 1, 1);
 
     //yupinov align minor dimension with cachelines!
 
@@ -281,6 +281,21 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     t_complex *grid_d = PMEFetchComplexArray(PME_ID_COMPLEX_GRID, thread, grid_size, ML_DEVICE);
     if (!pme->gpu->keepGPUDataBetweenR2CAndSolve)
         PMECopy(grid_d, grid, grid_size, ML_DEVICE, s);
+
+    // GTX 660 Ti, 20160310
+    // number, occupancy, time from cudaEvents:
+    // 0.5  0.24  0.181
+    // 1    0.24  0.110
+    // 2    0.43  0.082
+    // 4    0.89  0.080
+    // 8    0.80  0.084
+
+    // Z-dimension is too small in CUDA limitations (64 on CC30?), so instead of major-middle-minor sizing we do minor-middle-major
+    const int blockSize = THREADS_PER_BLOCK;
+    //yupinov what
+    dim3 blocks((local_ndata[minorDim] + blockSize - 1) / blockSize, local_ndata[middleDim], local_ndata[majorDim]);
+    dim3 threads(blockSize, 1, 1);
+
 
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_solve, s);
