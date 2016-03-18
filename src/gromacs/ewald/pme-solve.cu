@@ -210,8 +210,6 @@ void solve_pme_yzx_gpu(struct gmx_pme_t *pme, t_complex *grid,
     if (thread != 0) //yupinov check everywhere inside!
         return;
 
-    //yupinov bEnerVir
-
     cudaStream_t s = pme->gpu->pmeStream;
 
     struct pme_solve_work_t *work = &pme->solve_work[thread];
@@ -228,9 +226,11 @@ void solve_pme_yzx_gpu(struct gmx_pme_t *pme, t_complex *grid,
     //yupinov replace with gmx_parallel_3dfft_complex_limits_gpu
 
     const gmx_bool YZXOrdering = !pme->bGPUFFT;
-    //yupinov fix pecularities in solve
+
     /* true: y major, z middle, x minor or continuous - the CPU FFT way */
     /* false: x major, y middle, z minor - the single rank GPU cuFFT way */
+
+    //yupinov fix YZXOrdering pecularities in solve
     const int minorDim = !YZXOrdering ? ZZ : XX;
     const int middleDim = !YZXOrdering ? YY : ZZ;
     const int majorDim = !YZXOrdering ? XX : YY;
