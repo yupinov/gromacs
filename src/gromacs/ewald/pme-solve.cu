@@ -71,14 +71,14 @@ __global__ void pme_solve_kernel
  const real * __restrict__ BSplineModuleMinor,
  const real * __restrict__ BSplineModuleMajor,
  const real * __restrict__ BSplineModuleMiddle,
- t_complex * __restrict__ grid,
+ float2 * __restrict__ grid,
  const real ewaldcoeff, const real volume,
  real * __restrict__ energy_v, real * __restrict__ virial_v)
 {
     // if we're doing CPU FFT, the gridline is not necessarily padded to multiple 32 words
     // we can pad it for GPU FFT (set alignment to 32 (or 16, again?)
 
-    /*
+
     int blockId = blockIdx.x
              + blockIdx.y * gridDim.x
              + gridDim.x * gridDim.y * blockIdx.z;
@@ -86,7 +86,7 @@ __global__ void pme_solve_kernel
                   + (threadIdx.z * (blockDim.x * blockDim.y))
                   + (threadIdx.y * blockDim.x)
                   + threadIdx.x;
-    */
+
 
     int maxkMinor = (nMinor + 1) / 2;
     if (!YZXOrdering) //yupinov - don't really understand it
@@ -118,7 +118,7 @@ __global__ void pme_solve_kernel
 
         const real bMajorMiddle = real(M_PI) * volume * BSplineModuleMajor[kMajor] * BSplineModuleMiddle[kMiddle];
 
-        t_complex *p0 = grid + (indexMajor * localSizeMiddle + indexMiddle) * localSizeMinor + indexMinor;
+        float2 *p0 = grid + (indexMajor * localSizeMiddle + indexMiddle) * localSizeMinor + indexMinor;
 
         /* We should skip the k-space point (0,0,0) */
         /* Note that since here x is the minor index, local_offset[XX]=0 */ //yupinov what
@@ -178,15 +178,14 @@ __global__ void pme_solve_kernel
                 tmp1 = expf(tmp1);
                 real etermk = elfac * tmp1 * denom;
 
-                real d1 = p0->re;
-                real d2 = p0->im;
-
-                p0->re  = d1 * etermk;
-                p0->im  = d2 * etermk;
+                float2 gridValue = *p0;
+                gridValue.x *= etermk;
+                gridValue.y *= etermk;
+                *p0 = gridValue;
 
                 if (bEnerVir)
                 {
-                    real tmp1k = etermk * 2.0f * (d1 * d1 + d2 * d2);
+                    real tmp1k = 2.0f * (gridValue.x * gridValue.x + gridValue.y * gridValue.y) / etermk;
 
                     real vfactor = (ConstFactor + 1.0f / m2k) * 2.0f;
                     real ets2 = corner_fac * tmp1k;
@@ -281,7 +280,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     real *energy_d = PMEFetchRealArray(PME_ID_ENERGY, thread, energySize, ML_DEVICE);
     real *virial_d = PMEFetchRealArray(PME_ID_VIRIAL, thread, virialSize, ML_DEVICE);
 
-    t_complex *grid_d = PMEFetchComplexArray(PME_ID_COMPLEX_GRID, thread, grid_size, ML_DEVICE);
+    float2 *grid_d = (float2 *)PMEFetchComplexArray(PME_ID_COMPLEX_GRID, thread, grid_size, ML_DEVICE); //yupinov no need for special function
     if (!pme->gpu->keepGPUDataBetweenR2CAndSolve)
         PMECopy(grid_d, grid, grid_size, ML_DEVICE, s);
 
