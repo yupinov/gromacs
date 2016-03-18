@@ -58,6 +58,9 @@ extern gpu_events gpu_events_spread;
 //yupinov change allocations as well
 //have to debug all boolean params
 
+#define THREADS_PER_BLOCK   (4 * warp_size)
+#define MIN_BLOCKS_PER_MP   (16)
+
 template <
         const int order,
         const int particlesPerBlock,
@@ -65,6 +68,10 @@ template <
         const gmx_bool bDoSplines,   // bypassing conditional in the first part
         const gmx_bool bSpread       // second part
         >
+//#if GMX_PTX_ARCH <= 300
+__launch_bounds__(THREADS_PER_BLOCK, MIN_BLOCKS_PER_MP)
+//#endif
+//yupinov put bounds on separate kernels as well
 __global__ void pme_spline_and_spread_kernel
 (int nx, int ny, int nz,
  int start_ix, int start_iy, int start_iz,
@@ -689,7 +696,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
 
     //const int particlesPerBlock = warp_size;
-    const int blockSize = 4 * warp_size; //yupinov: 3 > 4 > 2 on my GTX 660 TI;
+    const int blockSize = THREADS_PER_BLOCK;
     const int particlesPerBlock = blockSize / order / order;
     //duplicated below!
 
