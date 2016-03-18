@@ -171,14 +171,10 @@ __global__ void pme_solve_kernel
 
                 if (bEnerVir)
                 {
-                    real m2invk = 1.0f / m2k;
+                    real tmp1k = etermk * 2.0f * (d1 * d1 + d2 * d2);
 
-                    real struct2 = 2.0f * (d1 * d1 + d2 * d2);
-
-                    real tmp1k = etermk * struct2;
-
+                    real vfactor = (factor + 1.0f / m2k) * 2.0f;
                     real ets2 = corner_fac * tmp1k;
-                    real vfactor = (factor * m2k + 1.0f) * 2.0f * m2invk;
                     energy += ets2;
 
                     real ets2vf  = ets2 * vfactor;
