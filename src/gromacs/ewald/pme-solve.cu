@@ -20,7 +20,7 @@
 #include "pme-solve.h"
 
 #define SQRT_M_PI real(2.0f / M_2_SQRTPI)
-//yupinov check if these constants workf
+//yupinov check if these constants work
 
 #ifdef DEBUG_PME_TIMINGS_GPU
 extern gpu_events gpu_events_solve;
@@ -52,6 +52,9 @@ static const __constant__ real lb_scale_factor_symm_gpu[] = { 2.0/64, 12.0/64, 3
 
 #define THREADS_PER_BLOCK (4 * warp_size)
 
+
+__constant__ __device__ real ConstFactor;
+
 template<
         const gmx_bool bEnerVir,
         const gmx_bool YZXOrdering
@@ -75,6 +78,7 @@ __global__ void pme_solve_kernel
     // if we're doing CPU FFT, the gridline is not necessarily padded to multiple 32 words
     // we can pad it for GPU FFT (set alignment to 32 (or 16, again?)
 
+    /*
     int blockId = blockIdx.x
              + blockIdx.y * gridDim.x
              + gridDim.x * gridDim.y * blockIdx.z;
@@ -82,8 +86,7 @@ __global__ void pme_solve_kernel
                   + (threadIdx.z * (blockDim.x * blockDim.y))
                   + (threadIdx.y * blockDim.x)
                   + threadIdx.x;
-
-    const real factor = M_PI * M_PI / (ewaldcoeff * ewaldcoeff);
+    */
 
     int maxkMinor = (nMinor + 1) / 2;
     if (!YZXOrdering) //yupinov - don't really understand it
@@ -113,7 +116,7 @@ __global__ void pme_solve_kernel
         if (!YZXOrdering)
             mMiddle = (kMiddle < (nMiddle + 1) / 2) ? kMiddle : (kMiddle - nMiddle);
 
-        const real bMajorMiddle = M_PI * volume * BSplineModuleMajor[kMajor] * BSplineModuleMiddle[kMiddle];
+        const real bMajorMiddle = real(M_PI) * volume * BSplineModuleMajor[kMajor] * BSplineModuleMiddle[kMiddle];
 
         t_complex *p0 = grid + (indexMajor * localSizeMiddle + indexMiddle) * localSizeMinor + indexMinor;
 
@@ -168,7 +171,7 @@ __global__ void pme_solve_kernel
 
                 m2k       = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
                 real denom = m2k * bMajorMiddle * BSplineModuleMinor[kMinor];
-                real tmp1  = -factor * m2k;
+                real tmp1  = -ConstFactor * m2k;
 
                 //calc_exponentials_q_one(elfac, denom, tmp1, eterm);
                 denom = 1.0f / denom;
@@ -185,7 +188,7 @@ __global__ void pme_solve_kernel
                 {
                     real tmp1k = etermk * 2.0f * (d1 * d1 + d2 * d2);
 
-                    real vfactor = (factor + 1.0f / m2k) * 2.0f;
+                    real vfactor = (ConstFactor + 1.0f / m2k) * 2.0f;
                     real ets2 = corner_fac * tmp1k;
                     energy += ets2;
 
@@ -296,7 +299,9 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     dim3 blocks((local_ndata[minorDim] + blockSize - 1) / blockSize, local_ndata[middleDim], local_ndata[majorDim]);
     dim3 threads(blockSize, 1, 1);
 
-
+    const real factor = (M_PI * M_PI) / (ewaldcoeff * ewaldcoeff);
+    cudaError_t stat = cudaMemcpyToSymbol(ConstFactor, &factor, sizeof(factor));
+    CU_RET_ERR(stat, "PME solve cudaMemcpyToSymbol");
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_solve, s);
 #endif
