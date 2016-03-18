@@ -65,7 +65,7 @@ template <
         const gmx_bool bDoSplines,   // bypassing conditional in the first part
         const gmx_bool bSpread       // second part
         >
-__global__ void spline_and_spread_kernel
+__global__ void pme_spline_and_spread_kernel
 (int nx, int ny, int nz,
  int start_ix, int start_iy, int start_iz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
@@ -300,7 +300,7 @@ template <
         const int particlesPerBlock,
         const gmx_bool bDoSplines
         >
-__global__ void spline_kernel
+__global__ void pme_spline_kernel
 (int nx, int ny, int nz,
  int start_ix, int start_iy, int start_iz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
@@ -449,7 +449,7 @@ __global__ void spline_kernel
 
 
 template <const int order, const int particlesPerBlock>
-__global__ void spread_kernel
+__global__ void pme_spread_kernel
 (int nx, int ny, int nz,
  int start_ix, int start_iy, int start_iz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
@@ -709,7 +709,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                         gmx_fatal(FARGS, "the code for bDoSplines==true was not tested!");
                     else
                     {
-                        spline_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocks, dimBlock, 0, s>>>
+                        pme_spline_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocks, dimBlock, 0, s>>>
                                                                             (nx, ny, nz,
                                                                              pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
                                                                              pme->recipbox[XX][XX],
@@ -726,11 +726,11 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                                                                              n);
                     }
 
-                    CU_LAUNCH_ERR("spline_kernel");
+                    CU_LAUNCH_ERR("pme_spline_kernel");
                 }
                 if (bSpread)
                 {
-                    spread_kernel<4, blockSize / 4 / 4> <<<nBlocks, dimBlock, 0, s>>>
+                    pme_spread_kernel<4, blockSize / 4 / 4> <<<nBlocks, dimBlock, 0, s>>>
                                                                             (nx, ny, nz,
                                                                              pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
                                                                              pme->recipbox[XX][XX],
@@ -745,7 +745,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                                                                              grid_d, theta_d, dtheta_d, idx_d,
                                                                              n);
 
-                    CU_LAUNCH_ERR("spread_kernel");
+                    CU_LAUNCH_ERR("pme_spread_kernel");
                 }
             }
             else // a single monster kernel here
@@ -758,7 +758,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                     {
                         if (bSpread)
                         {
-                            spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, FALSE, TRUE> <<<nBlocks, dimBlock, 0, s>>>
+                            pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, FALSE, TRUE> <<<nBlocks, dimBlock, 0, s>>>
                                                                             (nx, ny, nz,
                                                                              pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
                                                                              pme->recipbox[XX][XX],
@@ -781,7 +781,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                 else
                     gmx_fatal(FARGS, "the code for bCalcSplines==false was not tested!"); //yupinov
 
-                CU_LAUNCH_ERR("spline_and_spread_kernel");
+                CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
 
             }
             break;

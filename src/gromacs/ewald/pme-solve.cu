@@ -57,7 +57,7 @@ template<
         //yupinov - now GPU solve works in a XYZ mode, while original solve worked in YZX order;
         // should be set to true when we do multi-rank GPU PME
         >
-__global__ void solve_pme_kernel
+__global__ void pme_solve_kernel
 (const int localCountMajor, const int localCountMiddle, const int localCountMinor,
  const int localOffsetMinor, const int localOffsetMajor, const int localOffsetMiddle,
  const int localSizeMinor, /*const int localSizeMajor,*/ const int localSizeMiddle,
@@ -291,7 +291,7 @@ void solve_pme_yzx_gpu(struct gmx_pme_t *pme, t_complex *grid,
     if (YZXOrdering)
     {
         if (bEnerVir)
-            solve_pme_kernel<TRUE, TRUE> <<<blocks, threads, 0, s>>>
+            pme_solve_kernel<TRUE, TRUE> <<<blocks, threads, 0, s>>>
               (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim],
                local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
                local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
@@ -301,7 +301,7 @@ void solve_pme_yzx_gpu(struct gmx_pme_t *pme, t_complex *grid,
                grid_d, ewaldcoeff, vol,
                energy_d, virial_d);
         else
-            solve_pme_kernel<FALSE, TRUE> <<<blocks, threads, 0, s>>>
+            pme_solve_kernel<FALSE, TRUE> <<<blocks, threads, 0, s>>>
               (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
                local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
                local_size[minorDim], /*local_size[majorDim],*/local_size[middleDim],
@@ -314,7 +314,7 @@ void solve_pme_yzx_gpu(struct gmx_pme_t *pme, t_complex *grid,
     else
     {
         if (bEnerVir)
-            solve_pme_kernel<TRUE, FALSE> <<<blocks, threads, 0, s>>>
+            pme_solve_kernel<TRUE, FALSE> <<<blocks, threads, 0, s>>>
               (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim],
                local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
                local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
@@ -324,7 +324,7 @@ void solve_pme_yzx_gpu(struct gmx_pme_t *pme, t_complex *grid,
                grid_d, ewaldcoeff, vol,
                energy_d, virial_d);
         else
-            solve_pme_kernel<FALSE, FALSE> <<<blocks, threads, 0, s>>>
+            pme_solve_kernel<FALSE, FALSE> <<<blocks, threads, 0, s>>>
               (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
                local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
                local_size[minorDim], /*local_size[majorDim],*/local_size[middleDim],
@@ -334,7 +334,7 @@ void solve_pme_yzx_gpu(struct gmx_pme_t *pme, t_complex *grid,
                grid_d, ewaldcoeff, vol,
                energy_d, virial_d);
     }
-    CU_LAUNCH_ERR("solve_pme_kernel");
+    CU_LAUNCH_ERR("pme_solve_kernel");
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_stop(gpu_events_solve, s, ewcsPME_SOLVE, 0);
 #endif

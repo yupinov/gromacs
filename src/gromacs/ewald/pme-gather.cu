@@ -387,7 +387,7 @@ void gather_f_bsplines_gpu_2
            i0_d, j0_d, k0_d);
     else
         gmx_fatal(FARGS, "gather: orders other than 4 untested!");
-    CU_LAUNCH_ERR("gather_f_bsplines_kernel");
+    CU_LAUNCH_ERR("pme_gather_kernel");
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_stop(gpu_events_gather, s, ewcsPME_GATHER, 0);
 #endif
