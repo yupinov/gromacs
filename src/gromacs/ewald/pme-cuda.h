@@ -24,7 +24,7 @@ enum PMEDataID
     PME_ID_THETA = 1, PME_ID_DTHETA, PME_ID_FRACTX, PME_ID_COEFFICIENT,
 
     //yupinov fix unnecesary memory usage
-    PME_ID_REAL_GRID_WITH_OVERLAP, // this is pme->grid
+    //PME_ID_REAL_GRID_WITH_OVERLAP, // this is pme->grid
     PME_ID_REAL_GRID, //this is fftgrid
 #ifndef PME_CUFFT_INPLACE
     PME_ID_COMPLEX_GRID, //this is cfftgrid
@@ -51,6 +51,13 @@ enum PMEDataID
 #define PME_ID_COMPLEX_GRID PME_ID_REAL_GRID
 //fftgdrid and cfftgrid are the same- doesn't seem to affect the performance much
 #endif
+
+//yupinov remove this
+#ifndef PME_ID_REAL_GRID_WITH_OVERLAP
+#define PME_ID_REAL_GRID_WITH_OVERLAP PME_ID_REAL_GRID
+#endif
+
+
 
 enum MemLocType
 {
