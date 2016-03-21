@@ -76,7 +76,6 @@ __global__ void pme_spline_and_spread_kernel
 (int nx, int ny, int nz,
  int start_ix, int start_iy, int start_iz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
- //int *g2tx, int *g2ty, int *g2tz,
  const real * __restrict__ fshx, const real * __restrict__ fshy,
  const int * __restrict__ nnx, const int * __restrict__ nny, const int * __restrict__ nnz,
  const real * __restrict__ xptr, const real * __restrict__ yptr, const real * __restrict__ zptr,
@@ -455,6 +454,72 @@ __global__ void pme_spline_kernel
 }
 
 
+/*
+template <
+        const int order,
+        const int particlesPerBlock,
+        const gmx_bool bDoSplines
+        >
+*/
+__global__ void pme_wrap_kernel
+(int nx, int ny, int nz, int order,
+  real * __restrict__ grid)
+{
+    // WRAP
+    //yupinov unwrap as well
+    const int overlap = order - 1;
+    const int pnx = nx + overlap;
+    const int pny = ny + overlap;
+    const int pnz = nz + overlap;
+
+    /* Add periodic overlap in z */
+    const int offset_z = nz;
+    for (int ix = 0; ix < pnx; ix++)
+    {
+        for (int iy = 0; iy < pny; iy++)
+        {
+            for (int iz = 0; iz < overlap; iz++)
+            {
+                grid[(ix * pny + iy) * pnz + iz] += grid[(ix * pny + iy) * pnz + iz + offset_z];
+            }
+        }
+    }
+
+    //if (pme->nnodes_minor == 1)  //yupinov no MPI
+    {
+        const int offset_y = ny * pnz;
+        for (int ix = 0; ix < pnx; ix++)
+        {
+            for (int iy = 0; iy < overlap; iy++)
+            {
+                for (int iz = 0; iz < nz; iz++)
+                {
+                    grid[(ix * pny + iy) * pnz + iz] += grid[(ix * pny + iy) * pnz + iz + offset_y];
+                }
+            }
+        }
+    }
+
+    //if (pme->nnodes_major == 1) //yupinov no MPI
+    {
+        //ny_x = (pme->nnodes_minor == 1 ? ny : pme->pmegrid_ny);
+        const int ny_x = ny;
+        const int offset_x = nx * pny * pnz;
+
+        for (int ix = 0; ix < overlap; ix++)
+        {
+            for (int iy = 0; iy < ny_x; iy++)
+            {
+                for (int iz = 0; iz < nz; iz++)
+                {
+                    grid[(ix * pny + iy) * pnz + iz] += grid[(ix * pny + iy) * pnz + iz + offset_x];
+                }
+            }
+        }
+    }
+}
+
+
 template <const int order, const int particlesPerBlock>
 __global__ void pme_spread_kernel
 (int nx, int ny, int nz,
@@ -789,7 +854,11 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                     gmx_fatal(FARGS, "the code for bCalcSplines==false was not tested!"); //yupinov
 
                 CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
-
+            }
+            if (pme->bGPUSingle)
+            {
+                pme_wrap_kernel<<<1, 1, 0, s>>>(nx, ny, nz, order, grid_d);
+                CU_LAUNCH_ERR("pme_wrap_kernel");
             }
             break;
 

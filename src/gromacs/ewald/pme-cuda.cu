@@ -55,7 +55,7 @@ static bool debugMemoryPrint = false;
 template <typename T>
 T *PMEFetch(PMEDataID id, int unusedTag, int size, MemLocType location)
 {
-    //yupinov different size mistake!
+    //yupinov grid resize mistake!
     assert(unusedTag == 0);
     cudaError_t stat;
     int i = (location * PME_ID_END_INVALID + id) * MAXTAGS + unusedTag;
