@@ -582,7 +582,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     pme->bGPUSingle = pme->bGPU && (pme->nnodes == 1);
     // a convenience variable
 
-    pme->bGPUFFT = bGPUSingle;
+    pme->bGPUFFT = pme->bGPUSingle;
     // currently cuFFT is only used for a single rank
     // some Internet people have succeeded in MPI cuFFT, but I dare not venture there - Iupinov
 
