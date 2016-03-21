@@ -72,7 +72,7 @@ __global__ void pme_solve_kernel
  const real * __restrict__ BSplineModuleMajor,
  const real * __restrict__ BSplineModuleMiddle,
  float2 * __restrict__ grid,
- const real ewaldcoeff, const real volume,
+ const real volume,
  real * __restrict__ energy_v, real * __restrict__ virial_v)
 {
     // if we're doing CPU FFT, the gridline is not necessarily padded to multiple 32 words
@@ -121,7 +121,9 @@ __global__ void pme_solve_kernel
         float2 *p0 = grid + (indexMajor * localSizeMiddle + indexMiddle) * localSizeMinor + indexMinor;
 
         /* We should skip the k-space point (0,0,0) */
-        /* Note that since here x is the minor index, local_offset[XX]=0 */ //yupinov what
+        /* Note that since here x is the minor index, local_offset[XX]=0 */
+
+        //yupinov fix dimension terminology
 
         int kMinor = localOffsetMinor + indexMinor;
         const gmx_bool notZeroPoint = (kMinor > 0 || kMajor > 0 || kMiddle > 0);
@@ -209,8 +211,6 @@ __global__ void pme_solve_kernel
                     virial_v[6 * i + 5] = viryz;
                 }
             }
-            //yupinov - now each thread does Re and Im of a grid point
-            // => 16 threads in a block? should stride?
         }
     }
 }
@@ -314,7 +314,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
                elfac,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
-               grid_d, ewaldcoeff, vol,
+               grid_d, vol,
                energy_d, virial_d);
         else
             pme_solve_kernel<FALSE, TRUE> <<<blocks, threads, 0, s>>>
@@ -324,7 +324,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
                elfac,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
-               grid_d, ewaldcoeff, vol,
+               grid_d, vol,
                energy_d, virial_d);
     }
     else
@@ -337,7 +337,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
                elfac,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
-               grid_d, ewaldcoeff, vol,
+               grid_d, vol,
                energy_d, virial_d);
         else
             pme_solve_kernel<FALSE, FALSE> <<<blocks, threads, 0, s>>>
@@ -347,7 +347,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
                elfac,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
-               grid_d, ewaldcoeff, vol,
+               grid_d, vol,
                energy_d, virial_d);
     }
     CU_LAUNCH_ERR("pme_solve_kernel");
