@@ -575,10 +575,14 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
         pme->bPPnode = (cr->duty & DUTY_PP);
     }
 
-    pme->bGPU    = bPMEGPU && (pme->nodeid == 0);
-    // only a single rank does PME GPU currently - small steps
+    pme->bGPU = bPMEGPU && (pme->nodeid == 0);
+    // only a single rank should do PME GPU currently - small steps
+    // currently PME GPU mdrun with MPI crashes anyway :(
 
-    pme->bGPUFFT = pme->bGPU && (pme->nnodes == 1);
+    pme->bGPUSingle = pme->bGPU && (pme->nnodes == 1);
+    // a convenience variable
+
+    pme->bGPUFFT = bGPUSingle;
     // currently cuFFT is only used for a single rank
     // some Internet people have succeeded in MPI cuFFT, but I dare not venture there - Iupinov
 
@@ -1071,10 +1075,11 @@ int gmx_pme_do(struct gmx_pme_t *pme,
         {
             //yupinov - these are not checked anywhere yet
             //check for spread and solve flags here as well!
-            gmx_bool keepGPUDataBetweenSpreadAndR2C = false; //yupinov -> no wrap kernels! different grids! pme->bGPUFFT;
-            gmx_bool keepGPUDataBetweenR2CAndSolve = pme->bGPUFFT && (grid_index < DO_Q); // no LJ support
-            gmx_bool keepGPUDataBetweenSolveAndC2R = keepGPUDataBetweenR2CAndSolve && bBackFFT;
-            gmx_bool keepGPUDataBetweenC2RAndGather = false; //pme->bGPUFFT, bCalcF!
+            // bGPUSingle
+            gmx_bool keepGPUDataBetweenSpreadAndR2C = pme->bGPUSingle && false; //yupinov -> no wrap kernels! different grids! pme->bGPUFFT;
+            gmx_bool keepGPUDataBetweenR2CAndSolve = pme->bGPUSingle && pme->bGPUFFT && (grid_index < DO_Q); // no LJ support
+            gmx_bool keepGPUDataBetweenSolveAndC2R = pme->bGPUSingle && keepGPUDataBetweenR2CAndSolve && bBackFFT;
+            gmx_bool keepGPUDataBetweenC2RAndGather = pme->bGPUSingle && false; //pme->bGPUFFT, bCalcF!
             pme_gpu_update_flags(pme->gpu,
                                  keepGPUDataBetweenSpreadAndR2C,
                                  keepGPUDataBetweenR2CAndSolve,
