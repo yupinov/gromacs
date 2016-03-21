@@ -76,8 +76,7 @@ __global__ void pme_solve_kernel
  real * __restrict__ energy_v, real * __restrict__ virial_v)
 {
     // if we're doing CPU FFT, the gridline is not necessarily padded to multiple 32 words
-    // we can pad it for GPU FFT (set alignment to 32 (or 16, again?)
-
+    // we can pad it for GPU FFT (set alignment to 32 (or 16 because it's t_complex aka float2?)
 
     int blockId = blockIdx.x
              + blockIdx.y * gridDim.x
@@ -86,7 +85,6 @@ __global__ void pme_solve_kernel
                   + (threadIdx.z * (blockDim.x * blockDim.y))
                   + (threadIdx.y * blockDim.x)
                   + threadIdx.x;
-
 
     int maxkMinor = (nMinor + 1) / 2;
     if (!YZXOrdering) //yupinov - don't really understand it
@@ -105,6 +103,10 @@ __global__ void pme_solve_kernel
     {
         //yupinov do a reduction!
 
+        //if (blockId < 60)
+        //    if (threadId != (indexMajor * localSizeMiddle + indexMiddle) * localSizeMinor + indexMinor)
+        //        printf("%d: threadId %d handles grid cell %d\n", blockId, threadId, (indexMajor * localSizeMiddle + indexMiddle) * localSizeMinor + indexMinor);
+
         //yupinov :localoffset might be a failure point for MPI!
 
         const int kMajor = indexMajor + localOffsetMajor;
@@ -118,7 +120,10 @@ __global__ void pme_solve_kernel
 
         const real bMajorMiddle = real(M_PI) * volume * BSplineModuleMajor[kMajor] * BSplineModuleMiddle[kMiddle];
 
+        // global complex grid pointer
+        // the offset should be equal to threadId
         float2 *p0 = grid + (indexMajor * localSizeMiddle + indexMiddle) * localSizeMinor + indexMinor;
+
 
         /* We should skip the k-space point (0,0,0) */
         /* Note that since here x is the minor index, local_offset[XX]=0 */
@@ -284,6 +289,10 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     if (!pme->gpu->keepGPUDataBetweenR2CAndSolve)
         PMECopy(grid_d, grid, grid_size, ML_DEVICE, s);
 
+    const real factor = (M_PI * M_PI) / (ewaldcoeff * ewaldcoeff);
+    cudaError_t stat = cudaMemcpyToSymbol(ConstFactor, &factor, sizeof(factor));
+    CU_RET_ERR(stat, "PME solve cudaMemcpyToSymbol");
+
     // GTX 660 Ti, 20160310
     // number, occupancy, time from cudaEvents:
     // 0.5  0.24  0.181
@@ -294,13 +303,17 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
 
     // Z-dimension is too small in CUDA limitations (64 on CC30?), so instead of major-middle-minor sizing we do minor-middle-major
     const int blockSize = THREADS_PER_BLOCK;
-    //yupinov what
+    /*
     dim3 blocks((local_ndata[minorDim] + blockSize - 1) / blockSize, local_ndata[middleDim], local_ndata[majorDim]);
     dim3 threads(blockSize, 1, 1);
+    */
+    //yupinov check ALIGNMENT with CPU/GPU FFT grid sizes!
+    const int gridLineSize = local_size[minorDim];
+    const int gridLinesPerBlock = (blockSize + gridLineSize - 1) / gridLineSize;
+    dim3 blocks((gridLineSize + blockSize - 1) / blockSize, local_ndata[middleDim] / gridLinesPerBlock, local_ndata[majorDim]); //ndata or size?
+    dim3 threads(gridLineSize, gridLinesPerBlock, 1);
 
-    const real factor = (M_PI * M_PI) / (ewaldcoeff * ewaldcoeff);
-    cudaError_t stat = cudaMemcpyToSymbol(ConstFactor, &factor, sizeof(factor));
-    CU_RET_ERR(stat, "PME solve cudaMemcpyToSymbol");
+
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_solve, s);
 #endif
