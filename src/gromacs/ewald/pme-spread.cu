@@ -473,26 +473,33 @@ __global__ void pme_wrap_kernel
      const int pnx,const int pny, const int pnz,
      real * __restrict__ grid)
 {
+    int threadId = blockIdx.x * blockDim.x + threadIdx.x;
     // WRAP
     //should use ldg.128 for order <= 5
     //yupinov unwrap as well
     const int overlap = order - 1;
+
 
     if (stage == 1)
     {
         /* Add periodic overlap in z */
         // pnx * pny operations
         const int offset_z = nz;
-        for (int ix = 0; ix < pnx; ix++)
+        //for (int ix = 0; ix < pnx; ix++)
+        const int ix = (threadId / overlap) / pny;
         {
-            for (int iy = 0; iy < pny; iy++)
+            const int iy = (threadId / overlap) % pny;
+            //for (int iy = 0; iy < pny; iy++)
             {
-                for (int iz = 0; iz < overlap; iz++)
+                const int iz = (threadId % overlap);
+                //for (int iz = 0; iz < overlap; iz++)
+                if (threadId < overlap * pnx * pny)
                 {
-                    //grid[(ix * pny + iy) * pnz + iz] += grid[(ix * pny + iy) * pnz + iz + offset_z];
                     const int address = (ix * pny + iy) * pnz + iz;
-                    const real gridValue = grid[address + offset_z];
-                    atomicAdd(grid + address, gridValue);
+                    //threadId?
+                    grid[address] += grid[address + offset_z];
+                    //const real gridValue = grid[address + offset_z];
+                    //atomicAdd(grid + address, gridValue);
                 }
             }
         }
@@ -710,6 +717,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     //int nx = pmegrid->s[XX], ny = pmegrid->s[YY], nz = pmegrid->s[ZZ];
     const int order = pmegrid->order;
+    const int overlap = order - 1;
 
     ivec local_ndata, local_size, local_offset;
     /*
@@ -902,11 +910,14 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
             }
             if (pme->bGPUSingle)
             {
-                const int nBlocks = 1;
-                const int nThreads = 1;
-                pme_wrap_kernel<4, 1> <<<nBlocks, nThreads, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
-                pme_wrap_kernel<4, 2> <<<nBlocks, nThreads, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
-                pme_wrap_kernel<4, 3> <<<nBlocks, nThreads, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+                const int workCells[] = {pnx * pny * overlap,  nz * pnx * overlap, nz * ny * overlap};
+                const int wrapBlockSize = 4 * warp_size; //yupinov thsi is everywhere! and arichitecture-specific
+                int nWrapBlocks[3];
+                for (int i = 0; i < 3; i++)
+                    nWrapBlocks[i] = (workCells[i] + wrapBlockSize - 1) / wrapBlockSize;
+                pme_wrap_kernel<4, 1> <<<nWrapBlocks[0], wrapBlockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+                pme_wrap_kernel<4, 2> <<<1, 1, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+                pme_wrap_kernel<4, 3> <<<1, 1, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
                 CU_LAUNCH_ERR("pme_wrap_kernel");
             }
             break;
