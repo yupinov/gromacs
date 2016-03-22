@@ -534,29 +534,34 @@ __global__ void pme_wrap_kernel
         }
 
     if (stage == 3)
-    {
-        // nz * ny operations
-        //if (pme->nnodes_major == 1) //yupinov no MPI
+        if (threadId < overlap * ny * nz)
         {
-            //ny_x = (pme->nnodes_minor == 1 ? ny : pme->pmegrid_ny);
-            const int ny_x = ny;
-            const int offset_x = nx * pny * pnz;
-
-            for (int ix = 0; ix < overlap; ix++)
+            // nz * ny operations
+            //if (pme->nnodes_major == 1) //yupinov no MPI
             {
-                for (int iy = 0; iy < ny_x; iy++) // not pny
+                //ny_x = (pme->nnodes_minor == 1 ? ny : pme->pmegrid_ny);
+                const int ny_x = ny;
+                const int offset_x = nx * pny * pnz;
+
+                const int ix = (threadId / nz) / ny_x;
+                //for (int ix = 0; ix < overlap; ix++)
                 {
-                    for (int iz = 0; iz < nz; iz++) // not pnz
+                    const int iy = (threadId / nz) % ny_x;
+                    //for (int iy = 0; iy < ny_x; iy++) // not pny
                     {
-                        //grid[(ix * pny + iy) * pnz + iz] += grid[(ix * pny + iy) * pnz + iz + offset_x];
-                        const int address = (ix * pny + iy) * pnz + iz;
-                        const real gridValue = grid[address + offset_x];
-                        atomicAdd(grid + address, gridValue);
+                        const int iz = (threadId % nz);
+                        //for (int iz = 0; iz < nz; iz++) // not pnz
+                        {
+                            const int address = (ix * pny + iy) * pnz + iz;
+                            grid[address] += grid[address + offset_x];
+
+                            //const real gridValue = grid[address + offset_x];
+                            //atomicAdd(grid + address, gridValue);
+                        }
                     }
                 }
             }
         }
-    }
 }
 
 
@@ -922,7 +927,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                     nWrapBlocks[i] = (workCells[i] + wrapBlockSize - 1) / wrapBlockSize;
                 pme_wrap_kernel<4, 1> <<<nWrapBlocks[0], wrapBlockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
                 pme_wrap_kernel<4, 2> <<<nWrapBlocks[1], wrapBlockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
-                pme_wrap_kernel<4, 3> <<<1, 1, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+                pme_wrap_kernel<4, 3> <<<nWrapBlocks[2], wrapBlockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
                 CU_LAUNCH_ERR("pme_wrap_kernel");
             }
             break;
