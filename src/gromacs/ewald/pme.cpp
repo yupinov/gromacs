@@ -1077,6 +1077,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
             //yupinov - these are not checked anywhere yet
             //check for spread and solve flags here as well!
             // bGPUSingle
+            //yupinov set to true to segfault
             keepGPUDataBetweenSpreadAndR2C = pme->bGPUSingle && pme->bGPUFFT && FALSE; //yupinov -> no wrap kernels! different grids!
             gmx_bool keepGPUDataBetweenR2CAndSolve = pme->bGPUSingle && pme->bGPUFFT && (grid_index < DO_Q); // no LJ support
             gmx_bool keepGPUDataBetweenSolveAndC2R = pme->bGPUSingle && keepGPUDataBetweenR2CAndSolve && bBackFFT;
