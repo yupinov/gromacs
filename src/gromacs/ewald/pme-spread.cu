@@ -34,22 +34,24 @@
  * To help us fund GROMACS development, we humbly ask that you cite
  * the research papers on the package. Check out http://www.gromacs.org.
  */
+
 #include "pme.h"
 #include "pme-internal.h"
 
-#include "gromacs/utility/basedefinitions.h"
-#include "gromacs/utility/real.h"
-#include "gromacs/math/vectypes.h"
-#include "check.h"
+#include "gromacs/utility/fatalerror.h"
+
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
-#include <cuda_runtime.h>
+
+#include "check.h"
+#include "pme-cuda.h"
+#include "pme-gpu.h"
 
 #ifdef DEBUG_PME_TIMINGS_GPU
 extern gpu_events gpu_events_spread;
 #endif
 
-#include "pme-cuda.h"
+
 
 
 //yupinov is the grid contiguous in x or in z?
@@ -75,6 +77,7 @@ __launch_bounds__(THREADS_PER_BLOCK, MIN_BLOCKS_PER_MP)
 __global__ void pme_spline_and_spread_kernel
 (int nx, int ny, int nz,
  int start_ix, int start_iy, int start_iz,
+ const int pny, const int pnz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
  const real * __restrict__ fshx, const real * __restrict__ fshy,
  const int * __restrict__ nnx, const int * __restrict__ nny, const int * __restrict__ nnz,
@@ -95,8 +98,7 @@ __global__ void pme_spline_and_spread_kernel
 
 */
 
-    const int offx = 0, offy = 0, offz = 0;
-    const int pny = ny + order - 1, pnz = nz + order - 1; //yupinov fix me!
+    const int offx = 0, offy = 0, offz = 0; //yupinov fix me!
 
     __shared__ int idxxptr[particlesPerBlock];
     __shared__ int idxyptr[particlesPerBlock];
@@ -309,6 +311,7 @@ template <
 __global__ void pme_spline_kernel
 (int nx, int ny, int nz,
  int start_ix, int start_iy, int start_iz,
+  const int pny, const int pnz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
  const real * __restrict__ fshx, const real * __restrict__ fshy,
  const int * __restrict__ nnx, const int * __restrict__ nny, const int * __restrict__ nnz,
@@ -329,8 +332,7 @@ __global__ void pme_spline_kernel
 
 */
 
-    const int offx = 0, offy = 0, offz = 0;
-    const int pny = ny + order - 1, pnz = nz + order - 1; //yupinov fix me!
+    const int offx = 0, offy = 0, offz = 0;//yupinov fix me!
 
     __shared__ int idxxptr[particlesPerBlock];
     __shared__ int idxyptr[particlesPerBlock];
@@ -463,14 +465,12 @@ template <
 */
 __global__ void pme_wrap_kernel
 (int nx, int ny, int nz, int order,
+   const int pnx,const int pny, const int pnz,
   real * __restrict__ grid)
 {
     // WRAP
     //yupinov unwrap as well
     const int overlap = order - 1;
-    const int pnx = nx + overlap;
-    const int pny = ny + overlap;
-    const int pnz = nz + overlap;
 
     /* Add periodic overlap in z */
     const int offset_z = nz;
@@ -524,6 +524,7 @@ template <const int order, const int particlesPerBlock>
 __global__ void pme_spread_kernel
 (int nx, int ny, int nz,
  int start_ix, int start_iy, int start_iz,
+  const int pny, const int pnz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
  const int * __restrict__ nnx, const int * __restrict__ nny, const int * __restrict__ nnz,
  const real * __restrict__ xptr, const real * __restrict__ yptr, const real * __restrict__ zptr,
@@ -543,8 +544,7 @@ __global__ void pme_spread_kernel
 
 */
 
-    const int offx = 0, offy = 0, offz = 0;
-    const int pny = ny + order - 1, pnz = nz + order - 1; //yupinov fix me!
+    const int offx = 0, offy = 0, offz = 0;//yupinov fix me!
 
     __shared__ int idxxptr[particlesPerBlock];
     __shared__ int idxyptr[particlesPerBlock];
@@ -680,11 +680,25 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     atc->spline[0].n = atc->n; //yupinov - without it, the conserved energy went down by 0.5%! used in gather or sometwhere else?
 
-    int nx = pme->nkx, ny = pme->nky, nz = pme->nkz;
     //int nx = pmegrid->s[XX], ny = pmegrid->s[YY], nz = pmegrid->s[ZZ];
     const int order = pmegrid->order;
 
-    const int pnx = nx + order - 1, pny = ny + order - 1, pnz = nz + order - 1; //yupinov fix me!
+    ivec local_ndata, local_size, local_offset;
+    /*
+    gmx_parallel_3dfft_real_limits_wrapper(pme, grid_index, local_ndata, local_offset, local_size);
+    const int pnx = local_size[XX];
+    const int pny = local_size[YY];
+    const int pnz = local_size[ZZ];
+    const int nx = local_ndata[XX];
+    const int ny = local_ndata[YY];
+    const int nz = local_ndata[ZZ];
+    */
+    const int pnx = pmegrid->n[XX];
+    const int pny = pmegrid->n[YY];
+    const int pnz = pmegrid->n[ZZ];
+    const int nx = pme->nkx;
+    const int ny = pme->nky;
+    const int nz = pme->nkz;
 
     int n = atc->n;
     int n_blocked = (n + warp_size - 1) / warp_size * warp_size;
@@ -784,6 +798,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                         pme_spline_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocks, dimBlock, 0, s>>>
                                                                             (nx, ny, nz,
                                                                              pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
+                                                                             pny, pnz,
                                                                              pme->recipbox[XX][XX],
                                                                              pme->recipbox[YY][XX],
                                                                              pme->recipbox[YY][YY],
@@ -805,6 +820,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                     pme_spread_kernel<4, blockSize / 4 / 4> <<<nBlocks, dimBlock, 0, s>>>
                                                                             (nx, ny, nz,
                                                                              pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
+                                                                             pny, pnz,
                                                                              pme->recipbox[XX][XX],
                                                                              pme->recipbox[YY][XX],
                                                                              pme->recipbox[YY][YY],
@@ -833,6 +849,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                             pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, FALSE, TRUE> <<<nBlocks, dimBlock, 0, s>>>
                                                                             (nx, ny, nz,
                                                                              pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
+                                                                             pny, pnz,
                                                                              pme->recipbox[XX][XX],
                                                                              pme->recipbox[YY][XX],
                                                                              pme->recipbox[YY][YY],
@@ -857,7 +874,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
             }
             if (pme->bGPUSingle)
             {
-                pme_wrap_kernel<<<1, 1, 0, s>>>(nx, ny, nz, order, grid_d);
+                pme_wrap_kernel<<<1, 1, 0, s>>>(nx, ny, nz, order, pnx, pny, pnz, grid_d);
                 CU_LAUNCH_ERR("pme_wrap_kernel");
             }
             break;
