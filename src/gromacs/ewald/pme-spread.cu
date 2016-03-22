@@ -466,12 +466,14 @@ template <
 template <
     const int order
     >
+
 __global__ void pme_wrap_kernel
     (const int nx, const int ny, const int nz,
      const int pnx,const int pny, const int pnz,
      real * __restrict__ grid)
 {
     // WRAP
+    //should use ldg.128 for order <= 5
     //yupinov unwrap as well
     const int overlap = order - 1;
 
@@ -483,21 +485,27 @@ __global__ void pme_wrap_kernel
         {
             for (int iz = 0; iz < overlap; iz++)
             {
-                grid[(ix * pny + iy) * pnz + iz] += grid[(ix * pny + iy) * pnz + iz + offset_z];
+                //grid[(ix * pny + iy) * pnz + iz] += grid[(ix * pny + iy) * pnz + iz + offset_z];
+                const int address = (ix * pny + iy) * pnz + iz;
+                const real gridValue = grid[address + offset_z];
+                atomicAdd(grid + address, gridValue);
             }
         }
     }
 
-    //if (pme->nnodes_minor == 1)  //yupinov no MPI
+    //if (pme->nnodes_minor == 1)  //no MPI
     {
         const int offset_y = ny * pnz;
         for (int ix = 0; ix < pnx; ix++)
         {
             for (int iy = 0; iy < overlap; iy++)
             {
-                for (int iz = 0; iz < nz; iz++)
+                for (int iz = 0; iz < nz; iz++) // not pnz
                 {
-                    grid[(ix * pny + iy) * pnz + iz] += grid[(ix * pny + iy) * pnz + iz + offset_y];
+                    //grid[(ix * pny + iy) * pnz + iz] += grid[(ix * pny + iy) * pnz + iz + offset_y];
+                    const int address = (ix * pny + iy) * pnz + iz;
+                    const real gridValue = grid[address + offset_y];
+                    atomicAdd(grid + address, gridValue);
                 }
             }
         }
@@ -511,11 +519,14 @@ __global__ void pme_wrap_kernel
 
         for (int ix = 0; ix < overlap; ix++)
         {
-            for (int iy = 0; iy < ny_x; iy++)
+            for (int iy = 0; iy < ny_x; iy++) // not pny
             {
-                for (int iz = 0; iz < nz; iz++)
+                for (int iz = 0; iz < nz; iz++) // not pnz
                 {
-                    grid[(ix * pny + iy) * pnz + iz] += grid[(ix * pny + iy) * pnz + iz + offset_x];
+                    //grid[(ix * pny + iy) * pnz + iz] += grid[(ix * pny + iy) * pnz + iz + offset_x];
+                    const int address = (ix * pny + iy) * pnz + iz;
+                    const real gridValue = grid[address + offset_x];
+                    atomicAdd(grid + address, gridValue);
                 }
             }
         }
