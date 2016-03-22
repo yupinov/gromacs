@@ -463,10 +463,13 @@ template <
         const gmx_bool bDoSplines
         >
 */
+template <
+    const int order
+    >
 __global__ void pme_wrap_kernel
-(int nx, int ny, int nz, int order,
-   const int pnx,const int pny, const int pnz,
-  real * __restrict__ grid)
+    (const int nx, const int ny, const int nz,
+     const int pnx,const int pny, const int pnz,
+     real * __restrict__ grid)
 {
     // WRAP
     //yupinov unwrap as well
@@ -874,7 +877,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
             }
             if (pme->bGPUSingle)
             {
-                pme_wrap_kernel<<<1, 1, 0, s>>>(nx, ny, nz, order, pnx, pny, pnz, grid_d);
+                pme_wrap_kernel<4> <<<1, 1, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
                 CU_LAUNCH_ERR("pme_wrap_kernel");
             }
             break;
