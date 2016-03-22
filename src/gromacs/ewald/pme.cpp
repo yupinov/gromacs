@@ -585,6 +585,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     pme->bGPUFFT = pme->bGPUSingle;
     // currently cuFFT is only used for a single rank
     // some Internet people have succeeded in MPI cuFFT, but I dare not venture there - Iupinov
+    //yupinov this variable doesn't actually work :(
 
     if (pme->bGPU)
         pme_gpu_init(&pme->gpu);
@@ -1070,16 +1071,16 @@ int gmx_pme_do(struct gmx_pme_t *pme,
             fprintf(debug, "Rank= %6d, pme local particles=%6d\n",
                     cr->nodeid, atc->n);
         }
-
+        gmx_bool keepGPUDataBetweenSpreadAndR2C = FALSE;
         if (pme->bGPU)
         {
             //yupinov - these are not checked anywhere yet
             //check for spread and solve flags here as well!
             // bGPUSingle
-            gmx_bool keepGPUDataBetweenSpreadAndR2C = pme->bGPUSingle && false; //yupinov -> no wrap kernels! different grids! pme->bGPUFFT;
+            keepGPUDataBetweenSpreadAndR2C = pme->bGPUSingle && pme->bGPUFFT && FALSE; //yupinov -> no wrap kernels! different grids!
             gmx_bool keepGPUDataBetweenR2CAndSolve = pme->bGPUSingle && pme->bGPUFFT && (grid_index < DO_Q); // no LJ support
             gmx_bool keepGPUDataBetweenSolveAndC2R = pme->bGPUSingle && keepGPUDataBetweenR2CAndSolve && bBackFFT;
-            gmx_bool keepGPUDataBetweenC2RAndGather = pme->bGPUSingle && false; //pme->bGPUFFT, bCalcF!
+            gmx_bool keepGPUDataBetweenC2RAndGather = pme->bGPUSingle && pme->bGPUFFT && false; // bCalcF!
             pme_gpu_update_flags(pme->gpu,
                                  keepGPUDataBetweenSpreadAndR2C,
                                  keepGPUDataBetweenR2CAndSolve,
@@ -1104,7 +1105,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
 
             if (!pme->bUseThreads)
             {
-                if (!pme->bGPUSingle)
+                if (!pme->bGPUSingle) // only wrap CPU PME grid if we haven't done it on GPU in a single GPU mode
                     wrap_periodic_pmegrid(pme, grid); //yupinov - unwrap as well
 
                 /* sum contributions to local grid from other nodes */
@@ -1115,8 +1116,8 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     where();
                 }
 #endif
-
-                copy_pmegrid_to_fftgrid(pme, grid, fftgrid, grid_index);
+                if (!keepGPUDataBetweenSpreadAndR2C) // only copy CPU PME grid to CPU FFT grid if we don't keep the data on GPU
+                    copy_pmegrid_to_fftgrid(pme, grid, fftgrid, grid_index);
             }
 
             wallcycle_stop(wcycle, ewcPME_SPREADGATHER);
