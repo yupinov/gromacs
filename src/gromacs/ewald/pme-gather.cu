@@ -270,7 +270,7 @@ void gather_f_bsplines_gpu_2
  )
 {
     cudaStream_t s = pme->gpu->pmeStream;
-    int ndatatot = pnx*pny*pnz;
+    int ndatatot = pnx * pny * pnz;
 
     if (!spline_n)
         return;

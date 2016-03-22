@@ -200,8 +200,6 @@ void gather_f_bsplines_gpu_pre(struct gmx_pme_t *pme, real *grid,
                    splinedata_t *spline,
                    real scale, int thread)
 {
-  (void) pme; // unused
-  (void) grid; // unused
     int spline_n = spline->n;
     int *spline_ind = spline->ind;
     real *atc_coefficient = atc->coefficient;
@@ -217,21 +215,32 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
                splinedata_t *spline,
                real scale, int thread)
 {
-    int     nx, ny, nz, pnx, pny, pnz;
     //real    *thx, *thy, *thz, *dthx, *dthy, *dthz;
     //int     norder;
     real    rxx, ryx, ryy, rzx, rzy, rzz;
-    int     order;
 
-    //pme_spline_work *work = pme->spline_work;
+    const int order = pme->pme_order;
+    /*
+    gmx_parallel_3dfft_real_limits_wrapper(pme, grid_index, local_ndata, local_offset, local_size);
+    const int pnx = local_size[XX];
+    const int pny = local_size[YY];
+    const int pnz = local_size[ZZ];
+    const int nx = local_ndata[XX];
+    const int ny = local_ndata[YY];
+    const int nz = local_ndata[ZZ];
+    */
+    /*
+    const int pnx = pmegrid->n[XX];
+    const int pny = pmegrid->n[YY];
+    const int pnz = pmegrid->n[ZZ];
+    */
+    const int pnx   = pme->pmegrid_nx;
+    const int pny   = pme->pmegrid_ny;
+    const int pnz   = pme->pmegrid_nz;
+    const int nx = pme->nkx;
+    const int ny = pme->nky;
+    const int nz = pme->nkz;
 
-    order = pme->pme_order;
-    nx    = pme->nkx;
-    ny    = pme->nky;
-    nz    = pme->nkz;
-    pnx   = pme->pmegrid_nx;
-    pny   = pme->pmegrid_ny;
-    pnz   = pme->pmegrid_nz;
 
     rxx   = pme->recipbox[XX][XX];
     ryx   = pme->recipbox[YY][XX];
