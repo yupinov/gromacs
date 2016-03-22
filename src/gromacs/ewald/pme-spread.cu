@@ -464,7 +464,8 @@ template <
         >
 */
 template <
-    const int order
+    const int order,
+    const int stage
     >
 
 __global__ void pme_wrap_kernel
@@ -477,56 +478,69 @@ __global__ void pme_wrap_kernel
     //yupinov unwrap as well
     const int overlap = order - 1;
 
-    /* Add periodic overlap in z */
-    const int offset_z = nz;
-    for (int ix = 0; ix < pnx; ix++)
+    if (stage == 1)
     {
-        for (int iy = 0; iy < pny; iy++)
-        {
-            for (int iz = 0; iz < overlap; iz++)
-            {
-                //grid[(ix * pny + iy) * pnz + iz] += grid[(ix * pny + iy) * pnz + iz + offset_z];
-                const int address = (ix * pny + iy) * pnz + iz;
-                const real gridValue = grid[address + offset_z];
-                atomicAdd(grid + address, gridValue);
-            }
-        }
-    }
-
-    //if (pme->nnodes_minor == 1)  //no MPI
-    {
-        const int offset_y = ny * pnz;
+        /* Add periodic overlap in z */
+        // pnx * pny operations
+        const int offset_z = nz;
         for (int ix = 0; ix < pnx; ix++)
         {
-            for (int iy = 0; iy < overlap; iy++)
+            for (int iy = 0; iy < pny; iy++)
             {
-                for (int iz = 0; iz < nz; iz++) // not pnz
+                for (int iz = 0; iz < overlap; iz++)
                 {
-                    //grid[(ix * pny + iy) * pnz + iz] += grid[(ix * pny + iy) * pnz + iz + offset_y];
+                    //grid[(ix * pny + iy) * pnz + iz] += grid[(ix * pny + iy) * pnz + iz + offset_z];
                     const int address = (ix * pny + iy) * pnz + iz;
-                    const real gridValue = grid[address + offset_y];
+                    const real gridValue = grid[address + offset_z];
                     atomicAdd(grid + address, gridValue);
                 }
             }
         }
     }
 
-    //if (pme->nnodes_major == 1) //yupinov no MPI
+    if (stage == 2)
     {
-        //ny_x = (pme->nnodes_minor == 1 ? ny : pme->pmegrid_ny);
-        const int ny_x = ny;
-        const int offset_x = nx * pny * pnz;
+        // nz * pnx operations
 
-        for (int ix = 0; ix < overlap; ix++)
+        //if (pme->nnodes_minor == 1)  //no MPI
         {
-            for (int iy = 0; iy < ny_x; iy++) // not pny
+            const int offset_y = ny * pnz;
+            for (int ix = 0; ix < pnx; ix++)
             {
-                for (int iz = 0; iz < nz; iz++) // not pnz
+                for (int iy = 0; iy < overlap; iy++)
                 {
-                    //grid[(ix * pny + iy) * pnz + iz] += grid[(ix * pny + iy) * pnz + iz + offset_x];
-                    const int address = (ix * pny + iy) * pnz + iz;
-                    const real gridValue = grid[address + offset_x];
-                    atomicAdd(grid + address, gridValue);
+                    for (int iz = 0; iz < nz; iz++) // not pnz
+                    {
+                        //grid[(ix * pny + iy) * pnz + iz] += grid[(ix * pny + iy) * pnz + iz + offset_y];
+                        const int address = (ix * pny + iy) * pnz + iz;
+                        const real gridValue = grid[address + offset_y];
+                        atomicAdd(grid + address, gridValue);
+                    }
+                }
+            }
+        }
+    }
+
+    if (stage == 3)
+    {
+        // nz * ny operations
+        //if (pme->nnodes_major == 1) //yupinov no MPI
+        {
+            //ny_x = (pme->nnodes_minor == 1 ? ny : pme->pmegrid_ny);
+            const int ny_x = ny;
+            const int offset_x = nx * pny * pnz;
+
+            for (int ix = 0; ix < overlap; ix++)
+            {
+                for (int iy = 0; iy < ny_x; iy++) // not pny
+                {
+                    for (int iz = 0; iz < nz; iz++) // not pnz
+                    {
+                        //grid[(ix * pny + iy) * pnz + iz] += grid[(ix * pny + iy) * pnz + iz + offset_x];
+                        const int address = (ix * pny + iy) * pnz + iz;
+                        const real gridValue = grid[address + offset_x];
+                        atomicAdd(grid + address, gridValue);
+                    }
                 }
             }
         }
@@ -888,7 +902,11 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
             }
             if (pme->bGPUSingle)
             {
-                pme_wrap_kernel<4> <<<1, 1, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+                const int nBlocks = 1;
+                const int nThreads = 1;
+                pme_wrap_kernel<4, 1> <<<nBlocks, nThreads, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+                pme_wrap_kernel<4, 2> <<<nBlocks, nThreads, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+                pme_wrap_kernel<4, 3> <<<nBlocks, nThreads, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
                 CU_LAUNCH_ERR("pme_wrap_kernel");
             }
             break;
