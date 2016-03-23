@@ -22,11 +22,7 @@
 #define SQRT_M_PI real(2.0f / M_2_SQRTPI)
 //yupinov check if these constants work
 
-#ifdef DEBUG_PME_TIMINGS_GPU
-extern gpu_events gpu_events_solve;
-#endif
-
-
+gpu_events gpu_events_solve;
 
 /* Pascal triangle coefficients used in solve_pme_lj_yzx, only need to do 4 calculations due to symmetry */
 static const __constant__ real lb_scale_factor_symm_gpu[] = { 2.0/64, 12.0/64, 30.0/64, 20.0/64 }; //yupinov copied from pme-internal
@@ -313,10 +309,8 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     dim3 blocks((gridLineSize + blockSize - 1) / blockSize, local_ndata[middleDim] / gridLinesPerBlock, local_ndata[majorDim]); //ndata or size?
     dim3 threads(gridLineSize, gridLinesPerBlock, 1);
 
-
-#ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_solve, s);
-#endif
+
     if (YZXOrdering)
     {
         if (bEnerVir)
@@ -364,9 +358,8 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                energy_d, virial_d);
     }
     CU_LAUNCH_ERR("pme_solve_kernel");
-#ifdef DEBUG_PME_TIMINGS_GPU
+
     events_record_stop(gpu_events_solve, s, ewcsPME_SOLVE, 0);
-#endif
 
     if (!pme->gpu->keepGPUDataBetweenSolveAndC2R)
     {
@@ -488,9 +481,9 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
     real *virial_d = PMEFetchRealArray(PME_ID_VIRIAL, thread, virial_size, ML_DEVICE);
     for (int ig = 0; ig < MAGIC_GRID_NUMBER; ++ig)
         PMECopy(grid_d + ig * grid_n, grid[ig], grid_size, ML_DEVICE, s);
-#ifdef DEBUG_PME_TIMINGS_GPU
+
     events_record_start(gpu_events_solve, s);
-#endif
+
     solve_pme_lj_yzx_iyz_loop_kernel<<<n_blocks, block_size, 0, s>>>
       (iyz0, iyz1, local_ndata[ZZ], local_ndata[XX],
        local_offset[XX], local_offset[YY], local_offset[ZZ],
@@ -502,9 +495,9 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
        grid_d, bLB, ewaldcoeff, vol, bEnerVir,
        energy_d, virial_d);
     CU_LAUNCH_ERR("solve_pme_lj_yzx_iyz_loop_kernel");
-#ifdef DEBUG_PME_TIMINGS_GPU
+
     events_record_stop(gpu_events_solve, s, ewcsPME_SOLVE, 0);
-#endif
+
     for (int ig = 0; ig < MAGIC_GRID_NUMBER; ++ig)
         PMECopy(grid[ig], grid_d + ig * grid_n, grid_size, ML_HOST, s);
 

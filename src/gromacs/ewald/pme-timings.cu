@@ -1,28 +1,16 @@
-#ifdef DEBUG_PME_TIMINGS_GPU
+
+
 #include "gromacs/utility/basedefinitions.h"
 #include <cuda.h>
+#include "pme-cuda.h"
+#include "check.h"
 #include "gromacs/timing/gpu_timing.h"
 #include "gromacs/timing/wallcycle.h"
 #include "gromacs/gpu_utils/cudautils.cuh"
 
-struct gpu_events
-{
-    bool created;
-    cudaEvent_t event_start, event_stop;
-    gpu_events() : created(false) { }
-};
-
-gpu_events gpu_events_interpol_idx;
-gpu_events gpu_events_spline;
-gpu_events gpu_events_spread;
-gpu_events gpu_events_splineandspread;
-gpu_events gpu_events_fft_r2c;
-gpu_events gpu_events_solve;
-gpu_events gpu_events_fft_c2r;
-gpu_events gpu_events_gather;
-
 void events_record_start(gpu_events &events, cudaStream_t s)
 {
+#ifdef DEBUG_PME_TIMINGS_GPU
     cudaError_t stat;
     if (!events.created)
     {
@@ -34,10 +22,12 @@ void events_record_start(gpu_events &events, cudaStream_t s)
     }
     stat = cudaEventRecord(events.event_start, s);
     CU_RET_ERR(stat, "?");
+#endif
 }
 
 void events_record_stop(gpu_events &events, cudaStream_t s, int ewcsn, int j)
 {
+#ifdef DEBUG_PME_TIMINGS_GPU
     cudaError_t stat;
     stat = cudaEventRecord(events.event_stop, s);
     CU_RET_ERR(stat, "?");
@@ -50,8 +40,9 @@ void events_record_stop(gpu_events &events, cudaStream_t s, int ewcsn, int j)
     int idx = ewcsn - ewcsPME_INTERPOL_IDX;
     gmx_wallclock_gpu_pme.pme_time[idx][j].t += milliseconds;
     ++gmx_wallclock_gpu_pme.pme_time[idx][j].c;
-}
 #endif
+}
+
 
 
 

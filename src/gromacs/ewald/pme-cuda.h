@@ -17,6 +17,8 @@ struct gmx_pme_cuda_t
 #define PME_CUFFT_INPLACE
 //yupinov -  out of place is broken anyway :(
 
+#define DEBUG_PME_TIMINGS_GPU
+
 
 // identifiers for PME data stored on GPU
 enum PMEDataID

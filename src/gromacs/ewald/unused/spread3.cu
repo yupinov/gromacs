@@ -48,7 +48,7 @@
 
 typedef real *splinevec[DIM];
 #ifdef DEBUG_PME_TIMINGS_GPU
-extern gpu_events gpu_events_spread;
+gpu_events gpu_events_spread;
 #endif
 
 

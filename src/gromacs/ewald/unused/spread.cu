@@ -48,7 +48,7 @@
 #define PME_ORDER_MAX 12 //yupinov - what's this
 typedef real *splinevec[DIM];
 #ifdef DEBUG_PME_TIMINGS_GPU
-extern gpu_events gpu_events_spread;
+gpu_events gpu_events_spread;
 #endif
 #include "thread_mpi/mutex.h"
 

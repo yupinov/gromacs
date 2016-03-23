@@ -21,7 +21,7 @@ enum TH_V_ID {
 static thread_vectors TH_V(32, ID_END);
 
 #ifdef DEBUG_PME_TIMINGS_GPU
-extern gpu_events gpu_events_interpol_idx;
+gpu_events gpu_events_interpol_idx;
 #endif
 template <typename T>
 static T *raw_off(device_vector<T> &v, int off) {

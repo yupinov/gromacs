@@ -55,7 +55,7 @@ typedef float real;
 typedef real *splinevec[DIM];
 
 #ifdef DEBUG_PME_TIMINGS_GPU
-extern gpu_events gpu_events_calcspline;
+gpu_events gpu_events_calcspline;
 #endif
 
 /* Macro to force loop unrolling by fixing order.

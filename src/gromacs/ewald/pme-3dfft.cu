@@ -6,12 +6,8 @@
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 
-#ifdef DEBUG_PME_TIMINGS_GPU
-extern gpu_events gpu_events_fft_r2c;
-extern gpu_events gpu_events_fft_c2r;
-#endif
-
-
+gpu_events gpu_events_fft_r2c;
+gpu_events gpu_events_fft_c2r;
 
 struct gmx_parallel_3dfft_gpu
 {
@@ -211,13 +207,12 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
         if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
             PMECopy(setup->rdata, setup->real_data, gridSizeReal, ML_DEVICE, s);
 
-        #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_start(gpu_events_fft_r2c, s);
-        #endif
+
         cufftResult_t result = cufftExecR2C(setup->planR2C, setup->rdata, setup->cdata);
-        #ifdef DEBUG_PME_TIMINGS_GPU
+
         events_record_stop(gpu_events_fft_r2c, s, ewcsPME_FFT_R2C, 0);
-        #endif
+
         if (result)
             fprintf(stderr, "cufft R2C error %d\n", result);
     }
@@ -225,13 +220,13 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     {
         if (!pme->gpu->keepGPUDataBetweenSolveAndC2R)
             PMECopy(setup->cdata, setup->complex_data, gridSizeComplex, ML_DEVICE, s);
-        #ifdef DEBUG_PME_TIMINGS_GPU
+
         events_record_start(gpu_events_fft_c2r, s);
-        #endif
+
         cufftResult_t result = cufftExecC2R(setup->planC2R, setup->cdata, setup->rdata);
-        #ifdef DEBUG_PME_TIMINGS_GPU
+
         events_record_stop(gpu_events_fft_c2r, s, ewcsPME_FFT_C2R, 0);
-        #endif
+
         if (result)
             fprintf(stderr, "cufft C2R error %d\n", result);
     }

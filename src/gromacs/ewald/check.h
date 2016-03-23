@@ -21,13 +21,15 @@ void print_lock();
 void print_unlock();
 #endif
 
-#ifdef DEBUG_PME_TIMINGS_GPU
 
 #include "gromacs/timing/wallcycle.h"
-
-struct gpu_events;
+struct gpu_events
+{
+    bool created;
+    cudaEvent_t event_start, event_stop;
+    gpu_events() : created(false) { }
+};
 void events_record_start(gpu_events &events, cudaStream_t s);
 void events_record_stop(gpu_events &events, cudaStream_t s, int ewcsn, int j);
-#endif
 
 #endif // GMX_EWALD_CHECK_H

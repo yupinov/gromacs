@@ -12,9 +12,8 @@
 #include "pme-internal.h"
 #include "pme-cuda.h"
 
-#ifdef DEBUG_PME_TIMINGS_GPU
-extern gpu_events gpu_events_gather;
-#endif              \
+
+gpu_events gpu_events_gather;
 
 //yupinov - texture memory?
 template <
@@ -466,9 +465,9 @@ void gather_f_bsplines_gpu_2
     const int particlesPerBlock = blockSize / order / order;
     dim3 nBlocks((n + blockSize - 1) / blockSize * order * order, 1, 1); //yupinov what does this mean?
     dim3 dimBlock(order, order, particlesPerBlock);
-#ifdef DEBUG_PME_TIMINGS_GPU
+
     events_record_start(gpu_events_gather, s);
-#endif
+
     if (order == 4) //yupinov
         pme_gather_kernel<4, blockSize / 4 / 4> <<<nBlocks, dimBlock, 0, s>>>
           (grid_d,
@@ -482,9 +481,8 @@ void gather_f_bsplines_gpu_2
     else
         gmx_fatal(FARGS, "gather: orders other than 4 untested!");
     CU_LAUNCH_ERR("pme_gather_kernel");
-#ifdef DEBUG_PME_TIMINGS_GPU
+
     events_record_stop(gpu_events_gather, s, ewcsPME_GATHER, 0);
-#endif
 
     PMECopy(atc_f_compacted, atc_f_d, size_forces, ML_HOST, s);
 
