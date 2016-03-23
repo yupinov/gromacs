@@ -218,7 +218,8 @@ static __global__ void pme_gather_kernel
 }
 
 template <
-    const int order
+    const int order//,
+    //const int stage
     >
 __global__ void pme_unwrap_kernel
     (const int nx, const int ny, const int nz,

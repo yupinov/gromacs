@@ -457,37 +457,55 @@ template <
     const int order,
     const int stage
     >
-
+//yupinov - correct sequence of dimensions? parallel wit hatomicAdd somehow?
 __global__ void pme_wrap_kernel
     (const int nx, const int ny, const int nz,
      const int pnx,const int pny, const int pnz,
      real * __restrict__ grid)
 {
     // WRAP
+    int blockId = blockIdx.x
+                 + blockIdx.y * gridDim.x
+                 + gridDim.x * gridDim.y * blockIdx.z;
+    int threadId = blockId * (blockDim.x * blockDim.y * blockDim.z)
+                  + (threadIdx.z * (blockDim.x * blockDim.y))
+                  + (threadIdx.y * blockDim.x)
+                  + threadIdx.x;
 
-    int threadId = blockIdx.x * blockDim.x + threadIdx.x;
     //should use ldg.128
     //yupinov unwrap as well
     const int overlap = order - 1;
 
 
     if (stage & 1)
-        if (threadId < overlap * pnx * pny)
+    {
+        const int iz = blockIdx.x * blockDim.x + threadIdx.x;
+        const int iy = blockIdx.y * blockDim.y + threadIdx.y;
+        const int ix = blockIdx.z * blockDim.z + threadIdx.z;
+        //if (threadId < overlap * pnx * pny)
+        if (iy < pny)
         {
             /* Add periodic overlap in z */
             // pnx * pny operations
             const int offset_z = nz;
             //for (int ix = 0; ix < pnx; ix++)
-            const int ix = (threadId / overlap) / pny;
+            //const int ix = (threadId / overlap) / pny;
             {
-                const int iy = (threadId / overlap) % pny;
+                //const int iy = (threadId / overlap) % pny;
                 //for (int iy = 0; iy < pny; iy++)
                 {
-                    const int iz = (threadId % overlap);
+                    //const int iz = (threadId % overlap);
                     //for (int iz = 0; iz < overlap; iz++)
                     {
                         const int address = (ix * pny + iy) * pnz + iz;
                         //threadId?
+                        /*
+                        if (blockId == 12)
+                        {
+                            printf("%d vs %d; %d %d %d\n", threadId, address, ix, iy, iz);
+                        }
+                        ZYX you idiot
+                        */
                         grid[address] += grid[address + offset_z];
                         //const real gridValue = grid[address + offset_z];
                         //atomicAdd(grid + address, gridValue);
@@ -495,6 +513,7 @@ __global__ void pme_wrap_kernel
                 }
             }
         }
+    }
 
     if (stage & 2)
         if (threadId < overlap * pnx * nz)
@@ -920,16 +939,25 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
             if (pme->bGPUSingle)
             {
                 const int workCells[] = {pnx * pny * overlap, nz * pnx * overlap, nz * ny * overlap};
-                const int wrapBlockSize = 4 * warp_size; //yupinov thsi is everywhere! and arichitecture-specific
-                int nWrapBlocks[3];
+                int blockSize = 4 * warp_size; //yupinov thsi is everywhere! and arichitecture-specific
+                //int blockOverlaps = blockSize / overlap;
+                //blockSize = blockOverlaps * overlap;
+                dim3 nBlocks[3];
                 for (int i = 0; i < 3; i++)
-                    nWrapBlocks[i] = (workCells[i] + wrapBlockSize - 1) / wrapBlockSize;
+                    nBlocks[i] = dim3((workCells[i] + blockSize - 1) / blockSize, 1, 1);
+                //int overlapLinesPerBlock = (blockSize + overlap - 1) / overlap;
+                //dim3 blocks(pnx, (pny + overlapLinesPerBlock - 1) / overlapLinesPerBlock, 1);
+                int overlapLinesPerBlock = blockSize / overlap; //so there is unused padding in each block;
+                dim3 blocks(1, (pny + overlapLinesPerBlock - 1) / overlapLinesPerBlock, pnx); // round up for safety?
+                // low occupancy :(
+                dim3 threads(overlap, overlapLinesPerBlock, 1);
 
                 events_record_start(gpu_events_wrap, s);
 
-                pme_wrap_kernel<4, 1> <<<nWrapBlocks[0], wrapBlockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
-                pme_wrap_kernel<4, 2> <<<nWrapBlocks[1], wrapBlockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
-                pme_wrap_kernel<4, 4> <<<nWrapBlocks[2], wrapBlockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+                pme_wrap_kernel<4, 1> <<<blocks, threads, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+                //pme_wrap_kernel<4, 1> <<<nBlocks[0], blockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+                pme_wrap_kernel<4, 2> <<<nBlocks[1], blockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+                pme_wrap_kernel<4, 4> <<<nBlocks[2], blockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
                 CU_LAUNCH_ERR("pme_wrap_kernel");
 
                 events_record_stop(gpu_events_wrap, s, ewcsPME_WRAP, 0);

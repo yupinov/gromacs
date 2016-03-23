@@ -306,6 +306,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     //yupinov check ALIGNMENT with CPU/GPU FFT grid sizes!
     const int gridLineSize = local_size[minorDim];
     const int gridLinesPerBlock = (blockSize + gridLineSize - 1) / gridLineSize;
+    //yupinvo check all divisions for rounding, like this one here: local_ndata[middleDim] / gridLinesPerBlock
     dim3 blocks((gridLineSize + blockSize - 1) / blockSize, local_ndata[middleDim] / gridLinesPerBlock, local_ndata[majorDim]); //ndata or size?
     dim3 threads(gridLineSize, gridLinesPerBlock, 1);
 
