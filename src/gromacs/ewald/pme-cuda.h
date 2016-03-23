@@ -15,7 +15,7 @@ struct gmx_pme_cuda_t
 //yupinov grid indices with tags?
 
 #define PME_CUFFT_INPLACE
-//yupinov - seems to perform same?
+//yupinov -  out of place is broken anyway :(
 
 
 // identifiers for PME data stored on GPU

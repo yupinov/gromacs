@@ -1,19 +1,8 @@
-#include "pme.h"
-#include "pme-internal.h"
-
-#include "gromacs/fft/fft.h"
-#include "gromacs/fft/parallel_3dfft.h"
-
-#include "gromacs/utility/basedefinitions.h"
-#include "gromacs/utility/gmxmpi.h"
-#include "gromacs/utility/real.h"
-#include "gromacs/math/vectypes.h"
-
-#include "check.h"
-
-#include <cuda.h>
 #include <cufft.h>
+#include "check.h"
+#include "pme-cuda.h"
 
+#include "gromacs/utility/gmxassert.h"
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 
@@ -22,7 +11,7 @@ extern gpu_events gpu_events_fft_r2c;
 extern gpu_events gpu_events_fft_c2r;
 #endif
 
-#include "pme-cuda.h"
+
 
 struct gmx_parallel_3dfft_gpu
 {
@@ -85,15 +74,33 @@ gmx_pme_t *pme)
 
     *pfft_setup = setup;
 
-    setup->size_real[XX] = setup->ndata_real[XX];
-    setup->size_real[YY] = setup->ndata_real[YY];
-    setup->size_real[ZZ] = (setup->ndata_real[ZZ] / 2 + 1) * 2;
+    /*
+    ndata[XX] += pme->pme_order - 1;
+    ndata[YY] += pme->pme_order - 1;
+    ndata[ZZ] += pme->pme_order - 1;
+    */
+    if (pme->bGPUSingle)
+    {
+        ndata[XX] = pme->pmegrid_nx;
+        ndata[YY] = pme->pmegrid_ny;
+        ndata[ZZ] = pme->pmegrid_nz;
+    }
+    else
+        gmx_fatal(FARGS, "FFT size choice not implemented");
 
-    setup->size_complex[XX] = setup->ndata_real[XX];
-    setup->size_complex[YY] = setup->ndata_real[YY];
-    setup->size_complex[ZZ] = setup->ndata_real[ZZ] / 2 + 1;
-    const int alignment = warp_size; //yupinov change it so it's in X for YZX solve!
-    setup->size_complex[ZZ] = (setup->size_complex[ZZ] + alignment - 1) / alignment * alignment;
+    /*
+    setup->size_real[XX] = ndata[XX];
+    setup->size_real[YY] = ndata[YY];
+    setup->size_real[ZZ] = (ndata[ZZ] / 2 + 1) * 2;
+    const int alignment = 1; //warp_size; //yupinov change it so it's in X for YZX solve (what?)
+    setup->size_real[ZZ] = (setup->size_real[ZZ] + alignment - 1) / alignment * alignment;
+    */
+
+    memcpy(setup->size_real, ndata, sizeof(setup->size_real));
+
+    memcpy(setup->size_complex, setup->size_real, sizeof(setup->size_real));
+    GMX_ASSERT(setup->size_complex[ZZ] % 2 == 0, "odd inplace cuFFT dimension size");
+    setup->size_complex[ZZ] /= 2;
 
     const int gridSizeComplex = setup->size_complex[XX] * setup->size_complex[YY] * setup->size_complex[ZZ];
     const int gridSizeReal = setup->size_real[XX] * setup->size_real[YY] * setup->size_real[ZZ];
@@ -101,6 +108,16 @@ gmx_pme_t *pme)
     setup->rdata = PMEFetchRealArray(PME_ID_REAL_GRID, 0, gridSizeReal * sizeof(cufftReal), ML_DEVICE);
     setup->cdata = (cufftComplex *)PMEFetchComplexArray(PME_ID_COMPLEX_GRID, 0, gridSizeComplex * sizeof(cufftComplex), ML_DEVICE);
 
+    //yupinov hack
+    /*
+    //we want CPU FFT grids to be of same size, to include the overlap
+    {
+        free(setup->real_data);
+        *real_data = setup->real_data = PMEFetchRealArray(PME_ID_REAL_GRID, 0, gridSizeReal * sizeof(cufftReal), ML_HOST);
+        free(setup->complex_data);
+        *complex_data = setup->complex_data = PMEFetchComplexArray(PME_ID_COMPLEX_GRID, 0, gridSizeComplex * sizeof(cufftComplex), ML_HOST);
+    }
+    */
     const int rank = 3, batch = 1;
 
     /*
@@ -144,12 +161,10 @@ void gmx_parallel_3dfft_real_limits_gpu(gmx_parallel_3dfft_gpu_t      setup,
                                        ivec                      local_offset,
                                        ivec                      local_size)
 {
-    local_ndata[0] = setup->ndata_real[0];
-    local_ndata[1] = setup->ndata_real[1];
-    local_ndata[2] = setup->ndata_real[2];
-    local_size[0] = setup->size_real[0];
-    local_size[1] = setup->size_real[1];
-    local_size[2] = setup->size_real[2];
+    if (local_ndata)
+        memcpy(local_ndata, setup->ndata_real, sizeof(setup->ndata_real));
+    if (local_size)
+        memcpy(local_size, setup->size_real, sizeof(setup->size_real));
 
     //yupinov
     setup->local_offset[0] = local_offset[0];
@@ -163,12 +178,14 @@ void gmx_parallel_3dfft_complex_limits_gpu(gmx_parallel_3dfft_gpu_t      setup,
                                           ivec                      local_offset,
                                           ivec                      local_size)
 {
-    local_ndata[0] = setup->ndata_real[0];
-    local_ndata[1] = setup->ndata_real[1];
-    local_ndata[2] = setup->ndata_real[2] / 2 + 1;
-    local_size[0] = setup->size_complex[0];
-    local_size[1] = setup->size_complex[1];
-    local_size[2] = setup->size_complex[2];
+    if (local_ndata)
+    {
+        memcpy(local_ndata, setup->ndata_real, sizeof(setup->ndata_real));
+        local_ndata[ZZ] = local_ndata[ZZ] / 2 + 1;
+    }
+    if (local_size)
+        memcpy(local_size, setup->size_complex, sizeof(setup->size_complex));
+
     //yupinov why are they here
     setup->complex_order[0] = complex_order[0];
     setup->complex_order[1] = complex_order[1];
@@ -186,82 +203,48 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
 
     gmx_parallel_3dfft_gpu_t setup = pfft_setup;
 
-    int x = setup->ndata_real[0], y = setup->ndata_real[1], z = setup->ndata_real[2];
+    const int gridSizeComplex = setup->size_complex[XX] * setup->size_complex[YY] * setup->size_complex[ZZ] * sizeof(cufftComplex);
+    const int gridSizeReal = setup->size_real[XX] * setup->size_real[YY] * setup->size_real[ZZ] * sizeof(cufftReal);
 
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {      
         if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
-            PMECopy(setup->rdata, setup->real_data, x * y * (z / 2 + 1) * 2 * sizeof(real), ML_DEVICE, s);
-        /*
-        //yupinov hack for padded data
-        {
-            cufftReal *dest = setup->rdata;
-            real *src = setup->real_data;
-            for (int xi = 0; xi < x; xi++)
-                for (int yi = 0; yi < y; yi++)
-                 {
-                    int size = z;
-                    int stripe = (z / 2 + 1) * 2;
-                    stat = cudaMemcpy(dest, src, size * sizeof(real), cudaMemcpyHostToDevice);
-                    CU_RET_ERR(stat, "cudaMemcpy R2C error");
-                    dest += size;
-                    src += stripe;
-                 }
-        }
-        */
-
+            PMECopy(setup->rdata, setup->real_data, gridSizeReal, ML_DEVICE, s);
 
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_start(gpu_events_fft_r2c, s);
         #endif
         cufftResult_t result = cufftExecR2C(setup->planR2C, setup->rdata, setup->cdata);
-        if (result)
-            fprintf(stderr, "cufft R2C error %d\n", result);
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_stop(gpu_events_fft_r2c, s, ewcsPME_FFT_R2C, 0);
         #endif
+        if (result)
+            fprintf(stderr, "cufft R2C error %d\n", result);
     }
     else
     {
         if (!pme->gpu->keepGPUDataBetweenSolveAndC2R)
-            PMECopy(setup->cdata, setup->complex_data, x * y * (z / 2 + 1) * sizeof(t_complex), ML_DEVICE, s);
+            PMECopy(setup->cdata, setup->complex_data, gridSizeComplex, ML_DEVICE, s);
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_start(gpu_events_fft_c2r, s);
         #endif
         cufftResult_t result = cufftExecC2R(setup->planC2R, setup->cdata, setup->rdata);
-        if (result)
-            fprintf(stderr, "cufft C2R error %d\n", result);
         #ifdef DEBUG_PME_TIMINGS_GPU
         events_record_stop(gpu_events_fft_c2r, s, ewcsPME_FFT_C2R, 0);
         #endif
+        if (result)
+            fprintf(stderr, "cufft C2R error %d\n", result);
     }
 
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {
         if (!pme->gpu->keepGPUDataBetweenR2CAndSolve)
-            PMECopy(setup->complex_data, setup->cdata, x * y * (z / 2 + 1) * sizeof(t_complex), ML_HOST, s);
+            PMECopy(setup->complex_data, setup->cdata, gridSizeComplex, ML_HOST, s);
     }
     else
     {
         if (!pme->gpu->keepGPUDataBetweenC2RAndGather)
-            PMECopy(setup->real_data, setup->rdata, x * y * (z / 2 + 1) * 2 * sizeof(real), ML_HOST, s);
-        /*
-        //yupinov hack for padded data
-        {
-            real *dest = setup->real_data;
-            cufftReal *src = setup->rdata;
-            for (int xi = 0; xi < x; xi++)
-                for (int yi = 0; yi < y; yi++)
-                 {
-                    int size = z;
-                    int stripe = (z / 2 + 1) * 2;
-                    stat = cudaMemcpy(dest, src, size * sizeof(real), cudaMemcpyDeviceToHost);
-                    CU_RET_ERR(stat, "cudaMemcpy C2R error");
-                    dest += stripe;
-                    src += size;
-                 }
-        }
-        */
+            PMECopy(setup->real_data, setup->rdata, gridSizeReal, ML_HOST, s);
     }
 }
 
