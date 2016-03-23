@@ -456,13 +456,6 @@ __global__ void pme_spline_kernel
 }
 
 
-/*
-template <
-        const int order,
-        const int particlesPerBlock,
-        const gmx_bool bDoSplines
-        >
-*/
 template <
     const int order,
     const int stage
@@ -473,14 +466,15 @@ __global__ void pme_wrap_kernel
      const int pnx,const int pny, const int pnz,
      real * __restrict__ grid)
 {
-    int threadId = blockIdx.x * blockDim.x + threadIdx.x;
     // WRAP
-    //should use ldg.128 for order <= 5
+
+    int threadId = blockIdx.x * blockDim.x + threadIdx.x;
+    //should use ldg.128
     //yupinov unwrap as well
     const int overlap = order - 1;
 
 
-    if (stage == 1)
+    if (stage & 1)
         if (threadId < overlap * pnx * pny)
         {
             /* Add periodic overlap in z */
@@ -505,7 +499,7 @@ __global__ void pme_wrap_kernel
             }
         }
 
-    if (stage == 2)
+    if (stage & 2)
         if (threadId < overlap * pnx * nz)
         {
             // nz * pnx operations
@@ -533,7 +527,7 @@ __global__ void pme_wrap_kernel
             }
         }
 
-    if (stage == 3)
+    if (stage & 4)
         if (threadId < overlap * ny * nz)
         {
             // nz * ny operations
@@ -800,7 +794,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     real *grid_d = NULL;
     if (bSpread)
     {
-        grid_d = PMEFetchRealArray(PME_ID_REAL_GRID_WITH_OVERLAP, thread, size_grid, ML_DEVICE);
+        grid_d = PMEFetchRealArray(PME_ID_REAL_GRID, thread, size_grid, ML_DEVICE);
         stat = cudaMemsetAsync(grid_d, 0, size_grid, s); //yupinov
         CU_RET_ERR(stat, "cudaMemsetAsync spread error");
     }
@@ -927,7 +921,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                     nWrapBlocks[i] = (workCells[i] + wrapBlockSize - 1) / wrapBlockSize;
                 pme_wrap_kernel<4, 1> <<<nWrapBlocks[0], wrapBlockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
                 pme_wrap_kernel<4, 2> <<<nWrapBlocks[1], wrapBlockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
-                pme_wrap_kernel<4, 3> <<<nWrapBlocks[2], wrapBlockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+                pme_wrap_kernel<4, 4> <<<nWrapBlocks[2], wrapBlockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
                 CU_LAUNCH_ERR("pme_wrap_kernel");
             }
             break;

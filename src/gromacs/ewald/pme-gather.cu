@@ -218,6 +218,77 @@ static __global__ void pme_gather_kernel
     }
 }
 
+template <
+    const int order
+    >
+__global__ void pme_unwrap_kernel
+    (const int nx, const int ny, const int nz,
+     const int pnx,const int pny, const int pnz,
+     real * __restrict__ grid)
+{
+    //UNWRAP
+
+    int threadId = blockIdx.x * blockDim.x + threadIdx.x;
+    const int overlap = order - 1;
+
+    int    ny_x, ix;
+
+    //if (pme->nnodes_major == 1)
+    {
+        //ny_x = (pme->nnodes_minor == 1 ? ny : pme->pmegrid_ny);
+        ny_x = ny;
+
+        for (ix = 0; ix < overlap; ix++)
+        {
+            int iy, iz;
+
+            for (iy = 0; iy < ny_x; iy++)
+            {
+                for (iz = 0; iz < nz; iz++)
+                {
+                    const int address = (ix * pny + iy) * pnz + iz;
+                    const int offset = nx * pny * pnz;
+                    grid[address + offset] = grid[address];
+                }
+            }
+        }
+    }
+
+    //if (pme->nnodes_minor == 1)
+    {
+        for (ix = 0; ix < pnx; ix++)
+        {
+            int iy, iz;
+
+            for (iy = 0; iy < overlap; iy++)
+            {
+                for (iz = 0; iz < nz; iz++)
+                {
+                    const int address = (ix * pny + iy) * pnz + iz;
+                    const int offset = ny * pnz;
+                    grid[address + offset] = grid[address];
+                }
+            }
+        }
+    }
+
+    /* Copy periodic overlap in z */
+    for (ix = 0; ix < pnx; ix++)
+    {
+        int iy, iz;
+
+        for (iy = 0; iy < pny; iy++)
+        {
+            for (iz = 0; iz < overlap; iz++)
+            {
+                const int address = (ix * pny + iy) * pnz + iz;
+                const int offset = nz;
+                grid[address + offset] = grid[address];
+            }
+        }
+    }
+}
+
 void gather_f_bsplines_gpu_2_pre
 (gmx_bool bClearF,
  int *spline_ind, int spline_n,
@@ -276,9 +347,33 @@ void gather_f_bsplines_gpu_2
         return;
 
     int size_grid = ndatatot * sizeof(real);
-    real *grid_d = PMEFetchRealArray(PME_ID_REAL_GRID_WITH_OVERLAP, thread, size_grid, ML_DEVICE);
+    real *grid_d = PMEFetchRealArray(PME_ID_REAL_GRID, thread, size_grid, ML_DEVICE);
     if (!pme->gpu->keepGPUDataBetweenC2RAndGather)
         PMECopy(grid_d, grid, size_grid, ML_DEVICE, s);
+
+    if (pme->bGPUSingle)
+    {
+        if (order == 4)
+        {
+            pme_unwrap_kernel<4> <<<1, 1, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+            CU_LAUNCH_ERR("pme_unwrap_kernel");
+        }
+        else
+            gmx_fatal(FARGS, "gather: orders other than 4 untested!");
+        /*
+        const int workCells[] = {pnx * pny * overlap, nz * pnx * overlap, nz * ny * overlap};
+        const int wrapBlockSize = 4 * warp_size; //yupinov thsi is everywhere! and architecture-specific
+        int nWrapBlocks[3];
+        for (int i = 0; i < 3; i++)
+            nWrapBlocks[i] = (workCells[i] + wrapBlockSize - 1) / wrapBlockSize;
+        pme_unwrap_kernel<4, 1> <<<nWrapBlocks[0], wrapBlockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+        pme_unwrap_kernel<4, 2> <<<nWrapBlocks[1], wrapBlockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+        pme_unwrap_kernel<4, 3> <<<nWrapBlocks[2], wrapBlockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+        CU_LAUNCH_ERR("pme_unwrap_kernel");
+        */
+    }
+
+
 
     //copy order?
     //compacting, and size....
