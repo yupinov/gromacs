@@ -228,10 +228,13 @@ __global__ void pme_unwrap_kernel
 {
     //UNWRAP
 
-    int threadId = blockIdx.x * blockDim.x + threadIdx.x;
+    const int iz = blockIdx.x * blockDim.x + threadIdx.x;
+    const int iy = blockIdx.y * blockDim.y + threadIdx.y;
+    const int ix = blockIdx.z * blockDim.z + threadIdx.z;
+
     const int overlap = order - 1;
 
-    int    ny_x, ix;
+    int    ny_x;//, ix;
 
     //if (pme->nnodes_major == 1)
     if (stage & 4)
@@ -239,13 +242,12 @@ __global__ void pme_unwrap_kernel
         //ny_x = (pme->nnodes_minor == 1 ? ny : pme->pmegrid_ny);
         ny_x = ny;
 
-        for (ix = 0; ix < overlap; ix++)
+        if (iz < nz)
+        //for (ix = 0; ix < overlap; ix++)
         {
-            int iy, iz;
-
-            for (iy = 0; iy < ny_x; iy++)
+            //for (iy = 0; iy < ny_x; iy++)
             {
-                for (iz = 0; iz < nz; iz++)
+                //for (iz = 0; iz < nz; iz++)
                 {
                     const int address = (ix * pny + iy) * pnz + iz;
                     const int offset_x = nx * pny * pnz;
@@ -258,13 +260,14 @@ __global__ void pme_unwrap_kernel
     //if (pme->nnodes_minor == 1)
     if (stage & 2)
     {
-        for (ix = 0; ix < pnx; ix++)
+        if (iz < nz)
+        //for (ix = 0; ix < pnx; ix++)
         {
-            int iy, iz;
+            //int iy, iz;
 
-            for (iy = 0; iy < overlap; iy++)
+            //for (iy = 0; iy < overlap; iy++)
             {
-                for (iz = 0; iz < nz; iz++)
+                //for (iz = 0; iz < nz; iz++)
                 {
                     const int address = (ix * pny + iy) * pnz + iz;
                     const int offset_y = ny * pnz;
@@ -277,13 +280,14 @@ __global__ void pme_unwrap_kernel
     /* Copy periodic overlap in z */
     if (stage & 1)
     {
-        for (ix = 0; ix < pnx; ix++)
+        //for (ix = 0; ix < pnx; ix++)
+        if (iy < pny)
         {
-            int iy, iz;
+            //int iy, iz;
 
-            for (iy = 0; iy < pny; iy++)
+            //for (iy = 0; iy < pny; iy++)
             {
-                for (iz = 0; iz < overlap; iz++)
+                //for (iz = 0; iz < overlap; iz++)
                 {
                     const int address = (ix * pny + iy) * pnz + iz;
                     const int offset_z = nz;
@@ -364,9 +368,7 @@ void gather_f_bsplines_gpu_2
             const int blockSize = 4 * warp_size; //yupinov thsi is everywhere! and arichitecture-specific
             const int overlap = order - 1; // all copied from pme-spread.cu
             int overlapLinesPerBlock = blockSize / overlap; //so there is unused padding in each block;
-            int blocks[] = {1, 1, 1};
-            int threads[] = {1, 1, 1};
-            /*
+
             dim3 blocks[] =
             {
                 dim3(1, (pny + overlapLinesPerBlock - 1) / overlapLinesPerBlock, pnx),
@@ -380,7 +382,6 @@ void gather_f_bsplines_gpu_2
                 dim3(overlapLinesPerBlock, overlap, 1),
                 dim3(overlapLinesPerBlock, 1, overlap),
             };
-            */
 
             events_record_start(gpu_events_unwrap, s);
 
