@@ -55,7 +55,7 @@
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/snprintf.h"
 
-struct gmx_wallclock_gpu_pme_t gmx_wallclock_gpu_pme; //yupinov [Zalenski: HACK] not all changes copied
+struct gmx_wallclock_gpu_pme_t gmx_wallclock_gpu_pme;
 
 static const bool useCycleSubcounters = GMX_CYCLE_SUBCOUNTERS;
 
@@ -405,15 +405,15 @@ void wallcycle_reset_all(gmx_wallcycle_t wc)
             wc->wcsc[i].c = 0;
         }
     }
-        //yupinov
-        for (i = 0; i < YUP_MAGIC; i++)
+    //yupinov
+    for (i = 0; i < PME_GPU_STAGES; i++)
+    {
+        for (int j = 0; j < PME_GPU_STAGES; j++)
         {
-            for (int j = 0; j < YUP_MAGIC; j++)
-            {
             gmx_wallclock_gpu_pme.pme_time[i][j].t = 0.0;
             gmx_wallclock_gpu_pme.pme_time[i][j].c = 0;
-            }
         }
+    }
 }
 
 static gmx_bool is_pme_counter(int ewc)
@@ -923,13 +923,13 @@ void wallcycle_print(FILE *fplog, const gmx::MDLogger &mdlog, int nnodes, int np
             }
         }
         //yupinov
-        for (i = 0; i < YUP_MAGIC; i++)
+        for (i = 0; i < PME_GPU_STAGES; i++)
+        {
+            for (j = 0; j < PME_GPU_STAGES; j++)
             {
-                    for (j = 0; j < YUP_MAGIC; j++)
-                    {
-                    tot_k += gmx_wallclock_gpu_pme.pme_time[i][j].t;
-                }
+                tot_k += gmx_wallclock_gpu_pme.pme_time[i][j].t;
             }
+        }
         tot_gpu += tot_k;
 
         tot_cpu_overlap = wc->wcc[ewcFORCE].c;
@@ -958,19 +958,19 @@ void wallcycle_print(FILE *fplog, const gmx::MDLogger &mdlog, int nnodes, int np
                 }
             }
         }
-                for (i = 0; i < YUP_MAGIC; i++) //yupinov
+        for (i = 0; i < PME_GPU_STAGES; i++) //yupinov
+        {
+            for (j = 0; j < PME_GPU_STAGES; j++)
             {
-                   for (j = 0; j < YUP_MAGIC; j++)
-                    {
-                    if (gmx_wallclock_gpu_pme.pme_time[i][j].c)
+                if (gmx_wallclock_gpu_pme.pme_time[i][j].c)
                 {
                     print_gputimes(fplog, wcsn[ewcsPME_INTERPOL_IDX + i],
-                           gmx_wallclock_gpu_pme.pme_time[i][j].c,
-                           gmx_wallclock_gpu_pme.pme_time[i][j].t,
-                           tot_gpu);//, j == 0 ? ' ' : '0' + j);
-                }
+                            gmx_wallclock_gpu_pme.pme_time[i][j].c,
+                            gmx_wallclock_gpu_pme.pme_time[i][j].t,
+                            tot_gpu);//, j == 0 ? ' ' : '0' + j);
                 }
             }
+        }
 
 
         print_gputimes(fplog, "F D2H",  gpu_t->nb_c, gpu_t->nb_d2h_t, tot_gpu);

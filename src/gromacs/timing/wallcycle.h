@@ -60,11 +60,6 @@ enum {
 };
 
 
-//yupinov
-#ifndef YUP_MAGIC
-#define YUP_MAGIC 9
-#endif
-
 enum {
     ewcsDD_REDIST, ewcsDD_GRID, ewcsDD_SETUPCOMM,
     ewcsDD_MAKETOP, ewcsDD_MAKECONSTR, ewcsDD_TOPOTHER,
@@ -81,7 +76,7 @@ enum {
     //yupinov: change in the cpp as well!
     ewcsPME_INTERPOL_IDX,
     ewcsPME_CALCSPLINE, //unused
-    ewcsPME_SPREAD,  //unused
+    ewcsPME_SPREAD,  //?
     ewcsPME_CALCSPLINEANDSPREAD,
     ewcsPME_INTERPCALCSPLINEANDSPREAD,
     ewcsPME_FFT_R2C,
@@ -91,6 +86,11 @@ enum {
     //
     ewcsNR
 };
+//yupinov
+#ifndef PME_GPU_STAGES
+#define PME_GPU_STAGES (ewcsPME_GATHER - ewcsPME_INTERPOL_IDX + 1)
+#endif
+
 
 gmx_bool wallcycle_have_counter(void);
 /* Returns if cycle counting is supported */

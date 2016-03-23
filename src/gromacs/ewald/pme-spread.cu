@@ -932,7 +932,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
 
 #ifdef DEBUG_PME_TIMINGS_GPU
-  events_record_stop(gpu_events_spread, s, ewcsPME_SPREAD, 3);
+  events_record_stop(gpu_events_spread, s, ewcsPME_SPREAD, 0);
 #endif
   if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
     PMECopy(pmegrid->grid, grid_d, size_grid, ML_HOST, s);
