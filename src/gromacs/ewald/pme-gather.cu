@@ -218,8 +218,8 @@ static __global__ void pme_gather_kernel
 }
 
 template <
-    const int order//,
-    //const int stage
+    const int order,
+    const int stage
     >
 __global__ void pme_unwrap_kernel
     (const int nx, const int ny, const int nz,
@@ -234,6 +234,7 @@ __global__ void pme_unwrap_kernel
     int    ny_x, ix;
 
     //if (pme->nnodes_major == 1)
+    if (stage & 4)
     {
         //ny_x = (pme->nnodes_minor == 1 ? ny : pme->pmegrid_ny);
         ny_x = ny;
@@ -247,14 +248,15 @@ __global__ void pme_unwrap_kernel
                 for (iz = 0; iz < nz; iz++)
                 {
                     const int address = (ix * pny + iy) * pnz + iz;
-                    const int offset = nx * pny * pnz;
-                    grid[address + offset] = grid[address];
+                    const int offset_x = nx * pny * pnz;
+                    grid[address + offset_x] = grid[address];
                 }
             }
         }
     }
 
     //if (pme->nnodes_minor == 1)
+    if (stage & 2)
     {
         for (ix = 0; ix < pnx; ix++)
         {
@@ -265,25 +267,28 @@ __global__ void pme_unwrap_kernel
                 for (iz = 0; iz < nz; iz++)
                 {
                     const int address = (ix * pny + iy) * pnz + iz;
-                    const int offset = ny * pnz;
-                    grid[address + offset] = grid[address];
+                    const int offset_y = ny * pnz;
+                    grid[address + offset_y] = grid[address];
                 }
             }
         }
     }
 
     /* Copy periodic overlap in z */
-    for (ix = 0; ix < pnx; ix++)
+    if (stage & 1)
     {
-        int iy, iz;
-
-        for (iy = 0; iy < pny; iy++)
+        for (ix = 0; ix < pnx; ix++)
         {
-            for (iz = 0; iz < overlap; iz++)
+            int iy, iz;
+
+            for (iy = 0; iy < pny; iy++)
             {
-                const int address = (ix * pny + iy) * pnz + iz;
-                const int offset = nz;
-                grid[address + offset] = grid[address];
+                for (iz = 0; iz < overlap; iz++)
+                {
+                    const int address = (ix * pny + iy) * pnz + iz;
+                    const int offset_z = nz;
+                    grid[address + offset_z] = grid[address];
+                }
             }
         }
     }
@@ -341,7 +346,8 @@ void gather_f_bsplines_gpu_2
  )
 {
     cudaStream_t s = pme->gpu->pmeStream;
-    int ndatatot = pnx * pny * pnz;
+    const int ndatatot = pnx * pny * pnz;
+
 
     if (!spline_n)
         return;
@@ -355,9 +361,33 @@ void gather_f_bsplines_gpu_2
     {
         if (order == 4)
         {
+            const int blockSize = 4 * warp_size; //yupinov thsi is everywhere! and arichitecture-specific
+            const int overlap = order - 1; // all copied from pme-spread.cu
+            int overlapLinesPerBlock = blockSize / overlap; //so there is unused padding in each block;
+            int blocks[] = {1, 1, 1};
+            int threads[] = {1, 1, 1};
+            /*
+            dim3 blocks[] =
+            {
+                dim3(1, (pny + overlapLinesPerBlock - 1) / overlapLinesPerBlock, pnx),
+                dim3((nz + overlapLinesPerBlock - 1) / overlapLinesPerBlock, 1, pnx),
+                dim3((nz + overlapLinesPerBlock - 1) / overlapLinesPerBlock, ny, 1),
+            };
+            // low occupancy :(
+            dim3 threads[] =
+            {
+                dim3(overlap, overlapLinesPerBlock, 1),
+                dim3(overlapLinesPerBlock, overlap, 1),
+                dim3(overlapLinesPerBlock, 1, overlap),
+            };
+            */
+
             events_record_start(gpu_events_unwrap, s);
 
-            pme_unwrap_kernel<4> <<<1, 1, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+            pme_unwrap_kernel<4, 4> <<<blocks[2], threads[2], 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+            pme_unwrap_kernel<4, 2> <<<blocks[1], threads[1], 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+            pme_unwrap_kernel<4, 1> <<<blocks[0], threads[0], 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+
             CU_LAUNCH_ERR("pme_unwrap_kernel");
 
             events_record_stop(gpu_events_unwrap, s, ewcsPME_UNWRAP, 0);

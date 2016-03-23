@@ -453,6 +453,116 @@ __global__ void pme_spline_kernel
 }
 
 
+template <const int order, const int particlesPerBlock>
+__global__ void pme_spread_kernel
+(int nx, int ny, int nz,
+ int start_ix, int start_iy, int start_iz,
+  const int pny, const int pnz,
+ real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
+ const int * __restrict__ nnx, const int * __restrict__ nny, const int * __restrict__ nnz,
+ const real * __restrict__ xptr, const real * __restrict__ yptr, const real * __restrict__ zptr,
+ const real * __restrict__ coefficientGlobal,
+ real * __restrict__ grid, real * __restrict__ theta, real * __restrict__ dtheta, const int * __restrict__ idx, //yupinov
+ int n)
+{
+/*
+
+    pnx = pmegrid->s[XX];
+    pny = pmegrid->s[YY];
+    pnz = pmegrid->s[ZZ];
+
+    offx = pmegrid->offset[XX];
+    offy = pmegrid->offset[YY];
+    offz = pmegrid->offset[ZZ];
+
+*/
+
+    const int offx = 0, offy = 0, offz = 0;//yupinov fix me!
+
+    __shared__ int idxxptr[particlesPerBlock];
+    __shared__ int idxyptr[particlesPerBlock];
+    __shared__ int idxzptr[particlesPerBlock];
+    __shared__ real coefficient[particlesPerBlock];
+
+    __shared__ real theta_shared[3 * order * particlesPerBlock];
+    __shared__ real dtheta_shared[3 * order * particlesPerBlock];
+    //printf("%d %d %d %d %d %d\n", blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z);
+
+    int ithx, index_x, ithy, index_xy, ithz, index_xyz;
+    real valx, valxy;
+
+    const int localIndex = threadIdx.x;
+    const int globalIndex = blockIdx.x * particlesPerBlock + localIndex;
+
+    if ((globalIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
+    //yupinov - this is a single particle work!
+    {
+
+        idxxptr[localIndex] = idx[globalIndex * DIM + 0];
+        idxyptr[localIndex] = idx[globalIndex * DIM + 1];
+        idxzptr[localIndex] = idx[globalIndex * DIM + 2];
+#pragma unroll
+        for (int j = 0; j < DIM; j++)
+        {
+            const int thetaOffset = (j * particlesPerBlock + localIndex) * order;
+            const int thetaGlobalOffset = (j * n + globalIndex) * order;
+#pragma unroll
+            for (int z = 0; z < order; z++)
+            {
+                theta_shared[thetaOffset + z] = theta[thetaGlobalOffset + z];
+                dtheta_shared[thetaOffset + z] = dtheta[thetaGlobalOffset + z];
+            }
+        }
+
+        coefficient[localIndex] = coefficientGlobal[globalIndex]; //staging for both parts
+    }
+    __syncthreads(); //yupinov do we need it?
+
+    // SPREAD
+
+    // spline Y/Z coordinates
+    ithy = threadIdx.y;
+    ithz = threadIdx.z;
+
+    if ((globalIndex < n) && (coefficient[localIndex] != 0.0f)) //yupinov store checks
+    {
+        const int i0  = idxxptr[localIndex] - offx; //?
+        const int j0  = idxyptr[localIndex] - offy;
+        const int k0  = idxzptr[localIndex] - offz;
+
+        //printf ("%d %d %d %d %d %d %d\n", blockIdx.x, threadIdx.x, threadIdx.y, threadIdx.z, i0, j0, k0);
+        const real *thx = theta_shared + (0 * particlesPerBlock + localIndex) * order;
+        const real *thy = theta_shared + (1 * particlesPerBlock + localIndex) * order;
+        const real *thz = theta_shared + (2 * particlesPerBlock + localIndex) * order;
+
+        // switch (order) ?
+
+        #pragma unroll
+        for (ithx = 0; (ithx < order); ithx++)
+        {
+            index_x = (i0 + ithx) * pny * pnz;
+            valx = coefficient[localIndex] * thx[ithx];
+            /*
+            #pragma unroll
+            for (ithy = 0; (ithy < order); ithy++)
+            */
+            {
+                valxy    = valx*thy[ithy];
+                index_xy = index_x+(j0+ithy)*pnz;
+                /*
+                #pragma unroll
+                for (ithz = 0; (ithz < order); ithz++)
+                */
+                {
+                    index_xyz        = index_xy+(k0+ithz);
+                    atomicAdd(grid + index_xyz, valxy*thz[ithz]);
+                }
+            }
+        }
+    }
+}
+
+
 template <
     const int order,
     const int stage
@@ -578,119 +688,6 @@ __global__ void pme_wrap_kernel
         }
     }
 }
-
-
-template <const int order, const int particlesPerBlock>
-__global__ void pme_spread_kernel
-(int nx, int ny, int nz,
- int start_ix, int start_iy, int start_iz,
-  const int pny, const int pnz,
- real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
- const int * __restrict__ nnx, const int * __restrict__ nny, const int * __restrict__ nnz,
- const real * __restrict__ xptr, const real * __restrict__ yptr, const real * __restrict__ zptr,
- const real * __restrict__ coefficientGlobal,
- real * __restrict__ grid, real * __restrict__ theta, real * __restrict__ dtheta, const int * __restrict__ idx, //yupinov
- int n)
-{
-/*
-
-    pnx = pmegrid->s[XX];
-    pny = pmegrid->s[YY];
-    pnz = pmegrid->s[ZZ];
-
-    offx = pmegrid->offset[XX];
-    offy = pmegrid->offset[YY];
-    offz = pmegrid->offset[ZZ];
-
-*/
-
-    const int offx = 0, offy = 0, offz = 0;//yupinov fix me!
-
-    __shared__ int idxxptr[particlesPerBlock];
-    __shared__ int idxyptr[particlesPerBlock];
-    __shared__ int idxzptr[particlesPerBlock];
-    __shared__ real coefficient[particlesPerBlock];
-
-    __shared__ real theta_shared[3 * order * particlesPerBlock];
-    __shared__ real dtheta_shared[3 * order * particlesPerBlock];
-    //printf("%d %d %d %d %d %d\n", blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z);
-
-    int ithx, index_x, ithy, index_xy, ithz, index_xyz;
-    real valx, valxy;
-
-    const int localIndex = threadIdx.x;
-    const int globalIndex = blockIdx.x * particlesPerBlock + localIndex;
-
-    if ((globalIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
-    //yupinov - this is a single particle work!
-    {
-
-        idxxptr[localIndex] = idx[globalIndex * DIM + 0];
-        idxyptr[localIndex] = idx[globalIndex * DIM + 1];
-        idxzptr[localIndex] = idx[globalIndex * DIM + 2];
-#pragma unroll
-        for (int j = 0; j < DIM; j++)
-        {
-            const int thetaOffset = (j * particlesPerBlock + localIndex) * order;
-            const int thetaGlobalOffset = (j * n + globalIndex) * order;
-#pragma unroll
-            for (int z = 0; z < order; z++)
-            {
-                theta_shared[thetaOffset + z] = theta[thetaGlobalOffset + z];
-                dtheta_shared[thetaOffset + z] = dtheta[thetaGlobalOffset + z];
-            }
-        }
-
-        coefficient[localIndex] = coefficientGlobal[globalIndex]; //staging for both parts
-    }
-    __syncthreads(); //yupinov do we need it?
-
-    // SPREAD
-
-    // spline Y/Z coordinates
-    ithy = threadIdx.y;
-    ithz = threadIdx.z;
-
-    if ((globalIndex < n) && (coefficient[localIndex] != 0.0f)) //yupinov store checks
-    {
-        const int i0  = idxxptr[localIndex] - offx; //?
-        const int j0  = idxyptr[localIndex] - offy;
-        const int k0  = idxzptr[localIndex] - offz;
-
-        //printf ("%d %d %d %d %d %d %d\n", blockIdx.x, threadIdx.x, threadIdx.y, threadIdx.z, i0, j0, k0);
-        const real *thx = theta_shared + (0 * particlesPerBlock + localIndex) * order;
-        const real *thy = theta_shared + (1 * particlesPerBlock + localIndex) * order;
-        const real *thz = theta_shared + (2 * particlesPerBlock + localIndex) * order;
-
-        // switch (order) ?
-
-        #pragma unroll
-        for (ithx = 0; (ithx < order); ithx++)
-        {
-            index_x = (i0 + ithx) * pny * pnz;
-            valx = coefficient[localIndex] * thx[ithx];
-            /*
-            #pragma unroll
-            for (ithy = 0; (ithy < order); ithy++)
-            */
-            {
-                valxy    = valx*thy[ithy];
-                index_xy = index_x+(j0+ithy)*pnz;
-                /*
-                #pragma unroll
-                for (ithz = 0; (ithz < order); ithz++)
-                */
-                {
-                    index_xyz        = index_xy+(k0+ithz);
-                    atomicAdd(grid + index_xyz, valxy*thz[ithz]);
-                }
-            }
-        }
-    }
-}
-
-
-
 
 
 
@@ -943,9 +940,9 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
             }
             if (pme->bGPUSingle)
             {
-                const int workCells[] = {pnx * pny * overlap, nz * pnx * overlap, nz * ny * overlap};
-                int blockSize = 4 * warp_size; //yupinov thsi is everywhere! and arichitecture-specific
+                const int blockSize = 4 * warp_size; //yupinov thsi is everywhere! and arichitecture-specific
                 /*
+                const int workCells[] = {pnx * pny * overlap, nz * pnx * overlap, nz * ny * overlap};
                 dim3 nBlocks[3];
                 for (int i = 0; i < 3; i++)
                     nBlocks[i] = dim3((workCells[i] + blockSize - 1) / blockSize, 1, 1);
