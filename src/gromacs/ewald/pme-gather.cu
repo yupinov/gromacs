@@ -276,7 +276,9 @@ void gather_f_bsplines_gpu_2
         return;
 
     int size_grid = ndatatot * sizeof(real);
-    real *grid_d = PMEFetchAndCopyRealArray(PME_ID_REAL_GRID_WITH_OVERLAP, thread, grid, size_grid, ML_DEVICE, s);
+    real *grid_d = PMEFetchRealArray(PME_ID_REAL_GRID_WITH_OVERLAP, thread, size_grid, ML_DEVICE);
+    if (!pme->gpu->keepGPUDataBetweenC2RAndGather)
+        PMECopy(grid_d, grid, size_grid, ML_DEVICE, s);
 
     //copy order?
     //compacting, and size....

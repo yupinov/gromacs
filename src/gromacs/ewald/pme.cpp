@@ -1079,16 +1079,17 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     cr->nodeid, atc->n);
         }
         gmx_bool keepGPUDataBetweenSpreadAndR2C = FALSE;
+        gmx_bool keepGPUDataBetweenC2RAndGather = FALSE; //yupinov inconvenient
         if (pme->bGPU)
         {
             //yupinov - these are not checked anywhere yet
             //check for spread and solve flags here as well!
             // bGPUSingle
             //yupinov set to true to segfault
-            keepGPUDataBetweenSpreadAndR2C = pme->bGPUSingle && pme->bGPUFFT && FALSE; //yupinov -> no wrap kernels! different grids!
+            keepGPUDataBetweenSpreadAndR2C = pme->bGPUSingle && pme->bGPUFFT; //yupinov -> no wrap kernels! different grids!
             gmx_bool keepGPUDataBetweenR2CAndSolve = pme->bGPUSingle && pme->bGPUFFT && (grid_index < DO_Q); // no LJ support
             gmx_bool keepGPUDataBetweenSolveAndC2R = pme->bGPUSingle && keepGPUDataBetweenR2CAndSolve && bBackFFT;
-            gmx_bool keepGPUDataBetweenC2RAndGather = pme->bGPUSingle && pme->bGPUFFT && false; // bCalcF!
+            keepGPUDataBetweenC2RAndGather = pme->bGPUSingle && pme->bGPUFFT; // bCalcF!
             pme_gpu_update_flags(pme->gpu,
                                  keepGPUDataBetweenSpreadAndR2C,
                                  keepGPUDataBetweenR2CAndSolve,
@@ -1241,8 +1242,8 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                            refactoring code here. */
                         wallcycle_start(wcycle, ewcPME_SPREADGATHER);
                     }
-
-                    copy_fftgrid_to_pmegrid(pme, fftgrid, grid, grid_index, pme->nthread, thread);
+                    if (!keepGPUDataBetweenC2RAndGather)
+                        copy_fftgrid_to_pmegrid(pme, fftgrid, grid, grid_index, pme->nthread, thread);
                 }
             } GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
         }
@@ -1260,8 +1261,8 @@ int gmx_pme_do(struct gmx_pme_t *pme,
             }
 #endif
             where();
-
-            unwrap_periodic_pmegrid(pme, grid);
+            if (!pme->bGPUSingle) //yupinov check GPUFFT instead?
+                unwrap_periodic_pmegrid(pme, grid);
         }
 
         if (bCalcF)
