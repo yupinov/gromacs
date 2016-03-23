@@ -79,9 +79,11 @@ enum {
     ewcsPME_SPREAD,  //?
     ewcsPME_SPLINEANDSPREAD,
     ewcsPME_INTERPCALCSPLINEANDSPREAD,
+    ewcsPME_WRAP,
     ewcsPME_FFT_R2C,
     ewcsPME_SOLVE,
     ewcsPME_FFT_C2R,
+    ewcsPME_UNWRAP,
     ewcsPME_GATHER,
     //
     ewcsNR

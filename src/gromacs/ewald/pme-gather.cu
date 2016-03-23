@@ -354,8 +354,12 @@ void gather_f_bsplines_gpu_2
     {
         if (order == 4)
         {
+            events_record_start(gpu_events_unwrap, s);
+
             pme_unwrap_kernel<4> <<<1, 1, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
             CU_LAUNCH_ERR("pme_unwrap_kernel");
+
+            events_record_stop(gpu_events_unwrap, s, ewcsPME_UNWRAP, 0);
         }
         else
             gmx_fatal(FARGS, "gather: orders other than 4 untested!");

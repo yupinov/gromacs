@@ -925,10 +925,14 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                 for (int i = 0; i < 3; i++)
                     nWrapBlocks[i] = (workCells[i] + wrapBlockSize - 1) / wrapBlockSize;
 
+                events_record_start(gpu_events_wrap, s);
+
                 pme_wrap_kernel<4, 1> <<<nWrapBlocks[0], wrapBlockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
                 pme_wrap_kernel<4, 2> <<<nWrapBlocks[1], wrapBlockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
                 pme_wrap_kernel<4, 4> <<<nWrapBlocks[2], wrapBlockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
                 CU_LAUNCH_ERR("pme_wrap_kernel");
+
+                events_record_stop(gpu_events_wrap, s, ewcsPME_WRAP, 0);
             }
             break;
 

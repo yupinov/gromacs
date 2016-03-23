@@ -8,6 +8,8 @@
 #include "gromacs/timing/wallcycle.h"
 #include "gromacs/gpu_utils/cudautils.cuh"
 
+gpu_events gpu_events_wrap, gpu_events_unwrap;
+
 void events_record_start(gpu_events &events, cudaStream_t s)
 {
 #ifdef DEBUG_PME_TIMINGS_GPU
