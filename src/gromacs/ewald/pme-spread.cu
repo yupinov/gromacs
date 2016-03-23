@@ -476,12 +476,12 @@ __global__ void pme_wrap_kernel
     //yupinov unwrap as well
     const int overlap = order - 1;
 
+    const int iz = blockIdx.x * blockDim.x + threadIdx.x;
+    const int iy = blockIdx.y * blockDim.y + threadIdx.y;
+    const int ix = blockIdx.z * blockDim.z + threadIdx.z;
 
     if (stage & 1)
     {
-        const int iz = blockIdx.x * blockDim.x + threadIdx.x;
-        const int iy = blockIdx.y * blockDim.y + threadIdx.y;
-        const int ix = blockIdx.z * blockDim.z + threadIdx.z;
         //if (threadId < overlap * pnx * pny)
         if (iy < pny)
         {
@@ -516,25 +516,26 @@ __global__ void pme_wrap_kernel
     }
 
     if (stage & 2)
-        if (threadId < overlap * pnx * nz)
+    {
+        //if (threadId < overlap * pnx * nz)
+        if (iz < nz)
         {
             // nz * pnx operations
 
             //if (pme->nnodes_minor == 1)  //no MPI
             {
                 const int offset_y = ny * pnz;
-                const int ix = (threadId / nz) / overlap;
+                //const int ix = (threadId / nz) / overlap;
                 //for (int ix = 0; ix < pnx; ix++)
                 {
-                    const int iy = (threadId / nz) % overlap; //yupinov replace with 3d thread indices
+                    //const int iy = (threadId / nz) % overlap; //yupinov replace with 3d thread indices
                     //for (int iy = 0; iy < overlap; iy++)
                     {
                         //for (int iz = 0; iz < nz; iz++) // not pnz
-                        const int iz = (threadId % nz);
+                        //const int iz = (threadId % nz);
                         {
                             const int address = (ix * pny + iy) * pnz + iz;
                             grid[address] += grid[address + offset_y];
-
                             //const real gridValue = grid[address + offset_y];
                             //atomicAdd(grid + address, gridValue);
                         }
@@ -542,9 +543,12 @@ __global__ void pme_wrap_kernel
                 }
             }
         }
+    }
 
     if (stage & 4)
-        if (threadId < overlap * ny * nz)
+    {
+        //if (threadId < overlap * ny * nz)
+        if (iz < nz)
         {
             // nz * ny operations
             //if (pme->nnodes_major == 1) //yupinov no MPI
@@ -553,13 +557,13 @@ __global__ void pme_wrap_kernel
                 const int ny_x = ny;
                 const int offset_x = nx * pny * pnz;
 
-                const int ix = (threadId / nz) / ny_x;
+                //const int ix = (threadId / nz) / ny_x;
                 //for (int ix = 0; ix < overlap; ix++)
                 {
-                    const int iy = (threadId / nz) % ny_x;
+                    //const int iy = (threadId / nz) % ny_x;
                     //for (int iy = 0; iy < ny_x; iy++) // not pny
                     {
-                        const int iz = (threadId % nz);
+                        //const int iz = (threadId % nz);
                         //for (int iz = 0; iz < nz; iz++) // not pnz
                         {
                             const int address = (ix * pny + iy) * pnz + iz;
@@ -572,6 +576,7 @@ __global__ void pme_wrap_kernel
                 }
             }
         }
+    }
 }
 
 
@@ -940,24 +945,33 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
             {
                 const int workCells[] = {pnx * pny * overlap, nz * pnx * overlap, nz * ny * overlap};
                 int blockSize = 4 * warp_size; //yupinov thsi is everywhere! and arichitecture-specific
-                //int blockOverlaps = blockSize / overlap;
-                //blockSize = blockOverlaps * overlap;
+                /*
                 dim3 nBlocks[3];
                 for (int i = 0; i < 3; i++)
                     nBlocks[i] = dim3((workCells[i] + blockSize - 1) / blockSize, 1, 1);
-                //int overlapLinesPerBlock = (blockSize + overlap - 1) / overlap;
-                //dim3 blocks(pnx, (pny + overlapLinesPerBlock - 1) / overlapLinesPerBlock, 1);
+                */
                 int overlapLinesPerBlock = blockSize / overlap; //so there is unused padding in each block;
-                dim3 blocks(1, (pny + overlapLinesPerBlock - 1) / overlapLinesPerBlock, pnx); // round up for safety?
+
+                dim3 blocks[] =
+                {
+                    dim3(1, (pny + overlapLinesPerBlock - 1) / overlapLinesPerBlock, pnx),
+                    dim3((nz + overlapLinesPerBlock - 1) / overlapLinesPerBlock, 1, pnx),
+                    dim3((nz + overlapLinesPerBlock - 1) / overlapLinesPerBlock, ny, 1),
+                };
                 // low occupancy :(
-                dim3 threads(overlap, overlapLinesPerBlock, 1);
+                dim3 threads[] =
+                {
+                    dim3(overlap, overlapLinesPerBlock, 1),
+                    dim3(overlapLinesPerBlock, overlap, 1),
+                    dim3(overlapLinesPerBlock, 1, overlap),
+                };
 
                 events_record_start(gpu_events_wrap, s);
 
-                pme_wrap_kernel<4, 1> <<<blocks, threads, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+                pme_wrap_kernel<4, 1> <<<blocks[0], threads[0], 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
                 //pme_wrap_kernel<4, 1> <<<nBlocks[0], blockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
-                pme_wrap_kernel<4, 2> <<<nBlocks[1], blockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
-                pme_wrap_kernel<4, 4> <<<nBlocks[2], blockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+                pme_wrap_kernel<4, 2> <<<blocks[1], threads[1], 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+                pme_wrap_kernel<4, 4> <<<blocks[2], threads[2], 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
                 CU_LAUNCH_ERR("pme_wrap_kernel");
 
                 events_record_stop(gpu_events_wrap, s, ewcsPME_WRAP, 0);
