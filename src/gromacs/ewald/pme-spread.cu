@@ -48,7 +48,9 @@
 #include "pme-gpu.h"
 
 #ifdef DEBUG_PME_TIMINGS_GPU
+extern gpu_events gpu_events_spline;
 extern gpu_events gpu_events_spread;
+extern gpu_events gpu_events_splineandspread;
 #endif
 
 
@@ -798,9 +800,6 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
         stat = cudaMemsetAsync(grid_d, 0, size_grid, s); //yupinov
         CU_RET_ERR(stat, "cudaMemsetAsync spread error");
     }
-    #ifdef DEBUG_PME_TIMINGS_GPU
-    events_record_start(gpu_events_spread, s);
-    #endif
     /*
     const int N = 256;
     const int D = 2;
@@ -831,6 +830,10 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
             {
                 if (bCalcSplines)
                 {
+                    #ifdef DEBUG_PME_TIMINGS_GPU
+                    events_record_start(gpu_events_spline, s);
+                    #endif
+
                     if (bDoSplines)
                         gmx_fatal(FARGS, "the code for bDoSplines==true was not tested!");
                     else
@@ -854,9 +857,17 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                     }
 
                     CU_LAUNCH_ERR("pme_spline_kernel");
+
+                    #ifdef DEBUG_PME_TIMINGS_GPU
+                      events_record_stop(gpu_events_spline, s, ewcsPME_SPLINE, 0);
+                    #endif
                 }
                 if (bSpread)
                 {
+                    #ifdef DEBUG_PME_TIMINGS_GPU
+                    events_record_start(gpu_events_spread, s);
+                    #endif
+
                     pme_spread_kernel<4, blockSize / 4 / 4> <<<nBlocks, dimBlock, 0, s>>>
                                                                             (nx, ny, nz,
                                                                              pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
@@ -874,10 +885,18 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                                                                              n);
 
                     CU_LAUNCH_ERR("pme_spread_kernel");
+
+                    #ifdef DEBUG_PME_TIMINGS_GPU
+                      events_record_stop(gpu_events_spread, s, ewcsPME_SPREAD, 0);
+                    #endif
                 }
             }
             else // a single monster kernel here
             {
+                #ifdef DEBUG_PME_TIMINGS_GPU
+                events_record_start(gpu_events_splineandspread, s);
+                #endif
+
                 if (bCalcSplines)
                 {
                     if (bDoSplines)
@@ -909,8 +928,11 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                 }
                 else
                     gmx_fatal(FARGS, "the code for bCalcSplines==false was not tested!"); //yupinov
-
                 CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
+
+                #ifdef DEBUG_PME_TIMINGS_GPU
+                  events_record_stop(gpu_events_splineandspread, s, ewcsPME_SPLINEANDSPREAD, 0);
+                #endif
             }
             if (pme->bGPUSingle)
             {
@@ -930,10 +952,6 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
             gmx_fatal(FARGS, "the code for pme_order != 4 was not tested!"); //yupinov
     }
 
-
-#ifdef DEBUG_PME_TIMINGS_GPU
-  events_record_stop(gpu_events_spread, s, ewcsPME_SPREAD, 0);
-#endif
   if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
     PMECopy(pmegrid->grid, grid_d, size_grid, ML_HOST, s);
   for (int j = 0; j < DIM; ++j)

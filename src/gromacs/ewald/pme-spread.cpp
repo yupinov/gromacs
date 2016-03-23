@@ -1002,7 +1002,7 @@ void spread_on_grid(struct gmx_pme_t *pme,
 #ifdef PME_TIME_THREADS
     c2 = omp_cyc_start();
 #endif
-    wallcycle_sub_start(wcycle, ewcsPME_CALCSPLINEANDSPREAD);
+    wallcycle_sub_start(wcycle, ewcsPME_SPLINEANDSPREAD);
 #pragma omp parallel for num_threads(nthread) schedule(static)
     for (thread = 0; thread < nthread; thread++)
     {
@@ -1066,7 +1066,7 @@ void spread_on_grid(struct gmx_pme_t *pme,
         }
         GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
     }
-    wallcycle_sub_stop(wcycle, ewcsPME_CALCSPLINEANDSPREAD);
+    wallcycle_sub_stop(wcycle, ewcsPME_SPLINEANDSPREAD);
 #ifdef PME_TIME_THREADS
     c2   = omp_cyc_end(c2);
     cs2 += (double)c2;

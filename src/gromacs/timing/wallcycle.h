@@ -75,9 +75,9 @@ enum {
     ewcsNB_F_BUF_OPS,
     //yupinov: change in the cpp as well!
     ewcsPME_INTERPOL_IDX,
-    ewcsPME_CALCSPLINE, //unused
+    ewcsPME_SPLINE, //unused
     ewcsPME_SPREAD,  //?
-    ewcsPME_CALCSPLINEANDSPREAD,
+    ewcsPME_SPLINEANDSPREAD,
     ewcsPME_INTERPCALCSPLINEANDSPREAD,
     ewcsPME_FFT_R2C,
     ewcsPME_SOLVE,
