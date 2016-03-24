@@ -978,22 +978,25 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
             gmx_fatal(FARGS, "the code for pme_order != 4 was not tested!"); //yupinov
     }
 
-  if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
-    PMECopy(pmegrid->grid, grid_d, size_grid, ML_HOST, s);
-  for (int j = 0; j < DIM; ++j)
-  {
-      PMECopy(atc->spline[thread].dtheta[j], dtheta_d + j * n * order, size_order, ML_HOST, s);
-      PMECopy(atc->spline[thread].theta[j], theta_d + j * n * order, size_order, ML_HOST, s);
-  }
-  PMECopy(atc->idx, idx_d, idx_size, ML_HOST, s);
-//yupinov free, keep allocated
-  /*
-  cudaFree(theta_d);
-  cudaFree(dtheta_d);
-  cudaFree(fractx_d);
-  cudaFree(coefficient_d);
-  free(fractx_h);
-  free(coefficient_h);
-  */
+    if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
+    {
+        PMECopy(pmegrid->grid, grid_d, size_grid, ML_HOST, s);
+        for (int j = 0; j < DIM; ++j) //also breaking compacting in gather
+        //and why not just check bGPUSingle here?
+        {
+            PMECopy(atc->spline[thread].dtheta[j], dtheta_d + j * n * order, size_order, ML_HOST, s);
+            PMECopy(atc->spline[thread].theta[j], theta_d + j * n * order, size_order, ML_HOST, s);
+        } //yupinov what about theta/dtheta use in pme_realloc_atomcomm_things?
+    }
+    PMECopy(atc->idx, idx_d, idx_size, ML_HOST, s);
+    //yupinov free, keep allocated
+    /*
+    cudaFree(theta_d);
+    cudaFree(dtheta_d);
+    cudaFree(fractx_d);
+    cudaFree(coefficient_d);
+    free(fractx_h);
+    free(coefficient_h);
+    */
 }
 

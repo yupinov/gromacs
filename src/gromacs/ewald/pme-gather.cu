@@ -496,20 +496,24 @@ void gather_f_bsplines_gpu
     */
     real *theta_d = PMEFetchRealArray(PME_ID_THETA, thread, DIM * size_splines, ML_DEVICE);
     real *theta_x_d = theta_d + 0 * order * n;
-    PMECopy(theta_x_d, theta_x_h, size_splines, ML_DEVICE, s);
     real *theta_y_d = theta_d + 1 * order * n;
-    PMECopy(theta_y_d, theta_y_h, size_splines, ML_DEVICE, s);
     real *theta_z_d = theta_d + 2 * order * n;
-    PMECopy(theta_z_d, theta_z_h, size_splines, ML_DEVICE, s);
 
     real *dtheta_d = PMEFetchRealArray(PME_ID_DTHETA, thread, DIM * size_splines, ML_DEVICE);
     real *dtheta_x_d = dtheta_d + 0 * order * n;
-    PMECopy(dtheta_x_d, dtheta_x_h, size_splines, ML_DEVICE, s);
     real *dtheta_y_d = dtheta_d + 1 * order * n;
-    PMECopy(dtheta_y_d, dtheta_y_h, size_splines, ML_DEVICE, s);
     real *dtheta_z_d = dtheta_d + 2 * order * n;
-    PMECopy(dtheta_z_d, dtheta_z_h, size_splines, ML_DEVICE, s);
 
+    if (!pme->gpu->keepGPUDataBetweenC2RAndGather) // compare with spread and compacting
+    {
+        PMECopy(theta_x_d, theta_x_h, size_splines, ML_DEVICE, s);
+        PMECopy(theta_y_d, theta_y_h, size_splines, ML_DEVICE, s);
+        PMECopy(theta_z_d, theta_z_h, size_splines, ML_DEVICE, s);
+
+        PMECopy(dtheta_x_d, dtheta_x_h, size_splines, ML_DEVICE, s);
+        PMECopy(dtheta_y_d, dtheta_y_h, size_splines, ML_DEVICE, s);
+        PMECopy(dtheta_z_d, dtheta_z_h, size_splines, ML_DEVICE, s);
+    }
 
 
     // coefficients

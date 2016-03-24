@@ -7,6 +7,7 @@ struct gmx_pme_cuda_t
 {
     cudaStream_t pmeStream;
     gmx_bool keepGPUDataBetweenSpreadAndR2C; //yupinov BetweenSplineAndSpread?
+    //yupinov should be same as keepGPUDataBetweenC2RAndGather ? or what do I do wit hdthetas?
     gmx_bool keepGPUDataBetweenR2CAndSolve;
     gmx_bool keepGPUDataBetweenSolveAndC2R;
     gmx_bool keepGPUDataBetweenC2RAndGather;
