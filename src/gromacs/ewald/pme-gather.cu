@@ -14,6 +14,8 @@
 
 #include <assert.h>
 
+#define SHARED_MEMORY_REDUCTION 1
+
 //yupinov - texture memory?
 template <
         const int order,
@@ -27,7 +29,9 @@ static __global__ void pme_gather_kernel
  const real * __restrict__ thx, const real * __restrict__ thy, const real * __restrict__ thz,
  const real * __restrict__ dthx, const real * __restrict__ dthy, const real * __restrict__ dthz,
  real * __restrict__ atc_f, const real * __restrict__ coefficient_v,
- const int * __restrict__ i0, const int * __restrict__ j0, const int * __restrict__ k0)
+ //const int * __restrict__ i0, const int * __restrict__ j0, const int * __restrict__ k0,
+ const int * __restrict__ idx
+ )
 {
     /* sum forces for local particles */
 
@@ -38,9 +42,7 @@ static __global__ void pme_gather_kernel
     const int particleDataSize = order * order;
     const int blockSize = particlesPerBlock * particleDataSize; //1 line per thread
     // with odd orders something might break here?
-    __shared__ real fx[blockSize];
-    __shared__ real fy[blockSize];
-    __shared__ real fz[blockSize];
+
 
     // spline Y/Z coordinates
     const int ithy = threadIdx.y;
@@ -49,9 +51,18 @@ static __global__ void pme_gather_kernel
     const int splineIndex = threadIdx.y * blockDim.x + threadIdx.x;   // relative to the current particle
     const int lineIndex = (threadIdx.z * (blockDim.x * blockDim.y)) + splineIndex; // and to all the block's particles
 
+#if SHARED_MEMORY_REDUCTION
+    __shared__ real fx[blockSize];
+    __shared__ real fy[blockSize];
+    __shared__ real fz[blockSize];
     fx[lineIndex] = 0.0f;
     fy[lineIndex] = 0.0f;
     fz[lineIndex] = 0.0f;
+#else
+    real fx = 0.0f;
+    real fy = 0.0f;
+    real fz = 0.0f;
+#endif
 
     __shared__ real coefficient[particlesPerBlock];
 
@@ -61,13 +72,16 @@ static __global__ void pme_gather_kernel
 
         for (int ithx = 0; (ithx < order); ithx++)
         {
-            const int index_x = (i0[globalIndex] + ithx) * pny * pnz;
+            //const int index_x = (i0[globalIndex] + ithx) * pny * pnz;
+            const int index_x = (idx[globalIndex * DIM + 0] + ithx) * pny * pnz;
+
             const real tx = thx[thetaOffset + ithx];
             const real dx = dthx[thetaOffset + ithx];
 
             //for (int ithy = 0; (ithy < order); ithy++)
             {
-                const int index_xy = index_x + (j0[globalIndex] + ithy) * pnz;
+                //const int index_xy = index_x + (j0[globalIndex] + ithy) * pnz;
+                const int index_xy = index_x + (idx[globalIndex * DIM + 1] + ithy) * pnz;
                 const real ty = thy[thetaOffset + ithy];
                 const real dy = dthy[thetaOffset + ithy];
                 real fxy1 = 0.0f;
@@ -81,14 +95,22 @@ static __global__ void pme_gather_kernel
                     /*gridValue[localIndex] = grid[index_xy+(k0[globalIndex]+ithz)]; */
                     /*fxy1 += thz[thetaOffset + ithz] * gridValue[particlesPerBlock * ithz + localIndex];  */
                     /*fz1  += dthz[thetaOffset + ithz] * gridValue[particlesPerBlock * ithz + localIndex];    */
-                    const real gridValue = grid[index_xy + (k0[globalIndex] + ithz)];
+                    //const real gridValue = grid[index_xy + (k0[globalIndex] + ithz)];
+                    const real gridValue = grid[index_xy + (idx[globalIndex * DIM + 2] + ithz)];
+
                     fxy1 += thz[thetaOffset + ithz] * gridValue;
                     fz1  += dthz[thetaOffset + ithz] * gridValue;
                 }
                 //yupinov do a normal reduction here and below
+#if SHARED_MEMORY_REDUCTION
                 fx[lineIndex] += dx * ty * fxy1;
                 fy[lineIndex] += tx * dy * fxy1;
                 fz[lineIndex] += tx * ty * fz1;
+#else
+                fx += dx * ty * fxy1;
+                fy += tx * dy * fxy1;
+                fz += tx * ty * fz1;
+#endif
                 /*
                 atomicAdd(fx + localIndex, dx * ty * fxy1);
                 atomicAdd(fy + localIndex, tx * dy * fxy1);
@@ -119,6 +141,9 @@ static __global__ void pme_gather_kernel
         }
         __syncthreads();
     }
+    // skip shared memory,
+    //  do a shuffle loop stopping before last step for order 4
+
 
 
     // below is the failed modified reduction #6
@@ -369,9 +394,10 @@ void gather_f_bsplines_gpu
     real *dtheta_x_h = NULL, *dtheta_y_h = NULL, *dtheta_z_h = NULL;
 
     //indices - allocated here because maybe different sturcture?
-    i0_h = PMEFetchIntegerArray(PME_ID_I0, thread, size_indices, ML_HOST); //yupinov these are IDXPTR, actually. maybe split it?
+    i0_h = PMEFetchIntegerArray(PME_ID_I0, thread, size_indices, ML_HOST);
     j0_h = PMEFetchIntegerArray(PME_ID_J0, thread, size_indices, ML_HOST);
     k0_h = PMEFetchIntegerArray(PME_ID_K0, thread, size_indices, ML_HOST);
+    //yupinov broken!
 
     int *atc_i_compacted_h = NULL;
 
@@ -507,6 +533,8 @@ void gather_f_bsplines_gpu
     // coefficients
     real *coefficients_d = PMEFetchRealArray(PME_ID_COEFFICIENT, thread, size_coefficients, ML_DEVICE);
 
+    int *idx_d = PMEFetchIntegerArray(PME_ID_IDXPTR, thread, DIM * size_indices, ML_DEVICE);
+
     if (!pme->gpu->keepGPUDataBetweenC2RAndGather) // compare with spread and compacting
     {
         PMECopy(theta_x_d, theta_x_h, size_splines, ML_DEVICE, s);
@@ -518,6 +546,8 @@ void gather_f_bsplines_gpu
         PMECopy(dtheta_z_d, dtheta_z_h, size_splines, ML_DEVICE, s);
 
         PMECopy(coefficients_d, coefficients_h, size_coefficients, ML_DEVICE, s);
+
+        PMECopy(idx_d, atc_idx, DIM * size_indices, ML_DEVICE, s);
     }
 
 
@@ -525,12 +555,14 @@ void gather_f_bsplines_gpu
     //forces
     real *atc_f_d = PMEFetchAndCopyRealArray(PME_ID_F, thread, atc_f_h, size_forces, ML_DEVICE, s);
 
-    //yupinov reuse H_ID_COEFFICIENT and other stuff from before solve?
     //indices
 
+    //yupinov
+    /*
     int *i0_d = PMEFetchAndCopyIntegerArray(PME_ID_I0, thread, i0_h, size_indices, ML_DEVICE, s);
     int *j0_d = PMEFetchAndCopyIntegerArray(PME_ID_J0, thread, j0_h, size_indices, ML_DEVICE, s);
     int *k0_d = PMEFetchAndCopyIntegerArray(PME_ID_K0, thread, k0_h, size_indices, ML_DEVICE, s);
+    */
 
 
     const int blockSize = 4 * warp_size;
@@ -549,7 +581,8 @@ void gather_f_bsplines_gpu
            theta_x_d, theta_y_d, theta_z_d,
            dtheta_x_d, dtheta_y_d, dtheta_z_d,
            atc_f_d, coefficients_d,
-           i0_d, j0_d, k0_d);
+           //i0_d, j0_d, k0_d,
+           idx_d);
     else
         gmx_fatal(FARGS, "gather: orders other than 4 untested!");
     CU_LAUNCH_ERR("pme_gather_kernel");
