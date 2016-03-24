@@ -12,6 +12,8 @@
 #include "pme-internal.h"
 #include "pme-cuda.cuh"
 
+#include <assert.h>
+
 //yupinov - texture memory?
 template <
         const int order,
@@ -300,7 +302,7 @@ void gather_f_bsplines_gpu
  const int order,
  int nx, int ny, int nz, int pnx, int pny, int pnz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
- int *spline_ind, int spline_n,
+ int *spline_ind, int n,
  real *atc_coefficient, rvec *atc_f, ivec *atc_idx,
  splinevec *spline_theta, splinevec *spline_dtheta,
  real scale,
@@ -309,15 +311,14 @@ void gather_f_bsplines_gpu
  )
 {
     cudaStream_t s = pme->gpu->pmeStream;
-    const int ndatatot = pnx * pny * pnz;
-
-    if (!spline_n)
+    if (!n)
         return;
 
-    int size_grid = ndatatot * sizeof(real);
-    real *grid_d = PMEFetchRealArray(PME_ID_REAL_GRID, thread, size_grid, ML_DEVICE);
+    const int ndatatot = pnx * pny * pnz;
+    const int gridSize = ndatatot * sizeof(real);
+    real *grid_d = PMEFetchRealArray(PME_ID_REAL_GRID, thread, gridSize, ML_DEVICE);
     if (!pme->gpu->keepGPUDataBetweenC2RAndGather)
-        PMECopy(grid_d, grid, size_grid, ML_DEVICE, s);
+        PMECopy(grid_d, grid, gridSize, ML_DEVICE, s);
 
     if (pme->bGPUSingle)
     {
@@ -355,116 +356,156 @@ void gather_f_bsplines_gpu
             gmx_fatal(FARGS, "gather: orders other than 4 untested!");
     }
 
-
-
-    // compact atc_f before cpu calcucation
-
-    int size_forces = DIM * spline_n * sizeof(real);
-    real *atc_f_compacted = PMEFetchRealArray(PME_ID_F, thread, size_forces, ML_HOST); //yupinov fixed allocation size - not actually compacted, same for i_compacted
-    int size_indices = spline_n * sizeof(int);
-    int *atc_i_compacted = PMEFetchIntegerArray(PME_ID_I, thread, size_indices, ML_HOST);
-
-    int oo = 0;
-    for (int ii = 0; ii < spline_n; ii++)
-    {
-        int i           = spline_ind[ii];
-        real coefficient_i = scale*atc_coefficient[i];
-        if (bClearF)
-        {
-            atc_f[i][XX] = 0;
-            atc_f[i][YY] = 0;
-            atc_f[i][ZZ] = 0;
-        }
-
-        if (coefficient_i != 0.0f)
-        {
-            atc_f_compacted[oo * DIM + XX] = atc_f[i][XX];
-            atc_f_compacted[oo * DIM + YY] = atc_f[i][YY];
-            atc_f_compacted[oo * DIM + ZZ] = atc_f[i][ZZ];
-            atc_i_compacted[oo] = i;  // indices of uncompacted particles stored in a compacted array
-            oo++;
-        }
-    }
-    //oo is a real size of compacted stuff now
-
-    //copy order?
-    //compacting, and size....
-    int n = spline_n;
-    int size_coefficients = n * sizeof(real);
+    int size_forces = DIM * n * sizeof(real); //yupinov!
+    int size_indices = n * sizeof(int);
     int size_splines = order * n * sizeof(int);
+    int size_coefficients = n * sizeof(real);
 
-    real *coefficients_compacted = PMEFetchRealArray(PME_ID_COEFFICIENT, thread, size_coefficients, ML_HOST);
-    //yupinov reuse H_ID_COEFFICIENT and other stuff from before solve?
+    real *atc_f_h = NULL;
+    int *i0_h = NULL, *j0_h = NULL, *k0_h = NULL;
+    real *coefficients_h = NULL;
 
-    int *i0_compacted = PMEFetchIntegerArray(PME_ID_I0, thread, size_indices, ML_HOST); //yupinov these are IDXPTR, actually. maybe split it?
-    int *j0_compacted = PMEFetchIntegerArray(PME_ID_J0, thread, size_indices, ML_HOST);
-    int *k0_compacted = PMEFetchIntegerArray(PME_ID_K0, thread, size_indices, ML_HOST);
+    real *theta_x_h = NULL, *theta_y_h = NULL, *theta_z_h = NULL;
+    real *dtheta_x_h = NULL, *dtheta_y_h = NULL, *dtheta_z_h = NULL;
 
-    real *theta_x_compacted = PMEFetchRealArray(PME_ID_THX, thread, size_splines, ML_HOST);
-    real *theta_y_compacted = PMEFetchRealArray(PME_ID_THY, thread, size_splines, ML_HOST);
-    real *theta_z_compacted = PMEFetchRealArray(PME_ID_THZ, thread, size_splines, ML_HOST);
-    real *dtheta_x_compacted = PMEFetchRealArray(PME_ID_DTHX, thread, size_splines, ML_HOST);
-    real *dtheta_y_compacted = PMEFetchRealArray(PME_ID_DTHY, thread, size_splines, ML_HOST);
-    real *dtheta_z_compacted = PMEFetchRealArray(PME_ID_DTHZ, thread, size_splines, ML_HOST);
+    //indices - allocated here because maybe different sturcture?
+    i0_h = PMEFetchIntegerArray(PME_ID_I0, thread, size_indices, ML_HOST); //yupinov these are IDXPTR, actually. maybe split it?
+    j0_h = PMEFetchIntegerArray(PME_ID_J0, thread, size_indices, ML_HOST);
+    k0_h = PMEFetchIntegerArray(PME_ID_K0, thread, size_indices, ML_HOST);
 
-    int oo_copy = 0;
-    for (int ii = 0; ii < spline_n; ii++)
+    int *atc_i_compacted_h = NULL;
+
+
+    // compact data
+    if (PME_SKIP_ZEROES)
     {
-        int i           = spline_ind[ii];
-        real coefficient_i = scale*atc_coefficient[i];
-        if (bClearF)
+        atc_i_compacted_h = PMEFetchIntegerArray(PME_ID_NONZERO_INDICES, thread, size_indices, ML_HOST);
+
+        // fixed host allocation sizes - will only be smaller on GPU
+
+        //forces
+        atc_f_h = PMEFetchRealArray(PME_ID_F, thread, size_forces, ML_HOST);
+
+        //thetas
+        theta_x_h = PMEFetchRealArray(PME_ID_THX, thread, size_splines, ML_HOST);
+        theta_y_h = PMEFetchRealArray(PME_ID_THY, thread, size_splines, ML_HOST);
+        theta_z_h = PMEFetchRealArray(PME_ID_THZ, thread, size_splines, ML_HOST);
+        dtheta_x_h = PMEFetchRealArray(PME_ID_DTHX, thread, size_splines, ML_HOST);
+        dtheta_y_h = PMEFetchRealArray(PME_ID_DTHY, thread, size_splines, ML_HOST);
+        dtheta_z_h = PMEFetchRealArray(PME_ID_DTHZ, thread, size_splines, ML_HOST);
+
+        //coefficients
+        coefficients_h = PMEFetchRealArray(PME_ID_COEFFICIENT, thread, size_coefficients, ML_HOST);
+
+        int iCompacted = 0;
+        for (int ii = 0; ii < n; ii++)
         {
-            atc_f[i][XX] = 0; //yupinov memset?
-            atc_f[i][YY] = 0;
-            atc_f[i][ZZ] = 0;
+            int iOriginal = spline_ind[ii]; //yupinov is there a point to this spline_ind? shoould be just 1 : 1
+
+            assert(spline_ind[ii] == ii);
+
+            //coefficient
+            real coefficient_i = scale * atc_coefficient[iOriginal]; //yupinov mutiply coefficients on device!
+
+            if (bClearF) //yupinov
+            {
+                atc_f[iOriginal][XX] = 0;
+                atc_f[iOriginal][YY] = 0;
+                atc_f[iOriginal][ZZ] = 0;
+            }
+
+            if (coefficient_i != 0.0f)
+            {
+                coefficients_h[iCompacted] = coefficient_i;
+
+                //indices
+                int *idxptr = atc_idx[iOriginal];
+                i0_h[iCompacted] = idxptr[XX];
+                j0_h[iCompacted] = idxptr[YY];
+                k0_h[iCompacted] = idxptr[ZZ];
+
+                //thetas
+                int iiorder = ii * order;
+                int ooorder = iCompacted * order;
+                for (int o = 0; o < order; ++o)
+                {
+                    theta_x_h[ooorder + o] = (*spline_theta)[XX][iiorder + o];
+                    theta_y_h[ooorder + o] = (*spline_theta)[YY][iiorder + o];
+                    theta_z_h[ooorder + o] = (*spline_theta)[ZZ][iiorder + o];
+                    dtheta_x_h[ooorder + o] = (*spline_dtheta)[XX][iiorder + o];
+                    dtheta_y_h[ooorder + o] = (*spline_dtheta)[YY][iiorder + o];
+                    dtheta_z_h[ooorder + o] = (*spline_dtheta)[ZZ][iiorder + o];
+                }
+                //forces
+                atc_f_h[iCompacted * DIM + XX] = atc_f[iOriginal][XX];
+                atc_f_h[iCompacted * DIM + YY] = atc_f[iOriginal][YY];
+                atc_f_h[iCompacted * DIM + ZZ] = atc_f[iOriginal][ZZ];
+
+                atc_i_compacted_h[iCompacted] = iOriginal;  // indices of uncompacted particles stored in a compacted array
+
+                iCompacted++;
+            }
+        }
+        // adjust sizes for device allocation
+        n = iCompacted;
+        size_coefficients = n * sizeof(real);
+        size_splines = order * n * sizeof(int);
+        size_indices = n * sizeof(int);
+        size_forces = DIM * n * sizeof(real);
+    }
+    else
+    {
+        for (int i = 0; i < n; i++)
+        {
+            if (bClearF) //yupinov
+            {
+                atc_f[i][XX] = 0;
+                atc_f[i][YY] = 0;
+                atc_f[i][ZZ] = 0;
+            }
+            //indices
+            i0_h[i] = atc_idx[i][XX]; //yupinov reorganize
+            j0_h[i] = atc_idx[i][YY];
+            k0_h[i] = atc_idx[i][ZZ];
+
+            //coefficients
+            atc_coefficient[i] *= scale;
         }
 
-        if (coefficient_i != 0)
-        {
-            coefficients_compacted[oo_copy] = coefficient_i;
-            int *idxptr = atc_idx[i];
-            atc_i_compacted[oo_copy] = i;
-            i0_compacted[oo_copy] = idxptr[XX];
-            j0_compacted[oo_copy] = idxptr[YY];
-            k0_compacted[oo_copy] = idxptr[ZZ];
-            int iiorder = ii*order;
-            int ooorder = oo_copy*order;
-            for (int o = 0; o < order; ++o)
-            {
-                theta_x_compacted[ooorder + o] = (*spline_theta)[XX][iiorder + o];
-                theta_y_compacted[ooorder + o] = (*spline_theta)[YY][iiorder + o];
-                theta_z_compacted[ooorder + o] = (*spline_theta)[ZZ][iiorder + o];
-                dtheta_x_compacted[ooorder + o] = (*spline_dtheta)[XX][iiorder + o];
-                dtheta_y_compacted[ooorder + o] = (*spline_dtheta)[YY][iiorder + o];
-                dtheta_z_compacted[ooorder + o] = (*spline_dtheta)[ZZ][iiorder + o];
-            }
-            ++oo_copy;
-        }
+        //forces
+        atc_f_h = (real *)atc_f;
+        //coefficients
+        coefficients_h = atc_coefficient;
+        //thetas
+        theta_x_h = (*spline_theta)[XX];
+        theta_y_h = (*spline_theta)[YY];
+        theta_z_h = (*spline_theta)[ZZ];
+        dtheta_x_h = (*spline_dtheta)[XX];
+        dtheta_y_h = (*spline_dtheta)[YY];
+        dtheta_z_h = (*spline_dtheta)[ZZ];
     }
 
-    n = oo_copy;
-    if (!n)
-        return;
+    // thetas
+    real *theta_x_d = PMEFetchAndCopyRealArray(PME_ID_THX, thread, theta_x_h, size_splines, ML_DEVICE, s);
+    real *theta_y_d = PMEFetchAndCopyRealArray(PME_ID_THY, thread, theta_y_h, size_splines, ML_DEVICE, s);
+    real *theta_z_d = PMEFetchAndCopyRealArray(PME_ID_THZ, thread, theta_z_h, size_splines, ML_DEVICE, s);
+    real *dtheta_x_d = PMEFetchAndCopyRealArray(PME_ID_DTHX, thread, dtheta_x_h, size_splines, ML_DEVICE, s);
+    real *dtheta_y_d = PMEFetchAndCopyRealArray(PME_ID_DTHY, thread, dtheta_y_h, size_splines, ML_DEVICE, s);
+    real *dtheta_z_d = PMEFetchAndCopyRealArray(PME_ID_DTHZ, thread, dtheta_z_h, size_splines, ML_DEVICE, s);
 
-    //copypasted
-    size_indices = n * sizeof(int);
-    size_coefficients = n * sizeof(real);
-    size_forces = DIM * n * sizeof(real);
-    size_splines = order * n * sizeof(int);
+    // coefficients
+    real *coefficients_d = PMEFetchAndCopyRealArray(PME_ID_COEFFICIENT, thread, coefficients_h, size_coefficients, ML_DEVICE, s);
 
-    real *atc_f_d = PMEFetchAndCopyRealArray(PME_ID_F, thread, atc_f_compacted, size_forces, ML_DEVICE, s);
-    real *coefficients_d = PMEFetchAndCopyRealArray(PME_ID_COEFFICIENT, thread, coefficients_compacted, size_coefficients, ML_DEVICE, s);
+    //forces
+    real *atc_f_d = PMEFetchAndCopyRealArray(PME_ID_F, thread, atc_f_h, size_forces, ML_DEVICE, s);
 
-    int *i0_d = PMEFetchAndCopyIntegerArray(PME_ID_I0, thread, i0_compacted, size_indices, ML_DEVICE, s);
-    int *j0_d = PMEFetchAndCopyIntegerArray(PME_ID_J0, thread, j0_compacted, size_indices, ML_DEVICE, s);
-    int *k0_d = PMEFetchAndCopyIntegerArray(PME_ID_K0, thread, k0_compacted, size_indices, ML_DEVICE, s);
+    //yupinov reuse H_ID_COEFFICIENT and other stuff from before solve?
+    //indices
 
-    real *theta_x_d = PMEFetchAndCopyRealArray(PME_ID_THX, thread, theta_x_compacted, size_splines, ML_DEVICE, s);
-    real *theta_y_d = PMEFetchAndCopyRealArray(PME_ID_THY, thread, theta_y_compacted, size_splines, ML_DEVICE, s);
-    real *theta_z_d = PMEFetchAndCopyRealArray(PME_ID_THZ, thread, theta_z_compacted, size_splines, ML_DEVICE, s);
-    real *dtheta_x_d = PMEFetchAndCopyRealArray(PME_ID_DTHX, thread, dtheta_x_compacted, size_splines, ML_DEVICE, s);
-    real *dtheta_y_d = PMEFetchAndCopyRealArray(PME_ID_DTHY, thread, dtheta_y_compacted, size_splines, ML_DEVICE, s);
-    real *dtheta_z_d = PMEFetchAndCopyRealArray(PME_ID_DTHZ, thread, dtheta_z_compacted, size_splines, ML_DEVICE, s);
+    int *i0_d = PMEFetchAndCopyIntegerArray(PME_ID_I0, thread, i0_h, size_indices, ML_DEVICE, s);
+    int *j0_d = PMEFetchAndCopyIntegerArray(PME_ID_J0, thread, j0_h, size_indices, ML_DEVICE, s);
+    int *k0_d = PMEFetchAndCopyIntegerArray(PME_ID_K0, thread, k0_h, size_indices, ML_DEVICE, s);
+
 
     const int blockSize = 4 * warp_size;
     const int particlesPerBlock = blockSize / order / order;
@@ -489,13 +530,14 @@ void gather_f_bsplines_gpu
 
     events_record_stop(gpu_events_gather, s, ewcsPME_GATHER, 0);
 
-    PMECopy(atc_f_compacted, atc_f_d, size_forces, ML_HOST, s);
+    PMECopy(atc_f_h, atc_f_d, size_forces, ML_HOST, s);
 
-    for (int ii = 0; ii < n; ii++)  // iterating over compacted particles
-    {
-        int i = atc_i_compacted[ii]; //index of uncompacted particle
-        atc_f[i][XX] = atc_f_compacted[ii * DIM + XX];
-        atc_f[i][YY] = atc_f_compacted[ii * DIM + YY];
-        atc_f[i][ZZ] = atc_f_compacted[ii * DIM + ZZ];
-    }
+    if (PME_SKIP_ZEROES)
+        for (int ii = 0; ii < n; ii++)  // iterating over compacted particles
+        {
+            int i = atc_i_compacted_h[ii]; //index of uncompacted particle
+            atc_f[i][XX] = atc_f_h[ii * DIM + XX];
+            atc_f[i][YY] = atc_f_h[ii * DIM + YY];
+            atc_f[i][ZZ] = atc_f_h[ii * DIM + ZZ];
+        }
 }

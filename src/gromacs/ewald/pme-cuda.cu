@@ -142,6 +142,7 @@ int *PMEFetchAndCopyIntegerArray(PMEDataID id, int unusedTag, void *src, int siz
 
 void PMECopy(void *dest, void *src, int size, MemLocType destination, cudaStream_t s) //yupinov move everything onto this function - or not
 {
+    assert(s != 0);
     if (destination == ML_DEVICE)
     {
         //cudaError_t stat = cudaMemcpy(dest, src, size, cudaMemcpyHostToDevice);
