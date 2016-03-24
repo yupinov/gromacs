@@ -991,6 +991,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
         } //yupinov what about theta/dtheta/idx use in pme_realloc_atomcomm_things?
     }
     PMECopy(atc->idx, idx_d, idx_size, ML_HOST, s);
+    //yupinov check flags like bSpread etc. before copying...
 
     //yupinov free, keep allocated
     /*
