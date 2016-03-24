@@ -17,9 +17,12 @@ struct gmx_pme_cuda_t
 //yupinov grid indices with tags?
 
 #define PME_CUFFT_INPLACE
-// out of place cuFFT requires a separate complex grid, seems to be virtually the same performance-wise
+// comment this to enable out-of-place cuFFT
+// it requires a separate complex grid, seems to be virtually the same performance-wise
 
 #define DEBUG_PME_TIMINGS_GPU
+// should replace this to respect other GPU timings' variables
+// comment this to disable PME timing function bodies
 
 static const bool PME_SKIP_ZEROES = false;
 // does spread/gather skip neutral particles?
@@ -53,9 +56,9 @@ enum PMEDataID
 
     PME_ID_END_INVALID
 };
+
 #ifdef PME_CUFFT_INPLACE
 #define PME_ID_COMPLEX_GRID PME_ID_REAL_GRID
-//fftgdrid and cfftgrid are the same- doesn't seem to affect the performance much
 #endif
 
 
