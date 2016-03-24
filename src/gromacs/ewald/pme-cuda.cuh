@@ -24,10 +24,10 @@ struct gmx_pme_cuda_t
 // should replace this to respect other GPU timings' variables
 // comment this to disable PME timing function bodies
 
-static const bool PME_SKIP_ZEROES = true;
+static const bool PME_SKIP_ZEROES = false;
 // skipping particles with zero charges on a CPU side
 // for now only done in gather, should be done in spread and memorized
-// seems like a total waste of time!
+// seems like a total waste of time! but what if we do it once at each NS?
 
 
 // identifiers for PME data stored on GPU
