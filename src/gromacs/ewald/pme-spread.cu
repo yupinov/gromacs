@@ -288,8 +288,8 @@ __global__ void pme_spline_and_spread_kernel
                     for (ithz = 0; (ithz < order); ithz++)
                     */
                     {
-                        index_xyz        = index_xy+(k0+ithz);
-                        atomicAdd(grid + index_xyz, valxy*thz[ithz]);
+                        index_xyz        = index_xy + (k0 + ithz);
+                        atomicAdd(grid + index_xyz, valxy * thz[ithz]);
                     }
                 }
             }
@@ -769,22 +769,17 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     int idx_size = n * DIM * sizeof(int);
     int *idx_d = PMEFetchIntegerArray(PME_ID_IDXPTR, thread, idx_size, ML_DEVICE); //why is it not stored?
 
-    real *fshx_d = NULL;
-    real *fshy_d = NULL;
+    real *fshx_d, *fshy_d = NULL;
+    int *nnx_d = NULL, *nny_d = NULL, *nnz_d = NULL;
+    real *xptr_d = NULL, *yptr_d = NULL, *zptr_d = NULL;
+
     if (bCalcSplines)
     {
         fshx_d = PMEFetchRealArray(PME_ID_FSH, thread, 5 * (nx + ny) * sizeof(real), ML_DEVICE);
         fshy_d = fshx_d + 5 * nx;
         PMECopy(fshx_d, pme->fshx, 5 * nx * sizeof(real), ML_DEVICE, s);
         PMECopy(fshy_d, pme->fshy, 5 * ny * sizeof(real), ML_DEVICE, s);
-     }
 
-    int *nnx_d = NULL, *nny_d = NULL, *nnz_d = NULL;
-    real *xptr_d = NULL, *yptr_d = NULL, *zptr_d = NULL;
-
-    if (bCalcSplines)
-    {
-        // NN
         nnx_d = PMEFetchIntegerArray(PME_ID_NN, thread, 5 * (nx + ny + nz) * sizeof(int), ML_DEVICE);
         nny_d = nnx_d + 5 * nx;
         nnz_d = nny_d + 5 * ny;
@@ -792,7 +787,6 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
         PMECopy(nny_d, pme->nny, 5 * ny * sizeof(int), ML_DEVICE, s);
         PMECopy(nnz_d, pme->nnz, 5 * nz * sizeof(int), ML_DEVICE, s);
 
-        // XPTR
         real *xptr_h = PMEFetchRealArray(PME_ID_XPTR, thread, 3 * n_blocked * sizeof(real), ML_HOST);
         xptr_d = PMEFetchRealArray(PME_ID_XPTR, thread, 3 * n_blocked * sizeof(real), ML_DEVICE);
         yptr_d = xptr_d + n_blocked;
