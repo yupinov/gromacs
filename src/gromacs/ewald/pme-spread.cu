@@ -306,16 +306,15 @@ template <
         const gmx_bool bDoSplines
         >
 __global__ void pme_spline_kernel
-(int nx, int ny, int nz,
- int start_ix, int start_iy, int start_iz,
-  const int pny, const int pnz,
- real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
+(const int nx, const int ny, const int nz,
+ const int start_ix, const int start_iy, const int start_iz,
+ const real rxx, const real ryx, const real ryy, const real rzx, const real rzy, const real rzz,
  const real * __restrict__ fshx, const real * __restrict__ fshy,
  const int * __restrict__ nnx, const int * __restrict__ nny, const int * __restrict__ nnz,
  const real * __restrict__ xptr, const real * __restrict__ yptr, const real * __restrict__ zptr,
  const real * __restrict__ coefficientGlobal,
  real * __restrict__ theta, real * __restrict__ dtheta, int * __restrict__ idx, //yupinov
- int n)
+ const int n)
 {
 /*
 
@@ -727,7 +726,6 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     // bDoSplines is always false - untested
     // bSpread is always true - untested, unfinished
     // check bClearF as well
-    // fprintf(stderr, "%s\n", bSpread ? "TRUEEEEEE" : "false");
 
     cudaError_t stat;
     cudaStream_t s = pme->gpu->pmeStream;
@@ -854,7 +852,6 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                         pme_spline_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocks, dimBlock, 0, s>>>
                                                                             (nx, ny, nz,
                                                                              pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
-                                                                             pny, pnz,
                                                                              pme->recipbox[XX][XX],
                                                                              pme->recipbox[YY][XX],
                                                                              pme->recipbox[YY][YY],
