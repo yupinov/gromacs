@@ -20,7 +20,7 @@ struct gmx_pme_cuda_t
 // comment this to enable out-of-place cuFFT
 // it requires a separate complex grid, seems to be virtually the same performance-wise
 
-#define DEBUG_PME_TIMINGS_GPU
+#define PME_GPU_TIMINGS
 // should replace this to respect other GPU timings' variables
 // comment this to disable PME timing function bodies
 

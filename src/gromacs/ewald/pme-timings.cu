@@ -10,7 +10,7 @@ gpu_events gpu_events_wrap, gpu_events_unwrap, gpu_events_gather;
 
 void events_record_start(gpu_events &events, cudaStream_t s)
 {
-#ifdef DEBUG_PME_TIMINGS_GPU
+#ifdef PME_GPU_TIMINGS
     cudaError_t stat;
     if (!events.created)
     {
@@ -27,7 +27,7 @@ void events_record_start(gpu_events &events, cudaStream_t s)
 
 void events_record_stop(gpu_events &events, cudaStream_t s, int ewcsn, int j)
 {
-#ifdef DEBUG_PME_TIMINGS_GPU
+#ifdef PME_GPU_TIMINGS
     cudaError_t stat;
     stat = cudaEventRecord(events.event_stop, s);
     CU_RET_ERR(stat, "?");
