@@ -34,7 +34,7 @@ static const bool PME_SKIP_ZEROES = false;
 // identifiers for PME data stored on GPU
 enum PMEDataID
 {
-    PME_ID_THETA = 1, PME_ID_DTHETA, PME_ID_FRACTX, PME_ID_COEFFICIENT,
+    PME_ID_THETA = 1, PME_ID_DTHETA, PME_ID_COEFFICIENT,
 
     //yupinov fix unnecesary memory usage
     PME_ID_REAL_GRID, //this is pme_grid and it has overlap
@@ -43,7 +43,11 @@ enum PMEDataID
 #endif
     PME_ID_I0, PME_ID_J0, PME_ID_K0,
 
-    PME_ID_THX, PME_ID_THY, PME_ID_THZ, //only used on host now
+
+    //only used on host in gather now
+    PME_ID_THX, PME_ID_THY, PME_ID_THZ,
+    PME_ID_DTHX, PME_ID_DTHY, PME_ID_DTHZ,
+
 
     // interpol_idx
     PME_ID_FSH,
@@ -53,7 +57,7 @@ enum PMEDataID
     PME_ID_IDXPTR, //yupinov added - a duplicate of PME_ID_I0, PME_ID_J0, PME_ID_K0,
     PME_ID_F,
     PME_ID_NONZERO_INDICES,
-    PME_ID_DTHX, PME_ID_DTHY, PME_ID_DTHZ,
+
     PME_ID_BSP_MOD_MINOR, PME_ID_BSP_MOD_MAJOR, PME_ID_BSP_MOD_MIDDLE,
     PME_ID_ENERGY,
     PME_ID_VIRIAL,
