@@ -43,8 +43,8 @@
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 
-#include "check.h"
-#include "pme-cuda.h"
+#include "pme-timings.cuh"
+#include "pme-cuda.cuh"
 #include "pme-gpu.h"
 
 gpu_events gpu_events_spline;

@@ -4,7 +4,7 @@
 #include "gromacs/math/vectypes.h"
 
 #include "th-v.h"
-#include "check.h"
+#include "pme-timings.cuh"
 
 using namespace thrust;
 

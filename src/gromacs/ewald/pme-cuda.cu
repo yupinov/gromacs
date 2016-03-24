@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include "gromacs/gpu_utils/cudautils.cuh"
 
-#include "pme-cuda.h"
+#include "pme-cuda.cuh"
 
 #include <assert.h>
 

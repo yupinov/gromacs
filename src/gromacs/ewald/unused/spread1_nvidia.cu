@@ -40,7 +40,7 @@
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
 #include "gromacs/math/vectypes.h"
-#include "check.h"
+#include "pme-timings.cuh"
 #include "gromacs/gpu_utils/cudautils.cuh"
 
 #include <cuda_runtime.h>

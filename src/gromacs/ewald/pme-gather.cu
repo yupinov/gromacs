@@ -7,10 +7,10 @@
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 #include <cuda.h>
 
-#include "check.h"
+#include "pme-timings.cuh"
 
 #include "pme-internal.h"
-#include "pme-cuda.h"
+#include "pme-cuda.cuh"
 
 //yupinov - texture memory?
 template <

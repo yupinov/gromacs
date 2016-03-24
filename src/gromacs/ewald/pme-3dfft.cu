@@ -1,6 +1,6 @@
 #include <cufft.h>
-#include "check.h"
-#include "pme-cuda.h"
+#include "pme-timings.cuh"
+#include "pme-cuda.cuh"
 
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/gpu_utils/cudautils.cuh"

@@ -1,9 +1,7 @@
-
-
 #include "gromacs/utility/basedefinitions.h"
 #include <cuda.h>
-#include "pme-cuda.h"
-#include "check.h"
+#include "pme-cuda.cuh"
+#include "pme-timings.cuh"
 #include "gromacs/timing/gpu_timing.h"
 #include "gromacs/timing/wallcycle.h"
 #include "gromacs/gpu_utils/cudautils.cuh"
@@ -44,9 +42,6 @@ void events_record_stop(gpu_events &events, cudaStream_t s, int ewcsn, int j)
     ++gmx_wallclock_gpu_pme.pme_time[idx][j].c;
 #endif
 }
-
-
-
 
 #ifdef DEBUG_PME_GPU
 

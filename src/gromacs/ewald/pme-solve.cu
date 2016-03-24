@@ -11,10 +11,10 @@
 
 #include <cuda.h>
 
-#include "check.h"
+#include "pme-timings.cuh"
 
 
-#include "pme-cuda.h"
+#include "pme-cuda.cuh"
 #include "pme-gpu.h"
 #include "pme-internal.h"
 #include "pme-solve.h"

@@ -41,7 +41,7 @@
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
 #include "gromacs/math/vectypes.h"
-#include "check.h"
+#include "pme-timings.cuh"
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 #include <cuda_runtime.h>
@@ -53,7 +53,7 @@ gpu_events gpu_events_spread;
 #endif
 #include "thread_mpi/mutex.h"
 
-#include "pme-cuda.h"
+#include "pme-cuda.cuh"
 
 static tMPI::mutex print_mutex; //yupinov
 

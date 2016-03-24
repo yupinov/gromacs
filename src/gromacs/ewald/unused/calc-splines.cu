@@ -36,7 +36,7 @@
  */
 
 #include "pme.h"
-#include "check.h"
+#include "pme-timings.cuh"
 
 
 #include <assert.h>
