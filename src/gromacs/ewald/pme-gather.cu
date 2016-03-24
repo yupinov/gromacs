@@ -51,6 +51,28 @@ static __global__ void pme_gather_kernel
     const int splineIndex = threadIdx.y * blockDim.x + threadIdx.x;   // relative to the current particle
     const int lineIndex = (threadIdx.z * (blockDim.x * blockDim.y)) + splineIndex; // and to all the block's particles
 
+    const int idxSize = DIM * particlesPerBlock;
+    __shared__ int sharedIdx[idxSize];
+
+    int blockId = blockIdx.x
+                 + blockIdx.y * gridDim.x
+                 + gridDim.x * gridDim.y * blockIdx.z;
+    /*
+    int threadId = blockId * (blockDim.x * blockDim.y * blockDim.z)
+                  + (threadIdx.z * (blockDim.x * blockDim.y))
+                  + (threadIdx.y * blockDim.x)
+                  + threadIdx.x;
+                  */
+    int threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
+            + (threadIdx.y * blockDim.x)
+            + threadIdx.x;
+    if (threadLocalId < idxSize)
+    {
+        sharedIdx[threadLocalId] = idx[blockIdx.x * idxSize + threadLocalId];
+    }//locality?
+    __syncthreads();
+
+
 #if SHARED_MEMORY_REDUCTION
     __shared__ real fx[blockSize];
     __shared__ real fy[blockSize];
@@ -73,7 +95,10 @@ static __global__ void pme_gather_kernel
         for (int ithx = 0; (ithx < order); ithx++)
         {
             //const int index_x = (i0[globalIndex] + ithx) * pny * pnz;
-            const int index_x = (idx[globalIndex * DIM + 0] + ithx) * pny * pnz;
+            //const int index_x = (idx[globalIndex * DIM + XX] + ithx) * pny * pnz;
+            const int index_x = (sharedIdx[localIndex * DIM + XX] + ithx) * pny * pnz;
+            //if (blockId == 1)
+            //    printf("%d %d\n", idx[globalIndex * DIM + XX], sharedIdx[localIndex * DIM + XX]);
 
             const real tx = thx[thetaOffset + ithx];
             const real dx = dthx[thetaOffset + ithx];
@@ -81,7 +106,8 @@ static __global__ void pme_gather_kernel
             //for (int ithy = 0; (ithy < order); ithy++)
             {
                 //const int index_xy = index_x + (j0[globalIndex] + ithy) * pnz;
-                const int index_xy = index_x + (idx[globalIndex * DIM + 1] + ithy) * pnz;
+                //const int index_xy = index_x + (idx[globalIndex * DIM + YY] + ithy) * pnz;
+                const int index_xy = index_x + (sharedIdx[localIndex * DIM + YY] + ithy) * pnz;
                 const real ty = thy[thetaOffset + ithy];
                 const real dy = dthy[thetaOffset + ithy];
                 real fxy1 = 0.0f;
@@ -96,8 +122,8 @@ static __global__ void pme_gather_kernel
                     /*fxy1 += thz[thetaOffset + ithz] * gridValue[particlesPerBlock * ithz + localIndex];  */
                     /*fz1  += dthz[thetaOffset + ithz] * gridValue[particlesPerBlock * ithz + localIndex];    */
                     //const real gridValue = grid[index_xy + (k0[globalIndex] + ithz)];
-                    const real gridValue = grid[index_xy + (idx[globalIndex * DIM + 2] + ithz)];
-
+                    //const real gridValue = grid[index_xy + (idx[globalIndex * DIM + ZZ] + ithz)];
+                    const real gridValue = grid[index_xy + (sharedIdx[localIndex * DIM + ZZ] + ithz)];
                     fxy1 += thz[thetaOffset + ithz] * gridValue;
                     fz1  += dthz[thetaOffset + ithz] * gridValue;
                 }
