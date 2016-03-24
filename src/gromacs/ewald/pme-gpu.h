@@ -204,13 +204,7 @@ CUDA_FUNC_QUALIFIER int solve_pme_lj_yzx_gpu(int gmx_unused nx, int gmx_unused n
              gmx_bool gmx_unused bEnerVir, gmx_pme_t *pme,
                                               int gmx_unused nthread, int gmx_unused thread) CUDA_FUNC_TERM
 
-CUDA_FUNC_QUALIFIER void gather_f_bsplines_gpu_2_pre
-(gmx_bool gmx_unused bClearF,
- int gmx_unused *spline_ind, int gmx_unused spline_n,
- real gmx_unused *atc_coefficient, rvec gmx_unused *atc_f,
- real gmx_unused scale, int gmx_unused thread) CUDA_FUNC_TERM
-
-CUDA_FUNC_QUALIFIER void gather_f_bsplines_gpu_2
+CUDA_FUNC_QUALIFIER void gather_f_bsplines_gpu
 (real gmx_unused *grid, gmx_bool gmx_unused bClearF,
  int gmx_unused order,
  int gmx_unused nx, int gmx_unused ny, int gmx_unused nz, int gmx_unused pnx, int gmx_unused pny, int gmx_unused pnz,

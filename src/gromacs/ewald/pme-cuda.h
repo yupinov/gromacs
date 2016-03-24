@@ -1,6 +1,8 @@
 #ifndef PME_CUDA_H
 #define PME_CUDA_H
+
 #include "pme-internal.h"
+
 struct gmx_pme_cuda_t
 {
     cudaStream_t pmeStream;
@@ -15,9 +17,12 @@ struct gmx_pme_cuda_t
 //yupinov grid indices with tags?
 
 #define PME_CUFFT_INPLACE
-//yupinov -  out of place is broken anyway :(
+//out of place is broken anyway :(
 
 #define DEBUG_PME_TIMINGS_GPU
+
+static const bool PME_SKIP_ZEROES = false;
+// does spread/gather skip neutral particles?
 
 
 // identifiers for PME data stored on GPU

@@ -8,7 +8,7 @@
 #include "gromacs/timing/wallcycle.h"
 #include "gromacs/gpu_utils/cudautils.cuh"
 
-gpu_events gpu_events_wrap, gpu_events_unwrap;
+gpu_events gpu_events_wrap, gpu_events_unwrap, gpu_events_gather;
 
 void events_record_start(gpu_events &events, cudaStream_t s)
 {

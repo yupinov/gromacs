@@ -193,23 +193,6 @@ void gather_f_bsplines(struct gmx_pme_t *pme, real *grid,
      */
 }
 
-
-
-void gather_f_bsplines_gpu_pre(struct gmx_pme_t *pme, real *grid,
-                   gmx_bool bClearF, pme_atomcomm_t *atc,
-                   splinedata_t *spline,
-                   real scale, int thread)
-{
-    int spline_n = spline->n;
-    int *spline_ind = spline->ind;
-    real *atc_coefficient = atc->coefficient;
-    rvec *atc_f = atc->f;
-    gather_f_bsplines_gpu_2_pre(bClearF, spline_ind, spline_n,
-                atc_coefficient, atc_f,
-                scale, thread);
-}
-
-
 void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
                gmx_bool bClearF, pme_atomcomm_t *atc,
                splinedata_t *spline,
@@ -256,7 +239,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
     ivec *atc_idx = atc->idx;
     splinevec *spline_theta = &spline->theta;
     splinevec *spline_dtheta = &spline->dtheta;
-    gather_f_bsplines_gpu_2
+    gather_f_bsplines_gpu
       (grid, bClearF,
        order,
        nx, ny, nz, pnx, pny, pnz,

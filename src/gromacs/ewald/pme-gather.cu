@@ -12,9 +12,6 @@
 #include "pme-internal.h"
 #include "pme-cuda.h"
 
-
-gpu_events gpu_events_gather;
-
 //yupinov - texture memory?
 template <
         const int order,
@@ -298,45 +295,7 @@ __global__ void pme_unwrap_kernel
     }
 }
 
-void gather_f_bsplines_gpu_2_pre
-(gmx_bool bClearF,
- int *spline_ind, int spline_n,
- real *atc_coefficient, rvec *atc_f,
- real scale, int thread
- )
-{
-    // compact atc_f before cpu calcucation
-
-    int size_forces = DIM * spline_n * sizeof(real);
-    real *atc_f_compacted = PMEFetchRealArray(PME_ID_F, thread, size_forces, ML_HOST); //yupinov fixed allocation size - not actually compacted, same for i_compacted
-    int size_indices = spline_n * sizeof(int);
-    int *atc_i_compacted = PMEFetchIntegerArray(PME_ID_I, thread, size_indices, ML_HOST);
-
-    int oo = 0;
-    for (int ii = 0; ii < spline_n; ii++)
-    {
-        int i           = spline_ind[ii];
-        real coefficient_i = scale*atc_coefficient[i];
-        if (bClearF)
-        {
-            atc_f[i][XX] = 0;
-            atc_f[i][YY] = 0;
-            atc_f[i][ZZ] = 0;
-        }
-
-        if (coefficient_i != 0.0f)
-        {
-            atc_f_compacted[oo * DIM + XX] = atc_f[i][XX];
-            atc_f_compacted[oo * DIM + YY] = atc_f[i][YY];
-            atc_f_compacted[oo * DIM + ZZ] = atc_f[i][ZZ];
-            atc_i_compacted[oo] = i;  // indices of uncompacted particles stored in a compacted array
-            oo++;
-        }
-    }
-    //oo is a real size of compacted stuff now
-}
-
-void gather_f_bsplines_gpu_2
+void gather_f_bsplines_gpu
 (real *grid, gmx_bool bClearF,
  const int order,
  int nx, int ny, int nz, int pnx, int pny, int pnz,
@@ -351,7 +310,6 @@ void gather_f_bsplines_gpu_2
 {
     cudaStream_t s = pme->gpu->pmeStream;
     const int ndatatot = pnx * pny * pnz;
-
 
     if (!spline_n)
         return;
@@ -395,33 +353,46 @@ void gather_f_bsplines_gpu_2
         }
         else
             gmx_fatal(FARGS, "gather: orders other than 4 untested!");
-        /*
-        const int workCells[] = {pnx * pny * overlap, nz * pnx * overlap, nz * ny * overlap};
-        const int wrapBlockSize = 4 * warp_size; //yupinov thsi is everywhere! and architecture-specific
-        int nWrapBlocks[3];
-        for (int i = 0; i < 3; i++)
-            nWrapBlocks[i] = (workCells[i] + wrapBlockSize - 1) / wrapBlockSize;
-        pme_unwrap_kernel<4, 1> <<<nWrapBlocks[0], wrapBlockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
-        pme_unwrap_kernel<4, 2> <<<nWrapBlocks[1], wrapBlockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
-        pme_unwrap_kernel<4, 3> <<<nWrapBlocks[2], wrapBlockSize, 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
-        CU_LAUNCH_ERR("pme_unwrap_kernel");
-        */
     }
 
 
 
+    // compact atc_f before cpu calcucation
+
+    int size_forces = DIM * spline_n * sizeof(real);
+    real *atc_f_compacted = PMEFetchRealArray(PME_ID_F, thread, size_forces, ML_HOST); //yupinov fixed allocation size - not actually compacted, same for i_compacted
+    int size_indices = spline_n * sizeof(int);
+    int *atc_i_compacted = PMEFetchIntegerArray(PME_ID_I, thread, size_indices, ML_HOST);
+
+    int oo = 0;
+    for (int ii = 0; ii < spline_n; ii++)
+    {
+        int i           = spline_ind[ii];
+        real coefficient_i = scale*atc_coefficient[i];
+        if (bClearF)
+        {
+            atc_f[i][XX] = 0;
+            atc_f[i][YY] = 0;
+            atc_f[i][ZZ] = 0;
+        }
+
+        if (coefficient_i != 0.0f)
+        {
+            atc_f_compacted[oo * DIM + XX] = atc_f[i][XX];
+            atc_f_compacted[oo * DIM + YY] = atc_f[i][YY];
+            atc_f_compacted[oo * DIM + ZZ] = atc_f[i][ZZ];
+            atc_i_compacted[oo] = i;  // indices of uncompacted particles stored in a compacted array
+            oo++;
+        }
+    }
+    //oo is a real size of compacted stuff now
+
     //copy order?
     //compacting, and size....
     int n = spline_n;
-    int size_indices = n * sizeof(int);
     int size_coefficients = n * sizeof(real);
-    int size_forces = DIM * n * sizeof(real);
     int size_splines = order * n * sizeof(int);
 
-
-    real *atc_f_compacted = PMEFetchRealArray(PME_ID_F, thread, -1, ML_HOST); //but that's wrong! realloc
-
-    int *atc_i_compacted = PMEFetchIntegerArray(PME_ID_I, thread, -1, ML_HOST);  //way to get sizes from th-a?
     real *coefficients_compacted = PMEFetchRealArray(PME_ID_COEFFICIENT, thread, size_coefficients, ML_HOST);
     //yupinov reuse H_ID_COEFFICIENT and other stuff from before solve?
 
@@ -436,7 +407,7 @@ void gather_f_bsplines_gpu_2
     real *dtheta_y_compacted = PMEFetchRealArray(PME_ID_DTHY, thread, size_splines, ML_HOST);
     real *dtheta_z_compacted = PMEFetchRealArray(PME_ID_DTHZ, thread, size_splines, ML_HOST);
 
-    int oo = 0;
+    int oo_copy = 0;
     for (int ii = 0; ii < spline_n; ii++)
     {
         int i           = spline_ind[ii];
@@ -450,16 +421,14 @@ void gather_f_bsplines_gpu_2
 
         if (coefficient_i != 0)
         {
-            coefficients_compacted[oo] = coefficient_i;
+            coefficients_compacted[oo_copy] = coefficient_i;
             int *idxptr = atc_idx[i];
-            //Mattias: atc_f_h force-copying is in gather_f_bsplines_gpu_2_pre()
-            //yupinov: the fuck is it doing there?
-            atc_i_compacted[oo] = i;
-            i0_compacted[oo] = idxptr[XX];
-            j0_compacted[oo] = idxptr[YY];
-            k0_compacted[oo] = idxptr[ZZ];
+            atc_i_compacted[oo_copy] = i;
+            i0_compacted[oo_copy] = idxptr[XX];
+            j0_compacted[oo_copy] = idxptr[YY];
+            k0_compacted[oo_copy] = idxptr[ZZ];
             int iiorder = ii*order;
-            int ooorder = oo*order;
+            int ooorder = oo_copy*order;
             for (int o = 0; o < order; ++o)
             {
                 theta_x_compacted[ooorder + o] = (*spline_theta)[XX][iiorder + o];
@@ -469,11 +438,11 @@ void gather_f_bsplines_gpu_2
                 dtheta_y_compacted[ooorder + o] = (*spline_dtheta)[YY][iiorder + o];
                 dtheta_z_compacted[ooorder + o] = (*spline_dtheta)[ZZ][iiorder + o];
             }
-            ++oo;
+            ++oo_copy;
         }
     }
 
-    n = oo;
+    n = oo_copy;
     if (!n)
         return;
 
