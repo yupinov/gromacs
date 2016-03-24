@@ -41,7 +41,8 @@ enum PMEDataID
     PME_ID_COMPLEX_GRID, //this is cfftgrid
 #endif
     PME_ID_I0, PME_ID_J0, PME_ID_K0,
-    PME_ID_THX, PME_ID_THY, PME_ID_THZ,
+
+    PME_ID_THX, PME_ID_THY, PME_ID_THZ, //only used on host now
 
     // interpol_idx
     PME_ID_FSH,

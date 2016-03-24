@@ -486,12 +486,31 @@ void gather_f_bsplines_gpu
     }
 
     // thetas
+    /*
     real *theta_x_d = PMEFetchAndCopyRealArray(PME_ID_THX, thread, theta_x_h, size_splines, ML_DEVICE, s);
     real *theta_y_d = PMEFetchAndCopyRealArray(PME_ID_THY, thread, theta_y_h, size_splines, ML_DEVICE, s);
     real *theta_z_d = PMEFetchAndCopyRealArray(PME_ID_THZ, thread, theta_z_h, size_splines, ML_DEVICE, s);
     real *dtheta_x_d = PMEFetchAndCopyRealArray(PME_ID_DTHX, thread, dtheta_x_h, size_splines, ML_DEVICE, s);
     real *dtheta_y_d = PMEFetchAndCopyRealArray(PME_ID_DTHY, thread, dtheta_y_h, size_splines, ML_DEVICE, s);
     real *dtheta_z_d = PMEFetchAndCopyRealArray(PME_ID_DTHZ, thread, dtheta_z_h, size_splines, ML_DEVICE, s);
+    */
+    real *theta_d = PMEFetchRealArray(PME_ID_THETA, thread, DIM * size_splines, ML_DEVICE);
+    real *theta_x_d = theta_d + 0 * order * n;
+    PMECopy(theta_x_d, theta_x_h, size_splines, ML_DEVICE, s);
+    real *theta_y_d = theta_d + 1 * order * n;
+    PMECopy(theta_y_d, theta_y_h, size_splines, ML_DEVICE, s);
+    real *theta_z_d = theta_d + 2 * order * n;
+    PMECopy(theta_z_d, theta_z_h, size_splines, ML_DEVICE, s);
+
+    real *dtheta_d = PMEFetchRealArray(PME_ID_DTHETA, thread, DIM * size_splines, ML_DEVICE);
+    real *dtheta_x_d = dtheta_d + 0 * order * n;
+    PMECopy(dtheta_x_d, dtheta_x_h, size_splines, ML_DEVICE, s);
+    real *dtheta_y_d = dtheta_d + 1 * order * n;
+    PMECopy(dtheta_y_d, dtheta_y_h, size_splines, ML_DEVICE, s);
+    real *dtheta_z_d = dtheta_d + 2 * order * n;
+    PMECopy(dtheta_z_d, dtheta_z_h, size_splines, ML_DEVICE, s);
+
+
 
     // coefficients
     real *coefficients_d = PMEFetchAndCopyRealArray(PME_ID_COEFFICIENT, thread, coefficients_h, size_coefficients, ML_DEVICE, s);
