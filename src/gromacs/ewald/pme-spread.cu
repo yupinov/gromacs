@@ -458,9 +458,6 @@ __global__ void pme_spread_kernel
 (int nx, int ny, int nz,
  int start_ix, int start_iy, int start_iz,
   const int pny, const int pnz,
- real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
- const int * __restrict__ nnx, const int * __restrict__ nny, const int * __restrict__ nnz,
- const real * __restrict__ xptr, const real * __restrict__ yptr, const real * __restrict__ zptr,
  const real * __restrict__ coefficientGlobal,
  real * __restrict__ grid, real * __restrict__ theta, real * __restrict__ dtheta, const int * __restrict__ idx, //yupinov
  int n)
@@ -554,8 +551,8 @@ __global__ void pme_spread_kernel
                 for (ithz = 0; (ithz < order); ithz++)
                 */
                 {
-                    index_xyz        = index_xy+(k0+ithz);
-                    atomicAdd(grid + index_xyz, valxy*thz[ithz]);
+                    index_xyz        = index_xy + (k0 + ithz);
+                    atomicAdd(grid + index_xyz, valxy * thz[ithz]);
                 }
             }
         }
@@ -782,30 +779,36 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
         PMECopy(fshy_d, pme->fshy, 5 * ny * sizeof(real), ML_DEVICE, s);
      }
 
-    // NN
-    int *nnx_d = PMEFetchIntegerArray(PME_ID_NN, thread, 5 * (nx + ny + nz) * sizeof(int), ML_DEVICE);
-    int *nny_d = nnx_d + 5 * nx;
-    int *nnz_d = nny_d + 5 * ny;
-    PMECopy(nnx_d, pme->nnx, 5 * nx * sizeof(int), ML_DEVICE, s);
-    PMECopy(nny_d, pme->nny, 5 * ny * sizeof(int), ML_DEVICE, s);
-    PMECopy(nnz_d, pme->nnz, 5 * nz * sizeof(int), ML_DEVICE, s);
+    int *nnx_d = NULL, *nny_d = NULL, *nnz_d = NULL;
+    real *xptr_d = NULL, *yptr_d = NULL, *zptr_d = NULL;
 
-    // XPTR
-    real *xptr_h = PMEFetchRealArray(PME_ID_XPTR, thread, 3 * n_blocked * sizeof(real), ML_HOST);
-    real *xptr_d = PMEFetchRealArray(PME_ID_XPTR, thread, 3 * n_blocked * sizeof(real), ML_DEVICE);
-    real *yptr_d = xptr_d + n_blocked;
-    real *zptr_d = yptr_d + n_blocked;
+    if (bCalcSplines)
     {
-        int ix = 0, iy = n_blocked, iz = 2 * n_blocked;
-        for (int i = 0; i < n; i++)
+        // NN
+        nnx_d = PMEFetchIntegerArray(PME_ID_NN, thread, 5 * (nx + ny + nz) * sizeof(int), ML_DEVICE);
+        nny_d = nnx_d + 5 * nx;
+        nnz_d = nny_d + 5 * ny;
+        PMECopy(nnx_d, pme->nnx, 5 * nx * sizeof(int), ML_DEVICE, s);
+        PMECopy(nny_d, pme->nny, 5 * ny * sizeof(int), ML_DEVICE, s);
+        PMECopy(nnz_d, pme->nnz, 5 * nz * sizeof(int), ML_DEVICE, s);
+
+        // XPTR
+        real *xptr_h = PMEFetchRealArray(PME_ID_XPTR, thread, 3 * n_blocked * sizeof(real), ML_HOST);
+        xptr_d = PMEFetchRealArray(PME_ID_XPTR, thread, 3 * n_blocked * sizeof(real), ML_DEVICE);
+        yptr_d = xptr_d + n_blocked;
+        zptr_d = yptr_d + n_blocked;
         {
-          real *xptr = atc->x[i];
-          xptr_h[ix++] = xptr[XX];
-          xptr_h[iy++] = xptr[YY];
-          xptr_h[iz++] = xptr[ZZ];
+            int ix = 0, iy = n_blocked, iz = 2 * n_blocked;
+            for (int i = 0; i < n; i++)
+            {
+              real *xptr = atc->x[i];
+              xptr_h[ix++] = xptr[XX];
+              xptr_h[iy++] = xptr[YY];
+              xptr_h[iz++] = xptr[ZZ];
+            }
         }
+        PMECopy(xptr_d, xptr_h, 3 * n_blocked * sizeof(real), ML_DEVICE, s);
     }
-    PMECopy(xptr_d, xptr_h, 3 * n_blocked * sizeof(real), ML_DEVICE, s);
     //yupinov blocked approach everywhere?
     //filtering?
 
@@ -884,14 +887,6 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                                                                             (nx, ny, nz,
                                                                              pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
                                                                              pny, pnz,
-                                                                             pme->recipbox[XX][XX],
-                                                                             pme->recipbox[YY][XX],
-                                                                             pme->recipbox[YY][YY],
-                                                                             pme->recipbox[ZZ][XX],
-                                                                             pme->recipbox[ZZ][YY],
-                                                                             pme->recipbox[ZZ][ZZ],
-                                                                             nnx_d, nny_d, nnz_d,
-                                                                             xptr_d, yptr_d, zptr_d,
                                                                              coefficient_d,
                                                                              grid_d, theta_d, dtheta_d, idx_d,
                                                                              n);
