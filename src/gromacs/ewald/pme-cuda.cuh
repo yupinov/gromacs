@@ -61,7 +61,6 @@ enum PMEDataID
 #define PME_ID_COMPLEX_GRID PME_ID_REAL_GRID
 #endif
 
-
 enum MemLocType
 {
     ML_HOST, ML_DEVICE, ML_END_INVALID
@@ -69,9 +68,9 @@ enum MemLocType
 
 //yupinov - look into ML_HOST being under-used
 
-real *PMEFetchRealArray(PMEDataID id, int unusedTag, int size = -1, MemLocType location = ML_END_INVALID);
-int *PMEFetchIntegerArray(PMEDataID id, int unusedTag, int size = -1, MemLocType location = ML_END_INVALID);
-t_complex *PMEFetchComplexArray(PMEDataID id, int unusedTag, int size = -1, MemLocType location = ML_END_INVALID);
+real *PMEFetchRealArray(PMEDataID id, int unusedTag, int size, MemLocType location);
+int *PMEFetchIntegerArray(PMEDataID id, int unusedTag, int size, MemLocType location);
+t_complex *PMEFetchComplexArray(PMEDataID id, int unusedTag, int size, MemLocType location);
 //yupinov warn on wrong param
 
 void PMECopy(void *dest, void *src, int size, MemLocType destination, cudaStream_t s); //yupinov alloc as well
