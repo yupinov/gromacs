@@ -17,7 +17,7 @@ struct gmx_pme_cuda_t
 //yupinov grid indices with tags?
 
 #define PME_CUFFT_INPLACE
-//out of place is broken anyway :(
+// out of place cuFFT requires a separate complex grid, seems to be virtually the same performance-wise
 
 #define DEBUG_PME_TIMINGS_GPU
 
