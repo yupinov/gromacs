@@ -24,8 +24,9 @@
 gpu_events gpu_events_solve;
 
 /* Pascal triangle coefficients used in solve_pme_lj_yzx, only need to do 4 calculations due to symmetry */
-static const __constant__ real lb_scale_factor_symm_gpu[] = { 2.0/64, 12.0/64, 30.0/64, 20.0/64 }; //yupinov copied from pme-internal
-
+static const __constant__ real lb_scale_factor_symm_gpu[] = { 2.0/64, 12.0/64, 30.0/64, 20.0/64 };
+// copied from pme-internal
+// have to be rounded to floats
 
 /*__device__ gmx_inline static void calc_exponentials_q_one(const real f, real &d, real &r, real &e)
 {
@@ -96,14 +97,6 @@ __global__ void pme_solve_kernel
 
     if ((indexMajor < localCountMajor) && (indexMiddle < localCountMiddle) && (indexMinor < localCountMinor))
     {
-        //yupinov do a reduction!
-
-        //if (blockId < 60)
-        //    if (threadId != (indexMajor * localSizeMiddle + indexMiddle) * localSizeMinor + indexMinor)
-        //        printf("%d: threadId %d handles grid cell %d\n", blockId, threadId, (indexMajor * localSizeMiddle + indexMiddle) * localSizeMinor + indexMinor);
-
-        //yupinov :localoffset might be a failure point for MPI!
-
         const int kMajor = indexMajor + localOffsetMajor;
         const real mMajor = (kMajor < maxkMajor) ? kMajor : (kMajor - nMajor);
 
@@ -161,55 +154,50 @@ __global__ void pme_solve_kernel
             }
         }
 
-        if (notZeroPoint) // this skips just one starting point in the whole grid on the rank 0. Not worth it to realign the grid?
+        if (notZeroPoint) // this skips just one starting point in the whole grid on the rank 0
         {     
-            //for (int kx = kxstart; kx < kxend; kx++, p0++)
+            mhxk      = mX * rxx;
+            mhyk      = mX * ryx + mY * ryy;
+            mhzk      = mX * rzx + mY * rzy + mZ * rzz;
+
+            m2k       = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
+            real denom = m2k * bMajorMiddle * BSplineModuleMinor[kMinor];
+            real tmp1  = -ConstFactor * m2k;
+
+            //calc_exponentials_q_one(elfac, denom, tmp1, eterm);
+            denom = 1.0f / denom;
+            tmp1 = expf(tmp1);
+            real etermk = elfac * tmp1 * denom;
+
+            float2 gridValue = *p0;
+            gridValue.x *= etermk;
+            gridValue.y *= etermk;
+            *p0 = gridValue;
+
+            if (bEnerVir)
             {
-                //mx = kMinor < maxkMinor ? kMinor : (kMinor - nMinor);
+                real tmp1k = 2.0f * (gridValue.x * gridValue.x + gridValue.y * gridValue.y) / etermk;
 
-                mhxk      = mX * rxx;
-                mhyk      = mX * ryx + mY * ryy;
-                mhzk      = mX * rzx + mY * rzy + mZ * rzz;
+                real vfactor = (ConstFactor + 1.0f / m2k) * 2.0f;
+                real ets2 = corner_fac * tmp1k;
+                energy += ets2;
 
-                m2k       = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
-                real denom = m2k * bMajorMiddle * BSplineModuleMinor[kMinor];
-                real tmp1  = -ConstFactor * m2k;
+                real ets2vf  = ets2 * vfactor;
+                virxx   = ets2vf * mhxk * mhxk - ets2;
+                virxy   = ets2vf * mhxk * mhyk;
+                virxz   = ets2vf * mhxk * mhzk;
+                viryy   = ets2vf * mhyk * mhyk - ets2;
+                viryz   = ets2vf * mhyk * mhzk;
+                virzz   = ets2vf * mhzk * mhzk - ets2;
 
-                //calc_exponentials_q_one(elfac, denom, tmp1, eterm);
-                denom = 1.0f / denom;
-                tmp1 = expf(tmp1);
-                real etermk = elfac * tmp1 * denom;
-
-                float2 gridValue = *p0;
-                gridValue.x *= etermk;
-                gridValue.y *= etermk;
-                *p0 = gridValue;
-
-                if (bEnerVir)
-                {
-                    real tmp1k = 2.0f * (gridValue.x * gridValue.x + gridValue.y * gridValue.y) / etermk;
-
-                    real vfactor = (ConstFactor + 1.0f / m2k) * 2.0f;
-                    real ets2 = corner_fac * tmp1k;
-                    energy += ets2;
-
-                    real ets2vf  = ets2 * vfactor;
-                    virxx   = ets2vf * mhxk * mhxk - ets2;
-                    virxy   = ets2vf * mhxk * mhyk;
-                    virxz   = ets2vf * mhxk * mhzk;
-                    viryy   = ets2vf * mhyk * mhyk - ets2;
-                    viryz   = ets2vf * mhyk * mhzk;
-                    virzz   = ets2vf * mhzk * mhzk - ets2;
-
-                    const int i = (indexMajor * localCountMiddle + indexMiddle) * localCountMinor + indexMinor;
-                    energy_v[i] = energy;
-                    virial_v[6 * i + 0] = virxx;
-                    virial_v[6 * i + 1] = viryy;
-                    virial_v[6 * i + 2] = virzz;
-                    virial_v[6 * i + 3] = virxy;
-                    virial_v[6 * i + 4] = virxz;
-                    virial_v[6 * i + 5] = viryz;
-                }
+                const int i = (indexMajor * localCountMiddle + indexMiddle) * localCountMinor + indexMinor;
+                energy_v[i] = energy;
+                virial_v[6 * i + 0] = virxx;
+                virial_v[6 * i + 1] = viryy;
+                virial_v[6 * i + 2] = virzz;
+                virial_v[6 * i + 3] = virxy;
+                virial_v[6 * i + 4] = virxz;
+                virial_v[6 * i + 5] = viryz;
             }
         }
     }
