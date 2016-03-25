@@ -20,7 +20,6 @@
 #include "pme-solve.h"
 
 #define SQRT_M_PI real(2.0f / M_2_SQRTPI)
-//yupinov check if these constants work
 
 gpu_events gpu_events_solve;
 

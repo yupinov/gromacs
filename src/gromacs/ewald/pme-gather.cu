@@ -435,10 +435,10 @@ void gather_f_bsplines_gpu
 
         // fixed host allocation sizes - will only be smaller on GPU
 
-        //forces
+        // forces
         atc_f_h = PMEFetchRealArray(PME_ID_F, thread, size_forces, ML_HOST);
 
-        //thetas
+        // thetas
         theta_x_h = PMEFetchRealArray(PME_ID_THX, thread, size_splines, ML_HOST);
         theta_y_h = PMEFetchRealArray(PME_ID_THY, thread, size_splines, ML_HOST);
         theta_z_h = PMEFetchRealArray(PME_ID_THZ, thread, size_splines, ML_HOST);
@@ -446,7 +446,7 @@ void gather_f_bsplines_gpu
         dtheta_y_h = PMEFetchRealArray(PME_ID_DTHY, thread, size_splines, ML_HOST);
         dtheta_z_h = PMEFetchRealArray(PME_ID_DTHZ, thread, size_splines, ML_HOST);
 
-        //coefficients
+        // coefficients
         coefficients_h = PMEFetchRealArray(PME_ID_COEFFICIENT, thread, size_coefficients, ML_HOST);
 
         int iCompacted = 0;
@@ -456,15 +456,8 @@ void gather_f_bsplines_gpu
 
             assert(spline_ind[ii] == ii);
 
-            //coefficient
+            // coefficients
             real coefficient_i = scale * atc_coefficient[iOriginal]; //yupinov mutiply coefficients on device!
-
-            if (bClearF) //yupinov
-            {
-                atc_f[iOriginal][XX] = 0;
-                atc_f[iOriginal][YY] = 0;
-                atc_f[iOriginal][ZZ] = 0;
-            }
 
             if (coefficient_i != 0.0f)
             {
@@ -488,12 +481,17 @@ void gather_f_bsplines_gpu
                     dtheta_y_h[ooorder + o] = (*spline_dtheta)[YY][iiorder + o];
                     dtheta_z_h[ooorder + o] = (*spline_dtheta)[ZZ][iiorder + o];
                 }
-                //forces
-                atc_f_h[iCompacted * DIM + XX] = atc_f[iOriginal][XX];
-                atc_f_h[iCompacted * DIM + YY] = atc_f[iOriginal][YY];
-                atc_f_h[iCompacted * DIM + ZZ] = atc_f[iOriginal][ZZ];
 
-                atc_i_compacted_h[iCompacted] = iOriginal;  // indices of uncompacted particles stored in a compacted array
+                //forces
+                if (!bClearF)
+                {
+                    atc_f_h[iCompacted * DIM + XX] = atc_f[iOriginal][XX];
+                    atc_f_h[iCompacted * DIM + YY] = atc_f[iOriginal][YY];
+                    atc_f_h[iCompacted * DIM + ZZ] = atc_f[iOriginal][ZZ];
+                }
+
+                // indices of uncompacted particles stored in a compacted array
+                atc_i_compacted_h[iCompacted] = iOriginal;
 
                 iCompacted++;
             }
@@ -509,26 +507,20 @@ void gather_f_bsplines_gpu
     {
         for (int i = 0; i < n; i++)
         {
-            if (bClearF) //yupinov
-            {
-                atc_f[i][XX] = 0;
-                atc_f[i][YY] = 0;
-                atc_f[i][ZZ] = 0;
-            }
-            //indices
+            // indices
             i0_h[i] = atc_idx[i][XX]; //yupinov reorganize
             j0_h[i] = atc_idx[i][YY];
             k0_h[i] = atc_idx[i][ZZ];
 
-            //coefficients
+            // coefficients
             atc_coefficient[i] *= scale;
         }
 
-        //forces
+        // forces
         atc_f_h = (real *)atc_f;
-        //coefficients
+        // coefficients
         coefficients_h = atc_coefficient;
-        //thetas
+        // thetas
         theta_x_h = (*spline_theta)[XX];
         theta_y_h = (*spline_theta)[YY];
         theta_z_h = (*spline_theta)[ZZ];
@@ -576,10 +568,15 @@ void gather_f_bsplines_gpu
         PMECopy(idx_d, atc_idx, DIM * size_indices, ML_DEVICE, s);
     }
 
-
-
     //forces
-    real *atc_f_d = PMEFetchAndCopyRealArray(PME_ID_F, thread, atc_f_h, size_forces, ML_DEVICE, s);
+    real *atc_f_d = PMEFetchRealArray(PME_ID_F, thread, size_forces, ML_DEVICE);
+    if (bClearF)
+    {
+        cudaError_t stat = cudaMemsetAsync(atc_f_d, 0, size_forces, s);
+        CU_RET_ERR(stat, "cudaMemsetAsync gather forces error");
+    }
+    else
+        PMECopy(atc_f_d, atc_f_h, size_forces, ML_DEVICE, s);
 
     //indices
 
