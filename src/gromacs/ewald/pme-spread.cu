@@ -765,7 +765,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     // IDXPTR
     int idx_size = n * DIM * sizeof(int);
-    int *idx_d = PMEFetchIntegerArray(PME_ID_IDXPTR, thread, idx_size, ML_DEVICE); //why is it not stored?
+    int *idx_d = PMEFetchIntegerArray(PME_ID_IDXPTR, thread, idx_size, ML_DEVICE);
 
     real *fshx_d, *fshy_d = NULL;
     int *nnx_d = NULL, *nny_d = NULL, *nnz_d = NULL;
@@ -801,7 +801,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
         }
         PMECopy(xptr_d, xptr_h, 3 * n_blocked * sizeof(real), ML_DEVICE, s);
     }
-    //yupinov blocked approach everywhere?
+    //yupinov blocked approach everywhere or nowhere
     //filtering?
 
     real *coefficient_d = PMEFetchAndCopyRealArray(PME_ID_COEFFICIENT, thread, atc->coefficient, n * sizeof(real), ML_DEVICE, s); //yupinov compact here as weel?

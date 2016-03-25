@@ -501,7 +501,7 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
     for (int ig = 0; ig < MAGIC_GRID_NUMBER; ++ig)
         PMECopy(grid[ig], grid_d + ig * grid_n, grid_size, ML_HOST, s);
 
-    if (bEnerVir) //yupinov check if it works!
+    if (bEnerVir)
     {
         real *energy_h = PMEFetchAndCopyRealArray(PME_ID_ENERGY, thread, energy_d, energy_size, ML_HOST, s);
         real *virial_h = PMEFetchAndCopyRealArray(PME_ID_VIRIAL, thread, virial_d, virial_size, ML_HOST, s);
