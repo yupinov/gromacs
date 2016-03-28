@@ -41,7 +41,6 @@ void gather_forces_gpu_copyback(gmx_pme_t *pme, int n, rvec *forces)
     }
 }
 
-#define SHARED_MEMORY_REDUCTION 1
 
 //yupinov - texture memory?
 template <
@@ -100,197 +99,83 @@ static __global__ void pme_gather_kernel
     __syncthreads();
 
 
-#if SHARED_MEMORY_REDUCTION
+/*
     __shared__ real fx[blockSize];
     __shared__ real fy[blockSize];
     __shared__ real fz[blockSize];
     fx[lineIndex] = 0.0f;
     fy[lineIndex] = 0.0f;
     fz[lineIndex] = 0.0f;
-#else
+*/
     real fx = 0.0f;
     real fy = 0.0f;
     real fz = 0.0f;
-#endif
-
-    __shared__ real coefficient[particlesPerBlock];
+//#endif
 
     if (globalIndex < n)
     {
         const int thetaOffset = globalIndex * order;
-
+        const real ty = thy[thetaOffset + ithy];
+        const real dy = dthy[thetaOffset + ithy];
         for (int ithx = 0; (ithx < order); ithx++)
         {
-            //const int index_x = (i0[globalIndex] + ithx) * pny * pnz;
-            //const int index_x = (idx[globalIndex * DIM + XX] + ithx) * pny * pnz;
             const int index_x = (sharedIdx[localIndex * DIM + XX] + ithx) * pny * pnz;
-            //if (blockId == 1)
-            //    printf("%d %d\n", idx[globalIndex * DIM + XX], sharedIdx[localIndex * DIM + XX]);
-
+            const int index_xy = index_x + (sharedIdx[localIndex * DIM + YY] + ithy) * pnz;
+            const real gridValue = grid[index_xy + (sharedIdx[localIndex * DIM + ZZ] + ithz)];
             const real tx = thx[thetaOffset + ithx];
             const real dx = dthx[thetaOffset + ithx];
-
-            //for (int ithy = 0; (ithy < order); ithy++)
-            {
-                //const int index_xy = index_x + (j0[globalIndex] + ithy) * pnz;
-                //const int index_xy = index_x + (idx[globalIndex * DIM + YY] + ithy) * pnz;
-                const int index_xy = index_x + (sharedIdx[localIndex * DIM + YY] + ithy) * pnz;
-                const real ty = thy[thetaOffset + ithy];
-                const real dy = dthy[thetaOffset + ithy];
-                real fxy1 = 0.0f;
-                real fz1 = 0.0f;
-
-                /*for (int ithz = 0; (ithz < order); ithz++)    */
-                /*   gridValue[particlesPerBlock * ithz + localIndex] = grid[index_xy + (k0[globalIndex] + ithz)];*/
-                //for (int ithz = 0; (ithz < order); ithz++)
-                {
-                    /*printf(" INDEX %d %d %d\n", (i0[i] + ithx), (j0[i]+ithy), (k0[i]+ithz));*/
-                    /*gridValue[localIndex] = grid[index_xy+(k0[globalIndex]+ithz)]; */
-                    /*fxy1 += thz[thetaOffset + ithz] * gridValue[particlesPerBlock * ithz + localIndex];  */
-                    /*fz1  += dthz[thetaOffset + ithz] * gridValue[particlesPerBlock * ithz + localIndex];    */
-                    //const real gridValue = grid[index_xy + (k0[globalIndex] + ithz)];
-                    //const real gridValue = grid[index_xy + (idx[globalIndex * DIM + ZZ] + ithz)];
-                    const real gridValue = grid[index_xy + (sharedIdx[localIndex * DIM + ZZ] + ithz)];
-                    fxy1 += thz[thetaOffset + ithz] * gridValue;
-                    fz1  += dthz[thetaOffset + ithz] * gridValue;
-                }
-                //yupinov do a normal reduction here and below
-#if SHARED_MEMORY_REDUCTION
-                fx[lineIndex] += dx * ty * fxy1;
-                fy[lineIndex] += tx * dy * fxy1;
-                fz[lineIndex] += tx * ty * fz1;
-#else
-                fx += dx * ty * fxy1;
-                fy += tx * dy * fxy1;
-                fz += tx * ty * fz1;
-#endif
-                /*
-                atomicAdd(fx + localIndex, dx * ty * fxy1);
-                atomicAdd(fy + localIndex, tx * dy * fxy1);
-                atomicAdd(fz + localIndex, tx * ty * fz1);
-                */
-                /*
-                fx[localIndex] += dx * ty * fxy1;
-                fy[localIndex] += tx * dy * fxy1;
-                fz[localIndex] += tx * ty * fz1;
-                */
-            }
+            real fxy1 = thz[thetaOffset + ithz] * gridValue;
+            real fz1  = dthz[thetaOffset + ithz] * gridValue;
+            fx += dx * ty * fxy1;
+            fy += tx * dy * fxy1;
+            fz += tx * ty * fz1;
+            /*
+            atomicAdd(fx + localIndex, dx * ty * fxy1);
+            atomicAdd(fy + localIndex, tx * dy * fxy1);
+            atomicAdd(fz + localIndex, tx * ty * fz1);
+            */
         }
     }
     __syncthreads(); // breaking globalIndex condition?
 
     // now particlesPerBlock have to sum order^2 contributions each
-
-    // do a simple reduction in shared mem
-    for (unsigned int s = 1; s < particleDataSize; s *= 2)//<<= 1)
+    // a simple reduction in shared mem
+    __shared__ real fxShared[blockSize];
+    __shared__ real fyShared[blockSize];
+    __shared__ real fzShared[blockSize];
+    fxShared[lineIndex] = fx;
+    fyShared[lineIndex] = fy;
+    fzShared[lineIndex] = fz;
+    for (unsigned int s = 1; s < particleDataSize; s <<= 1)
     {
+        // the second conditional is needed for odd situations, for example:
+        // order = 5, splineIndex 24 (the last one as in 5^2 - 1) would get neighbour particle contribution (25)
+        // unless we align everything by warps?
         if ((splineIndex % (2 * s) == 0) && (splineIndex + s < particleDataSize))
         {
-            // order = 5 => splineIndex 24 (the last one) will get neighbour element without the second conditional
-            // unroll for different orders?
-            fx[lineIndex] += fx[lineIndex + s];
-            fy[lineIndex] += fy[lineIndex + s];
-            fz[lineIndex] += fz[lineIndex + s];
+            fxShared[lineIndex] += fxShared[lineIndex + s];
+            fyShared[lineIndex] += fyShared[lineIndex + s];
+            fzShared[lineIndex] += fzShared[lineIndex + s];
         }
         __syncthreads();
     }
+
     // skip shared memory,
     //  do a shuffle loop stopping before last step for order 4
 
 
-
-    // below is the failed modified reduction #6
-    // from http://developer.download.nvidia.com/compute/cuda/1.1-Beta/x86_website/projects/reduction/doc/reduction.pdf
-    // (they have even better #7!)
-    /*
-    if (particleDataSize >= 512)
-    {
-        if (splineIndex < 256)
-        {
-            fx[lineIndex] += fx[lineIndex + 256];
-            fy[lineIndex] += fy[lineIndex + 256];
-            fz[lineIndex] += fz[lineIndex + 256];
-        }
-        __syncthreads();
-    }
-    if (particleDataSize >= 256)
-    {
-        if (splineIndex < 128)
-        {
-            fx[lineIndex] += fx[lineIndex + 128];
-            fy[lineIndex] += fy[lineIndex + 128];
-            fz[lineIndex] += fz[lineIndex + 128];
-        }
-        __syncthreads();
-    }
-    if (particleDataSize >= 128)
-    {
-        if (splineIndex < 64)
-        {
-            fx[lineIndex] += fx[lineIndex + 64];
-            fy[lineIndex] += fy[lineIndex + 64];
-            fz[lineIndex] += fz[lineIndex + 64];
-        }
-        __syncthreads();
-    }
-    //if (splineIndex < 32) //yupinov this is inside-warp-magic to not sync threads anymore - brings me mistakes?
-    {
-        if ((particleDataSize >= 64) && (splineIndex < 32))
-        {
-            fx[lineIndex] += fx[lineIndex + 32];
-            fy[lineIndex] += fy[lineIndex + 32];
-            fz[lineIndex] += fz[lineIndex + 32];
-        }
-        __syncthreads();
-        if ((particleDataSize >= 32) && (splineIndex < 16))
-        {
-            fx[lineIndex] += fx[lineIndex + 16];
-            fy[lineIndex] += fy[lineIndex + 16];
-            fz[lineIndex] += fz[lineIndex + 16];
-        }
-        __syncthreads();
-        if ((particleDataSize >= 16) && (splineIndex < 8))
-        {
-            fx[lineIndex] += fx[lineIndex +  8];
-            fy[lineIndex] += fy[lineIndex +  8];
-            fz[lineIndex] += fz[lineIndex +  8];
-        }
-        __syncthreads();
-        if ((particleDataSize >=  8) && (splineIndex < 4))
-        {
-            fx[lineIndex] += fx[lineIndex +  4];
-            fy[lineIndex] += fy[lineIndex +  4];
-            fz[lineIndex] += fz[lineIndex +  4];
-        }
-        __syncthreads();
-        if ((particleDataSize >=  4) && (splineIndex < 2))
-        {
-            fx[lineIndex] += fx[lineIndex +  2];
-            fy[lineIndex] += fy[lineIndex +  2];
-            fz[lineIndex] += fz[lineIndex +  2];
-        }
-        __syncthreads();
-        if ((particleDataSize >=  2) && (splineIndex == 0))
-        {
-            fx[lineIndex] += fx[lineIndex +  1];
-            fy[lineIndex] += fy[lineIndex +  1];
-            fz[lineIndex] += fz[lineIndex +  1];
-        }
-        __syncthreads();
-    }
-    */
-
     if (splineIndex == 0) //yupinov stupid
     {
-        coefficient[localIndex] = coefficient_v[globalIndex];
+        const real coefficient = coefficient_v[globalIndex];
         const int idim = globalIndex * DIM;
         const int sumIndex = localIndex * particleDataSize;
-        fx[sumIndex] *= (real) nx;
-        fy[sumIndex] *= (real) ny;
-        fz[sumIndex] *= (real) nz;
-        atc_f[idim + XX] += -coefficient[localIndex] * ( fx[sumIndex] * rxx );
-        atc_f[idim + YY] += -coefficient[localIndex] * ( fx[sumIndex] * ryx + fy[sumIndex] * ryy );
-        atc_f[idim + ZZ] += -coefficient[localIndex] * ( fx[sumIndex] * rzx + fy[sumIndex] * rzy + fz[sumIndex] * rzz );
+        fxShared[sumIndex] *= (real) nx; // type...
+        fyShared[sumIndex] *= (real) ny;
+        fzShared[sumIndex] *= (real) nz;
+        // no += if bClearF?
+        atc_f[idim + XX] += -coefficient * ( fxShared[sumIndex] * rxx );
+        atc_f[idim + YY] += -coefficient * ( fxShared[sumIndex] * ryx + fyShared[sumIndex] * ryy );
+        atc_f[idim + ZZ] += -coefficient * ( fxShared[sumIndex] * rzx + fyShared[sumIndex] * rzy + fzShared[sumIndex] * rzz );
     }
 }
 
