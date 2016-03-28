@@ -46,7 +46,8 @@ void gather_forces_gpu_copyback(gmx_pme_t *pme, int n, rvec *forces)
 //yupinov - texture memory?
 template <
         const int order,
-        const int particlesPerBlock
+        const int particlesPerBlock,
+        const gmx_bool bClearF
         >
 __launch_bounds__(4 * warp_size, 16)
 static __global__ void pme_gather_kernel
@@ -173,9 +174,19 @@ static __global__ void pme_gather_kernel
 
         const real coefficient = coefficient_v[globalIndex];
         const int idim = globalIndex * DIM;
-        atc_f[idim + XX] += -coefficient * ( fSum.x * rxx );
-        atc_f[idim + YY] += -coefficient * ( fSum.x * ryx + fSum.y * ryy );
-        atc_f[idim + ZZ] += -coefficient * ( fSum.x * rzx + fSum.y * rzy + fSum.z * rzz );
+
+        if (bClearF)
+        {
+            atc_f[idim + XX] = -coefficient * ( fSum.x * rxx );
+            atc_f[idim + YY] = -coefficient * ( fSum.x * ryx + fSum.y * ryy );
+            atc_f[idim + ZZ] = -coefficient * ( fSum.x * rzx + fSum.y * rzy + fSum.z * rzz );
+        }
+        else
+        {
+            atc_f[idim + XX] += -coefficient * ( fSum.x * rxx );
+            atc_f[idim + YY] += -coefficient * ( fSum.x * ryx + fSum.y * ryy );
+            atc_f[idim + ZZ] += -coefficient * ( fSum.x * rzx + fSum.y * rzy + fSum.z * rzz );
+        }
     }
     */
 
@@ -217,9 +228,18 @@ static __global__ void pme_gather_kernel
         const real coefficient = coefficient_v[globalIndex];
         const int idim = globalIndex * DIM;
 
-        atc_f[idim + XX] += -coefficient * ( fSum.x * rxx );
-        atc_f[idim + YY] += -coefficient * ( fSum.x * ryx + fSum.y * ryy );
-        atc_f[idim + ZZ] += -coefficient * ( fSum.x * rzx + fSum.y * rzy + fSum.z * rzz );
+        if (bClearF)
+        {
+            atc_f[idim + XX] = -coefficient * ( fSum.x * rxx );
+            atc_f[idim + YY] = -coefficient * ( fSum.x * ryx + fSum.y * ryy );
+            atc_f[idim + ZZ] = -coefficient * ( fSum.x * rzx + fSum.y * rzy + fSum.z * rzz );
+        }
+        else
+        {
+            atc_f[idim + XX] += -coefficient * ( fSum.x * rxx );
+            atc_f[idim + YY] += -coefficient * ( fSum.x * ryx + fSum.y * ryy );
+            atc_f[idim + ZZ] += -coefficient * ( fSum.x * rzx + fSum.y * rzy + fSum.z * rzz );
+        }
     }
 
     //anotehr option;
@@ -309,7 +329,7 @@ __global__ void pme_unwrap_kernel
 }
 
 void gather_f_bsplines_gpu
-(real *grid, gmx_bool bClearF,
+(real *grid, const gmx_bool bClearF,
  const int order,
  int nx, int ny, int nz, int pnx, int pny, int pnz,
  real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
@@ -545,12 +565,7 @@ void gather_f_bsplines_gpu
 
     // forces
     real *atc_f_d = PMEFetchRealArray(PME_ID_FORCES, thread, size_forces, ML_DEVICE);
-    if (bClearF)
-    {
-        cudaError_t stat = cudaMemsetAsync(atc_f_d, 0, size_forces, s);
-        CU_RET_ERR(stat, "cudaMemsetAsync gather forces error");
-    }
-    else
+    if (!bClearF)
         PMECopy(atc_f_d, atc_f_h, size_forces, ML_DEVICE, s);
 
 
@@ -562,15 +577,26 @@ void gather_f_bsplines_gpu
     events_record_start(gpu_events_gather, s);
 
     if (order == 4) //yupinov
-        pme_gather_kernel<4, blockSize / 4 / 4> <<<nBlocks, dimBlock, 0, s>>>
-          (grid_d,
-           n,
-           nx, ny, nz, pnx, pny, pnz,
-           rxx, ryx, ryy, rzx, rzy, rzz,
-           theta_x_d, theta_y_d, theta_z_d,
-           dtheta_x_d, dtheta_y_d, dtheta_z_d,
-           atc_f_d, coefficients_d,
-           idx_d);
+        if (bClearF)
+            pme_gather_kernel<4, blockSize / 4 / 4, TRUE> <<<nBlocks, dimBlock, 0, s>>>
+              (grid_d,
+               n,
+               nx, ny, nz, pnx, pny, pnz,
+               rxx, ryx, ryy, rzx, rzy, rzz,
+               theta_x_d, theta_y_d, theta_z_d,
+               dtheta_x_d, dtheta_y_d, dtheta_z_d,
+               atc_f_d, coefficients_d,
+               idx_d);
+        else
+            pme_gather_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocks, dimBlock, 0, s>>>
+              (grid_d,
+               n,
+               nx, ny, nz, pnx, pny, pnz,
+               rxx, ryx, ryy, rzx, rzy, rzz,
+               theta_x_d, theta_y_d, theta_z_d,
+               dtheta_x_d, dtheta_y_d, dtheta_z_d,
+               atc_f_d, coefficients_d,
+               idx_d);
     else
         gmx_fatal(FARGS, "gather: orders other than 4 untested!");
     CU_LAUNCH_ERR("pme_gather_kernel");

@@ -205,7 +205,7 @@ CUDA_FUNC_QUALIFIER int solve_pme_lj_yzx_gpu(int gmx_unused nx, int gmx_unused n
                                               int gmx_unused nthread, int gmx_unused thread) CUDA_FUNC_TERM
 
 CUDA_FUNC_QUALIFIER void gather_f_bsplines_gpu
-(real gmx_unused *grid, gmx_bool gmx_unused bClearF,
+(real gmx_unused *grid, const gmx_bool gmx_unused bClearF,
  int gmx_unused order,
  int gmx_unused nx, int gmx_unused ny, int gmx_unused nz, int gmx_unused pnx, int gmx_unused pny, int gmx_unused pnz,
  real gmx_unused rxx, real gmx_unused ryx, real gmx_unused ryy, real gmx_unused rzx, real gmx_unused rzy, real gmx_unused rzz,
