@@ -95,7 +95,8 @@ static __global__ void pme_gather_kernel
     if (threadLocalId < idxSize)
     {
         sharedIdx[threadLocalId] = idx[blockIdx.x * idxSize + threadLocalId];
-    }//locality?
+    }
+    //locality?
     __syncthreads();
 
 
@@ -116,7 +117,9 @@ static __global__ void pme_gather_kernel
     {
         const int thetaOffset = globalIndex * order;
         const real ty = thy[thetaOffset + ithy];
+        const real tz = thz[thetaOffset + ithz];
         const real dy = dthy[thetaOffset + ithy];
+        const real dz = dthz[thetaOffset + ithz];
         for (int ithx = 0; (ithx < order); ithx++)
         {
             const int index_x = (sharedIdx[localIndex * DIM + XX] + ithx) * pny * pnz;
@@ -124,8 +127,8 @@ static __global__ void pme_gather_kernel
             const real gridValue = grid[index_xy + (sharedIdx[localIndex * DIM + ZZ] + ithz)];
             const real tx = thx[thetaOffset + ithx];
             const real dx = dthx[thetaOffset + ithx];
-            real fxy1 = thz[thetaOffset + ithz] * gridValue;
-            real fz1  = dthz[thetaOffset + ithz] * gridValue;
+            const real fxy1 = tz * gridValue;
+            const real fz1  = dz * gridValue;
             fx += dx * ty * fxy1;
             fy += tx * dy * fxy1;
             fz += tx * ty * fz1;
@@ -148,9 +151,9 @@ static __global__ void pme_gather_kernel
     fzShared[lineIndex] = fz;
     for (unsigned int s = 1; s < particleDataSize; s <<= 1)
     {
-        // the second conditional is needed for odd situations, for example:
+        // the second conditional (splineIndex + s < particleDataSize) is needed for odd situations, for example:
         // order = 5, splineIndex 24 (the last one as in 5^2 - 1) would get neighbour particle contribution (25)
-        // unless we align everything by warps?
+        // unless we align one particle's work by warps?
         if ((splineIndex % (2 * s) == 0) && (splineIndex + s < particleDataSize))
         {
             fxShared[lineIndex] += fxShared[lineIndex + s];
@@ -522,7 +525,6 @@ void gather_f_bsplines_gpu
            theta_x_d, theta_y_d, theta_z_d,
            dtheta_x_d, dtheta_y_d, dtheta_z_d,
            atc_f_d, coefficients_d,
-           //i0_d, j0_d, k0_d,
            idx_d);
     else
         gmx_fatal(FARGS, "gather: orders other than 4 untested!");
