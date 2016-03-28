@@ -14,6 +14,7 @@
 
 #include <assert.h>
 
+#include "gromacs/mdlib/nbnxn_cuda/nbnxn_cuda_kernel_utils.cuh"
 
 void gather_forces_gpu_copyback(gmx_pme_t *pme, int n, rvec *forces)
 {
@@ -142,7 +143,8 @@ static __global__ void pme_gather_kernel
     __syncthreads(); // breaking globalIndex condition?
 
     // now particlesPerBlock have to sum order^2 contributions each
-    // a simple reduction in shared mem
+    // a naive reduction in shared mem, not parallel over components
+    /*
     __shared__ real fxShared[blockSize];
     __shared__ real fyShared[blockSize];
     __shared__ real fzShared[blockSize];
@@ -162,24 +164,67 @@ static __global__ void pme_gather_kernel
         }
         __syncthreads();
     }
-
-    // skip shared memory,
-    //  do a shuffle loop stopping before last step for order 4
-
-
-    if (splineIndex == 0) //yupinov stupid
+    float3 fSum;
+    if (splineIndex == 0)
     {
+        fSum.x = fxShared[lineIndex] * (real)nx;
+        fSum.y = fyShared[lineIndex] * (real)ny;
+        fSum.z = fzShared[lineIndex] * (real)nz;
+
         const real coefficient = coefficient_v[globalIndex];
         const int idim = globalIndex * DIM;
-        const int sumIndex = localIndex * particleDataSize;
-        fxShared[sumIndex] *= (real) nx; // type...
-        fyShared[sumIndex] *= (real) ny;
-        fzShared[sumIndex] *= (real) nz;
-        // no += if bClearF?
-        atc_f[idim + XX] += -coefficient * ( fxShared[sumIndex] * rxx );
-        atc_f[idim + YY] += -coefficient * ( fxShared[sumIndex] * ryx + fyShared[sumIndex] * ryy );
-        atc_f[idim + ZZ] += -coefficient * ( fxShared[sumIndex] * rzx + fyShared[sumIndex] * rzy + fzShared[sumIndex] * rzz );
+        atc_f[idim + XX] += -coefficient * ( fSum.x * rxx );
+        atc_f[idim + YY] += -coefficient * ( fSum.x * ryx + fSum.y * ryy );
+        atc_f[idim + ZZ] += -coefficient * ( fSum.x * rzx + fSum.y * rzy + fSum.z * rzz );
     }
+    */
+
+    // no += if bClearF?
+
+    // possibly faster 3-thread reduction based on reduce_force_j_generic
+
+    __shared__ real fSharedArray[DIM * blockSize];
+    fSharedArray[lineIndex] = fx;
+    fSharedArray[lineIndex + blockSize] = fy;
+    fSharedArray[lineIndex + 2 * blockSize] = fz;
+    __shared__ float3 fSumArray[particlesPerBlock];
+    if (splineIndex == 0)
+    {
+        fSumArray[localIndex].x = 0.0f;
+        fSumArray[localIndex].y = 0.0f;
+        fSumArray[localIndex].z = 0.0f;
+    }
+    if (splineIndex < 3)
+    {
+        float f = 0.0f;
+        for (int j = localIndex * particleDataSize; j < (localIndex + 1) * particleDataSize; j++)
+        {
+            f += fSharedArray[blockSize * splineIndex + j];
+        }
+
+        if (splineIndex == 0)
+            fSumArray[localIndex].x = f * (real) nx;
+        if (splineIndex == 1)
+            fSumArray[localIndex].y = f * (real) ny;
+        if (splineIndex == 2)
+            fSumArray[localIndex].z = f * (real) nz;
+    }
+    __syncthreads();
+
+    if (splineIndex == 0)
+    {
+        const float3 fSum = fSumArray[localIndex];
+        const real coefficient = coefficient_v[globalIndex];
+        const int idim = globalIndex * DIM;
+
+        atc_f[idim + XX] += -coefficient * ( fSum.x * rxx );
+        atc_f[idim + YY] += -coefficient * ( fSum.x * ryx + fSum.y * ryy );
+        atc_f[idim + ZZ] += -coefficient * ( fSum.x * rzx + fSum.y * rzy + fSum.z * rzz );
+    }
+
+    //anotehr option;
+    // skip shared memory,
+    //  do a shuffle loop stopping before last step for order 4
 }
 
 template <
