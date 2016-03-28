@@ -1295,6 +1295,9 @@ int gmx_pme_do(struct gmx_pme_t *pme,
             */
             where();
 
+            if (pme->bGPU)
+                gather_forces_gpu_copyback(pme, atc->n, atc->f); //yupinov fix compacted particle count
+
             inc_nrnb(nrnb, eNR_GATHERFBSP,
                      pme->pme_order*pme->pme_order*pme->pme_order*pme->atc[0].n);
             /* Note: this wallcycle region is opened above inside an OpenMP
@@ -1569,6 +1572,9 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                         inc_nrnb(nrnb, eNR_GATHERFBSP,
                                  pme->pme_order*pme->pme_order*pme->pme_order*pme->atc[0].n);
                     }
+                    if (pme->bGPU)
+                        gather_forces_gpu_copyback(pme, atc->n, atc->f); //yupinov fix compacted particle count
+
                     wallcycle_stop(wcycle, ewcPME_SPREADGATHER);
 
                     bFirst = FALSE;

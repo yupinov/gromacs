@@ -644,7 +644,5 @@ void gather_f_bsplines_gpu
     CU_LAUNCH_ERR("pme_gather_kernel");
 
     events_record_stop(gpu_events_gather, s, ewcsPME_GATHER, 0);
-
-    gather_forces_gpu_copyback(pme, n, atc_f);
 }
 
