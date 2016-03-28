@@ -15,7 +15,7 @@
 #include <assert.h>
 
 
-void pme_gather_forces_copyback(gmx_pme_t *pme, int n, rvec *forces)
+void gather_forces_gpu_copyback(gmx_pme_t *pme, int n, rvec *forces)
 {
     cudaStream_t s = pme->gpu->pmeStream;
     const int size_forces = DIM * n * sizeof(real);
@@ -645,6 +645,6 @@ void gather_f_bsplines_gpu
 
     events_record_stop(gpu_events_gather, s, ewcsPME_GATHER, 0);
 
-    pme_gather_forces_copyback(pme, n, atc_f);
+    gather_forces_gpu_copyback(pme, n, atc_f);
 }
 
