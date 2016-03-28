@@ -235,7 +235,6 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
     int spline_n = spline->n;
     int *spline_ind = spline->ind;
     real *atc_coefficient = atc->coefficient;
-    rvec *atc_f = atc->f;
     splinevec *spline_theta = &spline->theta;
     splinevec *spline_dtheta = &spline->dtheta;
     gather_f_bsplines_gpu
@@ -244,7 +243,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
        nx, ny, nz, pnx, pny, pnz,
        rxx, ryx, ryy, rzx, rzy, rzz,
        spline_ind, spline_n,
-      atc_coefficient, atc_f, atc->idx,
+       atc_coefficient, atc->f, atc->idx,
        spline_theta, spline_dtheta,
        scale,
        pme,

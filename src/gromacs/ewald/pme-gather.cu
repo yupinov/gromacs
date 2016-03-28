@@ -12,6 +12,35 @@
 #include "pme-internal.h"
 #include "pme-cuda.cuh"
 
+#include <assert.h>
+
+
+void pme_gather_forces_copyback(gmx_pme_t *pme, int n, rvec *forces)
+{
+    cudaStream_t s = pme->gpu->pmeStream;
+    const int size_forces = DIM * n * sizeof(real);
+    const int size_indices = n * sizeof(int);
+    const int thread = 0;
+    real *atc_f_d = PMEFetchRealArray(PME_ID_F, thread, size_forces, ML_DEVICE);
+    real *atc_f_h = (real *)forces;
+    if (PME_SKIP_ZEROES)
+        atc_f_h = PMEFetchRealArray(PME_ID_F, thread, size_forces, ML_HOST);
+
+    PMECopy(atc_f_h, atc_f_d, size_forces, ML_HOST, s);
+
+    if (PME_SKIP_ZEROES)
+    {
+        int *atc_i_compacted_h = PMEFetchIntegerArray(PME_ID_NONZERO_INDICES, thread, size_indices, ML_HOST);
+        for (int iCompacted = 0; iCompacted < n; iCompacted++)  // iterating over compacted particles
+        {
+            int i = atc_i_compacted_h[iCompacted]; //index of uncompacted particle
+            forces[i][XX] = atc_f_h[iCompacted * DIM + XX];
+            forces[i][YY] = atc_f_h[iCompacted * DIM + YY];
+            forces[i][ZZ] = atc_f_h[iCompacted * DIM + ZZ];
+        }
+    }
+}
+
 #define SHARED_MEMORY_REDUCTION 1
 
 //yupinov - texture memory?
@@ -616,14 +645,6 @@ void gather_f_bsplines_gpu
 
     events_record_stop(gpu_events_gather, s, ewcsPME_GATHER, 0);
 
-    PMECopy(atc_f_h, atc_f_d, size_forces, ML_HOST, s);
-
-    if (PME_SKIP_ZEROES)
-        for (int ii = 0; ii < n; ii++)  // iterating over compacted particles
-        {
-            int i = atc_i_compacted_h[ii]; //index of uncompacted particle
-            atc_f[i][XX] = atc_f_h[ii * DIM + XX];
-            atc_f[i][YY] = atc_f_h[ii * DIM + YY];
-            atc_f[i][ZZ] = atc_f_h[ii * DIM + ZZ];
-        }
+    pme_gather_forces_copyback(pme, n, atc_f);
 }
+
