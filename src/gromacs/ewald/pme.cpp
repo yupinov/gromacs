@@ -1186,7 +1186,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                                           box[XX][XX]*box[YY][YY]*box[ZZ][ZZ],
                                           bCalcEnerVir,
                                           pme->nthread, thread);
-                         if (pme->bGPU)
+                         if (pme->bGPU && bCalcEnerVir)
                             solve_energy_gpu_copyback(pme);
                     }
                     else
