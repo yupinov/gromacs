@@ -52,7 +52,7 @@ template <
 __launch_bounds__(4 * warp_size, 16)
 static __global__ void pme_gather_kernel
 (const real * __restrict__ grid, const int n,
- const int nx, const int ny, const int nz, const int pnx, const int pny, const int pnz,
+ const real nx, const real ny, const real nz, const int pnx, const int pny, const int pnz,
  const real rxx, const real ryx, const real ryy, const real rzx, const real rzy, const real rzz,
  const real * __restrict__ thx, const real * __restrict__ thy, const real * __restrict__ thz,
  const real * __restrict__ dthx, const real * __restrict__ dthy, const real * __restrict__ dthz,
@@ -168,9 +168,9 @@ static __global__ void pme_gather_kernel
     float3 fSum;
     if (splineIndex == 0)
     {
-        fSum.x = fxShared[lineIndex] * (real)nx;
-        fSum.y = fyShared[lineIndex] * (real)ny;
-        fSum.z = fzShared[lineIndex] * (real)nz;
+        fSum.x = fxShared[lineIndex] * nx;
+        fSum.y = fyShared[lineIndex] * ny;
+        fSum.z = fzShared[lineIndex] * nz;
 
         const real coefficient = coefficient_v[globalIndex];
         const int idim = globalIndex * DIM;
@@ -214,11 +214,11 @@ static __global__ void pme_gather_kernel
         }
 
         if (splineIndex == 0)
-            fSumArray[localIndex].x = f * (real) nx;
+            fSumArray[localIndex].x = f * nx;
         if (splineIndex == 1)
-            fSumArray[localIndex].y = f * (real) ny;
+            fSumArray[localIndex].y = f * ny;
         if (splineIndex == 2)
-            fSumArray[localIndex].z = f * (real) nz;
+            fSumArray[localIndex].z = f * nz;
     }
     __syncthreads();
 
@@ -568,6 +568,9 @@ void gather_f_bsplines_gpu
     if (!bClearF)
         PMECopy(atc_f_d, atc_f_h, size_forces, ML_DEVICE, s);
 
+    const real nx_r = (real)nx;
+    const real ny_r = (real)ny;
+    const real nz_r = (real)nz;
 
     const int blockSize = 4 * warp_size;
     const int particlesPerBlock = blockSize / order / order;
@@ -591,7 +594,7 @@ void gather_f_bsplines_gpu
             pme_gather_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocks, dimBlock, 0, s>>>
               (grid_d,
                n,
-               nx, ny, nz, pnx, pny, pnz,
+               nx_r, ny_r, nz_r, pnx, pny, pnz,
                rxx, ryx, ryy, rzx, rzy, rzz,
                theta_x_d, theta_y_d, theta_z_d,
                dtheta_x_d, dtheta_y_d, dtheta_z_d,
