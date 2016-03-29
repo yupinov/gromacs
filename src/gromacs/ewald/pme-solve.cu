@@ -347,8 +347,6 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     {
         PMECopy(grid, grid_d, grid_size, ML_HOST, s);
     }
-    if (bEnerVir)
-        solve_energy_gpu_copyback(pme);
     /* Return the loop count */
     //return local_ndata[YY]*local_ndata[XX]; //yupinov why
 }
