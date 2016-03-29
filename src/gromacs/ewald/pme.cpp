@@ -1187,7 +1187,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                                           bCalcEnerVir,
                                           pme->nthread, thread);
                          if (pme->bGPU && bCalcEnerVir)
-                            solve_energy_gpu_copyback(pme);
+                            gpu_energy_virial_copyback(pme);
                     }
                     else
                     {
@@ -1298,7 +1298,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
             where();
 
             if (pme->bGPU)
-                gather_forces_gpu_copyback(pme, atc->n, atc->f); //yupinov fix compacted particle count
+                gpu_forces_copyback(pme, atc->n, atc->f); //yupinov fix compacted particle count
 
             inc_nrnb(nrnb, eNR_GATHERFBSP,
                      pme->pme_order*pme->pme_order*pme->pme_order*pme->atc[0].n);
@@ -1575,7 +1575,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                                  pme->pme_order*pme->pme_order*pme->pme_order*pme->atc[0].n);
                     }
                     if (pme->bGPU)
-                        gather_forces_gpu_copyback(pme, atc->n, atc->f); //yupinov fix compacted particle count
+                        gpu_forces_copyback(pme, atc->n, atc->f); //yupinov fix compacted particle count
 
                     wallcycle_stop(wcycle, ewcPME_SPREADGATHER);
 

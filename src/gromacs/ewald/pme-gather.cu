@@ -16,7 +16,7 @@
 
 #include "gromacs/mdlib/nbnxn_cuda/nbnxn_cuda_kernel_utils.cuh"
 
-void gather_forces_gpu_copyback(gmx_pme_t *pme, int n, rvec *forces)
+void gpu_forces_copyback(gmx_pme_t *pme, int n, rvec *forces)
 {
     cudaStream_t s = pme->gpu->pmeStream;
     const int size_forces = DIM * n * sizeof(real);

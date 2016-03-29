@@ -237,7 +237,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     const int nMajor = !YZXOrdering ? pme->nkx : pme->nky;
     const int nMiddle = !YZXOrdering ? pme->nky : pme->nkz;
 
-    const real elfac = ONE_4PI_EPS0 / pme->epsilon_r;
+    const real elfac = ONE_4PI_EPS0 / pme->epsilon_r; // make it a constant as well
 
     real rxx = pme->recipbox[XX][XX];
     real ryx = pme->recipbox[YY][XX];
@@ -351,7 +351,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     //return local_ndata[YY]*local_ndata[XX]; //yupinov why
 }
 
-void solve_energy_gpu_copyback(gmx_pme_t *pme)
+void gpu_energy_virial_copyback(gmx_pme_t *pme)
 {
     const int thread = 0;
 
