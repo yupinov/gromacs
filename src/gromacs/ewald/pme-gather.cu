@@ -81,11 +81,11 @@ static __global__ void pme_gather_kernel
 
     const int idxSize = DIM * particlesPerBlock;
     __shared__ int sharedIdx[idxSize];
-
+    /*
     int blockId = blockIdx.x
                  + blockIdx.y * gridDim.x
                  + gridDim.x * gridDim.y * blockIdx.z;
-    /*
+
     int threadId = blockId * (blockDim.x * blockDim.y * blockDim.z)
                   + (threadIdx.z * (blockDim.x * blockDim.y))
                   + (threadIdx.y * blockDim.x)
@@ -101,19 +101,9 @@ static __global__ void pme_gather_kernel
     //locality?
     __syncthreads();
 
-
-/*
-    __shared__ real fx[blockSize];
-    __shared__ real fy[blockSize];
-    __shared__ real fz[blockSize];
-    fx[lineIndex] = 0.0f;
-    fy[lineIndex] = 0.0f;
-    fz[lineIndex] = 0.0f;
-*/
     real fx = 0.0f;
     real fy = 0.0f;
     real fz = 0.0f;
-//#endif
 
     if (globalIndex < n)
     {
@@ -144,6 +134,7 @@ static __global__ void pme_gather_kernel
     __syncthreads(); // breaking globalIndex condition?
 
     // now particlesPerBlock have to sum order^2 contributions each
+
     // a naive reduction in shared mem, not parallel over components
     /*
     __shared__ real fxShared[blockSize];
@@ -190,21 +181,16 @@ static __global__ void pme_gather_kernel
     }
     */
 
-    // no += if bClearF?
-
-    // possibly faster 3-thread reduction based on reduce_force_j_generic
-
+    // faster 3-thread reduction based on reduce_force_j_generic
+//#if GMX_PTX_ARCH < 300
     __shared__ real fSharedArray[DIM * blockSize];
-    fSharedArray[lineIndex] = fx;
-    fSharedArray[lineIndex + blockSize] = fy;
-    fSharedArray[lineIndex + 2 * blockSize] = fz;
-    __shared__ float3 fSumArray[particlesPerBlock];
-    if (splineIndex == 0)
+    if (lineIndex < blockSize)
     {
-        fSumArray[localIndex].x = 0.0f;
-        fSumArray[localIndex].y = 0.0f;
-        fSumArray[localIndex].z = 0.0f;
+        fSharedArray[lineIndex] = fx;
+        fSharedArray[lineIndex + blockSize] = fy;
+        fSharedArray[lineIndex + 2 * blockSize] = fz;
     }
+    __shared__ float3 fSumArray[particlesPerBlock];
     if (splineIndex < 3)
     {
         float f = 0.0f;
@@ -221,6 +207,7 @@ static __global__ void pme_gather_kernel
             fSumArray[localIndex].z = f * nz;
     }
     __syncthreads();
+
 
     if (splineIndex == 0)
     {
@@ -241,8 +228,12 @@ static __global__ void pme_gather_kernel
             atc_f[idim + ZZ] += -coefficient * ( fSum.x * rzx + fSum.y * rzy + fSum.z * rzz );
         }
     }
+//#else
 
-    //anotehr option;
+
+//#endif
+
+    //another option;
     // skip shared memory,
     //  do a shuffle loop stopping before last step for order 4
 }
