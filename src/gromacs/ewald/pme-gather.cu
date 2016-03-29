@@ -50,7 +50,7 @@ template <
         const gmx_bool bClearF
         >
 __launch_bounds__(4 * warp_size, 16)
-static __global__ void pme_gather_kernel
+__global__ void pme_gather_kernel
 (const real * __restrict__ grid, const int n,
  const real nx, const real ny, const real nz, const int pnx, const int pny, const int pnz,
  const real rxx, const real ryx, const real ryy, const real rzx, const real rzy, const real rzz,
@@ -69,7 +69,7 @@ static __global__ void pme_gather_kernel
 
     const int particleDataSize = order * order;
     const int blockSize = particlesPerBlock * particleDataSize; //1 line per thread
-    // with odd orders something might break here?
+    // should the array size aligned by warp size for shuffle?
 
 
     // spline Y/Z coordinates
@@ -181,33 +181,77 @@ static __global__ void pme_gather_kernel
     }
     */
 
-    // faster 3-thread reduction based on reduce_force_j_generic
-//#if GMX_PTX_ARCH < 300
-    __shared__ real fSharedArray[DIM * blockSize];
-    if (lineIndex < blockSize)
+    __shared__ float3 fSumArray[particlesPerBlock];
+
+#if (GMX_PTX_ARCH >= 300) && FALSE
+    if (!(order & (order - 1))) // only for orders of power of 2
     {
+        // a shuffle reduction based on reduce_force_j_warp_shfl
+
+        assert (order >= 4); // we're reducing 3 components
+        assert (order <= 8); // would anybody even try 16 or more?
+        // so we're left with 4 or 8
+        const int width = particleDataSize;
+        // happens what if particleDataSize > warp_size, for 8?
+
+
+        fx += __shfl_down(fx, 1, width);
+        fy += __shfl_up  (fy, 1, width);
+        fz += __shfl_down(fz, 1, width);
+
+        if (splineIndex & 1)
+        {
+            fx = fy;
+        }
+
+        fx += __shfl_down(fx, 2);
+        fz += __shfl_up  (fz, 2);
+
+        if (splineIndex & 2)
+        {
+            fx = fz;
+        }
+
+        if (order >= 8)
+        {
+            fx += __shfl_down(fx, 4);
+        }
+        // and so on for higher crazy orders?
+
+        if (splineIndex == 0)
+            fSumArray[localIndex].x = fx * nx;
+        if (splineIndex == 1)
+            fSumArray[localIndex].y = fy * ny;
+        if (splineIndex == 2)
+            fSumArray[localIndex].z = fz * nz;
+    }
+    else
+#endif
+    {
+        // 3-thread reduction in shared memory based on reduce_force_j_generic
+        __shared__ real fSharedArray[DIM * blockSize];
         fSharedArray[lineIndex] = fx;
         fSharedArray[lineIndex + blockSize] = fy;
         fSharedArray[lineIndex + 2 * blockSize] = fz;
-    }
-    __shared__ float3 fSumArray[particlesPerBlock];
-    if (splineIndex < 3)
-    {
-        float f = 0.0f;
-        for (int j = localIndex * particleDataSize; j < (localIndex + 1) * particleDataSize; j++)
+
+        if (splineIndex < 3)
         {
-            f += fSharedArray[blockSize * splineIndex + j];
+            float f = 0.0f;
+            for (int j = localIndex * particleDataSize; j < (localIndex + 1) * particleDataSize; j++)
+            {
+                f += fSharedArray[blockSize * splineIndex + j];
+            }
+
+            if (splineIndex == 0)
+                fSumArray[localIndex].x = f * nx;
+            if (splineIndex == 1)
+                fSumArray[localIndex].y = f * ny;
+            if (splineIndex == 2)
+                fSumArray[localIndex].z = f * nz;
         }
-
-        if (splineIndex == 0)
-            fSumArray[localIndex].x = f * nx;
-        if (splineIndex == 1)
-            fSumArray[localIndex].y = f * ny;
-        if (splineIndex == 2)
-            fSumArray[localIndex].z = f * nz;
     }
-    __syncthreads();
 
+    __syncthreads();
 
     if (splineIndex == 0)
     {
@@ -228,14 +272,6 @@ static __global__ void pme_gather_kernel
             atc_f[idim + ZZ] += -coefficient * ( fSum.x * rzx + fSum.y * rzy + fSum.z * rzz );
         }
     }
-//#else
-
-
-//#endif
-
-    //another option;
-    // skip shared memory,
-    //  do a shuffle loop stopping before last step for order 4
 }
 
 template <
