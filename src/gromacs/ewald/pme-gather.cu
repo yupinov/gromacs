@@ -192,7 +192,6 @@ __global__ void pme_gather_kernel
         assert(particleDataSize <= warp_size);
         const int width = particleDataSize;
         // have to rework for particleDataSize > warp_size (order 8 or larger...)
-        // for order of 4 can just use warp_size as width and do 1 less shuffle iteration in the ned - does it matter?
 
         fx += __shfl_down(fx, 1, width);
         fy += __shfl_up  (fy, 1, width);
@@ -217,7 +216,7 @@ __global__ void pme_gather_kernel
             fx += __shfl_down(fx, delta, width);
         }
 
-        // attention! all the results are now stored in fx ;-)
+        // all the components are now stored in fx! (cost me a couple of hours of my life)
         if (splineIndex == 0)
             fSumArray[localIndex].x = fx * nx;
         if (splineIndex == 1)
@@ -280,7 +279,7 @@ template <
     >
 __global__ void pme_unwrap_kernel
     (const int nx, const int ny, const int nz,
-     const int pnx,const int pny, const int pnz,
+     const int pnx, const int pny, const int pnz,
      real * __restrict__ grid)
 {
     //UNWRAP
