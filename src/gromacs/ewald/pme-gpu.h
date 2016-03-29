@@ -216,6 +216,6 @@ CUDA_FUNC_QUALIFIER void gather_f_bsplines_gpu
  ) CUDA_FUNC_TERM
 
 CUDA_FUNC_QUALIFIER void gather_forces_gpu_copyback(gmx_pme_t *pme, int n, rvec *forces) CUDA_FUNC_TERM
-
+CUDA_FUNC_QUALIFIER void solve_energy_gpu_copyback(gmx_pme_t *pme) CUDA_FUNC_TERM
 
 #endif // PMEGPU_H

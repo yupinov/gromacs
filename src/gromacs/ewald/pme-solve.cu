@@ -215,10 +215,6 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
 
     cudaStream_t s = pme->gpu->pmeStream;
 
-    struct pme_solve_work_t *work = &pme->solve_work[thread];
-    real *work_energy_q = &(work->energy_q);
-    matrix &work_vir_q = work->vir_q;
-
     ivec complex_order, local_ndata, local_offset, local_size;
     /* Dimensions should be identical for A/B grid, so we just use A here */
     gmx_parallel_3dfft_complex_limits_wrapper(pme, PME_GRID_QA,//pme->pfft_setup_gpu[PME_GRID_QA],
@@ -241,8 +237,6 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     const int nMajor = !YZXOrdering ? pme->nkx : pme->nky;
     const int nMiddle = !YZXOrdering ? pme->nky : pme->nkz;
 
-    real energy = 0.0;
-    real virxx = 0.0, virxy = 0.0, virxz = 0.0, viryy = 0.0, viryz = 0.0, virzz = 0.0;
     const real elfac = ONE_4PI_EPS0 / pme->epsilon_r;
 
     real rxx = pme->recipbox[XX][XX];
@@ -353,38 +347,64 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     {
         PMECopy(grid, grid_d, grid_size, ML_HOST, s);
     }
-
     if (bEnerVir)
-    {
-        real *energy_h = PMEFetchAndCopyRealArray(PME_ID_ENERGY, thread, energy_d, energySize, ML_HOST, s);
-        real *virial_h = PMEFetchAndCopyRealArray(PME_ID_VIRIAL, thread, virial_d, virialSize, ML_HOST, s);
-        //yupinov - workaround for a zero point - do in kernel?
-        memset(energy_h, 0, sizeof(real));
-        memset(virial_h, 0, 6 * sizeof(real));
-
-        for (int i = 0, j = 0; i < n; ++i)
-        {
-            energy += energy_h[i];
-            virxx += virial_h[j++];
-            viryy += virial_h[j++];
-            virzz += virial_h[j++];
-            virxy += virial_h[j++];
-            virxz += virial_h[j++];
-            viryz += virial_h[j++];
-        }
-
-        work_vir_q[XX][XX] = 0.25 * virxx;
-        work_vir_q[YY][YY] = 0.25 * viryy;
-        work_vir_q[ZZ][ZZ] = 0.25 * virzz;
-        work_vir_q[XX][YY] = work_vir_q[YY][XX] = 0.25 * virxy;
-        work_vir_q[XX][ZZ] = work_vir_q[ZZ][XX] = 0.25 * virxz;
-        work_vir_q[YY][ZZ] = work_vir_q[ZZ][YY] = 0.25 * viryz;
-
-        /* This energy should be corrected for a charged system */
-        *work_energy_q = 0.5 * energy;
-    }
+        solve_energy_gpu_copyback(pme);
     /* Return the loop count */
     //return local_ndata[YY]*local_ndata[XX]; //yupinov why
+}
+
+void solve_energy_gpu_copyback(gmx_pme_t *pme)
+{
+    const int thread = 0;
+
+    cudaStream_t s = pme->gpu->pmeStream;
+
+    struct pme_solve_work_t *work = &pme->solve_work[thread];
+    real *work_energy_q = &(work->energy_q);
+    matrix &work_vir_q = work->vir_q;
+    real energy = 0.0;
+    real virxx = 0.0, virxy = 0.0, virxz = 0.0, viryy = 0.0, viryz = 0.0, virzz = 0.0;
+
+    ivec complex_order, local_ndata, local_offset, local_size;
+    gmx_parallel_3dfft_complex_limits_wrapper(pme, PME_GRID_QA,//pme->pfft_setup_gpu[PME_GRID_QA],
+                                      complex_order,
+                                      local_ndata,
+                                      local_offset,
+                                      local_size);
+    const int n = local_ndata[XX] * local_ndata[YY] * local_ndata[ZZ];
+    // should just make sizes easily available!
+    const int energySize = n * sizeof(real);
+    const int virialSize = 6 * n * sizeof(real);
+    real *energy_d = PMEFetchRealArray(PME_ID_ENERGY, thread, energySize, ML_DEVICE);
+    real *virial_d = PMEFetchRealArray(PME_ID_VIRIAL, thread, virialSize, ML_DEVICE);
+
+    real *energy_h = PMEFetchAndCopyRealArray(PME_ID_ENERGY, thread, energy_d, energySize, ML_HOST, s);
+    real *virial_h = PMEFetchAndCopyRealArray(PME_ID_VIRIAL, thread, virial_d, virialSize, ML_HOST, s);
+    //yupinov - workaround for a zero point - do in kernel?
+    memset(energy_h, 0, sizeof(real));
+    memset(virial_h, 0, 6 * sizeof(real));
+
+    //yupinov - do a per-block reduction
+    for (int i = 0, j = 0; i < n; ++i)
+    {
+        energy += energy_h[i];
+        virxx += virial_h[j++];
+        viryy += virial_h[j++];
+        virzz += virial_h[j++];
+        virxy += virial_h[j++];
+        virxz += virial_h[j++];
+        viryz += virial_h[j++];
+    }
+
+    work_vir_q[XX][XX] = 0.25 * virxx;
+    work_vir_q[YY][YY] = 0.25 * viryy;
+    work_vir_q[ZZ][ZZ] = 0.25 * virzz;
+    work_vir_q[XX][YY] = work_vir_q[YY][XX] = 0.25 * virxy;
+    work_vir_q[XX][ZZ] = work_vir_q[ZZ][XX] = 0.25 * virxz;
+    work_vir_q[YY][ZZ] = work_vir_q[ZZ][YY] = 0.25 * viryz;
+
+    /* This energy should be corrected for a charged system */
+    *work_energy_q = 0.5 * energy;
 }
 
 
