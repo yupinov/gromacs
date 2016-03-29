@@ -81,7 +81,7 @@ __global__ void pme_gather_kernel
 
     const int idxSize = DIM * particlesPerBlock;
     __shared__ int sharedIdx[idxSize];
-    /*
+
     int blockId = blockIdx.x
                  + blockIdx.y * gridDim.x
                  + gridDim.x * gridDim.y * blockIdx.z;
@@ -90,7 +90,7 @@ __global__ void pme_gather_kernel
                   + (threadIdx.z * (blockDim.x * blockDim.y))
                   + (threadIdx.y * blockDim.x)
                   + threadIdx.x;
-                  */
+
     int threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
             + (threadIdx.y * blockDim.x)
             + threadIdx.x;
@@ -183,17 +183,16 @@ __global__ void pme_gather_kernel
 
     __shared__ float3 fSumArray[particlesPerBlock];
 
-#if (GMX_PTX_ARCH >= 300) && FALSE
+#if (GMX_PTX_ARCH >= 300)
     if (!(order & (order - 1))) // only for orders of power of 2
     {
         // a shuffle reduction based on reduce_force_j_warp_shfl
 
-        assert (order >= 4); // we're reducing 3 components
-        assert (order <= 8); // would anybody even try 16 or more?
-        // so we're left with 4 or 8
+        assert(order == 4); // confused about others and the best data layout so far :(
+        assert(particleDataSize <= warp_size);
         const int width = particleDataSize;
-        // happens what if particleDataSize > warp_size, for 8?
-
+        // have to rework for particleDataSize > warp_size (order 8 or larger...)
+        // for order of 4 can just use warp_size as width and do 1 less shuffle iteration in the ned - does it matter?
 
         fx += __shfl_down(fx, 1, width);
         fy += __shfl_up  (fy, 1, width);
@@ -204,26 +203,27 @@ __global__ void pme_gather_kernel
             fx = fy;
         }
 
-        fx += __shfl_down(fx, 2);
-        fz += __shfl_up  (fz, 2);
+        fx += __shfl_down(fx, 2, width);
+        fz += __shfl_up  (fz, 2, width);
+
 
         if (splineIndex & 2)
         {
             fx = fz;
         }
 
-        if (order >= 8)
+        for (int delta = 4; delta < particleDataSize; delta <<= 1)
         {
-            fx += __shfl_down(fx, 4);
+            fx += __shfl_down(fx, delta, width);
         }
-        // and so on for higher crazy orders?
 
+        // attention! all the results are now stored in fx ;-)
         if (splineIndex == 0)
             fSumArray[localIndex].x = fx * nx;
         if (splineIndex == 1)
-            fSumArray[localIndex].y = fy * ny;
+            fSumArray[localIndex].y = fx * ny;
         if (splineIndex == 2)
-            fSumArray[localIndex].z = fz * nz;
+            fSumArray[localIndex].z = fx * nz;
     }
     else
 #endif
