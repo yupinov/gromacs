@@ -118,10 +118,10 @@ int *PMEFetchIntegerArray(PMEDataID id, int unusedTag, int size, MemLocType loca
 }
 
 template <typename T>
-T *PMEFetchAndCopy(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s)
+T *PMEFetchAndCopy(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s, gmx_bool sync = false)
 {
     T *result = PMEFetch<T>(id, unusedTag, size, location);
-    PMECopy(result, src, size, location, s);
+    PMECopy(result, src, size, location, s, sync);
     return result;
 }
 
@@ -130,9 +130,9 @@ t_complex *PMEFetchAndCopyComplexArray(PMEDataID id, int unusedTag, void *src, i
     return PMEFetchAndCopy<t_complex>(id, unusedTag, src, size, location, s);
 }
 
-real *PMEFetchAndCopyRealArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s)
+real *PMEFetchAndCopyRealArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s, gmx_bool sync)
 {
-    return PMEFetchAndCopy<real>(id, unusedTag, src, size, location, s);
+    return PMEFetchAndCopy<real>(id, unusedTag, src, size, location, s, sync);
 }
 
 int *PMEFetchAndCopyIntegerArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s)
@@ -140,20 +140,31 @@ int *PMEFetchAndCopyIntegerArray(PMEDataID id, int unusedTag, void *src, int siz
     return PMEFetchAndCopy<int>(id, unusedTag, src, size, location, s);
 }
 
-void PMECopy(void *dest, void *src, int size, MemLocType destination, cudaStream_t s) //yupinov move everything onto this function - or not
+void PMECopy(void *dest, void *src, int size, MemLocType destination, cudaStream_t s, gmx_bool sync) //yupinov move everything onto this function - or not
 {
     assert(s != 0);
+    cudaError_t stat;
     if (destination == ML_DEVICE)
     {
-        //cudaError_t stat = cudaMemcpy(dest, src, size, cudaMemcpyHostToDevice);
-        cudaError_t stat = cudaMemcpyAsync(dest, src, size, cudaMemcpyHostToDevice, s);
+        if (sync)
+            stat = cudaMemcpy(dest, src, size, cudaMemcpyHostToDevice);
+        else
+            stat = cudaMemcpyAsync(dest, src, size, cudaMemcpyHostToDevice, s);
         CU_RET_ERR(stat, "PME cudaMemcpyHostToDevice error");
     }
     else
     {
-        //cudaError_t stat = cudaMemcpy(dest, src, size, cudaMemcpyDeviceToHost);
-        cudaError_t stat = cudaMemcpyAsync(dest, src, size, cudaMemcpyDeviceToHost, s);
+        if (sync)
+            stat = cudaMemcpy(dest, src, size, cudaMemcpyDeviceToHost);
+        else
+            stat = cudaMemcpyAsync(dest, src, size, cudaMemcpyDeviceToHost, s);
         CU_RET_ERR(stat, "PME cudaMemcpyDeviceToHost error");
     }
+}
+
+int PMEGetAllocatedSize(PMEDataID id, int unusedTag, MemLocType location)
+{
+    int i = (location * PME_ID_END_INVALID + id) * MAXTAGS + unusedTag;
+    return PMEStorageSizes[i];
 }
 

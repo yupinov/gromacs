@@ -11,6 +11,8 @@
 
 #include <cuda.h>
 
+#include <assert.h>
+
 #include "pme-timings.cuh"
 
 
@@ -20,8 +22,6 @@
 #include "pme-solve.h"
 
 #define SQRT_M_PI real(2.0f / M_2_SQRTPI)
-
-gpu_events gpu_events_solve;
 
 /* Pascal triangle coefficients used in solve_pme_lj_yzx, only need to do 4 calculations due to symmetry */
 static const __constant__ real lb_scale_factor_symm_gpu[] = { 2.0/64, 12.0/64, 30.0/64, 20.0/64 };
@@ -74,22 +74,36 @@ __global__ void pme_solve_kernel
     // if we're doing CPU FFT, the gridline is not necessarily padded to multiple 32 words
     // we can pad it for GPU FFT (set alignment to 32 (or 16 because it's t_complex aka float2?)
 
-    int blockId = blockIdx.x
-             + blockIdx.y * gridDim.x
-             + gridDim.x * gridDim.y * blockIdx.z;
-    int threadId = blockId * (blockDim.x * blockDim.y * blockDim.z)
-                  + (threadIdx.z * (blockDim.x * blockDim.y))
-                  + (threadIdx.y * blockDim.x)
-                  + threadIdx.x;
+    const int blockId = blockIdx.x
+              + blockIdx.y * gridDim.x
+              + gridDim.x * gridDim.y * blockIdx.z;
+    const int threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
+            + (threadIdx.y * blockDim.x)
+            + threadIdx.x;
+    const int blockSize = (blockDim.x * blockDim.y * blockDim.z); // == cellsPerBlock
+    const int threadId = blockId * blockSize + threadLocalId;
+
 
     int maxkMinor = (nMinor + 1) / 2;
     if (!YZXOrdering) //yupinov - don't really understand it
-        maxkMinor = (nMinor + 2) / 2; // [0 25]; -26] fixed, no maxkx required at all
+        maxkMinor = (nMinor + 2) / 2; // {[0 25]; -26} fixed, no maxkx required at all
     int maxkMajor = (nMajor + 1) / 2;
     //int maxkz = nz / 2 + 1;
 
+    /*
     real energy = 0.0f;
     real virxx = 0.0f, virxy = 0.0f, virxz = 0.0f, viryy = 0.0f, viryz = 0.0f, virzz = 0.0f;
+    */
+    real __shared__ energyShared[THREADS_PER_BLOCK]; //yupinov exact size
+    real __shared__ virialShared[6 * THREADS_PER_BLOCK];
+    if (bEnerVir)
+    {
+        energyShared[threadLocalId] = 0.0f;
+#pragma unroll
+        for (int i = 0; i < 6; i++)
+            virialShared[6 * threadLocalId + i] = 0.0f;
+    }
+    // could just set them to zero in all the bad cases instead: indices too large, or in a zero-point??
 
     const int indexMinor = blockIdx.x * blockDim.x + threadIdx.x;
     const int indexMiddle = blockIdx.y * blockDim.y + threadIdx.y;
@@ -180,9 +194,27 @@ __global__ void pme_solve_kernel
 
                 real vfactor = (ConstFactor + 1.0f / m2k) * 2.0f;
                 real ets2 = corner_fac * tmp1k;
-                energy += ets2;
+                //energy += ets2;
+                energyShared[threadLocalId] = ets2;
 
                 real ets2vf  = ets2 * vfactor;
+
+                real virxx   = ets2vf * mhxk * mhxk - ets2;
+                real virxy   = ets2vf * mhxk * mhyk;
+                real virxz   = ets2vf * mhxk * mhzk;
+                real viryy   = ets2vf * mhyk * mhyk - ets2;
+                real viryz   = ets2vf * mhyk * mhzk;
+                real virzz   = ets2vf * mhzk * mhzk - ets2;
+
+                // different order?
+                virialShared[6 * threadLocalId + 0] = virxx;
+                virialShared[6 * threadLocalId + 1] = viryy;
+                virialShared[6 * threadLocalId + 2] = virzz;
+                virialShared[6 * threadLocalId + 3] = virxy;
+                virialShared[6 * threadLocalId + 4] = virxz;
+                virialShared[6 * threadLocalId + 5] = viryz;
+
+                /*
                 virxx   = ets2vf * mhxk * mhxk - ets2;
                 virxy   = ets2vf * mhxk * mhyk;
                 virxz   = ets2vf * mhxk * mhzk;
@@ -198,7 +230,37 @@ __global__ void pme_solve_kernel
                 virial_v[6 * i + 3] = virxy;
                 virial_v[6 * i + 4] = virxz;
                 virial_v[6 * i + 5] = viryz;
+                */
             }
+        }
+    }
+
+    if (bEnerVir)
+    {
+        __syncthreads();
+        // a naive shared mem reduction
+        for (unsigned int stride = 1; stride < THREADS_PER_BLOCK; stride <<= 1)
+        {
+            if ((threadLocalId % (stride << 1) == 0))
+            {
+                energyShared[threadLocalId] += energyShared[threadLocalId + stride];
+#pragma unroll
+                for (int i = 0; i < 6; i++)
+                    virialShared[6 * threadLocalId + i] += virialShared[6 * (threadLocalId + stride) + i];
+            }
+            __syncthreads();
+        }
+
+        // write to global memory
+        __syncthreads();
+        const int i = blockId;//(indexMajor * localCountMiddle + indexMiddle) * localCountMinor + indexMinor;
+        if (threadLocalId < 6)
+            virial_v[6 * i + threadLocalId] = virialShared[threadLocalId];
+        if (threadLocalId == 6)
+        {
+            //if (isnan(energyShared[0]))
+            //    printf("%d %g\n", i, energyShared[0]);
+            energy_v[i] = energyShared[0];
         }
     }
 }
@@ -249,18 +311,13 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
 
     //yupinov align minor dimension with cachelines!
 
-    const int n = local_ndata[majorDim] * local_ndata[middleDim] * local_ndata[minorDim];
+    //const int n = local_ndata[majorDim] * local_ndata[middleDim] * local_ndata[minorDim];
     const int grid_n = local_size[majorDim] * local_size[middleDim] * local_size[minorDim];
     const int grid_size = grid_n * sizeof(t_complex);
 
     real *bspModMinor_d = PMEFetchAndCopyRealArray(PME_ID_BSP_MOD_MINOR, thread, pme->bsp_mod[minorDim], nMinor * sizeof(real), ML_DEVICE, s);
     real *bspModMajor_d = PMEFetchAndCopyRealArray(PME_ID_BSP_MOD_MAJOR, thread, pme->bsp_mod[majorDim], nMajor * sizeof(real), ML_DEVICE, s);
     real *bspModMiddle_d = PMEFetchAndCopyRealArray(PME_ID_BSP_MOD_MIDDLE, thread, pme->bsp_mod[middleDim], nMiddle * sizeof(real), ML_DEVICE, s);
-
-    const int energySize = n * sizeof(real);
-    const int virialSize = 6 * n * sizeof(real);
-    real *energy_d = PMEFetchRealArray(PME_ID_ENERGY, thread, energySize, ML_DEVICE);
-    real *virial_d = PMEFetchRealArray(PME_ID_VIRIAL, thread, virialSize, ML_DEVICE);
 
     float2 *grid_d = (float2 *)PMEFetchComplexArray(PME_ID_COMPLEX_GRID, thread, grid_size, ML_DEVICE); //yupinov no need for special function
     if (!pme->gpu->keepGPUDataBetweenR2CAndSolve)
@@ -292,8 +349,14 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     dim3 blocks((gridLineSize + blockSize - 1) / blockSize,  // rounded up blocks per grid line
                 (local_ndata[middleDim] + gridLinesPerBlock - 1) / gridLinesPerBlock, // rounded up middle dimension block number
                 local_ndata[majorDim]);
+    // integer number of blocks is working on integer number of gridlines
     dim3 threads(gridLineSize, gridLinesPerBlock, 1);
 
+    const int nReduced = blocks.x * blocks.y * blocks.z;  //yupinov - what happens if we comment out zeroing in kernel?
+    const int energySize = nReduced * sizeof(real);
+    const int virialSize = 6 * nReduced * sizeof(real);
+    real *energy_d = PMEFetchRealArray(PME_ID_ENERGY, thread, energySize, ML_DEVICE);
+    real *virial_d = PMEFetchRealArray(PME_ID_VIRIAL, thread, virialSize, ML_DEVICE);
     events_record_start(gpu_events_solve, s);
 
     if (YZXOrdering)
@@ -363,8 +426,6 @@ void gpu_energy_virial_copyback(gmx_pme_t *pme)
     struct pme_solve_work_t *work = &pme->solve_work[thread];
     real *work_energy_q = &(work->energy_q);
     matrix &work_vir_q = work->vir_q;
-    real energy = 0.0;
-    real virxx = 0.0, virxy = 0.0, virxz = 0.0, viryy = 0.0, viryz = 0.0, virzz = 0.0;
 
     ivec complex_order, local_ndata, local_offset, local_size;
     gmx_parallel_3dfft_complex_limits_wrapper(pme, PME_GRID_QA,//pme->pfft_setup_gpu[PME_GRID_QA],
@@ -372,21 +433,27 @@ void gpu_energy_virial_copyback(gmx_pme_t *pme)
                                       local_ndata,
                                       local_offset,
                                       local_size);
-    const int n = local_ndata[XX] * local_ndata[YY] * local_ndata[ZZ];
-    // should just make sizes easily available!
-    const int energySize = n * sizeof(real);
-    const int virialSize = 6 * n * sizeof(real);
+
+    int reducedSize = PMEGetAllocatedSize(PME_ID_ENERGY, thread, ML_DEVICE);
+    assert(reducedSize > 0);
+    int nReduced = reducedSize / sizeof(real);
+
+    const int energySize = nReduced * sizeof(real);
+    const int virialSize = 6 * nReduced * sizeof(real);
+
     real *energy_d = PMEFetchRealArray(PME_ID_ENERGY, thread, energySize, ML_DEVICE);
     real *virial_d = PMEFetchRealArray(PME_ID_VIRIAL, thread, virialSize, ML_DEVICE);
 
-    real *energy_h = PMEFetchAndCopyRealArray(PME_ID_ENERGY, thread, energy_d, energySize, ML_HOST, s);
-    real *virial_h = PMEFetchAndCopyRealArray(PME_ID_VIRIAL, thread, virial_d, virialSize, ML_HOST, s);
-    //yupinov - workaround for a zero point - do in kernel?
-    memset(energy_h, 0, sizeof(real));
-    memset(virial_h, 0, 6 * sizeof(real));
+    cudaError_t stat = cudaStreamWaitEvent(s, gpu_events_solve.event_stop, 0);  //yupinov in gather as well!
+    CU_RET_ERR(stat, "error while waiting for PME solve");
+    // synchronous copy
+    real *energy_h = PMEFetchAndCopyRealArray(PME_ID_ENERGY, thread, energy_d, energySize, ML_HOST, s, TRUE);
+    real *virial_h = PMEFetchAndCopyRealArray(PME_ID_VIRIAL, thread, virial_d, virialSize, ML_HOST, s, TRUE);
 
-    //yupinov - do a per-block reduction
-    for (int i = 0, j = 0; i < n; ++i)
+    real energy = 0.0;
+    real virxx = 0.0, virxy = 0.0, virxz = 0.0, viryy = 0.0, viryz = 0.0, virzz = 0.0;
+    // a per-block reduction
+    for (int i = 0, j = 0; i < nReduced; ++i)
     {
         energy += energy_h[i];
         virxx += virial_h[j++];

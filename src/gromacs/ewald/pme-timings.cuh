@@ -32,6 +32,7 @@ struct gpu_events
 void events_record_start(gpu_events &events, cudaStream_t s);
 void events_record_stop(gpu_events &events, cudaStream_t s, int ewcsn, int j);
 
-extern gpu_events gpu_events_wrap, gpu_events_unwrap, gpu_events_gather;
+extern gpu_events gpu_events_wrap, gpu_events_unwrap, gpu_events_gather, gpu_events_solve;
+//yupinov - gpu_events_solve is now needed for copyback sync!
 
 #endif // GMX_EWALD_CHECK_H

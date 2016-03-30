@@ -83,17 +83,21 @@ enum MemLocType
     ML_HOST, ML_DEVICE, ML_END_INVALID
 };
 
-//yupinov - look into ML_HOST being under-used
+// ML_HOST under-used; what about pinning memory?
+
+// all sizes here are in bytes
 
 real *PMEFetchRealArray(PMEDataID id, int unusedTag, int size, MemLocType location);
 int *PMEFetchIntegerArray(PMEDataID id, int unusedTag, int size, MemLocType location);
 t_complex *PMEFetchComplexArray(PMEDataID id, int unusedTag, int size, MemLocType location);
 //yupinov warn on wrong param
 
-void PMECopy(void *dest, void *src, int size, MemLocType destination, cudaStream_t s); //yupinov alloc as well
+void PMECopy(void *dest, void *src, int size, MemLocType destination, cudaStream_t s, gmx_bool sync = false); //yupinov alloc as well
 
 int *PMEFetchAndCopyIntegerArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s);
-real *PMEFetchAndCopyRealArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s);
+real *PMEFetchAndCopyRealArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s, gmx_bool sync = false);
 t_complex *PMEFetchAndCopyComplexArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s);
+
+int PMEGetAllocatedSize(PMEDataID id, int unusedTag, MemLocType location);
 
 #endif

@@ -6,11 +6,10 @@
 #include "gromacs/timing/wallcycle.h"
 #include "gromacs/gpu_utils/cudautils.cuh"
 
-gpu_events gpu_events_wrap, gpu_events_unwrap, gpu_events_gather;
+gpu_events gpu_events_wrap, gpu_events_unwrap, gpu_events_gather, gpu_events_solve;
 
 void events_record_start(gpu_events &events, cudaStream_t s)
 {
-#ifdef PME_GPU_TIMINGS
     cudaError_t stat;
     if (!events.created)
     {
@@ -22,21 +21,19 @@ void events_record_start(gpu_events &events, cudaStream_t s)
     }
     stat = cudaEventRecord(events.event_start, s);
     CU_RET_ERR(stat, "?");
-#endif
 }
 
 void events_record_stop(gpu_events &events, cudaStream_t s, int ewcsn, int j)
 {
-#ifdef PME_GPU_TIMINGS
     cudaError_t stat;
     stat = cudaEventRecord(events.event_stop, s);
     CU_RET_ERR(stat, "?");
     stat = cudaEventSynchronize(events.event_stop);
     CU_RET_ERR(stat, "?");
+#ifdef PME_GPU_TIMINGS
     float milliseconds = 0;
     stat = cudaEventElapsedTime(&milliseconds, events.event_start, events.event_stop);
     CU_RET_ERR(stat, "?");
-
     int idx = ewcsn - ewcsPME_INTERPOL_IDX;
     gmx_wallclock_gpu_pme.pme_time[idx][j].t += milliseconds;
     ++gmx_wallclock_gpu_pme.pme_time[idx][j].c;
