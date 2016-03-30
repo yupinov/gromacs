@@ -25,7 +25,9 @@ void gpu_forces_copyback(gmx_pme_t *pme, int n, rvec *forces)
     if (PME_SKIP_ZEROES)
         atc_f_h = PMEFetchRealArray(PME_ID_F, thread, size_forces, ML_HOST);
 
-    PMECopy(atc_f_h, atc_f_d, size_forces, ML_HOST, s);
+    cudaError_t stat = cudaStreamWaitEvent(s, gpu_events_gather.event_stop, 0);
+    CU_RET_ERR(stat, "error while waiting for PME gather");
+    PMECopy(atc_f_h, atc_f_d, size_forces, ML_HOST, s, TRUE); // synchronous
 
     if (PME_SKIP_ZEROES)
     {
