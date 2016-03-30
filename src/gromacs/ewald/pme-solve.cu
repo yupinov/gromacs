@@ -258,11 +258,31 @@ __global__ void pme_solve_kernel
             }
             __syncthreads();
         }
+
+        // write to global memory
+        const int i = blockId;//(indexMajor * localCountMiddle + indexMiddle) * localCountMinor + indexMinor;
+        if (threadLocalId < 6)
+            virial_v[6 * i + threadLocalId] = virialShared[threadLocalId];
+        if (threadLocalId == 6)
+        {
+            energy_v[i] = energyShared[0];
+        }
         */
+
+        const int blockSize = THREADS_PER_BLOCK;
+#if (GMX_PTX_ARCH >= 300)
+/*
+        if (!(blockSize & (blockSize - 1))) // only for orders of power of 2
+        {
+
+        }
+        else
+        */
+#endif
         {
             // 7-thread reduction in shared memory inspired by reduce_force_j_generic
-            const int blockSize = THREADS_PER_BLOCK;
             __shared__ real enerVirShared[7 * blockSize];
+            // 3.5k smem per block - a serious limiter!
             enerVirShared[threadLocalId + 0 * blockSize] = virxx;
             enerVirShared[threadLocalId + 1 * blockSize] = viryy;
             enerVirShared[threadLocalId + 2 * blockSize] = virzz;
@@ -288,17 +308,6 @@ __global__ void pme_solve_kernel
                 }
             }
         }
-
-        /*
-        // write to global memory
-        const int i = blockId;//(indexMajor * localCountMiddle + indexMiddle) * localCountMinor + indexMinor;
-        if (threadLocalId < 6)
-            virial_v[6 * i + threadLocalId] = virialShared[threadLocalId];
-        if (threadLocalId == 6)
-        {
-            energy_v[i] = energyShared[0];
-        }
-        */
     }
 }
 

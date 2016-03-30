@@ -184,7 +184,7 @@ __global__ void pme_gather_kernel
 #if (GMX_PTX_ARCH >= 300)
     if (!(order & (order - 1))) // only for orders of power of 2
     {
-        // a shuffle reduction based on reduce_force_j_warp_shfl
+        // a shuffle reduction inspired by reduce_force_j_warp_shfl
 
         assert(order == 4); // confused about others and the best data layout so far :(
         assert(particleDataSize <= warp_size);
