@@ -88,10 +88,10 @@ __global__ void pme_gather_kernel
                   + (threadIdx.z * (blockDim.x * blockDim.y))
                   + (threadIdx.y * blockDim.x)
                   + threadIdx.x;
-
     int threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
             + (threadIdx.y * blockDim.x)
             + threadIdx.x;
+
     if (threadLocalId < idxSize)
     {
         sharedIdx[threadLocalId] = idx[blockIdx.x * idxSize + threadLocalId];
@@ -250,11 +250,15 @@ __global__ void pme_gather_kernel
 
     __syncthreads();
 
-    if (splineIndex == 0)
+    // new, different particle indices
+    const int localIndex2 = threadLocalId;
+
+    if (localIndex2 < particlesPerBlock)
     {
-        const float3 fSum = fSumArray[localIndex];
-        const real coefficient = coefficient_v[globalIndex];
-        const int idim = globalIndex * DIM;
+        const float3 fSum = fSumArray[localIndex2];
+        const int globalIndex2 = blockId * particlesPerBlock + threadLocalId;
+        const real coefficient = coefficient_v[globalIndex2];
+        const int idim = globalIndex2 * DIM;
 
         if (bClearF)
         {
