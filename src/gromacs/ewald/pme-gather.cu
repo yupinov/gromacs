@@ -14,8 +14,6 @@
 
 #include <assert.h>
 
-#include "gromacs/mdlib/nbnxn_cuda/nbnxn_cuda_kernel_utils.cuh"
-
 void gpu_forces_copyback(gmx_pme_t *pme, int n, rvec *forces)
 {
     cudaStream_t s = pme->gpu->pmeStream;
@@ -227,7 +225,7 @@ __global__ void pme_gather_kernel
     else
 #endif
     {
-        // 3-thread reduction in shared memory based on reduce_force_j_generic
+        // 3-thread reduction in shared memory inspired by reduce_force_j_generic
         __shared__ real fSharedArray[DIM * blockSize];
         fSharedArray[lineIndex] = fx;
         fSharedArray[lineIndex + blockSize] = fy;

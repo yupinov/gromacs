@@ -90,12 +90,14 @@ __global__ void pme_solve_kernel
     int maxkMajor = (nMajor + 1) / 2;
     //int maxkz = nz / 2 + 1;
 
-    /*
+
     real energy = 0.0f;
     real virxx = 0.0f, virxy = 0.0f, virxz = 0.0f, viryy = 0.0f, viryz = 0.0f, virzz = 0.0f;
-    */
+
+    /*
     real __shared__ energyShared[THREADS_PER_BLOCK]; //yupinov exact size
     real __shared__ virialShared[6 * THREADS_PER_BLOCK];
+
     if (bEnerVir)
     {
         energyShared[threadLocalId] = 0.0f;
@@ -103,6 +105,7 @@ __global__ void pme_solve_kernel
         for (int i = 0; i < 6; i++)
             virialShared[6 * threadLocalId + i] = 0.0f;
     }
+    */
     // could just set them to zero in all the bad cases instead: indices too large, or in a zero-point??
 
     const int indexMinor = blockIdx.x * blockDim.x + threadIdx.x;
@@ -194,11 +197,11 @@ __global__ void pme_solve_kernel
 
                 real vfactor = (ConstFactor + 1.0f / m2k) * 2.0f;
                 real ets2 = corner_fac * tmp1k;
-                //energy += ets2;
-                energyShared[threadLocalId] = ets2;
+                energy = ets2;
+                //energyShared[threadLocalId] = ets2;
 
                 real ets2vf  = ets2 * vfactor;
-
+                /*
                 real virxx   = ets2vf * mhxk * mhxk - ets2;
                 real virxy   = ets2vf * mhxk * mhyk;
                 real virxz   = ets2vf * mhxk * mhzk;
@@ -213,8 +216,8 @@ __global__ void pme_solve_kernel
                 virialShared[6 * threadLocalId + 3] = virxy;
                 virialShared[6 * threadLocalId + 4] = virxz;
                 virialShared[6 * threadLocalId + 5] = viryz;
+                */
 
-                /*
                 virxx   = ets2vf * mhxk * mhxk - ets2;
                 virxy   = ets2vf * mhxk * mhyk;
                 virxz   = ets2vf * mhxk * mhzk;
@@ -222,6 +225,7 @@ __global__ void pme_solve_kernel
                 viryz   = ets2vf * mhyk * mhzk;
                 virzz   = ets2vf * mhzk * mhzk - ets2;
 
+                /*
                 const int i = (indexMajor * localCountMiddle + indexMiddle) * localCountMinor + indexMinor;
                 energy_v[i] = energy;
                 virial_v[6 * i + 0] = virxx;
@@ -238,6 +242,10 @@ __global__ void pme_solve_kernel
     if (bEnerVir)
     {
         __syncthreads();
+
+        // reduction goes here
+
+        /*
         // a naive shared mem reduction
         for (unsigned int stride = 1; stride < THREADS_PER_BLOCK; stride <<= 1)
         {
@@ -250,18 +258,47 @@ __global__ void pme_solve_kernel
             }
             __syncthreads();
         }
+        */
+        {
+            // 7-thread reduction in shared memory inspired by reduce_force_j_generic
+            const int blockSize = THREADS_PER_BLOCK;
+            __shared__ real enerVirShared[7 * blockSize];
+            enerVirShared[threadLocalId + 0 * blockSize] = virxx;
+            enerVirShared[threadLocalId + 1 * blockSize] = viryy;
+            enerVirShared[threadLocalId + 2 * blockSize] = virzz;
+            enerVirShared[threadLocalId + 3 * blockSize] = virxy;
+            enerVirShared[threadLocalId + 4 * blockSize] = virxz;
+            enerVirShared[threadLocalId + 5 * blockSize] = viryz;
+            enerVirShared[threadLocalId + 6 * blockSize] = energy;
 
+            if (threadLocalId < 7)
+            {
+                float sum = 0.0f;
+                for (int j = threadLocalId * blockSize; j < (threadLocalId + 1) * blockSize; j++)
+                {
+                    sum += enerVirShared[j];
+                }
+                // write to global memory
+                const int i = blockId;
+                if (threadLocalId < 6)
+                    virial_v[6 * i + threadLocalId] = sum;
+                if (threadLocalId == 6)
+                {
+                    energy_v[i] = sum;
+                }
+            }
+        }
+
+        /*
         // write to global memory
-        __syncthreads();
         const int i = blockId;//(indexMajor * localCountMiddle + indexMiddle) * localCountMinor + indexMinor;
         if (threadLocalId < 6)
             virial_v[6 * i + threadLocalId] = virialShared[threadLocalId];
         if (threadLocalId == 6)
         {
-            //if (isnan(energyShared[0]))
-            //    printf("%d %g\n", i, energyShared[0]);
             energy_v[i] = energyShared[0];
         }
+        */
     }
 }
 
