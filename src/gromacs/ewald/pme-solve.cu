@@ -226,8 +226,8 @@ __global__ void pme_solve_kernel
             // warp_size threads, only 7 of the work now, so can do everything 4 times faster?
             // concidentally, blocksize / warp_size also equals 4 now....
             // hmmmmm
-            // actually slower on my GTX 660 than naive reduction below
             // have to balance with blocksize for smem size?
+            // what about data positioning?
             virialAndEnergyShared[threadLocalId + 0 * blockSize] = virxx;
             virialAndEnergyShared[threadLocalId + 1 * blockSize] = viryy;
             virialAndEnergyShared[threadLocalId + 2 * blockSize] = virzz;
@@ -236,11 +236,24 @@ __global__ void pme_solve_kernel
             virialAndEnergyShared[threadLocalId + 5 * blockSize] = viryz;
             virialAndEnergyShared[threadLocalId + 6 * blockSize] = energy;
 
+            // reduce every component to fit into warp_size
+            for (int s = blockSize >> 1; s >= warp_size; s >>= 1)
+            {
+#pragma unroll
+                for (int i = 0; i < sizing; i++)
+                {
+                    if (threadLocalId < s) //again, split per threads ?
+                        virialAndEnergyShared[i * blockSize + threadLocalId] += virialAndEnergyShared[i * blockSize + threadLocalId + s];
+                }
+                __syncthreads();
+            }
+
+            // 1 thread per component work :( we have warp_size active threads and 7 components => 4x faster?
             if (threadLocalId < sizing)
             {
                 float sum = 0.0f;
 #pragma unroll
-                for (int j = 0; j < blockSize; j++)
+                for (int j = 0; j < warp_size; j++)
                 {
                     sum += virialAndEnergyShared[threadLocalId * blockSize + j];
                 }
