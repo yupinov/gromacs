@@ -90,23 +90,10 @@ __global__ void pme_solve_kernel
     int maxkMajor = (nMajor + 1) / 2;
     //int maxkz = nz / 2 + 1;
 
-
-    //real energy = 0.0f;
-    //real virxx = 0.0f, virxy = 0.0f, virxz = 0.0f, viryy = 0.0f, viryz = 0.0f, virzz = 0.0f;
-
-    //
-    //
     const int sizing = 7;
-    real __shared__ virialAndEnergyShared[sizing * blockSize];
-    if (bEnerVir)
-    {
-#pragma unroll
-        for (int i = 0; i < sizing; i++)
-            virialAndEnergyShared[sizing * threadLocalId + i] = 0.0f;
-    }
-    //
 
-    // could just set them to zero in all the bad cases instead: indices too large, or in a zero-point??
+    real energy = 0.0f;
+    real virxx = 0.0f, virxy = 0.0f, virxz = 0.0f, viryy = 0.0f, viryz = 0.0f, virzz = 0.0f;
 
     const int indexMinor = blockIdx.x * blockDim.x + threadIdx.x;
     const int indexMiddle = blockIdx.y * blockDim.y + threadIdx.y;
@@ -197,34 +184,16 @@ __global__ void pme_solve_kernel
 
                 real vfactor = (ConstFactor + 1.0f / m2k) * 2.0f;
                 real ets2 = corner_fac * tmp1k;
-                //real energy = ets2;
-                virialAndEnergyShared[sizing * threadLocalId + 6] = ets2;
+                energy = ets2;
 
                 real ets2vf  = ets2 * vfactor;
 
-                real virxx   = ets2vf * mhxk * mhxk - ets2;
-                real virxy   = ets2vf * mhxk * mhyk;
-                real virxz   = ets2vf * mhxk * mhzk;
-                real viryy   = ets2vf * mhyk * mhyk - ets2;
-                real viryz   = ets2vf * mhyk * mhzk;
-                real virzz   = ets2vf * mhzk * mhzk - ets2;
-
-                // different order?
-                virialAndEnergyShared[sizing * threadLocalId + 0] = virxx;
-                virialAndEnergyShared[sizing * threadLocalId + 1] = viryy;
-                virialAndEnergyShared[sizing * threadLocalId + 2] = virzz;
-                virialAndEnergyShared[sizing * threadLocalId + 3] = virxy;
-                virialAndEnergyShared[sizing * threadLocalId + 4] = virxz;
-                virialAndEnergyShared[sizing * threadLocalId + 5] = viryz;
-
-                /*
                 virxx   = ets2vf * mhxk * mhxk - ets2;
                 virxy   = ets2vf * mhxk * mhyk;
                 virxz   = ets2vf * mhxk * mhzk;
                 viryy   = ets2vf * mhyk * mhyk - ets2;
                 viryz   = ets2vf * mhyk * mhzk;
                 virzz   = ets2vf * mhzk * mhzk - ets2;
-                */
             }
         }
     }
@@ -235,22 +204,13 @@ __global__ void pme_solve_kernel
 
         // reduction goes here
 
-        // a naive shared mem reduction
-        for (unsigned int stride = 1; stride < blockSize; stride <<= 1)
-        {
-            if ((threadLocalId % (stride << 1) == 0))
-            {
-#pragma unroll
-                for (int i = 0; i < sizing; i++)
-                    virialAndEnergyShared[sizing * threadLocalId + i] += virialAndEnergyShared[sizing * (threadLocalId + stride) + i];
-            }
-            __syncthreads();
-        }
-        if (threadLocalId < sizing)
-            atomicAdd(virialAndEnergy + threadLocalId, virialAndEnergyShared[threadLocalId]);
+        // a naive shared mem reduction - need to uncomment some stuff above for it to work
+        /*
+
+        */
 
 #if (GMX_PTX_ARCH >= 300)
-/*
+        /*
         if (!(blockSize & (blockSize - 1))) // only for orders of power of 2
         {
 
@@ -258,11 +218,16 @@ __global__ void pme_solve_kernel
         else
         */
 #endif
-        /*
         {
-            // 7-thread reduction in shared memory inspired by reduce_force_j_generic
-            __shared__ real virialAndEnergyShared[7 * blockSize];
+            __shared__ real virialAndEnergyShared[sizing * blockSize];
             // 3.5k smem per block - a serious limiter!
+
+            // 7-thread reduction in shared memory inspired by reduce_force_j_generic
+            // warp_size threads, only 7 of the work now, so can do everything 4 times faster?
+            // concidentally, blocksize / warp_size also equals 4 now....
+            // hmmmmm
+            // actually slower on my GTX 660 than naive reduction below
+            // have to balance with blocksize for smem size?
             virialAndEnergyShared[threadLocalId + 0 * blockSize] = virxx;
             virialAndEnergyShared[threadLocalId + 1 * blockSize] = viryy;
             virialAndEnergyShared[threadLocalId + 2 * blockSize] = virzz;
@@ -274,15 +239,40 @@ __global__ void pme_solve_kernel
             if (threadLocalId < sizing)
             {
                 float sum = 0.0f;
-                for (int j = threadLocalId * blockSize; j < (threadLocalId + 1) * blockSize; j++)
+#pragma unroll
+                for (int j = 0; j < blockSize; j++)
                 {
-                    sum += virialAndEnergyShared[j];
+                    sum += virialAndEnergyShared[threadLocalId * blockSize + j];
                 }
                 // write to global memory
                 atomicAdd(virialAndEnergy + threadLocalId, sum);
             }
+
+
+            /*
+            // a naive shared mem reduction
+            virialAndEnergyShared[sizing * threadLocalId + 0] = virxx;
+            virialAndEnergyShared[sizing * threadLocalId + 1] = viryy;
+            virialAndEnergyShared[sizing * threadLocalId + 2] = virzz;
+            virialAndEnergyShared[sizing * threadLocalId + 3] = virxy;
+            virialAndEnergyShared[sizing * threadLocalId + 4] = virxz;
+            virialAndEnergyShared[sizing * threadLocalId + 5] = viryz;
+            virialAndEnergyShared[sizing * threadLocalId + 6] = energy;
+#pragma unroll
+            for (unsigned int stride = 1; stride < blockSize; stride <<= 1)
+            {
+                if ((threadLocalId % (stride << 1) == 0))
+                {
+#pragma unroll
+                    for (int i = 0; i < sizing; i++)
+                        virialAndEnergyShared[sizing * threadLocalId + i] += virialAndEnergyShared[sizing * (threadLocalId + stride) + i];
+                }
+                __syncthreads();
+            }
+            if (threadLocalId < sizing)
+                atomicAdd(virialAndEnergy + threadLocalId, virialAndEnergyShared[threadLocalId]);
+            */
         }
-        */
     }
 }
 
