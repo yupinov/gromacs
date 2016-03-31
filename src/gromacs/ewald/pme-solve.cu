@@ -299,13 +299,10 @@ __global__ void pme_solve_kernel
                     sum += enerVirShared[j];
                 }
                 // write to global memory
-                const int i = blockId;
                 if (threadLocalId < 6)
-                    virial_v[6 * i + threadLocalId] = sum;
+                    atomicAdd(virial_v + threadLocalId, sum);
                 if (threadLocalId == 6)
-                {
-                    energy_v[i] = sum;
-                }
+                    atomicAdd(energy_v, sum);
             }
         }
     }
@@ -398,11 +395,17 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     // integer number of blocks is working on integer number of gridlines
     dim3 threads(gridLineSize, gridLinesPerBlock, 1);
 
-    const int nReduced = blocks.x * blocks.y * blocks.z;  //yupinov - what happens if we comment out zeroing in kernel?
+    const int nReduced = 1;
     const int energySize = nReduced * sizeof(real);
     const int virialSize = 6 * nReduced * sizeof(real);
     real *energy_d = PMEFetchRealArray(PME_ID_ENERGY, thread, energySize, ML_DEVICE);
     real *virial_d = PMEFetchRealArray(PME_ID_VIRIAL, thread, virialSize, ML_DEVICE);
+    stat = cudaMemset(energy_d, 0, energySize);
+    CU_RET_ERR(stat, "PME solve cudaMemset");
+    stat = cudaMemset(virial_d, 0, virialSize);
+    CU_RET_ERR(stat, "PME solve cudaMemset");
+    //join together?
+
     events_record_start(gpu_events_solve, s);
 
     if (YZXOrdering)
@@ -473,16 +476,10 @@ void gpu_energy_virial_copyback(gmx_pme_t *pme)
     real *work_energy_q = &(work->energy_q);
     matrix &work_vir_q = work->vir_q;
 
-    ivec complex_order, local_ndata, local_offset, local_size;
-    gmx_parallel_3dfft_complex_limits_wrapper(pme, PME_GRID_QA,//pme->pfft_setup_gpu[PME_GRID_QA],
-                                      complex_order,
-                                      local_ndata,
-                                      local_offset,
-                                      local_size);
-
     int reducedSize = PMEGetAllocatedSize(PME_ID_ENERGY, thread, ML_DEVICE);
     assert(reducedSize > 0);
     int nReduced = reducedSize / sizeof(real);
+    // will be 1, actually
 
     const int energySize = nReduced * sizeof(real);
     const int virialSize = 6 * nReduced * sizeof(real);
@@ -490,7 +487,7 @@ void gpu_energy_virial_copyback(gmx_pme_t *pme)
     real *energy_d = PMEFetchRealArray(PME_ID_ENERGY, thread, energySize, ML_DEVICE);
     real *virial_d = PMEFetchRealArray(PME_ID_VIRIAL, thread, virialSize, ML_DEVICE);
 
-    cudaError_t stat = cudaStreamWaitEvent(s, gpu_events_solve.event_stop, 0);  //yupinov in gather as well!
+    cudaError_t stat = cudaStreamWaitEvent(s, gpu_events_solve.event_stop, 0);
     CU_RET_ERR(stat, "error while waiting for PME solve");
     // synchronous copy
     real *energy_h = PMEFetchAndCopyRealArray(PME_ID_ENERGY, thread, energy_d, energySize, ML_HOST, s, TRUE);
