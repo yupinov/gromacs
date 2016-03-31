@@ -869,7 +869,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
                 events_record_stop(gpu_events_splineandspread, s, ewcsPME_SPLINEANDSPREAD, 0);
             }
-            if (pme->bGPUSingle)
+            if (bSpread && pme->bGPUSingle)
             {
                 // wrap on GPU as a separate small kernel - we need a complete grid first!
                 const int blockSize = 4 * warp_size; //yupinov this is everywhere! and arichitecture-specific

@@ -200,14 +200,7 @@ __global__ void pme_solve_kernel
 
     if (bEnerVir)
     {
-        __syncthreads();
-
         // reduction goes here
-
-        // a naive shared mem reduction - need to uncomment some stuff above for it to work
-        /*
-
-        */
 
 #if (GMX_PTX_ARCH >= 300)
         /*
@@ -235,6 +228,8 @@ __global__ void pme_solve_kernel
             virialAndEnergyShared[threadLocalId + 4 * blockSize] = virxz;
             virialAndEnergyShared[threadLocalId + 5 * blockSize] = viryz;
             virialAndEnergyShared[threadLocalId + 6 * blockSize] = energy;
+
+            __syncthreads();
 
             // reduce every component to fit into warp_size
             for (int s = blockSize >> 1; s >= warp_size; s >>= 1)
@@ -275,6 +270,8 @@ __global__ void pme_solve_kernel
             virialAndEnergyShared[sizing * threadLocalId + 4] = virxz;
             virialAndEnergyShared[sizing * threadLocalId + 5] = viryz;
             virialAndEnergyShared[sizing * threadLocalId + 6] = energy;
+
+            __syncthreads();
 #pragma unroll
             for (unsigned int stride = 1; stride < blockSize; stride <<= 1)
             {
