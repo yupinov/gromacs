@@ -47,6 +47,8 @@
 #include "pme-cuda.cuh"
 #include "pme-gpu.h"
 
+#include <assert.h>
+
 gpu_events gpu_events_spline;
 gpu_events gpu_events_spread;
 gpu_events gpu_events_splineandspread;
@@ -59,6 +61,8 @@ gpu_events gpu_events_splineandspread;
 
 #define THREADS_PER_BLOCK   (4 * warp_size)
 #define MIN_BLOCKS_PER_MP   (16)
+
+static const int OVERLAP_ZONES = 7;
 
 template <
         const int order,
@@ -144,7 +148,6 @@ __global__ void pme_spline_and_spread_kernel
             idxzptr[localIndex] = nnz[tiz];
 
             coefficient[localIndex] = coefficientGlobal[globalIndex]; //staging for both parts
-
 
             idx[globalIndex * DIM + 0] = idxxptr[localIndex];
             idx[globalIndex * DIM + 1] = idxyptr[localIndex];
@@ -560,15 +563,19 @@ __global__ void pme_spread_kernel
 
 
 template <
-    const int order,
-    const int stage
+    const int order
     >
 //yupinov - correct sequence of dimensions? parallel wit hatomicAdd somehow?
 __global__ void pme_wrap_kernel
     (const int nx, const int ny, const int nz,
-     const int pnx,const int pny, const int pnz,
-     real * __restrict__ grid)
+     const int pny, const int pnz,
+     real * __restrict__ grid,
+     const int * __restrict__ cellsAccumCount,
+     const int3 * __restrict zoneSizes
+     )
 {
+    const int overlap = order - 1;
+
     // WRAP
     int blockId = blockIdx.x
                  + blockIdx.y * gridDim.x
@@ -580,131 +587,67 @@ __global__ void pme_wrap_kernel
 
     //should use ldg.128
     //yupinov unwrap as well
-    const int overlap = order - 1;
 
-    const int iz = blockIdx.x * blockDim.x + threadIdx.x;
-    const int iy = blockIdx.y * blockDim.y + threadIdx.y;
-    const int ix = blockIdx.z * blockDim.z + threadIdx.z;
-
-    if (stage & 1)
-    {
-        //if (threadId < overlap * pnx * pny)
-        if (iy < pny)
+    if (threadId < cellsAccumCount[OVERLAP_ZONES - 1])
+    {   
+        int zoneIndex = -1;
+        do
         {
-            /* Add periodic overlap in z */
-            // pnx * pny operations
-            const int offset_z = nz;
-            //for (int ix = 0; ix < pnx; ix++)
-            //const int ix = (threadId / overlap) / pny;
-            {
-                //const int iy = (threadId / overlap) % pny;
-                //for (int iy = 0; iy < pny; iy++)
-                {
-                    //const int iz = (threadId % overlap);
-                    //for (int iz = 0; iz < overlap; iz++)
-                    {
-                        const int address = (ix * pny + iy) * pnz + iz;
-                        //threadId?
-                        /*
-                        if (blockId == 12)
-                        {
-                            printf("%d vs %d; %d %d %d\n", threadId, address, ix, iy, iz);
-                        }
-                        ZYX you idiot
-                        */
-                        grid[address] += grid[address + offset_z];
-                        //const real gridValue = grid[address + offset_z];
-                        //atomicAdd(grid + address, gridValue);
-                    }
-                }
-            }
+            zoneIndex++;
         }
-    }
+        while (threadId >= cellsAccumCount[zoneIndex]);
+        const int3 zoneSize = zoneSizes[zoneIndex];
+        // I don't even need X!
+        // this is the overlapped cells's index relative to the current zone
+        const int cellIndex = (zoneIndex > 0) ? (threadId - cellsAccumCount[zoneIndex - 1]) : threadId;
 
-    if (stage & 2)
-    {
-        //if (threadId < overlap * pnx * nz)
-        if (iz < nz)
+        // replace integer division/modular arithmetics - a big performance hit
+        // try int_fastdiv?
+        // another idea: 6 out of 7 zones form continuous Z-gridlines;
+        // this should definitely be exploited for easier index calculation! the gridlines are already aligned by warp_size, even
+        /*
+        int ix = cellIndex / zoneSizes[zoneIndex].z / zoneSizes[zoneIndex].y;
+        int iy = cellIndex / zoneSizes[zoneIndex].z % zoneSizes[zoneIndex].y;
+        int iz = cellIndex % zoneSizes[zoneIndex].z;
+        */
+        const int ixy = cellIndex / zoneSize.z; //yupinov check integer divisions everywhere!
+        const int iz = cellIndex - zoneSize.z * ixy;
+        const int ix = ixy / zoneSize.y;
+        const int iy = ixy - zoneSize.y * ix;
+        const int targetIndex = (ix * pny + iy) * pnz + iz;
+
+        int sourceOffset = 0;
+
+        // stage those bits in constant memory as well
+        if ((zoneIndex == 0) || (zoneIndex == 3) || (zoneIndex == 4) || (zoneIndex == 6))
         {
-            // nz * pnx operations
-
-            //if (pme->nnodes_minor == 1)  //no MPI
-            {
-                const int offset_y = ny * pnz;
-                //const int ix = (threadId / nz) / overlap;
-                //for (int ix = 0; ix < pnx; ix++)
-                {
-                    //const int iy = (threadId / nz) % overlap; //yupinov replace with 3d thread indices
-                    //for (int iy = 0; iy < overlap; iy++)
-                    {
-                        //for (int iz = 0; iz < nz; iz++) // not pnz
-                        //const int iz = (threadId % nz);
-                        {
-                            const int address = (ix * pny + iy) * pnz + iz;
-                            grid[address] += grid[address + offset_y];
-                            //const real gridValue = grid[address + offset_y];
-                            //atomicAdd(grid + address, gridValue);
-                        }
-                    }
-                }
-            }
+            // overlap in Z
+            //iz += nz;
+            sourceOffset = nz;
         }
-    }
-
-    if (stage & 4)
-    {
-        //if (threadId < overlap * ny * nz)
-        if (iz < nz)
+        if ((zoneIndex == 1) || (zoneIndex == 3) || (zoneIndex == 5) || (zoneIndex == 6))
         {
-            // nz * ny operations
-            //if (pme->nnodes_major == 1) //yupinov no MPI
-            {
-                //ny_x = (pme->nnodes_minor == 1 ? ny : pme->pmegrid_ny);
-                const int ny_x = ny;
-                const int offset_x = nx * pny * pnz;
-
-                //const int ix = (threadId / nz) / ny_x;
-                //for (int ix = 0; ix < overlap; ix++)
-                {
-                    //const int iy = (threadId / nz) % ny_x;
-                    //for (int iy = 0; iy < ny_x; iy++) // not pny
-                    {
-                        //const int iz = (threadId % nz);
-                        //for (int iz = 0; iz < nz; iz++) // not pnz
-                        {
-                            const int address = (ix * pny + iy) * pnz + iz;
-                            grid[address] += grid[address + offset_x];
-
-                            //const real gridValue = grid[address + offset_x];
-                            //atomicAdd(grid + address, gridValue);
-                        }
-                    }
-                }
-            }
+            // overlap in Y
+            //iy += ny;
+            sourceOffset += ny * pnz;
         }
+        if ((zoneIndex == 2) || (zoneIndex > 3)) //2 4 5 6
+        {
+            // overlap in X
+            //ix += nx;
+            sourceOffset += nx *pny * pnz;
+        }
+        //const int sourceIndex = (ix * pny + iy) * pnz + iz;
+        const int sourceIndex = targetIndex + sourceOffset;
+
+        // check if we have more than one overlap in this target zone
+        const int useAtomic = (zoneIndex > 2);
+        if (useAtomic)
+            atomicAdd(grid + targetIndex, grid[sourceIndex]);
+        else
+            grid[targetIndex] += grid[sourceIndex];
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
          int grid_index,
@@ -928,34 +871,39 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
             }
             if (pme->bGPUSingle)
             {
-                const int blockSize = 4 * warp_size; //yupinov thsi is everywhere! and arichitecture-specific
-                /*
-                const int workCells[] = {pnx * pny * overlap, nz * pnx * overlap, nz * ny * overlap};
-                dim3 nBlocks[3];
-                for (int i = 0; i < 3; i++)
-                    nBlocks[i] = dim3((workCells[i] + blockSize - 1) / blockSize, 1, 1);
-                */
-                int overlapLinesPerBlock = blockSize / overlap; //so there is unused padding in each block;
+                // wrap on GPU as a separate small kernel - we need a complete grid first!
+                const int blockSize = 4 * warp_size; //yupinov this is everywhere! and arichitecture-specific
 
-                dim3 blocks[] =
+                // cell count in 7 parts of overlap
+                const int3 zoneSizes[OVERLAP_ZONES] =
                 {
-                    dim3(1, (pny + overlapLinesPerBlock - 1) / overlapLinesPerBlock, pnx),
-                    dim3((nz + overlapLinesPerBlock - 1) / overlapLinesPerBlock, 1, pnx),
-                    dim3((nz + overlapLinesPerBlock - 1) / overlapLinesPerBlock, ny, 1),
+                    {     nx,        ny,   overlap},
+                    {     nx,   overlap,        nz},
+                    {overlap,        ny,        nz},
+                    {     nx,   overlap,   overlap},
+                    {overlap,        ny,   overlap},
+                    {overlap,   overlap,        nz},
+                    {overlap,   overlap,   overlap}
                 };
-                // low occupancy :(
-                dim3 threads[] =
+                int cellsAccumCount[OVERLAP_ZONES];
+                for (int i = 0; i < OVERLAP_ZONES; i++)
+                    cellsAccumCount[i] = zoneSizes[i].x * zoneSizes[i].y * zoneSizes[i].z;
+                // accumulate
+                for (int i = 1; i < OVERLAP_ZONES; i++)
                 {
-                    dim3(overlap, overlapLinesPerBlock, 1),
-                    dim3(overlapLinesPerBlock, overlap, 1),
-                    dim3(overlapLinesPerBlock, 1, overlap),
-                };
+                    cellsAccumCount[i] = cellsAccumCount[i] + cellsAccumCount[i - 1];
+                }
 
+                const int overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
+                const int nBlocks = (overlappedCells + blockSize - 1) / blockSize;
                 events_record_start(gpu_events_wrap, s);
 
-                pme_wrap_kernel<4, 1> <<<blocks[0], threads[0], 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
-                pme_wrap_kernel<4, 2> <<<blocks[1], threads[1], 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
-                pme_wrap_kernel<4, 4> <<<blocks[2], threads[2], 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+                int *cellsAccumCount_d = PMEFetchAndCopyIntegerArray(PME_ID_CELL_COUNTS, thread, cellsAccumCount, sizeof(cellsAccumCount), ML_DEVICE, s);
+                int3 *zoneSizes_d = (int3 *)PMEFetchAndCopyIntegerArray(PME_ID_CELL_ZONES, thread, (void *)zoneSizes, sizeof(zoneSizes), ML_DEVICE, s);
+                // make it a constant memory or fix the IDs
+
+                pme_wrap_kernel<4> <<<nBlocks, blockSize, 0, s>>>(nx, ny, nz, pny, pnz, grid_d, cellsAccumCount_d, zoneSizes_d);
+
                 CU_LAUNCH_ERR("pme_wrap_kernel");
 
                 events_record_stop(gpu_events_wrap, s, ewcsPME_WRAP, 0);
