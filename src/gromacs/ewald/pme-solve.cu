@@ -69,7 +69,7 @@ __global__ void pme_solve_kernel
  const real * __restrict__ BSplineModuleMiddle,
  float2 * __restrict__ grid,
  const real volume,
- real * __restrict__ energy_v, real * __restrict__ virial_v)
+ real * __restrict__ virialAndEnergy)
 {
     // if we're doing CPU FFT, the gridline is not necessarily padded to multiple 32 words
     // we can pad it for GPU FFT (set alignment to 32 (or 16 because it's t_complex aka float2?)
@@ -227,13 +227,13 @@ __global__ void pme_solve_kernel
 
                 /*
                 const int i = (indexMajor * localCountMiddle + indexMiddle) * localCountMinor + indexMinor;
-                energy_v[i] = energy;
-                virial_v[6 * i + 0] = virxx;
-                virial_v[6 * i + 1] = viryy;
-                virial_v[6 * i + 2] = virzz;
-                virial_v[6 * i + 3] = virxy;
-                virial_v[6 * i + 4] = virxz;
-                virial_v[6 * i + 5] = viryz;
+                virialAndEnergy[6 * i + 0] = virxx;
+                virialAndEnergy[6 * i + 1] = viryy;
+                virialAndEnergy[6 * i + 2] = virzz;
+                virialAndEnergy[6 * i + 3] = virxy;
+                virialAndEnergy[6 * i + 4] = virxz;
+                virialAndEnergy[6 * i + 5] = viryz;
+                virialAndEnergy[6 * i + 6] = energy;
                 */
             }
         }
@@ -261,12 +261,8 @@ __global__ void pme_solve_kernel
 
         // write to global memory
         const int i = blockId;//(indexMajor * localCountMiddle + indexMiddle) * localCountMinor + indexMinor;
-        if (threadLocalId < 6)
-            virial_v[6 * i + threadLocalId] = virialShared[threadLocalId];
-        if (threadLocalId == 6)
-        {
-            energy_v[i] = energyShared[0];
-        }
+        if (threadLocalId < 7)
+            virialAndEnergy[6 * i + threadLocalId] = virialShared[threadLocalId]; //energyshared!
         */
 
         const int blockSize = THREADS_PER_BLOCK;
@@ -281,28 +277,26 @@ __global__ void pme_solve_kernel
 #endif
         {
             // 7-thread reduction in shared memory inspired by reduce_force_j_generic
-            __shared__ real enerVirShared[7 * blockSize];
+            __shared__ real virialAndEnergyShared[7 * blockSize];
             // 3.5k smem per block - a serious limiter!
-            enerVirShared[threadLocalId + 0 * blockSize] = virxx;
-            enerVirShared[threadLocalId + 1 * blockSize] = viryy;
-            enerVirShared[threadLocalId + 2 * blockSize] = virzz;
-            enerVirShared[threadLocalId + 3 * blockSize] = virxy;
-            enerVirShared[threadLocalId + 4 * blockSize] = virxz;
-            enerVirShared[threadLocalId + 5 * blockSize] = viryz;
-            enerVirShared[threadLocalId + 6 * blockSize] = energy;
+            virialAndEnergyShared[threadLocalId + 0 * blockSize] = virxx;
+            virialAndEnergyShared[threadLocalId + 1 * blockSize] = viryy;
+            virialAndEnergyShared[threadLocalId + 2 * blockSize] = virzz;
+            virialAndEnergyShared[threadLocalId + 3 * blockSize] = virxy;
+            virialAndEnergyShared[threadLocalId + 4 * blockSize] = virxz;
+            virialAndEnergyShared[threadLocalId + 5 * blockSize] = viryz;
+            virialAndEnergyShared[threadLocalId + 6 * blockSize] = energy;
 
             if (threadLocalId < 7)
             {
                 float sum = 0.0f;
                 for (int j = threadLocalId * blockSize; j < (threadLocalId + 1) * blockSize; j++)
                 {
-                    sum += enerVirShared[j];
+                    sum += virialAndEnergyShared[j];
                 }
                 // write to global memory
-                if (threadLocalId < 6)
-                    atomicAdd(virial_v + threadLocalId, sum);
-                if (threadLocalId == 6)
-                    atomicAdd(energy_v, sum);
+                if (threadLocalId < 7)
+                    atomicAdd(virialAndEnergy + threadLocalId, sum);
             }
         }
     }
@@ -396,15 +390,10 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     dim3 threads(gridLineSize, gridLinesPerBlock, 1);
 
     const int nReduced = 1;
-    const int energySize = nReduced * sizeof(real);
-    const int virialSize = 6 * nReduced * sizeof(real);
-    real *energy_d = PMEFetchRealArray(PME_ID_ENERGY, thread, energySize, ML_DEVICE);
-    real *virial_d = PMEFetchRealArray(PME_ID_VIRIAL, thread, virialSize, ML_DEVICE);
-    stat = cudaMemset(energy_d, 0, energySize);
+    const int energyAndVirialSize = nReduced * (1 + 6) * sizeof(real);
+    real *energyAndVirial_d = PMEFetchRealArray(PME_ID_ENERGY_AND_VIRIAL, thread, energyAndVirialSize, ML_DEVICE);
+    stat = cudaMemset(energyAndVirial_d, 0, energyAndVirialSize);
     CU_RET_ERR(stat, "PME solve cudaMemset");
-    stat = cudaMemset(virial_d, 0, virialSize);
-    CU_RET_ERR(stat, "PME solve cudaMemset");
-    //join together?
 
     events_record_start(gpu_events_solve, s);
 
@@ -419,7 +408,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                elfac,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
-               energy_d, virial_d);
+               energyAndVirial_d);
         else
             pme_solve_kernel<FALSE, TRUE> <<<blocks, threads, 0, s>>>
               (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
@@ -429,7 +418,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                elfac,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
-               energy_d, virial_d);
+               energyAndVirial_d);
     }
     else
     {
@@ -442,7 +431,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                elfac,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
-               energy_d, virial_d);
+               energyAndVirial_d);
         else
             pme_solve_kernel<FALSE, FALSE> <<<blocks, threads, 0, s>>>
               (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
@@ -452,7 +441,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                elfac,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
-               energy_d, virial_d);
+               energyAndVirial_d);
     }
     CU_LAUNCH_ERR("pme_solve_kernel");
 
@@ -476,35 +465,29 @@ void gpu_energy_virial_copyback(gmx_pme_t *pme)
     real *work_energy_q = &(work->energy_q);
     matrix &work_vir_q = work->vir_q;
 
-    int reducedSize = PMEGetAllocatedSize(PME_ID_ENERGY, thread, ML_DEVICE);
-    assert(reducedSize > 0);
-    int nReduced = reducedSize / sizeof(real);
+    int energyAndVirialSize = PMEGetAllocatedSize(PME_ID_ENERGY_AND_VIRIAL, thread, ML_DEVICE);
+    assert(energyAndVirialSize > 0);
+    int nReduced = energyAndVirialSize / (1 + 6) / sizeof(real);
     // will be 1, actually
 
-    const int energySize = nReduced * sizeof(real);
-    const int virialSize = 6 * nReduced * sizeof(real);
-
-    real *energy_d = PMEFetchRealArray(PME_ID_ENERGY, thread, energySize, ML_DEVICE);
-    real *virial_d = PMEFetchRealArray(PME_ID_VIRIAL, thread, virialSize, ML_DEVICE);
+    real *energyAndVirial_d = PMEFetchRealArray(PME_ID_ENERGY_AND_VIRIAL, thread, energyAndVirialSize, ML_DEVICE);
 
     cudaError_t stat = cudaStreamWaitEvent(s, gpu_events_solve.event_stop, 0);
     CU_RET_ERR(stat, "error while waiting for PME solve");
     // synchronous copy
-    real *energy_h = PMEFetchAndCopyRealArray(PME_ID_ENERGY, thread, energy_d, energySize, ML_HOST, s, TRUE);
-    real *virial_h = PMEFetchAndCopyRealArray(PME_ID_VIRIAL, thread, virial_d, virialSize, ML_HOST, s, TRUE);
-
+    real *energyAndVirial_h = PMEFetchAndCopyRealArray(PME_ID_ENERGY_AND_VIRIAL, thread, energyAndVirial_d, energyAndVirialSize, ML_HOST, s, TRUE);
+    //yupinov scheduel copyback before?
     real energy = 0.0;
     real virxx = 0.0, virxy = 0.0, virxz = 0.0, viryy = 0.0, viryz = 0.0, virzz = 0.0;
-    // a per-block reduction
     for (int i = 0, j = 0; i < nReduced; ++i)
     {
-        energy += energy_h[i];
-        virxx += virial_h[j++];
-        viryy += virial_h[j++];
-        virzz += virial_h[j++];
-        virxy += virial_h[j++];
-        virxz += virial_h[j++];
-        viryz += virial_h[j++];
+        virxx += energyAndVirial_h[j++];
+        viryy += energyAndVirial_h[j++];
+        virzz += energyAndVirial_h[j++];
+        virxy += energyAndVirial_h[j++];
+        virxz += energyAndVirial_h[j++];
+        viryz += energyAndVirial_h[j++];
+        energy += energyAndVirial_h[j++];
     }
 
     work_vir_q[XX][XX] = 0.25 * virxx;
