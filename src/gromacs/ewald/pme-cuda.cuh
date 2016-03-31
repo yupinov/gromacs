@@ -48,7 +48,7 @@ enum PMEDataID
 
     // gather
     PME_ID_FORCES,
-
+    PME_ID_NXYZ,
     PME_ID_NONZERO_INDICES, // compacted data indices
 
     // only used on host in gather now

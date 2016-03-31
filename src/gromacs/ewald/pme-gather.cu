@@ -52,7 +52,7 @@ template <
 __launch_bounds__(4 * warp_size, 16)
 __global__ void pme_gather_kernel
 (const real * __restrict__ grid, const int n,
- const real nx, const real ny, const real nz, const int pnx, const int pny, const int pnz,
+ const real * __restrict__ nXYZ, const int pnx, const int pny, const int pnz,
  const real rxx, const real ryx, const real ryy, const real rzx, const real rzy, const real rzz,
  const real * __restrict__ thx, const real * __restrict__ thy, const real * __restrict__ thz,
  const real * __restrict__ dthx, const real * __restrict__ dthy, const real * __restrict__ dthz,
@@ -217,12 +217,8 @@ __global__ void pme_gather_kernel
         }
 
         // all the components are now stored in fx! (cost me a couple of hours of my life)
-        if (splineIndex == 0)
-            fSumArray[localIndex].x = fx * nx;
-        if (splineIndex == 1)
-            fSumArray[localIndex].y = fx * ny;
-        if (splineIndex == 2)
-            fSumArray[localIndex].z = fx * nz;
+        if (splineIndex < 3)
+            *((real *)(&fSumArray[localIndex]) + splineIndex) = fx * nXYZ[splineIndex];
     }
     else
 #endif
@@ -240,13 +236,7 @@ __global__ void pme_gather_kernel
             {
                 f += fSharedArray[blockSize * splineIndex + j];
             }
-
-            if (splineIndex == 0)
-                fSumArray[localIndex].x = f * nx;
-            if (splineIndex == 1)
-                fSumArray[localIndex].y = f * ny;
-            if (splineIndex == 2)
-                fSumArray[localIndex].z = f * nz;
+            *((real *)(&fSumArray[localIndex]) + splineIndex) = f * nXYZ[splineIndex];
         }
     }
 
@@ -598,9 +588,10 @@ void gather_f_bsplines_gpu
     if (!bClearF)
         PMECopy(atc_f_d, atc_f_h, size_forces, ML_DEVICE, s);
 
-    const real nx_r = (real)nx;
-    const real ny_r = (real)ny;
-    const real nz_r = (real)nz;
+  // float3 constant
+
+    float3 nXYZ = {(real)nx, (real)ny, (real)nz};
+    real *nXYZ_d = PMEFetchAndCopyRealArray(PME_ID_NXYZ, thread, &nXYZ, sizeof(nXYZ), ML_DEVICE, s);
 
     const int blockSize = 4 * warp_size;
     const int particlesPerBlock = blockSize / order / order;
@@ -614,7 +605,7 @@ void gather_f_bsplines_gpu
             pme_gather_kernel<4, blockSize / 4 / 4, TRUE> <<<nBlocks, dimBlock, 0, s>>>
               (grid_d,
                n,
-               nx, ny, nz, pnx, pny, pnz,
+               nXYZ_d, pnx, pny, pnz,
                rxx, ryx, ryy, rzx, rzy, rzz,
                theta_x_d, theta_y_d, theta_z_d,
                dtheta_x_d, dtheta_y_d, dtheta_z_d,
@@ -624,7 +615,7 @@ void gather_f_bsplines_gpu
             pme_gather_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocks, dimBlock, 0, s>>>
               (grid_d,
                n,
-               nx_r, ny_r, nz_r, pnx, pny, pnz,
+               nXYZ_d, pnx, pny, pnz,
                rxx, ryx, ryy, rzx, rzy, rzz,
                theta_x_d, theta_y_d, theta_z_d,
                dtheta_x_d, dtheta_y_d, dtheta_z_d,
