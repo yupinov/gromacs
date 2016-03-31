@@ -248,17 +248,21 @@ __global__ void pme_solve_kernel
                 __syncthreads();
             }
 
-            // 1 thread per component work :( we have warp_size active threads and 7 components => 4x faster?
-            if (threadLocalId < sizing)
+            // currently 1 thread per component work :( we have warp_size active threads and 7 components => could be 4x faster?
+            const int threadsPerComponent = warp_size / sizing; //this is also the stride
+            if (threadLocalId < sizing * threadsPerComponent)
             {
+                const int componentIndex = threadLocalId / threadsPerComponent;
+                const int threadComponentOffset = threadLocalId - componentIndex * threadsPerComponent;
+
                 float sum = 0.0f;
 #pragma unroll
-                for (int j = 0; j < warp_size; j++)
+                for (int j = 0; j < sizing; j++)
                 {
-                    sum += virialAndEnergyShared[threadLocalId * blockSize + j];
+                    sum += virialAndEnergyShared[componentIndex * blockSize + j * threadsPerComponent + threadComponentOffset];
                 }
                 // write to global memory
-                atomicAdd(virialAndEnergy + threadLocalId, sum);
+                atomicAdd(virialAndEnergy + componentIndex, sum);
             }
 
 
