@@ -641,7 +641,7 @@ __global__ void pme_wrap_kernel
         const int sourceIndex = targetIndex + sourceOffset;
 
         // check if we have more than one overlap in this target zone
-        const int useAtomic = (zoneIndex > 2);
+        const int useAtomic = 1;//(zoneIndex > 2);
         if (useAtomic)
             atomicAdd(grid + targetIndex, grid[sourceIndex]);
         else
@@ -896,11 +896,11 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
                 const int overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
                 const int nBlocks = (overlappedCells + blockSize - 1) / blockSize;
-                events_record_start(gpu_events_wrap, s);
 
                 int *cellsAccumCount_d = PMEFetchAndCopyIntegerArray(PME_ID_CELL_COUNTS, thread, cellsAccumCount, sizeof(cellsAccumCount), ML_DEVICE, s);
                 int3 *zoneSizes_d = (int3 *)PMEFetchAndCopyIntegerArray(PME_ID_CELL_ZONES, thread, (void *)zoneSizes, sizeof(zoneSizes), ML_DEVICE, s);
                 // make it a constant memory or fix the IDs
+                events_record_start(gpu_events_wrap, s);
 
                 pme_wrap_kernel<4> <<<nBlocks, blockSize, 0, s>>>(nx, ny, nz, pny, pnz, grid_d, cellsAccumCount_d, zoneSizes_d);
 
