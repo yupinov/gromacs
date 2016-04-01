@@ -73,8 +73,8 @@ enum PMEDataID
     PME_ID_ENERGY_AND_VIRIAL,
 
     // wrap/unwrap staging
-    PME_ID_CELL_COUNTS,
-    PME_ID_CELL_ZONES,
+    //PME_ID_CELL_COUNTS,
+    //PME_ID_CELL_ZONES,
 
     PME_ID_END_INVALID
 };
