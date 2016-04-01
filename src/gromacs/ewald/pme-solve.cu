@@ -71,9 +71,15 @@ __global__ void pme_solve_kernel
  const real volume,
  real * __restrict__ virialAndEnergy)
 {
-    // if we're doing CPU FFT, the gridline is not necessarily padded to multiple 32 words
-    // we can pad it for GPU FFT (set alignment to 32 (or 16 because it's t_complex aka float2?)
-
+    // this is a PME solve kernel
+    // each thread works on one cell of the Fourier space complex 3D grid (float2 * __restrict__ grid)
+    // each block handles THREADS_PER_BLOCK cells - depending on the grid contiguous dimension size, that can range from a part of a single gridline to several complete gridlines
+    // if we do cuFFT, the contiguous dimension (Z) gridlines are aligned by warp_size (but with respect to float, not float2, possibly?!)
+    // also, the grid is in XYZ order as it was initially - single GPU only, no MPI decomposition, no transpose...
+    // it should be possible to have multi-rank cuFFT - cuFFT should even be able to be linked instead of FFTW, and mimic its API
+    // but it's outside the scope of my project ;-)
+    // if we do FFTW, I forgot what happens with the size, probably, nothing and not very aligned
+    // then the grid is in YZX order, so X is a contihuous dimension
 
     //const int blockId = blockIdx.x + blockIdx.y * gridDim.x + gridDim.x * gridDim.y * blockIdx.z;
     const int threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
@@ -349,7 +355,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
         PMECopy(grid_d, grid, grid_size, ML_DEVICE, s);
 
     const real factor = (M_PI * M_PI) / (ewaldcoeff * ewaldcoeff);
-    cudaError_t stat = cudaMemcpyToSymbol(ConstFactor, &factor, sizeof(factor));
+    cudaError_t stat = cudaMemcpyToSymbolAsync(ConstFactor, &factor, sizeof(factor), 0, cudaMemcpyHostToDevice, s);
     CU_RET_ERR(stat, "PME solve cudaMemcpyToSymbol");
 
     // GTX 660 Ti, 20160310
