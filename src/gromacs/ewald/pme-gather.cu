@@ -186,7 +186,7 @@ __global__ void pme_gather_kernel
 #if (GMX_PTX_ARCH >= 300)
     if (!(order & (order - 1))) // only for orders of power of 2
     {
-        // a shuffle reduction inspired by reduce_force_j_warp_shfl
+        // a tricky shuffle reduction inspired by reduce_force_j_warp_shfl
 
         assert(order == 4); // confused about others and the best data layout so far :(
         assert(particleDataSize <= warp_size);
@@ -205,25 +205,29 @@ __global__ void pme_gather_kernel
         fx += __shfl_down(fx, 2, width);
         fz += __shfl_up  (fz, 2, width);
 
-
         if (splineIndex & 2)
         {
             fx = fz;
         }
 
+        // by now fx contains intermediate sums of all 3 components in groups of 4:
+        // splineIndex    0            1            2 and 3      4            5            6 and 7      8...
+        // sum of...      fx0 to fx3   fy0 to fy3   fz0 to fz3   fx4 to fx7   fy4 to fy7   fz4 to fz7   etc.
+
+        // we have to just further reduce those groups of 4
         for (int delta = 4; delta < particleDataSize; delta <<= 1)
         {
             fx += __shfl_down(fx, delta, width);
         }
 
-        // all the components are now stored in fx! (cost me a couple of hours of my life)
+        // a single operation for all 3 components!
         if (splineIndex < 3)
             *((real *)(&fSumArray[localIndex]) + splineIndex) = fx * nXYZ[splineIndex];
     }
     else
 #endif
     {
-        // 3-thread reduction in shared memory inspired by reduce_force_j_generic
+        // lazy 3-thread reduction in shared memory inspired by reduce_force_j_generic
         __shared__ real fSharedArray[DIM * blockSize];
         fSharedArray[lineIndex] = fx;
         fSharedArray[lineIndex + blockSize] = fy;
@@ -239,7 +243,6 @@ __global__ void pme_gather_kernel
             *((real *)(&fSumArray[localIndex]) + splineIndex) = f * nXYZ[splineIndex];
         }
     }
-
     __syncthreads();
 
     // new, different particle indices
