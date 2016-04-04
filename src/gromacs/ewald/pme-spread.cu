@@ -567,16 +567,13 @@ __global__ void pme_spread_kernel
 template <
     const int order
     >
-//yupinov - correct sequence of dimensions? parallel wit hatomicAdd somehow?
 __global__ void pme_wrap_kernel
     (const int nx, const int ny, const int nz,
      const int pny, const int pnz,
      real * __restrict__ grid
-     //const int * __restrict__ cellsAccumCount,
-     //const int3 * __restrict zoneSizes
      )
 {
-    const int overlap = order - 1;
+    // const int overlap = order - 1;
 
     // WRAP
     int blockId = blockIdx.x
@@ -588,7 +585,6 @@ __global__ void pme_wrap_kernel
                   + threadIdx.x;
 
     //should use ldg.128
-    //yupinov unwrap as well
 
     if (threadId < OVERLAP_CELLS_COUNTS[OVERLAP_ZONES - 1])
     {   
@@ -605,14 +601,7 @@ __global__ void pme_wrap_kernel
 
         // replace integer division/modular arithmetics - a big performance hit
         // try int_fastdiv?
-        // another idea: 6 out of 7 zones form continuous Z-gridlines;
-        // this should definitely be exploited for easier index calculation! the gridlines are already aligned by warp_size, even
-        /*
-        int ix = cellIndex / zoneSizes[zoneIndex].z / zoneSizes[zoneIndex].y;
-        int iy = cellIndex / zoneSizes[zoneIndex].z % zoneSizes[zoneIndex].y;
-        int iz = cellIndex % zoneSizes[zoneIndex].z;
-        */
-        const int ixy = cellIndex / zoneSize.z; //yupinov check integer divisions everywhere!
+        const int ixy = cellIndex / zoneSize.z; //yupinov check expensive integer divisions everywhere!
         const int iz = cellIndex - zoneSize.z * ixy;
         const int ix = ixy / zoneSize.y;
         const int iy = ixy - zoneSize.y * ix;
@@ -621,29 +610,30 @@ __global__ void pme_wrap_kernel
         int sourceOffset = 0;
 
         // stage those bits in constant memory as well
-        if ((zoneIndex == 0) || (zoneIndex == 3) || (zoneIndex == 4) || (zoneIndex == 6))
+        const int overlapZ = ((zoneIndex == 0) || (zoneIndex == 3) || (zoneIndex == 4) || (zoneIndex == 6)) ? 1 : 0;
+        const int overlapY = ((zoneIndex == 1) || (zoneIndex == 3) || (zoneIndex == 5) || (zoneIndex == 6)) ? 1 : 0;
+        const int overlapX = ((zoneIndex == 2) || (zoneIndex > 3)) ? 1 : 0;
+        if (overlapZ)
         {
-            // overlap in Z
-            //iz += nz;
             sourceOffset = nz;
         }
-        if ((zoneIndex == 1) || (zoneIndex == 3) || (zoneIndex == 5) || (zoneIndex == 6))
+        if (overlapY)
         {
-            // overlap in Y
-            //iy += ny;
             sourceOffset += ny * pnz;
         }
-        if ((zoneIndex == 2) || (zoneIndex > 3)) //2 4 5 6
+        if (overlapX)
         {
-            // overlap in X
-            //ix += nx;
-            sourceOffset += nx *pny * pnz;
+            sourceOffset += nx * pny * pnz;
         }
-        //const int sourceIndex = (ix * pny + iy) * pnz + iz;
         const int sourceIndex = targetIndex + sourceOffset;
 
-        // check if we have more than one overlap in this target zone
-        const int useAtomic = 1;//(zoneIndex > 2);
+        /* /seems a bit excessive?
+        const int targetOverlapX = (ix < overlap) ? 1 : 0;
+        const int targetOverlapY = (iy < overlap) ? 1 : 0;
+        const int targetOverlapZ = (iz < overlap) ? 1 : 0;
+        const int useAtomic = ((targetOverlapX + targetOverlapY + targetOverlapZ) > 1) ? 1 : 0;
+        */
+        const int useAtomic = 1;
         if (useAtomic)
             atomicAdd(grid + targetIndex, grid[sourceIndex]);
         else
