@@ -386,8 +386,8 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     const int nReduced = 1;
     const int energyAndVirialSize = nReduced * (1 + 6) * sizeof(real);
     real *energyAndVirial_d = PMEFetchRealArray(PME_ID_ENERGY_AND_VIRIAL, thread, energyAndVirialSize, ML_DEVICE);
-    stat = cudaMemset(energyAndVirial_d, 0, energyAndVirialSize);
-    CU_RET_ERR(stat, "PME solve cudaMemset");
+    stat = cudaMemsetAsync(energyAndVirial_d, 0, energyAndVirialSize, s);
+    CU_RET_ERR(stat, "PME solve cudaMemsetAsync");
 
     events_record_start(gpu_events_solve, s);
 
