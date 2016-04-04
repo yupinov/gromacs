@@ -53,10 +53,7 @@ gpu_events gpu_events_spline;
 gpu_events gpu_events_spread;
 gpu_events gpu_events_splineandspread;
 
-//yupinov is the grid contiguous in x or in z?
-
 //yupinov optimizing unused parameters away?
-//yupinov change allocations as well
 //have to debug all boolean params
 
 #define THREADS_PER_BLOCK   (4 * warp_size)
@@ -355,7 +352,7 @@ __global__ void pme_spline_kernel
     {
         // INTERPOL_IDX
 
-        /* Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes */
+        /* Fractional coordinates along box vectors, add 2.0 Fto make 100% sure we are positive for triclinic boxes */
         real tx, ty, tz;
         tx = nx * ( xptr[globalIndex] * rxx + yptr[globalIndex] * ryx + zptr[globalIndex] * rzx + 2.0f );
         ty = ny * (                           yptr[globalIndex] * ryy + zptr[globalIndex] * rzy + 2.0f );
@@ -626,7 +623,7 @@ __global__ void pme_wrap_kernel
         }
         const int sourceIndex = targetIndex + sourceOffset;
 
-        /* /seems a bit excessive?
+        /* // condition for atomic seems a bit excessive - test on different hardware?
         const int targetOverlapX = (ix < overlap) ? 1 : 0;
         const int targetOverlapY = (iy < overlap) ? 1 : 0;
         const int targetOverlapZ = (iz < overlap) ? 1 : 0;
@@ -883,7 +880,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                     {overlap,        nz},
                     {     ny,        nz},
                     {overlap,   overlap},
-                    {      ny,   overlap},
+                    {     ny,   overlap},
                     {overlap,        nz},
                     {overlap,   overlap}
                 };
@@ -900,21 +897,15 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                 const int overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
                 const int nBlocks = (overlappedCells + blockSize - 1) / blockSize;
 
-                /*
-                int *cellsAccumCount_d = PMEFetchAndCopyIntegerArray(PME_ID_CELL_COUNTS, thread, cellsAccumCount, sizeof(cellsAccumCount), ML_DEVICE, s);
-                int3 *zoneSizes_d = (int3 *)PMEFetchAndCopyIntegerArray(PME_ID_CELL_ZONES, thread, (void *)zoneSizes, sizeof(zoneSizes), ML_DEVICE, s);
-                */
-
                 stat = cudaMemcpyToSymbolAsync(OVERLAP_SIZES, zoneSizesYZ_h, sizeof(zoneSizesYZ_h), 0, cudaMemcpyHostToDevice, s);
                 CU_RET_ERR(stat, "PME spread cudaMemcpyToSymbol");
                 stat = cudaMemcpyToSymbolAsync(OVERLAP_CELLS_COUNTS, cellsAccumCount_h, sizeof(cellsAccumCount_h), 0, cudaMemcpyHostToDevice, s);
                 CU_RET_ERR(stat, "PME spread cudaMemcpyToSymbol");
                 //other constants
 
-                //async!
                 events_record_start(gpu_events_wrap, s);
 
-                pme_wrap_kernel<4> <<<nBlocks, blockSize, 0, s>>>(nx, ny, nz, pny, pnz, grid_d);//, cellsAccumCount_d, zoneSizes_d);
+                pme_wrap_kernel<4> <<<nBlocks, blockSize, 0, s>>>(nx, ny, nz, pny, pnz, grid_d);
 
                 CU_LAUNCH_ERR("pme_wrap_kernel");
 

@@ -14,6 +14,11 @@
 
 #include <assert.h>
 
+// wrap kernel thingies - should be kept in pme-cuda.h as common?
+static const int OVERLAP_ZONES = 7;
+__constant__ __device__ int OVERLAP_CELLS_COUNTS[OVERLAP_ZONES];
+__constant__ __device__ int2 OVERLAP_SIZES[OVERLAP_ZONES];
+
 void gpu_forces_copyback(gmx_pme_t *pme, int n, rvec *forces)
 {
     cudaStream_t s = pme->gpu->pmeStream;
@@ -270,84 +275,70 @@ __global__ void pme_gather_kernel
     }
 }
 
+
+// a quick dirty copy of pme_wrap_kernel
 template <
-    const int order,
-    const int stage
+    const int order
     >
 __global__ void pme_unwrap_kernel
     (const int nx, const int ny, const int nz,
-     const int pnx, const int pny, const int pnz,
-     real * __restrict__ grid)
+     const int pny, const int pnz,
+     real * __restrict__ grid
+     )
 {
-    //UNWRAP
+    // const int overlap = order - 1;
 
-    const int iz = blockIdx.x * blockDim.x + threadIdx.x;
-    const int iy = blockIdx.y * blockDim.y + threadIdx.y;
-    const int ix = blockIdx.z * blockDim.z + threadIdx.z;
+    // UNWRAP
+    int blockId = blockIdx.x
+                 + blockIdx.y * gridDim.x
+                 + gridDim.x * gridDim.y * blockIdx.z;
+    int threadId = blockId * (blockDim.x * blockDim.y * blockDim.z)
+                  + (threadIdx.z * (blockDim.x * blockDim.y))
+                  + (threadIdx.y * blockDim.x)
+                  + threadIdx.x;
 
-    const int overlap = order - 1;
+    //should use ldg.128
 
-    int    ny_x;//, ix;
-
-    //if (pme->nnodes_major == 1)
-    if (stage & 4)
+    if (threadId < OVERLAP_CELLS_COUNTS[OVERLAP_ZONES - 1])
     {
-        //ny_x = (pme->nnodes_minor == 1 ? ny : pme->pmegrid_ny);
-        ny_x = ny;
-
-        if (iz < nz)
-        //for (ix = 0; ix < overlap; ix++)
+        int zoneIndex = -1;
+        do
         {
-            //for (iy = 0; iy < ny_x; iy++)
-            {
-                //for (iz = 0; iz < nz; iz++)
-                {
-                    const int address = (ix * pny + iy) * pnz + iz;
-                    const int offset_x = nx * pny * pnz;
-                    grid[address + offset_x] = grid[address];
-                }
-            }
+            zoneIndex++;
         }
-    }
+        while (threadId >= OVERLAP_CELLS_COUNTS[zoneIndex]);
+        const int2 zoneSizeYZ = OVERLAP_SIZES[zoneIndex];
+        // this is the overlapped cells's index relative to the current zone
+        const int cellIndex = (zoneIndex > 0) ? (threadId - OVERLAP_CELLS_COUNTS[zoneIndex - 1]) : threadId;
 
-    //if (pme->nnodes_minor == 1)
-    if (stage & 2)
-    {
-        if (iz < nz)
-        //for (ix = 0; ix < pnx; ix++)
+        // replace integer division/modular arithmetics - a big performance hit
+        // try int_fastdiv?
+        const int ixy = cellIndex / zoneSizeYZ.y; //yupinov check expensive integer divisions everywhere!
+        const int iz = cellIndex - zoneSizeYZ.y * ixy;
+        const int ix = ixy / zoneSizeYZ.x;
+        const int iy = ixy - zoneSizeYZ.x * ix;
+        const int sourceIndex = (ix * pny + iy) * pnz + iz;
+
+        int targetOffset = 0;
+
+        // stage those bits in constant memory as well
+        const int overlapZ = ((zoneIndex == 0) || (zoneIndex == 3) || (zoneIndex == 4) || (zoneIndex == 6)) ? 1 : 0;
+        const int overlapY = ((zoneIndex == 1) || (zoneIndex == 3) || (zoneIndex == 5) || (zoneIndex == 6)) ? 1 : 0;
+        const int overlapX = ((zoneIndex == 2) || (zoneIndex > 3)) ? 1 : 0;
+        if (overlapZ)
         {
-            //int iy, iz;
-
-            //for (iy = 0; iy < overlap; iy++)
-            {
-                //for (iz = 0; iz < nz; iz++)
-                {
-                    const int address = (ix * pny + iy) * pnz + iz;
-                    const int offset_y = ny * pnz;
-                    grid[address + offset_y] = grid[address];
-                }
-            }
+            targetOffset = nz;
         }
-    }
-
-    /* Copy periodic overlap in z */
-    if (stage & 1)
-    {
-        //for (ix = 0; ix < pnx; ix++)
-        if (iy < pny)
+        if (overlapY)
         {
-            //int iy, iz;
-
-            //for (iy = 0; iy < pny; iy++)
-            {
-                //for (iz = 0; iz < overlap; iz++)
-                {
-                    const int address = (ix * pny + iy) * pnz + iz;
-                    const int offset_z = nz;
-                    grid[address + offset_z] = grid[address];
-                }
-            }
+            targetOffset += ny * pnz;
         }
+        if (overlapX)
+        {
+            targetOffset += nx * pny * pnz;
+        }
+        const int targetIndex = sourceIndex + targetOffset;
+        grid[targetIndex] = grid[sourceIndex];
     }
 }
 
@@ -379,32 +370,57 @@ void gather_f_bsplines_gpu
         if (order == 4)
         {
             const int blockSize = 4 * warp_size; //yupinov thsi is everywhere! and arichitecture-specific
-            const int overlap = order - 1; // all copied from pme-spread.cu
-            int overlapLinesPerBlock = blockSize / overlap; //so there is unused padding in each block;
+            const int overlap = order - 1;
 
-            dim3 blocks[] =
+            // cell count in 7 parts of overlap
+            const int3 zoneSizes_h[OVERLAP_ZONES] =
             {
-                dim3(1, (pny + overlapLinesPerBlock - 1) / overlapLinesPerBlock, pnx),
-                dim3((nz + overlapLinesPerBlock - 1) / overlapLinesPerBlock, 1, pnx),
-                dim3((nz + overlapLinesPerBlock - 1) / overlapLinesPerBlock, ny, 1),
+                {     nx,        ny,   overlap},
+                {     nx,   overlap,        nz},
+                {overlap,        ny,        nz},
+                {     nx,   overlap,   overlap},
+                {overlap,        ny,   overlap},
+                {overlap,   overlap,        nz},
+                {overlap,   overlap,   overlap}
             };
-            // low occupancy :(
-            dim3 threads[] =
+
+            const int2 zoneSizesYZ_h[OVERLAP_ZONES] =
             {
-                dim3(overlap, overlapLinesPerBlock, 1),
-                dim3(overlapLinesPerBlock, overlap, 1),
-                dim3(overlapLinesPerBlock, 1, overlap),
+                {     ny,   overlap},
+                {overlap,        nz},
+                {     ny,        nz},
+                {overlap,   overlap},
+                {     ny,   overlap},
+                {overlap,        nz},
+                {overlap,   overlap}
             };
+
+            int cellsAccumCount_h[OVERLAP_ZONES];
+            for (int i = 0; i < OVERLAP_ZONES; i++)
+                cellsAccumCount_h[i] = zoneSizes_h[i].x * zoneSizes_h[i].y * zoneSizes_h[i].z;
+            // accumulate
+            for (int i = 1; i < OVERLAP_ZONES; i++)
+            {
+                cellsAccumCount_h[i] = cellsAccumCount_h[i] + cellsAccumCount_h[i - 1];
+            }
+
+            const int overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
+            const int nBlocks = (overlappedCells + blockSize - 1) / blockSize;
+
+            cudaError_t stat = cudaMemcpyToSymbolAsync(OVERLAP_SIZES, zoneSizesYZ_h, sizeof(zoneSizesYZ_h), 0, cudaMemcpyHostToDevice, s);
+            CU_RET_ERR(stat, "PME spread cudaMemcpyToSymbol");
+            stat = cudaMemcpyToSymbolAsync(OVERLAP_CELLS_COUNTS, cellsAccumCount_h, sizeof(cellsAccumCount_h), 0, cudaMemcpyHostToDevice, s);
+            CU_RET_ERR(stat, "PME spread cudaMemcpyToSymbol");
+            //other constants
 
             events_record_start(gpu_events_unwrap, s);
 
-            pme_unwrap_kernel<4, 4> <<<blocks[2], threads[2], 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
-            pme_unwrap_kernel<4, 2> <<<blocks[1], threads[1], 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
-            pme_unwrap_kernel<4, 1> <<<blocks[0], threads[0], 0, s>>>(nx, ny, nz, pnx, pny, pnz, grid_d);
+            pme_unwrap_kernel<4> <<<nBlocks, blockSize, 0, s>>>(nx, ny, nz, pny, pnz, grid_d);
 
             CU_LAUNCH_ERR("pme_unwrap_kernel");
 
             events_record_stop(gpu_events_unwrap, s, ewcsPME_UNWRAP, 0);
+
         }
         else
             gmx_fatal(FARGS, "gather: orders other than 4 untested!");
