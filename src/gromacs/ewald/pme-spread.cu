@@ -65,7 +65,7 @@ gpu_events gpu_events_splineandspread;
 // wrap kernel thingies - should be kept in pme-cuda.h as common?
 static const int OVERLAP_ZONES = 7;
 __constant__ __device__ int OVERLAP_CELLS_COUNTS[OVERLAP_ZONES];
-__constant__ __device__ int3 OVERLAP_SIZES[OVERLAP_ZONES];
+__constant__ __device__ int2 OVERLAP_SIZES[OVERLAP_ZONES];
 
 template <
         const int order,
@@ -594,17 +594,16 @@ __global__ void pme_wrap_kernel
             zoneIndex++;
         }
         while (threadId >= OVERLAP_CELLS_COUNTS[zoneIndex]);
-        const int3 zoneSize = OVERLAP_SIZES[zoneIndex];
-        // I don't even need X!
+        const int2 zoneSizeYZ = OVERLAP_SIZES[zoneIndex];
         // this is the overlapped cells's index relative to the current zone
         const int cellIndex = (zoneIndex > 0) ? (threadId - OVERLAP_CELLS_COUNTS[zoneIndex - 1]) : threadId;
 
         // replace integer division/modular arithmetics - a big performance hit
         // try int_fastdiv?
-        const int ixy = cellIndex / zoneSize.z; //yupinov check expensive integer divisions everywhere!
-        const int iz = cellIndex - zoneSize.z * ixy;
-        const int ix = ixy / zoneSize.y;
-        const int iy = ixy - zoneSize.y * ix;
+        const int ixy = cellIndex / zoneSizeYZ.y; //yupinov check expensive integer divisions everywhere!
+        const int iz = cellIndex - zoneSizeYZ.y * ixy;
+        const int ix = ixy / zoneSizeYZ.x;
+        const int iy = ixy - zoneSizeYZ.x * ix;
         const int targetIndex = (ix * pny + iy) * pnz + iz;
 
         int sourceOffset = 0;
@@ -877,6 +876,18 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                     {overlap,   overlap,        nz},
                     {overlap,   overlap,   overlap}
                 };
+
+                const int2 zoneSizesYZ_h[OVERLAP_ZONES] =
+                {
+                    {     ny,   overlap},
+                    {overlap,        nz},
+                    {     ny,        nz},
+                    {overlap,   overlap},
+                    {      ny,   overlap},
+                    {overlap,        nz},
+                    {overlap,   overlap}
+                };
+
                 int cellsAccumCount_h[OVERLAP_ZONES];
                 for (int i = 0; i < OVERLAP_ZONES; i++)
                     cellsAccumCount_h[i] = zoneSizes_h[i].x * zoneSizes_h[i].y * zoneSizes_h[i].z;
@@ -894,7 +905,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                 int3 *zoneSizes_d = (int3 *)PMEFetchAndCopyIntegerArray(PME_ID_CELL_ZONES, thread, (void *)zoneSizes, sizeof(zoneSizes), ML_DEVICE, s);
                 */
 
-                stat = cudaMemcpyToSymbolAsync(OVERLAP_SIZES, zoneSizes_h, sizeof(zoneSizes_h), 0, cudaMemcpyHostToDevice, s);
+                stat = cudaMemcpyToSymbolAsync(OVERLAP_SIZES, zoneSizesYZ_h, sizeof(zoneSizesYZ_h), 0, cudaMemcpyHostToDevice, s);
                 CU_RET_ERR(stat, "PME spread cudaMemcpyToSymbol");
                 stat = cudaMemcpyToSymbolAsync(OVERLAP_CELLS_COUNTS, cellsAccumCount_h, sizeof(cellsAccumCount_h), 0, cudaMemcpyHostToDevice, s);
                 CU_RET_ERR(stat, "PME spread cudaMemcpyToSymbol");
