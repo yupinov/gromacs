@@ -22,20 +22,15 @@ __constant__ __device__ int2 OVERLAP_SIZES[OVERLAP_ZONES];
 void gpu_forces_copyback(gmx_pme_t *pme, int n, rvec *forces)
 {
     cudaStream_t s = pme->gpu->pmeStream;
-    const int size_forces = DIM * n * sizeof(real);
-    const int size_indices = n * sizeof(int);
-    const int thread = 0;
-    real *atc_f_d = PMEFetchRealArray(PME_ID_FORCES, thread, size_forces, ML_DEVICE);
-    real *atc_f_h = (real *)forces;
-    if (PME_SKIP_ZEROES)
-        atc_f_h = PMEFetchRealArray(PME_ID_FORCES, thread, size_forces, ML_HOST);
-
-    cudaError_t stat = cudaStreamWaitEvent(s, gpu_events_gather.event_stop, 0);
-    CU_RET_ERR(stat, "error while waiting for PME gather");
-    PMECopy(atc_f_h, atc_f_d, size_forces, ML_HOST, s, TRUE); // synchronous
+    cudaError_t stat = cudaStreamWaitEvent(s, pme->gpu->syncForcesH2D, 0);
+    CU_RET_ERR(stat, "error while waiting for PME forces");
 
     if (PME_SKIP_ZEROES)
     {
+        const int thread = 0;
+        const int size_forces = DIM * n * sizeof(real);
+        const int size_indices = n * sizeof(int);
+        real *atc_f_h = PMEFetchRealArray(PME_ID_FORCES, thread, size_forces, ML_HOST);
         int *atc_i_compacted_h = PMEFetchIntegerArray(PME_ID_NONZERO_INDICES, thread, size_indices, ML_HOST);
         for (int iCompacted = 0; iCompacted < n; iCompacted++)  // iterating over compacted particles
         {
@@ -645,5 +640,9 @@ void gather_f_bsplines_gpu
     CU_LAUNCH_ERR("pme_gather_kernel");
 
     events_record_stop(gpu_events_gather, s, ewcsPME_GATHER, 0);
+
+    PMECopy(atc_f_h, atc_f_d, size_forces, ML_HOST, s);
+    cudaError_t stat = cudaEventRecord(pme->gpu->syncForcesH2D, s);
+    CU_RET_ERR(stat, "PME gather forces sync fail");
 }
 

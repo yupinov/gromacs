@@ -13,9 +13,15 @@ struct gmx_pme_cuda_t
     gmx_bool keepGPUDataBetweenC2RAndGather;
     //yupinov init
     //keep those as params in the th storage
+
+    // synchronization events
+    cudaEvent_t syncEnerVirH2D; // energy and virial have already been calculated in pme-solve, and have been copied to host
+    cudaEvent_t syncForcesH2D;  // forces have already been calculated in pme-gather, and have been copied to host
 };
 //yupinov dealloc
 //yupinov grid indices with tags?
+
+
 
 #define PME_CUFFT_INPLACE
 // comment this to enable out-of-place cuFFT
@@ -26,9 +32,12 @@ struct gmx_pme_cuda_t
 // comment this to disable PME timing function bodies
 
 static const bool PME_SKIP_ZEROES = false;
+// broken
 // skipping particles with zero charges on a CPU side
 // for now only done in gather, should be done in spread and memorized
 // seems like a total waste of time! but what if we do it once at each NS?
+
+
 
 
 // identifiers for PME data stored on GPU
@@ -37,9 +46,6 @@ enum PMEDataID
     PME_ID_THETA = 1,
     PME_ID_DTHETA,
 
-
-
-    //yupinov fix unnecesary memory usage
     PME_ID_REAL_GRID, //this is pme_grid and it has overlap
 #ifndef PME_CUFFT_INPLACE
     PME_ID_COMPLEX_GRID, //this is cfftgrid

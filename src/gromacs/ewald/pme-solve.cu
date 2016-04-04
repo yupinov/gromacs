@@ -445,6 +445,11 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     {
         PMECopy(grid, grid_d, grid_size, ML_HOST, s);
     }
+
+    PMEFetchAndCopyRealArray(PME_ID_ENERGY_AND_VIRIAL, thread, energyAndVirial_d, energyAndVirialSize, ML_HOST, s);
+    stat = cudaEventRecord(pme->gpu->syncEnerVirH2D);
+    CU_RET_ERR(stat, "PME solve energy/virial sync fail");
+
     /* Return the loop count */
     //return local_ndata[YY]*local_ndata[XX]; //yupinov why
 }
@@ -464,13 +469,9 @@ void gpu_energy_virial_copyback(gmx_pme_t *pme)
     int nReduced = energyAndVirialSize / (1 + 6) / sizeof(real);
     // will be 1, actually
 
-    real *energyAndVirial_d = PMEFetchRealArray(PME_ID_ENERGY_AND_VIRIAL, thread, energyAndVirialSize, ML_DEVICE);
-
-    cudaError_t stat = cudaStreamWaitEvent(s, gpu_events_solve.event_stop, 0);
+    cudaError_t stat = cudaStreamWaitEvent(s, pme->gpu->syncEnerVirH2D, 0);
     CU_RET_ERR(stat, "error while waiting for PME solve");
-    // synchronous copy
-    real *energyAndVirial_h = PMEFetchAndCopyRealArray(PME_ID_ENERGY_AND_VIRIAL, thread, energyAndVirial_d, energyAndVirialSize, ML_HOST, s, TRUE);
-    //yupinov scheduel copyback before?
+    real *energyAndVirial_h = PMEFetchRealArray(PME_ID_ENERGY_AND_VIRIAL, thread, energyAndVirialSize, ML_HOST);
     real energy = 0.0;
     real virxx = 0.0, virxy = 0.0, virxz = 0.0, viryy = 0.0, viryz = 0.0, virzz = 0.0;
     for (int i = 0, j = 0; i < nReduced; ++i)

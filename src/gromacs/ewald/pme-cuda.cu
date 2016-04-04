@@ -26,6 +26,8 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU)
     cudaError_t stat;
 //yupinov dealloc@
 
+
+    // creating a separate stream
 #if GMX_CUDA_VERSION >= 5050
     int highest_priority;
     int lowest_priority;
@@ -41,6 +43,19 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU)
     stat = cudaStreamCreate(&(*pme)->pmeStream);
     CU_RET_ERR(stat, "PME cudaStreamCreate error");
 #endif
+
+    // creating synchronization events
+    stat = cudaEventCreateWithFlags(&(*pmeGPU)->syncEnerVirH2D, cudaEventDisableTiming);
+    CU_RET_ERR(stat, "cudaEventCreate on syncEnerVirH2D failed");
+    stat = cudaEventCreateWithFlags(&(*pmeGPU)->syncForcesH2D, cudaEventDisableTiming);
+    CU_RET_ERR(stat, "cudaEventCreate on syncForcesH2D failed");
+    //yupinov again dealloc
+    /*
+    stat = cudaEventDestroy(nb->nonlocal_done);
+    CU_RET_ERR(stat, "cudaEventDestroy failed on timers->nonlocal_done");
+    stat = cudaEventDestroy(nb->misc_ops_and_local_H2D_done);
+    CU_RET_ERR(stat, "cudaEventDestroy failed on timers->misc_ops_and_local_H2D_done");
+    */
 
     pme_gpu_update_flags(*pmeGPU, false, false, false, false);
 }
