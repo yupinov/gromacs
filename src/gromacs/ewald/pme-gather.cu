@@ -25,10 +25,10 @@ void gpu_forces_copyback(gmx_pme_t *pme, int n, rvec *forces)
     const int size_forces = DIM * n * sizeof(real);
     const int size_indices = n * sizeof(int);
     const int thread = 0;
-    real *atc_f_d = PMEFetchRealArray(PME_ID_F, thread, size_forces, ML_DEVICE);
+    real *atc_f_d = PMEFetchRealArray(PME_ID_FORCES, thread, size_forces, ML_DEVICE);
     real *atc_f_h = (real *)forces;
     if (PME_SKIP_ZEROES)
-        atc_f_h = PMEFetchRealArray(PME_ID_F, thread, size_forces, ML_HOST);
+        atc_f_h = PMEFetchRealArray(PME_ID_FORCES, thread, size_forces, ML_HOST);
 
     cudaError_t stat = cudaStreamWaitEvent(s, gpu_events_gather.event_stop, 0);
     CU_RET_ERR(stat, "error while waiting for PME gather");
