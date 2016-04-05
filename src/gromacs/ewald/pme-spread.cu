@@ -926,9 +926,10 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
         {
             PMECopy(atc->spline[thread].dtheta[j], dtheta_d + j * n * order, size_order, ML_HOST, s);
             PMECopy(atc->spline[thread].theta[j], theta_d + j * n * order, size_order, ML_HOST, s);
-        } //yupinov what about theta/dtheta/idx use in pme_realloc_atomcomm_things?
+        }
+        //yupinov what about theta/dtheta/idx use in pme_realloc_atomcomm_things?
+        PMECopy(atc->idx, idx_d, idx_size, ML_HOST, s);
     }
-    PMECopy(atc->idx, idx_d, idx_size, ML_HOST, s);
     //yupinov check flags like bSpread etc. before copying...
 
     //yupinov free, keep allocated

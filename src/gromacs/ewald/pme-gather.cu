@@ -601,8 +601,7 @@ void gather_f_bsplines_gpu
     real *atc_f_d = PMEFetchRealArray(PME_ID_FORCES, thread, size_forces, ML_DEVICE);
     if (!bClearF)
         PMECopy(atc_f_d, atc_f_h, size_forces, ML_DEVICE, s);
-
-  // float3 constant
+    //yupinov not really needed if we prelaunch the PME GPU?
 
     float3 nXYZ = {(real)nx, (real)ny, (real)nz};
     real *nXYZ_d = PMEFetchAndCopyRealArray(PME_ID_NXYZ, thread, &nXYZ, sizeof(nXYZ), ML_DEVICE, s);
