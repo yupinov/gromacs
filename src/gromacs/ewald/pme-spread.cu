@@ -919,7 +919,8 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
     {
-        PMECopy(pmegrid->grid, grid_d, size_grid, ML_HOST, s);
+        if (bSpread)
+            PMECopy(pmegrid->grid, grid_d, size_grid, ML_HOST, s);
         for (int j = 0; j < DIM; ++j) //also breaking compacting in gather
         //and why not just check bGPUSingle here?
         {
