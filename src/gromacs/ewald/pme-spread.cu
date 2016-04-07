@@ -63,8 +63,14 @@ gpu_events gpu_events_splineandspread;
 //textures seems just a bit slower on GTX 660 Ti, so I'm keeping this define just in case
 
 #if USE_TEXTURES
+#define USE_TEXOBJ 0
+#if USE_TEXOBJ
 cudaTextureObject_t nnTexture;
 cudaTextureObject_t fshTexture;
+#else
+texture<int, 1, cudaReadModeElementType> nnTextureRef;
+texture<float, 1, cudaReadModeElementType> fshTextureRef;
+#endif
 #endif
 //yupinov
 
@@ -93,8 +99,10 @@ __global__ void pme_spline_and_spread_kernel
  const int pny, const int pnz,
  const int3 nnOffset,
 #if USE_TEXTURES
+#if USE_TEXOBJ
  cudaTextureObject_t nnTexture,
  cudaTextureObject_t fshTexture,
+#endif
 #else
  const int * __restrict__ nn,
  const real * __restrict__ fsh,
@@ -182,8 +190,13 @@ __global__ void pme_spline_and_spread_kernel
 
             constIndex += tInt[threadLocalId];
 #if USE_TEXTURES
+#if USE_TEXOBJ
             fractX[threadLocalId] += tex1Dfetch<real>(fshTexture, constIndex);
             idxShared[threadLocalId] = tex1Dfetch<int>(nnTexture, constIndex);
+#else
+            fractX[threadLocalId] += tex1Dfetch(fshTextureRef, constIndex);
+            idxShared[threadLocalId] = tex1Dfetch(nnTextureRef, constIndex);
+#endif
 #else
             fractX[threadLocalId] += fsh[constIndex];
             idxShared[threadLocalId] = nn[constIndex];
@@ -250,7 +263,7 @@ __global__ void pme_spline_and_spread_kernel
 
                 //yupinov store to global
                 const int thetaGlobalOffsetBase = globalParticleIndexBase * DIM * order;
-    #pragma unroll
+#pragma unroll
                 for (int k = 0; k < order; k++)
                 {
                     const int thetaIndex = thetaOffsetBase + k * thetaStride;
@@ -271,11 +284,11 @@ __global__ void pme_spline_and_spread_kernel
             const int thetaOffsetBase = localIndexCalc * DIM + dimIndex;
             const int thetaGlobalOffsetBase = globalParticleIndexBase * DIM * order;
 #pragma unroll
-        for (int k = 0; k < order; k++)
-        {
-            const int thetaIndex = thetaOffsetBase + k * thetaStride;
-            theta_shared[thetaIndex] = theta[thetaGlobalOffsetBase + thetaIndex];
-        }
+            for (int k = 0; k < order; k++)
+            {
+                const int thetaIndex = thetaOffsetBase + k * thetaStride;
+                theta_shared[thetaIndex] = theta[thetaGlobalOffsetBase + thetaIndex];
+            }
 
             if (threadLocalId < particlesPerBlock)
                 coefficient[threadLocalId] = coefficientGlobal[globalParticleIndexBase + threadLocalId];
@@ -328,8 +341,10 @@ __global__ void pme_spline_kernel
  const float3 * __restrict__ recipbox,
  const int3 nnOffset,
 #if USE_TEXTURES
+#if USE_TEXOBJ
   cudaTextureObject_t nnTexture,
   cudaTextureObject_t fshTexture,
+#endif
 #else
   const int * __restrict__ nn,
   const real * __restrict__ fsh,
@@ -407,13 +422,17 @@ __global__ void pme_spline_kernel
         fractX[threadLocalId] = t[threadLocalId] - tInt[threadLocalId];
 
         constIndex += tInt[threadLocalId];
-
 #if USE_TEXTURES
-        fractX[threadLocalId] += tex1Dfetch<real>(fshTexture, constIndex);
-        idxShared[threadLocalId] = tex1Dfetch<int>(nnTexture, constIndex);
+#if USE_TEXOBJ
+            fractX[threadLocalId] += tex1Dfetch<real>(fshTexture, constIndex);
+            idxShared[threadLocalId] = tex1Dfetch<int>(nnTexture, constIndex);
 #else
-        fractX[threadLocalId] += fsh[constIndex];
-        idxShared[threadLocalId] = nn[constIndex];
+            fractX[threadLocalId] += tex1Dfetch(fshTextureRef, constIndex);
+            idxShared[threadLocalId] = tex1Dfetch(nnTextureRef, constIndex);
+#endif
+#else
+            fractX[threadLocalId] += fsh[constIndex];
+            idxShared[threadLocalId] = nn[constIndex];
 #endif
 
         //staging for both parts
@@ -742,7 +761,9 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
         PMECopy(nn_d + 5 * (nx + ny), pme->nnz, 5 * nz * sizeof(int), ML_DEVICE, s);
 
 #if USE_TEXTURES
+#if USE_TEXOBJ
         //if (use_texobj(dev_info))
+        // commented texture object code - too lazy to check device info here for CC >= 3.0
         {
             cudaResourceDesc rd;
             cudaTextureDesc td;
@@ -770,17 +791,18 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
             stat = cudaCreateTextureObject(&nnTexture, &rd, &td, NULL); //yupinov destroy, keep allocated
             CU_RET_ERR(stat, "cudaCreateTextureObject on nn_d failed");
         }
-        /*
-        else //yupinov
+        else
+#endif
         {
-            GMX_UNUSED_VALUE(dev_info);
-            cudaChannelFormatDesc cd   = cudaCreateChannelDesc<float>();
-            stat = cudaBindTexture(NULL, &nbnxn_cuda_get_coulomb_tab_texref(),
-                                   coul_tab, &cd,
-                                   ic->tabq_size*sizeof(*coul_tab));
-            CU_RET_ERR(stat, "cudaBindTexture on coulomb_tab_texref failed");
+            cudaChannelFormatDesc cd_fsh = cudaCreateChannelDesc<float>();
+            stat = cudaBindTexture(NULL, &fshTextureRef, fsh_d, &cd_fsh, fshSize);
+            CU_RET_ERR(stat, "cudaBindTexture on fsh failed");
+
+            cudaChannelFormatDesc cd_nn = cudaCreateChannelDesc<int>();
+            stat = cudaBindTexture(NULL, &nnTextureRef,nn_d, &cd_nn, nnSize);
+            CU_RET_ERR(stat, "cudaBindTexture on nn failed");
+
         }
-        */
 #endif
 
 
@@ -864,7 +886,9 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                                                                                                     recipbox_d,
                                                                                                     nnOffset,
 #if USE_TEXTURES
+#if USE_TEXOBJ
                                                                                                     nnTexture, fshTexture,
+#endif
 #else
                                                                                                     nn_d, fsh_d,
 #endif
@@ -915,7 +939,9 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                                                                                                                                pny, pnz,
                                                                                                                                nnOffset,
 #if USE_TEXTURES
+#if USE_TEXOBJ
                                                                                                                                nnTexture, fshTexture,
+#endif
 #else
                                                                                                                                nn_d, fsh_d,
 #endif
