@@ -59,7 +59,9 @@ gpu_events gpu_events_splineandspread;
 #define THREADS_PER_BLOCK   (4 * warp_size)
 #define MIN_BLOCKS_PER_MP   (16)
 
-#define USE_TEXTURES 0
+#define USE_TEXTURES 1
+//textures seems just a bit slower on GTX 660 Ti, so I'm keeping this define just in case
+
 #if USE_TEXTURES
 cudaTextureObject_t nnTexture;
 cudaTextureObject_t fshTexture;
@@ -349,8 +351,6 @@ __global__ void pme_spline_kernel
 
 */
 
-    const int offx = 0, offy = 0, offz = 0;//yupinov fix me!
-
     const int thetaStride = particlesPerBlock * DIM;
 
     __shared__ int idxShared[thetaStride];
@@ -362,7 +362,6 @@ __global__ void pme_spline_kernel
 
     const int localIndex = threadIdx.x;
     const int globalParticleIndexBase = blockIdx.x * particlesPerBlock;
-    const int globalIndex = globalParticleIndexBase + localIndex;
 
     const int threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
             + (threadIdx.y * blockDim.x)
@@ -687,8 +686,8 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     const int order = pmegrid->order;
     const int overlap = order - 1;
 
-    ivec local_ndata, local_size, local_offset;
     /*
+    ivec local_ndata, local_size, local_offset;
     gmx_parallel_3dfft_real_limits_wrapper(pme, grid_index, local_ndata, local_offset, local_size);
     const int pnx = local_size[XX];
     const int pny = local_size[YY];
@@ -750,26 +749,26 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
             memset(&rd, 0, sizeof(rd));
             rd.resType                  = cudaResourceTypeLinear;
-            rd.res.linear.devPtr        = fshx_d;
+            rd.res.linear.devPtr        = fsh_d;
             rd.res.linear.desc.f        = cudaChannelFormatKindFloat;
             rd.res.linear.desc.x        = 32;
             rd.res.linear.sizeInBytes   = fshSize;
             memset(&td, 0, sizeof(td));
             td.readMode                 = cudaReadModeElementType;
             stat = cudaCreateTextureObject(&fshTexture, &rd, &td, NULL);
-            CU_RET_ERR(stat, "cudaCreateTextureObject on fshx_d failed");
+            CU_RET_ERR(stat, "cudaCreateTextureObject on fsh_d failed");
 
 
             memset(&rd, 0, sizeof(rd));
             rd.resType                  = cudaResourceTypeLinear;
-            rd.res.linear.devPtr        = nnx_d;
+            rd.res.linear.devPtr        = nn_d;
             rd.res.linear.desc.f        = cudaChannelFormatKindSigned;
             rd.res.linear.desc.x        = 32;
             rd.res.linear.sizeInBytes   = nnSize;
             memset(&td, 0, sizeof(td));
             td.readMode                 = cudaReadModeElementType;
             stat = cudaCreateTextureObject(&nnTexture, &rd, &td, NULL); //yupinov destroy, keep allocated
-            CU_RET_ERR(stat, "cudaCreateTextureObject on nnx_d failed");
+            CU_RET_ERR(stat, "cudaCreateTextureObject on nn_d failed");
         }
         /*
         else //yupinov
