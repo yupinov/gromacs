@@ -59,10 +59,19 @@ gpu_events gpu_events_splineandspread;
 #define THREADS_PER_BLOCK   (4 * warp_size)
 #define MIN_BLOCKS_PER_MP   (16)
 
+#define USE_TEXTURES 0
+#if USE_TEXTURES
+cudaTextureObject_t nnTexture;
+cudaTextureObject_t fshTexture;
+#endif
+//yupinov
+
 // wrap kernel thingies - should be kept in pme-cuda.h as common?
 static const int OVERLAP_ZONES = 7;
 __constant__ __device__ int OVERLAP_CELLS_COUNTS[OVERLAP_ZONES];
 __constant__ __device__ int2 OVERLAP_SIZES[OVERLAP_ZONES];
+
+__constant__ __device__ float3 RECIPBOX[3];
 
 template <
         const int order,
@@ -76,13 +85,19 @@ __launch_bounds__(THREADS_PER_BLOCK, MIN_BLOCKS_PER_MP)
 //#endif
 //yupinov put bounds on separate kernels as well
 __global__ void pme_spline_and_spread_kernel
-(int nx, int ny, int nz,
+(const float3 nXYZ,
  int start_ix, int start_iy, int start_iz,
+ const float3 * __restrict__ recipbox,
  const int pny, const int pnz,
- real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
- const real * __restrict__ fshx, const real * __restrict__ fshy,
- const int * __restrict__ nnx, const int * __restrict__ nny, const int * __restrict__ nnz,
- const real * __restrict__ xptr, const real * __restrict__ yptr, const real * __restrict__ zptr,
+ const int3 nnOffset,
+#if USE_TEXTURES
+ cudaTextureObject_t nnTexture,
+ cudaTextureObject_t fshTexture,
+#else
+ const int * __restrict__ nn,
+ const real * __restrict__ fsh,
+#endif
+ const float3 * __restrict__ xptr,
  const real * __restrict__ coefficientGlobal,
  real * __restrict__ grid, real * __restrict__ theta, real * __restrict__ dtheta, int * __restrict__ idx, //yupinov
  int n)
@@ -101,139 +116,167 @@ __global__ void pme_spline_and_spread_kernel
 
     const int offx = 0, offy = 0, offz = 0; //yupinov fix me!
 
-    __shared__ int idxxptr[particlesPerBlock];
-    __shared__ int idxyptr[particlesPerBlock];
-    __shared__ int idxzptr[particlesPerBlock];
-    __shared__ real fxptr[particlesPerBlock];
-    __shared__ real fyptr[particlesPerBlock];
-    __shared__ real fzptr[particlesPerBlock];
+    const int thetaStride = particlesPerBlock * DIM;
+
+    __shared__ int idxShared[thetaStride];
+    __shared__ real fractX[thetaStride];
     __shared__ real coefficient[particlesPerBlock];
 
-    __shared__ real theta_shared[3 * order * particlesPerBlock];
-    __shared__ real dtheta_shared[3 * order * particlesPerBlock];
+    __shared__ real theta_shared[thetaStride * order];
+    __shared__ real dtheta_shared[thetaStride * order];
 
-    int ithx, index_x, ithy, index_xy, ithz, index_xyz;
-    real valx, valxy;
+    int ithx, index_x, ithy, ithz;
 
-    int localIndex = threadIdx.x;
+    const int localIndex = threadIdx.x;
+    const int globalParticleIndexBase = blockIdx.x * particlesPerBlock;
+    const int globalIndex = globalParticleIndexBase + localIndex;
 
-    int globalIndex = blockIdx.x * particlesPerBlock + localIndex;
+    const int threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
+            + (threadIdx.y * blockDim.x)
+            + threadIdx.x;
+
     if (bCalcSplines)
     {
-        if ((globalIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
-        //yupinov - this is a single particle work!
+        const int localIndexCalc = threadLocalId / DIM; // 4 instead of DIM
+        const int dimIndex = threadLocalId - localIndexCalc * DIM;
+
+        const int globalIndexCalc = globalParticleIndexBase + localIndexCalc;
+        __shared__ real t[thetaStride];
+        __shared__ int tInt[thetaStride];
+        if ((globalIndexCalc < n) && (localIndexCalc < particlesPerBlock) && (dimIndex < DIM))
         {
             // INTERPOLATION INDICES
 
-            /* Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes */
-            real tx, ty, tz;
-            tx = nx * ( xptr[globalIndex] * rxx + yptr[globalIndex] * ryx + zptr[globalIndex] * rzx + 2.0f );
-            ty = ny * (                           yptr[globalIndex] * ryy + zptr[globalIndex] * rzy + 2.0f );
-            tz = nz * (                                                     zptr[globalIndex] * rzz + 2.0f );
+            int constIndex;
+            real n;
+            // we're doing this switch because accesing field in nnOffset/nXYZ directly with dimIndex offset puts them into registers instead of accesing the constant memory directly
+            switch (dimIndex)
+            {
+                case 0:
+                constIndex = nnOffset.x;
+                n = nXYZ.x;
+                break;
 
-            int tix, tiy, tiz;
-            tix = (int)(tx);
-            tiy = (int)(ty);
-            tiz = (int)(tz);
+                case 1:
+                constIndex = nnOffset.y;
+                n = nXYZ.y;
+                break;
+
+                case 2:
+                constIndex = nnOffset.z;
+                n = nXYZ.z;
+                break;
+            }
+
+            const float3 x = xptr[globalIndexCalc];
+            const float3 recip = recipbox[dimIndex];//yupinov 3x RECIPBOX[dimIndex];
+            // Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes
+            t[threadLocalId] = (x.x * recip.x + x.y * recip.y + x.z * recip.z + 2.0f) * n;
+            tInt[threadLocalId] = (int)t[threadLocalId]; //yupinov test registers
+            fractX[threadLocalId] = t[threadLocalId] - tInt[threadLocalId];
+
             /* Because decomposition only occurs in x and y,
             * we never have a fraction correction in z.
             */
 
-            fxptr[localIndex] = tx - tix + fshx[tix];
-            fyptr[localIndex] = ty - tiy + fshy[tiy];
-            fzptr[localIndex] = tz - tiz;
+            constIndex += tInt[threadLocalId];
+#if USE_TEXTURES
+            fractX[threadLocalId] += tex1Dfetch<real>(fshTexture, constIndex);
+            idxShared[threadLocalId] = tex1Dfetch<int>(nnTexture, constIndex);
+#else
+            fractX[threadLocalId] += fsh[constIndex];
+            idxShared[threadLocalId] = nn[constIndex];
+#endif
+           //staging for both parts
 
-            idxxptr[localIndex] = nnx[tix];
-            idxyptr[localIndex] = nny[tiy];
-            idxzptr[localIndex] = nnz[tiz];
+            idx[globalIndexCalc * DIM + dimIndex] = idxShared[threadLocalId]; //yupinov fix indexing
+            if (threadLocalId < particlesPerBlock)
+                coefficient[threadLocalId] = coefficientGlobal[globalParticleIndexBase + threadLocalId];
+        }
+        __syncthreads();
 
-            coefficient[localIndex] = coefficientGlobal[globalIndex]; //staging for both parts
-
-            idx[globalIndex * DIM + 0] = idxxptr[localIndex];
-            idx[globalIndex * DIM + 1] = idxyptr[localIndex];
-            idx[globalIndex * DIM + 2] = idxzptr[localIndex];
-
-            // MAKE BSPLINES
-
+        // MAKE BSPLINES
+        if ((globalIndexCalc < n) && (localIndexCalc < particlesPerBlock) && (dimIndex < DIM)) // just for sync?
+        {
             if (bDoSplines || (coefficient[localIndex] != 0.0f)) //yupinov how bad is this conditional?
             {
                 real dr, div;
                 real data[order];
 
-    #pragma unroll
-                for (int j = 0; j < DIM; j++)
+                dr = fractX[threadLocalId];
+
+                /* dr is relative offset from lower cell limit */
+                data[order - 1] = 0;
+                data[1]         = dr;
+                data[0]         = 1 - dr;
+
+#pragma unroll
+                for (int k = 3; k < order; k++)
                 {
-                    //dr  = fractx[i*DIM + j];
-
-                    dr = (j == 0) ? fxptr[localIndex] : ((j == 1) ? fyptr[localIndex] : fzptr[localIndex]);
-
-                    /* dr is relative offset from lower cell limit */
-                    data[order - 1] = 0;
-                    data[1]         = dr;
-                    data[0]         = 1 - dr;
-
-    #pragma unroll
-                    for (int k = 3; k < order; k++)
+                    div         = 1.0f / (k - 1.0f);
+                    data[k - 1] = div * dr * data[k - 2];
+#pragma unroll
+                    for (int l = 1; l < (k - 1); l++)
                     {
-                        div         = 1.0f / (k - 1.0f);
-                        data[k - 1] = div * dr * data[k - 2];
-                        #pragma unroll
-                        for (int l = 1; l < (k - 1); l++)
-                        {
-                            data[k - l - 1] = div * ((dr + l) * data[k - l - 2] + (k - l - dr) * data[k - l - 1]);
-                        }
-                        data[0] = div * (1 - dr) * data[0];
-                    }
-                    /* differentiate */
-                    const int thetaOffset = (j * particlesPerBlock + localIndex) * order;
-                    dtheta_shared[thetaOffset] = -data[0];
-
-                    #pragma unroll
-                    for (int k = 1; k < order; k++)
-                    {
-                        dtheta_shared[thetaOffset + k] = data[k - 1] - data[k];
-                    }
-
-                    div             = 1.0f / (order - 1);
-                    data[order - 1] = div * dr * data[order - 2];
-    #pragma unroll
-                    for (int l = 1; l < (order - 1); l++)
-                    {
-                        data[order - l - 1] = div * ((dr + l) * data[order - l - 2] + (order - l - dr) * data[order - l - 1]);
+                        data[k - l - 1] = div * ((dr + l) * data[k - l - 2] + (k - l - dr) * data[k - l - 1]);
                     }
                     data[0] = div * (1 - dr) * data[0];
-
-    #pragma unroll
-                    for (int k = 0; k < order; k++)
-                    {
-                        theta_shared[thetaOffset + k] = data[k];
-                    }
                 }
-                //yupinov store to global
-    #pragma unroll
-                for (int j = 0; j < DIM; j++)
+                /* differentiate */
+                const int thetaOffsetBase = localIndexCalc * DIM + dimIndex;
+                dtheta_shared[thetaOffsetBase] = -data[0];
+
+#pragma unroll
+                for (int k = 1; k < order; k++)
                 {
-                    const int thetaOffset = (j * particlesPerBlock + localIndex) * order;
-                    const int thetaGlobalOffset = (j * n + globalIndex) * order;
+                    dtheta_shared[thetaOffsetBase + k * thetaStride] = data[k - 1] - data[k];
+                }
+
+                div             = 1.0f / (order - 1);
+                data[order - 1] = div * dr * data[order - 2];
+#pragma unroll
+                for (int l = 1; l < (order - 1); l++)
+                {
+                    data[order - l - 1] = div * ((dr + l) * data[order - l - 2] + (order - l - dr) * data[order - l - 1]);
+                }
+                data[0] = div * (1 - dr) * data[0];
+
+#pragma unroll
+                for (int k = 0; k < order; k++)
+                {
+                    theta_shared[thetaOffsetBase + k * thetaStride] = data[k];
+                }
+
+                //yupinov store to global
+                const int thetaGlobalOffsetBase = globalParticleIndexBase * DIM * order;
     #pragma unroll
-                    for (int z = 0; z < order; z++)
-                    {
-                        theta[thetaGlobalOffset + z] = theta_shared[thetaOffset + z];
-                        dtheta[thetaGlobalOffset + z] = dtheta_shared[thetaOffset + z];
-                    }
+                for (int k = 0; k < order; k++)
+                {
+                    const int thetaIndex = thetaOffsetBase + k * thetaStride;
+
+                    theta[thetaGlobalOffsetBase + thetaIndex] = theta_shared[thetaIndex];
+                    dtheta[thetaGlobalOffsetBase + thetaIndex] = dtheta_shared[thetaIndex];
                 }
             }
         }
         __syncthreads(); //yupinov do we need it?
     }
+     /*
     else if (bSpread) //yupinov copied from spread_kernel - staging for a second part
     {
+        //yupinov fix!
+        //if ((globalIndexCalc < n) && (localIndexCalc < particlesPerBlock) && (dimIndex < DIM))
         if ((globalIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
         //yupinov - this is a single particle work!
         {
+
             idxxptr[localIndex] = idx[globalIndex * DIM + 0];
             idxyptr[localIndex] = idx[globalIndex * DIM + 1];
             idxzptr[localIndex] = idx[globalIndex * DIM + 2];
+
+ #pragma unroll
+            for (int i = 0; i < DIM; i++)
+                idxShared[localIndex * DIM + i] = idx[globalIndex * DIM + i];
     #pragma unroll
             for (int j = 0; j < DIM; j++)
             {
@@ -251,7 +294,7 @@ __global__ void pme_spline_and_spread_kernel
         }
         __syncthreads(); //yupinov do we need it?
     }
-
+*/
 
     // SPREAD
 
@@ -263,38 +306,22 @@ __global__ void pme_spline_and_spread_kernel
     {
         if ((globalIndex < n) && (coefficient[localIndex] != 0.0f)) //yupinov store checks
         {
-            const int i0  = idxxptr[localIndex] - offx; //?
-            const int j0  = idxyptr[localIndex] - offy;
-            const int k0  = idxzptr[localIndex] - offz;
+            const int ix = idxShared[localIndex * DIM + XX] - offx;
+            const int iy = idxShared[localIndex * DIM + YY] - offy;
+            const int iz = idxShared[localIndex * DIM + ZZ] - offz;
 
-            //printf ("%d %d %d %d %d %d %d\n", blockIdx.x, threadIdx.x, threadIdx.y, threadIdx.z, i0, j0, k0);
-            const real *thx = theta_shared + (0 * particlesPerBlock + localIndex) * order;
-            const real *thy = theta_shared + (1 * particlesPerBlock + localIndex) * order;
-            const real *thz = theta_shared + (2 * particlesPerBlock + localIndex) * order;
+            const int thetaOffsetBase = localIndex * DIM;
+            const real thz = theta_shared[thetaOffsetBase + ithz * thetaStride + ZZ];
+            const real thy = theta_shared[thetaOffsetBase + ithy * thetaStride + YY];
+            const real constVal = thz * thy * coefficient[localIndex];
+            const int constOffset = (iy + ithy) * pnz + (iz + ithz);
+            const real *thx = theta_shared + (thetaOffsetBase + XX);
 
-            // switch (order) ?
-
-            #pragma unroll
+#pragma unroll
             for (ithx = 0; (ithx < order); ithx++)
             {
-                index_x = (i0 + ithx) * pny * pnz;
-                valx = coefficient[localIndex] * thx[ithx];
-                /*
-                #pragma unroll
-                for (ithy = 0; (ithy < order); ithy++)
-                */
-                {
-                    valxy    = valx*thy[ithy];
-                    index_xy = index_x+(j0+ithy)*pnz;
-                    /*
-                    #pragma unroll
-                    for (ithz = 0; (ithz < order); ithz++)
-                    */
-                    {
-                        index_xyz        = index_xy + (k0 + ithz);
-                        atomicAdd(grid + index_xyz, valxy * thz[ithz]);
-                    }
-                }
+                index_x = (ix + ithx) * pny * pnz;
+                atomicAdd(grid + index_x + constOffset, thx[ithx * thetaStride] * constVal);
             }
         }
     }
@@ -309,12 +336,18 @@ template <
         const gmx_bool bDoSplines
         >
 __global__ void pme_spline_kernel
-(const int nx, const int ny, const int nz,
+(const float3 nXYZ,
  const int start_ix, const int start_iy, const int start_iz,
- const real rxx, const real ryx, const real ryy, const real rzx, const real rzy, const real rzz,
- const real * __restrict__ fshx, const real * __restrict__ fshy,
- const int * __restrict__ nnx, const int * __restrict__ nny, const int * __restrict__ nnz,
- const real * __restrict__ xptr, const real * __restrict__ yptr, const real * __restrict__ zptr,
+ const float3 * __restrict__ recipbox,
+ const int3 nnOffset,
+#if USE_TEXTURES
+  cudaTextureObject_t nnTexture,
+  cudaTextureObject_t fshTexture,
+#else
+  const int * __restrict__ nn,
+  const real * __restrict__ fsh,
+#endif
+ const float3 * __restrict__ xptr,
  const real * __restrict__ coefficientGlobal,
  real * __restrict__ theta, real * __restrict__ dtheta, int * __restrict__ idx, //yupinov
  const int n)
@@ -333,122 +366,142 @@ __global__ void pme_spline_kernel
 
     const int offx = 0, offy = 0, offz = 0;//yupinov fix me!
 
-    __shared__ int idxxptr[particlesPerBlock];
-    __shared__ int idxyptr[particlesPerBlock];
-    __shared__ int idxzptr[particlesPerBlock];
-    __shared__ real fxptr[particlesPerBlock];
-    __shared__ real fyptr[particlesPerBlock];
-    __shared__ real fzptr[particlesPerBlock];
+    const int thetaStride = particlesPerBlock * DIM;
+
+    __shared__ int idxShared[thetaStride];
+    __shared__ real fractX[thetaStride];
     __shared__ real coefficient[particlesPerBlock];
 
-    __shared__ real theta_shared[3 * order * particlesPerBlock];
-    __shared__ real dtheta_shared[3 * order * particlesPerBlock];
+    __shared__ real theta_shared[thetaStride * order];
+    __shared__ real dtheta_shared[thetaStride * order];
 
-    int localIndex = threadIdx.x;
+    const int localIndex = threadIdx.x;
+    const int globalParticleIndexBase = blockIdx.x * particlesPerBlock;
+    const int globalIndex = globalParticleIndexBase + localIndex;
 
-    int globalIndex = blockIdx.x * particlesPerBlock + localIndex;
-    if ((globalIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
+    const int threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
+            + (threadIdx.y * blockDim.x)
+            + threadIdx.x;
+
+    const int localIndexCalc = threadLocalId / DIM; // 4 instead of DIM
+    const int dimIndex = threadLocalId - localIndexCalc * DIM;
+
+    const int globalIndexCalc = globalParticleIndexBase + localIndexCalc;
+    __shared__ real t[thetaStride];
+    __shared__ int tInt[thetaStride];
+
+    if ((globalIndexCalc < n) && (localIndexCalc < particlesPerBlock) && (dimIndex < DIM))
     //yupinov - this is a single particle work!
     {
-        // INTERPOL_IDX
+        // INTERPOLATION INDICES
 
-        /* Fractional coordinates along box vectors, add 2.0 Fto make 100% sure we are positive for triclinic boxes */
-        real tx, ty, tz;
-        tx = nx * ( xptr[globalIndex] * rxx + yptr[globalIndex] * ryx + zptr[globalIndex] * rzx + 2.0f );
-        ty = ny * (                           yptr[globalIndex] * ryy + zptr[globalIndex] * rzy + 2.0f );
-        tz = nz * (                                                     zptr[globalIndex] * rzz + 2.0f );
+        int constIndex;
+        real n;
+        // we're doing this switch because accesing fielsd in nnOffset/nXYZ directly with dimIndex offset puts them into registers instead of accessing the constant memory directly
+        switch (dimIndex)
+        {
+            case 0:
+            constIndex = nnOffset.x;
+            n = nXYZ.x;
+            break;
 
-        int tix, tiy, tiz;
-        tix = (int)(tx);
-        tiy = (int)(ty);
-        tiz = (int)(tz);
-        /* Because decomposition only occurs in x and y,
-        * we never have a fraction correction in z.
-        */
+            case 1:
+            constIndex = nnOffset.y;
+            n = nXYZ.y;
+            break;
 
-        fxptr[localIndex] = tx - tix + fshx[tix];
-        fyptr[localIndex] = ty - tiy + fshy[tiy];
-        fzptr[localIndex] = tz - tiz;
+            case 2:
+            constIndex = nnOffset.z;
+            n = nXYZ.z;
+            break;
+        }
 
-        idxxptr[localIndex] = nnx[tix];
-        idxyptr[localIndex] = nny[tiy];
-        idxzptr[localIndex] = nnz[tiz];
+        const float3 x = xptr[globalIndexCalc];
+        const float3 recip = recipbox[dimIndex];//yupinov 3x RECIPBOX[dimIndex];
+        // Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes
+        t[threadLocalId] = (x.x * recip.x + x.y * recip.y + x.z * recip.z + 2.0f) * n;
+        tInt[threadLocalId] = (int)t[threadLocalId]; //yupinov test registers
+        fractX[threadLocalId] = t[threadLocalId] - tInt[threadLocalId];
 
-        coefficient[localIndex] = coefficientGlobal[globalIndex]; //staging for both parts
+        constIndex += tInt[threadLocalId];
 
+#if USE_TEXTURES
+        fractX[threadLocalId] += tex1Dfetch<real>(fshTexture, constIndex);
+        idxShared[threadLocalId] = tex1Dfetch<int>(nnTexture, constIndex);
+#else
+        fractX[threadLocalId] += fsh[constIndex];
+        idxShared[threadLocalId] = nn[constIndex];
+#endif
 
-        idx[globalIndex * DIM + 0] = idxxptr[localIndex];
-        idx[globalIndex * DIM + 1] = idxyptr[localIndex];
-        idx[globalIndex * DIM + 2] = idxzptr[localIndex];
+        //staging for both parts
 
-        // CALCSPLINE
+         idx[globalIndexCalc * DIM + dimIndex] = idxShared[threadLocalId]; //yupinov fix indexing
+         if (threadLocalId < particlesPerBlock)
+             coefficient[threadLocalId] = coefficientGlobal[globalParticleIndexBase + threadLocalId];
+    }
+    __syncthreads();
 
+    // MAKE BSPLINES
+    if ((globalIndexCalc < n) && (localIndexCalc < particlesPerBlock) && (dimIndex < DIM)) // just for sync?
+    {
         if (bDoSplines || (coefficient[localIndex] != 0.0f)) //yupinov how bad is this conditional?
         {
             real dr, div;
             real data[order];
 
+            dr = fractX[threadLocalId];
+
+            /* dr is relative offset from lower cell limit */
+            data[order - 1] = 0;
+            data[1]         = dr;
+            data[0]         = 1 - dr;
+
 #pragma unroll
-            for (int j = 0; j < DIM; j++)
+            for (int k = 3; k < order; k++)
             {
-                //dr  = fractx[i*DIM + j];
-
-                dr = (j == 0) ? fxptr[localIndex] : ((j == 1) ? fyptr[localIndex] : fzptr[localIndex]);
-
-                /* dr is relative offset from lower cell limit */
-                data[order - 1] = 0;
-                data[1]         = dr;
-                data[0]         = 1 - dr;
-
-#pragma unroll
-                for (int k = 3; k < order; k++)
-                {
-                    div         = 1.0f / (k - 1.0f);
-                    data[k - 1] = div * dr * data[k - 2];
-                    #pragma unroll
-                    for (int l = 1; l < (k - 1); l++)
-                    {
-                        data[k - l - 1] = div * ((dr + l) * data[k - l - 2] + (k - l - dr) * data[k - l - 1]);
-                    }
-                    data[0] = div * (1 - dr) * data[0];
-                }
-                /* differentiate */
-                const int thetaOffset = (j * particlesPerBlock + localIndex) * order;
-                dtheta_shared[thetaOffset] = -data[0];
-
+                div         = 1.0f / (k - 1.0f);
+                data[k - 1] = div * dr * data[k - 2];
                 #pragma unroll
-                for (int k = 1; k < order; k++)
+                for (int l = 1; l < (k - 1); l++)
                 {
-                    dtheta_shared[thetaOffset + k] = data[k - 1] - data[k];
-                }
-
-                div             = 1.0f / (order - 1);
-                data[order - 1] = div * dr * data[order - 2];
-#pragma unroll
-                for (int l = 1; l < (order - 1); l++)
-                {
-                    data[order - l - 1] = div * ((dr + l) * data[order - l - 2] + (order - l - dr) * data[order - l - 1]);
+                    data[k - l - 1] = div * ((dr + l) * data[k - l - 2] + (k - l - dr) * data[k - l - 1]);
                 }
                 data[0] = div * (1 - dr) * data[0];
+            }
+            /* differentiate */
+            const int thetaOffsetBase = localIndexCalc * DIM + dimIndex;
+            dtheta_shared[thetaOffsetBase] = -data[0];
 
 #pragma unroll
-                for (int k = 0; k < order; k++)
-                {
-                    theta_shared[thetaOffset + k] = data[k];
-                }
-            }
-            //yupinov store to global
-#pragma unroll
-            for (int j = 0; j < DIM; j++)
+            for (int k = 1; k < order; k++)
             {
-                const int thetaOffset = (j * particlesPerBlock + localIndex) * order;
-                const int thetaGlobalOffset = (j * n + globalIndex) * order;
+                dtheta_shared[thetaOffsetBase + k * thetaStride] = data[k - 1] - data[k];
+            }
+
+            div             = 1.0f / (order - 1);
+            data[order - 1] = div * dr * data[order - 2];
 #pragma unroll
-                for (int z = 0; z < order; z++)
-                {
-                    theta[thetaGlobalOffset + z] = theta_shared[thetaOffset + z];
-                    dtheta[thetaGlobalOffset + z] = dtheta_shared[thetaOffset + z];
-                }
+            for (int l = 1; l < (order - 1); l++)
+            {
+                data[order - l - 1] = div * ((dr + l) * data[order - l - 2] + (order - l - dr) * data[order - l - 1]);
+            }
+            data[0] = div * (1 - dr) * data[0];
+
+#pragma unroll
+            for (int k = 0; k < order; k++)
+            {
+                theta_shared[thetaOffsetBase + k * thetaStride] = data[k];
+            }
+
+            //yupinov store to global
+            const int thetaGlobalOffsetBase = globalParticleIndexBase * DIM * order;
+#pragma unroll
+            for (int k = 0; k < order; k++)
+            {
+                const int thetaIndex = thetaOffsetBase + k * thetaStride;
+
+                theta[thetaGlobalOffsetBase + thetaIndex] = theta_shared[thetaIndex];
+                dtheta[thetaGlobalOffsetBase + thetaIndex] = dtheta_shared[thetaIndex];
             }
         }
     }
@@ -457,8 +510,7 @@ __global__ void pme_spline_kernel
 
 template <const int order, const int particlesPerBlock>
 __global__ void pme_spread_kernel
-(int nx, int ny, int nz,
- int start_ix, int start_iy, int start_iz,
+(int start_ix, int start_iy, int start_iz,
   const int pny, const int pnz,
  const real * __restrict__ coefficientGlobal,
  real * __restrict__ grid, real * __restrict__ theta, real * __restrict__ dtheta, const int * __restrict__ idx, //yupinov
@@ -475,24 +527,24 @@ __global__ void pme_spread_kernel
     offz = pmegrid->offset[ZZ];
 
 */
+    const int thetaStride = particlesPerBlock * DIM;
 
     const int offx = 0, offy = 0, offz = 0;//yupinov fix me!
 
-    __shared__ int idxxptr[particlesPerBlock];
-    __shared__ int idxyptr[particlesPerBlock];
-    __shared__ int idxzptr[particlesPerBlock];
+    __shared__ int idxShared[thetaStride];
     __shared__ real coefficient[particlesPerBlock];
 
-    __shared__ real theta_shared[3 * order * particlesPerBlock];
-    __shared__ real dtheta_shared[3 * order * particlesPerBlock];
+    __shared__ real theta_shared[thetaStride * order];
+    __shared__ real dtheta_shared[thetaStride * order];
     //printf("%d %d %d %d %d %d\n", blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z);
 
-    int ithx, index_x, ithy, index_xy, ithz, index_xyz;
-    real valx, valxy;
+    int ithx, index_x, ithy, ithz;
 
     const int localIndex = threadIdx.x;
     const int globalIndex = blockIdx.x * particlesPerBlock + localIndex;
 
+    //yupinov fix me!
+    /*
     if ((globalIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
     //yupinov - this is a single particle work!
     {
@@ -515,6 +567,7 @@ __global__ void pme_spread_kernel
 
         coefficient[localIndex] = coefficientGlobal[globalIndex]; //staging for both parts
     }
+    */
     __syncthreads(); //yupinov do we need it?
 
     // SPREAD
@@ -525,38 +578,22 @@ __global__ void pme_spread_kernel
 
     if ((globalIndex < n) && (coefficient[localIndex] != 0.0f)) //yupinov store checks
     {
-        const int i0  = idxxptr[localIndex] - offx; //?
-        const int j0  = idxyptr[localIndex] - offy;
-        const int k0  = idxzptr[localIndex] - offz;
+        const int ix = idxShared[localIndex * DIM + XX] - offx;
+        const int iy = idxShared[localIndex * DIM + YY] - offy;
+        const int iz = idxShared[localIndex * DIM + ZZ] - offz;
 
-        //printf ("%d %d %d %d %d %d %d\n", blockIdx.x, threadIdx.x, threadIdx.y, threadIdx.z, i0, j0, k0);
-        const real *thx = theta_shared + (0 * particlesPerBlock + localIndex) * order;
-        const real *thy = theta_shared + (1 * particlesPerBlock + localIndex) * order;
-        const real *thz = theta_shared + (2 * particlesPerBlock + localIndex) * order;
+        const int thetaOffsetBase = localIndex * DIM;
+        const real thz = theta_shared[thetaOffsetBase + ithz * thetaStride + ZZ];
+        const real thy = theta_shared[thetaOffsetBase + ithy * thetaStride + YY];
+        const real constVal = thz * thy * coefficient[localIndex];
+        const int constOffset = (iy + ithy) * pnz + (iz + ithz);
+        const real *thx = theta_shared + (thetaOffsetBase + XX);
 
-        // switch (order) ?
-
-        #pragma unroll
+#pragma unroll
         for (ithx = 0; (ithx < order); ithx++)
         {
-            index_x = (i0 + ithx) * pny * pnz;
-            valx = coefficient[localIndex] * thx[ithx];
-            /*
-            #pragma unroll
-            for (ithy = 0; (ithy < order); ithy++)
-            */
-            {
-                valxy    = valx*thy[ithy];
-                index_xy = index_x+(j0+ithy)*pnz;
-                /*
-                #pragma unroll
-                for (ithz = 0; (ithz < order); ithz++)
-                */
-                {
-                    index_xyz        = index_xy + (k0 + ithz);
-                    atomicAdd(grid + index_xyz, valxy * thz[ithz]);
-                }
-            }
+            index_x = (ix + ithx) * pny * pnz;
+            atomicAdd(grid + index_x + constOffset, thx[ithx * thetaStride] * constVal);
         }
     }
 }
@@ -685,7 +722,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     const int nz = pme->nkz;
 
     int n = atc->n;
-    int n_blocked = (n + warp_size - 1) / warp_size * warp_size;
+    int n_blocked = n;//(n + warp_size - 1) / warp_size * warp_size;
     int ndatatot = pnx * pny * pnz;
     int size_grid = ndatatot * sizeof(real);
 
@@ -698,40 +735,99 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     int idx_size = n * DIM * sizeof(int);
     int *idx_d = PMEFetchIntegerArray(PME_ID_IDXPTR, thread, idx_size, ML_DEVICE);
 
-    real *fshx_d, *fshy_d = NULL;
-    int *nnx_d = NULL, *nny_d = NULL, *nnz_d = NULL;
-    real *xptr_d = NULL, *yptr_d = NULL, *zptr_d = NULL;
+    real *fsh_d = NULL;
+    int *nn_d = NULL;
+    float3 *xptr_d = NULL;
+    //float4 *xptr_d = NULL;
+
+    const float3 nXYZ = {(real)nx, (real)ny, (real)nz};
+    const int3 nnOffset = {0, 5 * nx, 5 * (nx + ny)};
+
+    float3 *recipbox_d = NULL;
 
     if (bCalcSplines)
     {
-        fshx_d = PMEFetchRealArray(PME_ID_FSH, thread, 5 * (nx + ny) * sizeof(real), ML_DEVICE);
-        fshy_d = fshx_d + 5 * nx;
-        PMECopy(fshx_d, pme->fshx, 5 * nx * sizeof(real), ML_DEVICE, s);
-        PMECopy(fshy_d, pme->fshy, 5 * ny * sizeof(real), ML_DEVICE, s);
+        const int fshSize = 5 * (nx + ny + nz) * sizeof(real);
+        fsh_d = PMEFetchRealArray(PME_ID_FSH, thread, fshSize, ML_DEVICE);
+        PMECopy(fsh_d                , pme->fshx, 5 * nx * sizeof(real), ML_DEVICE, s);
+        PMECopy(fsh_d + 5 * nx       , pme->fshy, 5 * ny * sizeof(real), ML_DEVICE, s);
+        PMECopy(fsh_d + 5 * (nx + ny), pme->fshz, 5 * nz * sizeof(real), ML_DEVICE, s);
 
-        nnx_d = PMEFetchIntegerArray(PME_ID_NN, thread, 5 * (nx + ny + nz) * sizeof(int), ML_DEVICE);
-        nny_d = nnx_d + 5 * nx;
-        nnz_d = nny_d + 5 * ny;
-        PMECopy(nnx_d, pme->nnx, 5 * nx * sizeof(int), ML_DEVICE, s);
-        PMECopy(nny_d, pme->nny, 5 * ny * sizeof(int), ML_DEVICE, s);
-        PMECopy(nnz_d, pme->nnz, 5 * nz * sizeof(int), ML_DEVICE, s);
+        const int nnSize = 5 * (nx + ny + nz) * sizeof(int);
+        nn_d = PMEFetchIntegerArray(PME_ID_NN, thread, nnSize, ML_DEVICE);
+        PMECopy(nn_d                , pme->nnx, 5 * nx * sizeof(int), ML_DEVICE, s);
+        PMECopy(nn_d + 5 * nx       , pme->nny, 5 * ny * sizeof(int), ML_DEVICE, s);
+        PMECopy(nn_d + 5 * (nx + ny), pme->nnz, 5 * nz * sizeof(int), ML_DEVICE, s);
 
-        real *xptr_h = PMEFetchRealArray(PME_ID_XPTR, thread, 3 * n_blocked * sizeof(real), ML_HOST);
-        xptr_d = PMEFetchRealArray(PME_ID_XPTR, thread, 3 * n_blocked * sizeof(real), ML_DEVICE);
-        yptr_d = xptr_d + n_blocked;
-        zptr_d = yptr_d + n_blocked;
+#if USE_TEXTURES
+        //if (use_texobj(dev_info))
         {
-            int ix = 0, iy = n_blocked, iz = 2 * n_blocked;
-            for (int i = 0; i < n; i++)
-            {
-              real *xptr = atc->x[i];
-              xptr_h[ix++] = xptr[XX];
-              xptr_h[iy++] = xptr[YY];
-              xptr_h[iz++] = xptr[ZZ];
-            }
+            cudaResourceDesc rd;
+            cudaTextureDesc td;
+
+            memset(&rd, 0, sizeof(rd));
+            rd.resType                  = cudaResourceTypeLinear;
+            rd.res.linear.devPtr        = fshx_d;
+            rd.res.linear.desc.f        = cudaChannelFormatKindFloat;
+            rd.res.linear.desc.x        = 32;
+            rd.res.linear.sizeInBytes   = fshSize;
+            memset(&td, 0, sizeof(td));
+            td.readMode                 = cudaReadModeElementType;
+            stat = cudaCreateTextureObject(&fshTexture, &rd, &td, NULL);
+            CU_RET_ERR(stat, "cudaCreateTextureObject on fshx_d failed");
+
+
+            memset(&rd, 0, sizeof(rd));
+            rd.resType                  = cudaResourceTypeLinear;
+            rd.res.linear.devPtr        = nnx_d;
+            rd.res.linear.desc.f        = cudaChannelFormatKindSigned;
+            rd.res.linear.desc.x        = 32;
+            rd.res.linear.sizeInBytes   = nnSize;
+            memset(&td, 0, sizeof(td));
+            td.readMode                 = cudaReadModeElementType;
+            stat = cudaCreateTextureObject(&nnTexture, &rd, &td, NULL); //yupinov destroy, keep allocated
+            CU_RET_ERR(stat, "cudaCreateTextureObject on nnx_d failed");
         }
-        PMECopy(xptr_d, xptr_h, 3 * n_blocked * sizeof(real), ML_DEVICE, s);
+        /*
+        else //yupinov
+        {
+            GMX_UNUSED_VALUE(dev_info);
+            cudaChannelFormatDesc cd   = cudaCreateChannelDesc<float>();
+            stat = cudaBindTexture(NULL, &nbnxn_cuda_get_coulomb_tab_texref(),
+                                   coul_tab, &cd,
+                                   ic->tabq_size*sizeof(*coul_tab));
+            CU_RET_ERR(stat, "cudaBindTexture on coulomb_tab_texref failed");
+        }
+        */
+#endif
+
+
+        float3 *xptr_h = (float3 *)atc->x;
+        xptr_d = (float3 *)PMEFetchRealArray(PME_ID_XPTR, thread, DIM * n_blocked * sizeof(real), ML_DEVICE);
+        PMECopy(xptr_d, xptr_h, DIM * n_blocked * sizeof(real), ML_DEVICE, s);
+        /*
+        float4 *xptr_h = (float4 *)PMEFetchRealArray(PME_ID_XPTR, thread, 4 * n_blocked * sizeof(real), ML_HOST);
+        memset(xptr_h, 0, 4 * n_blocked * sizeof(real));
+        for (int i = 0; i < n; i++)
+        {
+           memcpy(xptr_h + i, atc->x + i, sizeof(rvec));
+        }
+        xptr_d = (float4 *)PMEFetchRealArray(PME_ID_XPTR, thread, 4 * n_blocked * sizeof(real), ML_DEVICE);
+        PMECopy(xptr_d, xptr_h, 4 * n_blocked * sizeof(real), ML_DEVICE, s);
+        */
+
+        float3 recipbox_h[3] =
+        {
+            {pme->recipbox[XX][XX], pme->recipbox[YY][XX], pme->recipbox[ZZ][XX]},
+            {                  0.0, pme->recipbox[YY][YY], pme->recipbox[ZZ][YY]},
+            {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
+        };
+        recipbox_d = (float3 *)PMEFetchAndCopyRealArray(PME_ID_RECIPBOX, thread, recipbox_h, sizeof(recipbox_h), ML_DEVICE, s); // yupinov test constant memory?
+        stat = cudaMemcpyToSymbolAsync(RECIPBOX, recipbox_h, sizeof(recipbox_h), 0, cudaMemcpyHostToDevice, s);
+        CU_RET_ERR(stat, "cudaMemcpyToSymbolAsync");
     }
+
+
     //yupinov blocked approach everywhere or nowhere
     //filtering?
 
@@ -781,20 +877,21 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                     else
                     {
                         pme_spline_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocks, dimBlock, 0, s>>>
-                                                                            (nx, ny, nz,
-                                                                             pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
-                                                                             pme->recipbox[XX][XX],
-                                                                             pme->recipbox[YY][XX],
-                                                                             pme->recipbox[YY][YY],
-                                                                             pme->recipbox[ZZ][XX],
-                                                                             pme->recipbox[ZZ][YY],
-                                                                             pme->recipbox[ZZ][ZZ],
-                                                                             fshx_d, fshy_d,
-                                                                             nnx_d, nny_d, nnz_d,
-                                                                             xptr_d, yptr_d, zptr_d,
-                                                                             coefficient_d,
-                                                                             theta_d, dtheta_d, idx_d,
-                                                                             n);
+                                                                                                   (nXYZ,
+                                                                                                    pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
+                                                                                                    recipbox_d,
+                                                                                                    nnOffset,
+#if USE_TEXTURES
+                                                                                                    nnTexture, fshTexture,
+#else
+                                                                                                    nn_d, fsh_d,
+#endif
+                                                                                                    xptr_d,
+                                                                                                    coefficient_d,
+                                                                                                    theta_d, dtheta_d, idx_d,
+                                                                                                    n);
+
+
                     }
 
                     CU_LAUNCH_ERR("pme_spline_kernel");
@@ -806,8 +903,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                     events_record_start(gpu_events_spread, s);
 
                     pme_spread_kernel<4, blockSize / 4 / 4> <<<nBlocks, dimBlock, 0, s>>>
-                                                                            (nx, ny, nz,
-                                                                             pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
+                                                                            (pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
                                                                              pny, pnz,
                                                                              coefficient_d,
                                                                              grid_d, theta_d, dtheta_d, idx_d,
@@ -831,21 +927,20 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                         if (bSpread)
                         {
                             pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, FALSE, TRUE> <<<nBlocks, dimBlock, 0, s>>>
-                                                                            (nx, ny, nz,
-                                                                             pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
-                                                                             pny, pnz,
-                                                                             pme->recipbox[XX][XX],
-                                                                             pme->recipbox[YY][XX],
-                                                                             pme->recipbox[YY][YY],
-                                                                             pme->recipbox[ZZ][XX],
-                                                                             pme->recipbox[ZZ][YY],
-                                                                             pme->recipbox[ZZ][ZZ],
-                                                                             fshx_d, fshy_d,
-                                                                             nnx_d, nny_d, nnz_d,
-                                                                             xptr_d, yptr_d, zptr_d,
-                                                                             coefficient_d,
-                                                                             grid_d, theta_d, dtheta_d, idx_d,
-                                                                             n);
+                                                                                                                              (nXYZ,
+                                                                                                                               pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
+                                                                                                                               recipbox_d,
+                                                                                                                               pny, pnz,
+                                                                                                                               nnOffset,
+#if USE_TEXTURES
+                                                                                                                               nnTexture, fshTexture,
+#else
+                                                                                                                               nn_d, fsh_d,
+#endif
+                                                                                                                               xptr_d,
+                                                                                                                               coefficient_d,
+                                                                                                                               grid_d, theta_d, dtheta_d, idx_d,
+                                                                                                                               n);
                         }
                         else
                             gmx_fatal(FARGS, "the code for bSpread==false was not tested!");

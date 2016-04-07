@@ -54,10 +54,9 @@ __global__ void pme_gather_kernel
 (const real * __restrict__ grid, const int n,
  const real * __restrict__ nXYZ, const int pnx, const int pny, const int pnz,
  const real rxx, const real ryx, const real ryy, const real rzx, const real rzy, const real rzz,
- const real * __restrict__ thx, const real * __restrict__ thy, const real * __restrict__ thz,
- const real * __restrict__ dthx, const real * __restrict__ dthy, const real * __restrict__ dthz,
+ const real * __restrict__ theta,
+ const real * __restrict__ dtheta,
  real * __restrict__ atc_f, const real * __restrict__ coefficient_v,
- //const int * __restrict__ i0, const int * __restrict__ j0, const int * __restrict__ k0,
  const int * __restrict__ idx
  )
 {
@@ -71,6 +70,13 @@ __global__ void pme_gather_kernel
     const int blockSize = particlesPerBlock * particleDataSize; //1 line per thread
     // should the array size aligned by warp size for shuffle?
 
+    const int thetaStride = particlesPerBlock * DIM; // a global size dependency with spread!
+    const int thetaSize = thetaStride * order;
+    const int idxSize = thetaStride;
+    __shared__ int sharedIdx[idxSize];
+    __shared__ real thetaShared[thetaSize];
+    __shared__ real dthetaShared[thetaSize];
+
 
     // spline Y/Z coordinates
     const int ithy = threadIdx.y;
@@ -79,17 +85,7 @@ __global__ void pme_gather_kernel
     const int splineIndex = threadIdx.y * blockDim.x + threadIdx.x;   // relative to the current particle
     const int lineIndex = (threadIdx.z * (blockDim.x * blockDim.y)) + splineIndex; // and to all the block's particles
 
-    const int idxSize = DIM * particlesPerBlock;
-    __shared__ int sharedIdx[idxSize];
 
-    int blockId = blockIdx.x
-                 + blockIdx.y * gridDim.x
-                 + gridDim.x * gridDim.y * blockIdx.z;
-
-    int threadId = blockId * (blockDim.x * blockDim.y * blockDim.z)
-                  + (threadIdx.z * (blockDim.x * blockDim.y))
-                  + (threadIdx.y * blockDim.x)
-                  + threadIdx.x;
     int threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
             + (threadIdx.y * blockDim.x)
             + threadIdx.x;
@@ -98,6 +94,12 @@ __global__ void pme_gather_kernel
     {
         sharedIdx[threadLocalId] = idx[blockIdx.x * idxSize + threadLocalId];
     }
+    if (threadLocalId < thetaSize) // (DIM * order) thetas < (order * order) threads per particle => works for any size
+    {
+        thetaShared[threadLocalId] = theta[blockIdx.x * thetaSize + threadLocalId];
+        dthetaShared[threadLocalId] = dtheta[blockIdx.x * thetaSize + threadLocalId];
+    }
+
     //locality?
     __syncthreads();
 
@@ -107,18 +109,21 @@ __global__ void pme_gather_kernel
 
     if (globalIndex < n)
     {
-        const int thetaOffset = globalIndex * order;
-        const real ty = thy[thetaOffset + ithy];
-        const real tz = thz[thetaOffset + ithz];
-        const real dy = dthy[thetaOffset + ithy];
-        const real dz = dthz[thetaOffset + ithz];
+        const int thetaOffsetY = localIndex * DIM + ithy * thetaStride + YY;
+        const int thetaOffsetZ = localIndex * DIM + ithz * thetaStride + ZZ;
+        const real ty = thetaShared[thetaOffsetY];
+        const real tz = thetaShared[thetaOffsetZ];
+        const real dy = dthetaShared[thetaOffsetY];
+        const real dz = dthetaShared[thetaOffsetZ];
+        //yupinov need to reorder theta when transferring thetas to and from CPU!
         for (int ithx = 0; (ithx < order); ithx++)
         {
             const int index_x = (sharedIdx[localIndex * DIM + XX] + ithx) * pny * pnz;
             const int index_xy = index_x + (sharedIdx[localIndex * DIM + YY] + ithy) * pnz;
             const real gridValue = grid[index_xy + (sharedIdx[localIndex * DIM + ZZ] + ithz)];
-            const real tx = thx[thetaOffset + ithx];
-            const real dx = dthx[thetaOffset + ithx];
+            const int thetaOffsetX = localIndex * DIM + ithx * thetaStride + XX;
+            const real tx = thetaShared[thetaOffsetX];
+            const real dx = dthetaShared[thetaOffsetX];
             const real fxy1 = tz * gridValue;
             const real fz1  = dz * gridValue;
             fx += dx * ty * fxy1;
@@ -133,53 +138,7 @@ __global__ void pme_gather_kernel
     }
     __syncthreads(); // breaking globalIndex condition?
 
-    // now particlesPerBlock have to sum order^2 contributions each
-
-    // a naive reduction in shared mem, not parallel over components
-    /*
-    __shared__ real fxShared[blockSize];
-    __shared__ real fyShared[blockSize];
-    __shared__ real fzShared[blockSize];
-    fxShared[lineIndex] = fx;
-    fyShared[lineIndex] = fy;
-    fzShared[lineIndex] = fz;
-    for (unsigned int s = 1; s < particleDataSize; s <<= 1)
-    {
-        // the second conditional (splineIndex + s < particleDataSize) is needed for odd situations, for example:
-        // order = 5, splineIndex 24 (the last one as in 5^2 - 1) would get neighbour particle contribution (25)
-        // unless we align one particle's work by warps?
-        if ((splineIndex % (2 * s) == 0) && (splineIndex + s < particleDataSize))
-        {
-            fxShared[lineIndex] += fxShared[lineIndex + s];
-            fyShared[lineIndex] += fyShared[lineIndex + s];
-            fzShared[lineIndex] += fzShared[lineIndex + s];
-        }
-        __syncthreads();
-    }
-    float3 fSum;
-    if (splineIndex == 0)
-    {
-        fSum.x = fxShared[lineIndex] * nx;
-        fSum.y = fyShared[lineIndex] * ny;
-        fSum.z = fzShared[lineIndex] * nz;
-
-        const real coefficient = coefficient_v[globalIndex];
-        const int idim = globalIndex * DIM;
-
-        if (bClearF)
-        {
-            atc_f[idim + XX] = -coefficient * ( fSum.x * rxx );
-            atc_f[idim + YY] = -coefficient * ( fSum.x * ryx + fSum.y * ryy );
-            atc_f[idim + ZZ] = -coefficient * ( fSum.x * rzx + fSum.y * rzy + fSum.z * rzz );
-        }
-        else
-        {
-            atc_f[idim + XX] += -coefficient * ( fSum.x * rxx );
-            atc_f[idim + YY] += -coefficient * ( fSum.x * ryx + fSum.y * ryy );
-            atc_f[idim + ZZ] += -coefficient * ( fSum.x * rzx + fSum.y * rzy + fSum.z * rzz );
-        }
-    }
-    */
+    // now particlesPerBlock particles have to reduce order^2 contributions each
 
     __shared__ float3 fSumArray[particlesPerBlock];
 
@@ -246,14 +205,14 @@ __global__ void pme_gather_kernel
     __syncthreads();
 
     // new, different particle indices
-    const int localIndex2 = threadLocalId;
+    const int localIndexFinal = threadLocalId;
 
-    if (localIndex2 < particlesPerBlock)
+    if (localIndexFinal < particlesPerBlock)
     {
-        const float3 fSum = fSumArray[localIndex2];
-        const int globalIndex2 = blockId * particlesPerBlock + threadLocalId;
-        const real coefficient = coefficient_v[globalIndex2];
-        const int idim = globalIndex2 * DIM;
+        const float3 fSum = fSumArray[localIndexFinal];
+        const int globalIndexFinal = blockIdx.x * particlesPerBlock + threadLocalId;
+        const real coefficient = coefficient_v[globalIndexFinal];
+        const int idim = globalIndexFinal * DIM;
 
         if (bClearF)
         {
@@ -608,7 +567,7 @@ void gather_f_bsplines_gpu
 
     const int blockSize = 4 * warp_size;
     const int particlesPerBlock = blockSize / order / order;
-    dim3 nBlocks((n + blockSize - 1) / blockSize * order * order, 1, 1); //yupinov what does this mean?
+    dim3 nBlocks((n + blockSize - 1) / blockSize * order * order); //yupinov what does this mean?
     dim3 dimBlock(order, order, particlesPerBlock);
 
     events_record_start(gpu_events_gather, s);
@@ -620,8 +579,7 @@ void gather_f_bsplines_gpu
                n,
                nXYZ_d, pnx, pny, pnz,
                rxx, ryx, ryy, rzx, rzy, rzz,
-               theta_x_d, theta_y_d, theta_z_d,
-               dtheta_x_d, dtheta_y_d, dtheta_z_d,
+               theta_d, dtheta_d,
                atc_f_d, coefficients_d,
                idx_d);
         else
@@ -630,8 +588,7 @@ void gather_f_bsplines_gpu
                n,
                nXYZ_d, pnx, pny, pnz,
                rxx, ryx, ryy, rzx, rzy, rzz,
-               theta_x_d, theta_y_d, theta_z_d,
-               dtheta_x_d, dtheta_y_d, dtheta_z_d,
+               theta_d, dtheta_d,
                atc_f_d, coefficients_d,
                idx_d);
     else
