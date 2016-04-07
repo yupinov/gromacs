@@ -135,18 +135,17 @@ __global__ void pme_spline_and_spread_kernel
             + (threadIdx.y * blockDim.x)
             + threadIdx.x;
 
+    const int localIndexCalc = threadLocalId / DIM; // 4 instead of DIM
+    const int dimIndex = threadLocalId - localIndexCalc * DIM;
+    const int globalIndexCalc = globalParticleIndexBase + localIndexCalc;
     if (bCalcSplines)
     {
-        const int localIndexCalc = threadLocalId / DIM; // 4 instead of DIM
-        const int dimIndex = threadLocalId - localIndexCalc * DIM;
+        // INTERPOLATION INDICES
 
-        const int globalIndexCalc = globalParticleIndexBase + localIndexCalc;
         __shared__ real t[thetaStride];
         __shared__ int tInt[thetaStride];
         if ((globalIndexCalc < n) && (localIndexCalc < particlesPerBlock) && (dimIndex < DIM))
         {
-            // INTERPOLATION INDICES
-
             int constIndex;
             real n;
             // we're doing this switch because accesing field in nnOffset/nXYZ directly with dimIndex offset puts them into registers instead of accesing the constant memory directly
@@ -261,40 +260,26 @@ __global__ void pme_spline_and_spread_kernel
         }
         __syncthreads(); //yupinov do we need it?
     }
-     /*
-    else if (bSpread) //yupinov copied from spread_kernel - staging for a second part
+    else if (bSpread) // staging for spread
     {
-        //yupinov fix!
-        //if ((globalIndexCalc < n) && (localIndexCalc < particlesPerBlock) && (dimIndex < DIM))
-        if ((globalIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
-        //yupinov - this is a single particle work!
+        if ((globalIndexCalc < n) && (dimIndex < DIM) && (localIndexCalc < particlesPerBlock))
         {
+            idxShared[localIndexCalc * DIM + dimIndex] = idx[globalIndexCalc * DIM + dimIndex]; //yupinov check instructions
 
-            idxxptr[localIndex] = idx[globalIndex * DIM + 0];
-            idxyptr[localIndex] = idx[globalIndex * DIM + 1];
-            idxzptr[localIndex] = idx[globalIndex * DIM + 2];
-
- #pragma unroll
-            for (int i = 0; i < DIM; i++)
-                idxShared[localIndex * DIM + i] = idx[globalIndex * DIM + i];
-    #pragma unroll
-            for (int j = 0; j < DIM; j++)
-            {
-                const int thetaOffset = (j * particlesPerBlock + localIndex) * order;
-                const int thetaGlobalOffset = (j * n + globalIndex) * order;
-    #pragma unroll
-                for (int z = 0; z < order; z++)
-                {
-                    theta_shared[thetaOffset + z] = theta[thetaGlobalOffset + z];
-                    dtheta_shared[thetaOffset + z] = dtheta[thetaGlobalOffset + z];
-                }
-            }
-
-            coefficient[localIndex] = coefficientGlobal[globalIndex];
+            const int thetaOffsetBase = localIndexCalc * DIM + dimIndex;
+            const int thetaGlobalOffsetBase = globalParticleIndexBase * DIM * order;
+#pragma unroll
+        for (int k = 0; k < order; k++)
+        {
+            const int thetaIndex = thetaOffsetBase + k * thetaStride;
+            theta_shared[thetaIndex] = theta[thetaGlobalOffsetBase + thetaIndex];
         }
-        __syncthreads(); //yupinov do we need it?
+
+            if (threadLocalId < particlesPerBlock)
+                coefficient[threadLocalId] = coefficientGlobal[globalParticleIndexBase + threadLocalId];
+        }
+        __syncthreads();
     }
-*/
 
     // SPREAD
 
@@ -390,11 +375,10 @@ __global__ void pme_spline_kernel
     __shared__ real t[thetaStride];
     __shared__ int tInt[thetaStride];
 
+    // INTERPOLATION INDICES
     if ((globalIndexCalc < n) && (localIndexCalc < particlesPerBlock) && (dimIndex < DIM))
     //yupinov - this is a single particle work!
     {
-        // INTERPOLATION INDICES
-
         int constIndex;
         real n;
         // we're doing this switch because accesing fielsd in nnOffset/nXYZ directly with dimIndex offset puts them into registers instead of accessing the constant memory directly
@@ -513,7 +497,7 @@ __global__ void pme_spread_kernel
 (int start_ix, int start_iy, int start_iz,
   const int pny, const int pnz,
  const real * __restrict__ coefficientGlobal,
- real * __restrict__ grid, real * __restrict__ theta, real * __restrict__ dtheta, const int * __restrict__ idx, //yupinov
+ real * __restrict__ grid, real * __restrict__ theta, const int * __restrict__ idx, //yupinov
  int n)
 {
 /*
@@ -535,40 +519,39 @@ __global__ void pme_spread_kernel
     __shared__ real coefficient[particlesPerBlock];
 
     __shared__ real theta_shared[thetaStride * order];
-    __shared__ real dtheta_shared[thetaStride * order];
     //printf("%d %d %d %d %d %d\n", blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z);
 
     int ithx, index_x, ithy, ithz;
 
     const int localIndex = threadIdx.x;
-    const int globalIndex = blockIdx.x * particlesPerBlock + localIndex;
+    const int globalParticleIndexBase = blockIdx.x * particlesPerBlock;
+    const int globalIndex = globalParticleIndexBase + localIndex;
 
-    //yupinov fix me!
-    /*
-    if ((globalIndex < n) && (threadIdx.y == 0) && (threadIdx.z == 0)) //yupinov - the stupid way of just multiplying the thread number by order^2 => particlesPerBlock==2 threads do this in every block
-    //yupinov - this is a single particle work!
+
+    // staging
+    const int threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
+            + (threadIdx.y * blockDim.x)
+            + threadIdx.x;
+    const int localIndexCalc = threadLocalId / DIM;
+    const int dimIndex = threadLocalId - localIndexCalc * DIM;
+    const int globalIndexCalc = globalParticleIndexBase + localIndexCalc;
+    if ((globalIndexCalc < n) && (dimIndex < DIM) && (localIndexCalc < particlesPerBlock))
     {
+        idxShared[localIndexCalc * DIM + dimIndex] = idx[globalIndexCalc * DIM + dimIndex]; //yupinov check instructions
 
-        idxxptr[localIndex] = idx[globalIndex * DIM + 0];
-        idxyptr[localIndex] = idx[globalIndex * DIM + 1];
-        idxzptr[localIndex] = idx[globalIndex * DIM + 2];
+        const int thetaOffsetBase = localIndexCalc * DIM + dimIndex;
+        const int thetaGlobalOffsetBase = globalParticleIndexBase * DIM * order;
 #pragma unroll
-        for (int j = 0; j < DIM; j++)
+        for (int k = 0; k < order; k++)
         {
-            const int thetaOffset = (j * particlesPerBlock + localIndex) * order;
-            const int thetaGlobalOffset = (j * n + globalIndex) * order;
-#pragma unroll
-            for (int z = 0; z < order; z++)
-            {
-                theta_shared[thetaOffset + z] = theta[thetaGlobalOffset + z];
-                dtheta_shared[thetaOffset + z] = dtheta[thetaGlobalOffset + z];
-            }
+            const int thetaIndex = thetaOffsetBase + k * thetaStride;
+            theta_shared[thetaIndex] = theta[thetaGlobalOffsetBase + thetaIndex];
         }
 
-        coefficient[localIndex] = coefficientGlobal[globalIndex]; //staging for both parts
+        if (threadLocalId < particlesPerBlock)
+            coefficient[threadLocalId] = coefficientGlobal[globalParticleIndexBase + threadLocalId];
     }
-    */
-    __syncthreads(); //yupinov do we need it?
+    __syncthreads();
 
     // SPREAD
 
@@ -684,7 +667,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 //real *fftgrid
 //added:, gmx_wallcycle_t wcycle)
 {
-    const gmx_bool separateKernels = false;
+    const gmx_bool separateKernels = false;  // significantly slower if true
     if (!bCalcSplines && !bSpread)
         gmx_fatal(FARGS, "No splining or spreading to be done?"); //yupinov use of gmx_fatal
 
@@ -906,7 +889,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                                                                             (pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
                                                                              pny, pnz,
                                                                              coefficient_d,
-                                                                             grid_d, theta_d, dtheta_d, idx_d,
+                                                                             grid_d, theta_d, idx_d,
                                                                              n);
 
                     CU_LAUNCH_ERR("pme_spread_kernel");
