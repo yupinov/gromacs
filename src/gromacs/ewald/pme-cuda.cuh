@@ -28,6 +28,11 @@ __constant__ __device__ int2 OVERLAP_SIZES[OVERLAP_ZONES];
 __constant__ __device__ int OVERLAP_CELLS_COUNTS[OVERLAP_ZONES];
 // spread/solve/gather pme inverted box
 __constant__ __device__ float3 RECIPBOX[3];
+// CAREFUL: the box is transposed as compared to the original pme->recipbox
+// basically, spread uses matrix columns(while solve and gather use rows)
+// that's the reason why I transposed the box initially
+// this can easily be changed
+//yupinov - check on triclinic!
 //yupinov - load them once in GPU init! check if loaded
 
 #define PME_CUFFT_INPLACE

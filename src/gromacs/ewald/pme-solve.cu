@@ -163,8 +163,8 @@ __global__ void pme_solve_kernel
         if (notZeroPoint) // this skips just one starting point in the whole grid on the rank 0
         {     
             mhxk      = mX * RECIPBOX[XX].x;
-            mhyk      = mX * RECIPBOX[YY].x + mY * RECIPBOX[YY].y;
-            mhzk      = mX * RECIPBOX[ZZ].x + mY * RECIPBOX[ZZ].y + mZ * RECIPBOX[ZZ].z;
+            mhyk      = mX * RECIPBOX[XX].y + mY * RECIPBOX[YY].y;
+            mhzk      = mX * RECIPBOX[XX].z + mY * RECIPBOX[YY].z + mZ * RECIPBOX[ZZ].z;
 
             m2k       = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
             real denom = m2k * bMajorMiddle * BSplineModuleMinor[kMinor];
