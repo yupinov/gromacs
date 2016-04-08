@@ -830,6 +830,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
         stat = cudaMemsetAsync(grid_d, 0, size_grid, s); //yupinov
         CU_RET_ERR(stat, "cudaMemsetAsync spread error");
     }
+
     /*
     const int N = 256;
     const int D = 2;

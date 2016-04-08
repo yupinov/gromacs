@@ -198,10 +198,6 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
                splinedata_t *spline,
                real scale, int thread)
 {
-    //real    *thx, *thy, *thz, *dthx, *dthy, *dthz;
-    //int     norder;
-    real    rxx, ryx, ryy, rzx, rzy, rzz;
-
     const int order = pme->pme_order;
     /*
     gmx_parallel_3dfft_real_limits_wrapper(pme, grid_index, local_ndata, local_offset, local_size);
@@ -225,13 +221,6 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
     const int nz = pme->nkz;
 
 
-    rxx   = pme->recipbox[XX][XX];
-    ryx   = pme->recipbox[YY][XX];
-    ryy   = pme->recipbox[YY][YY];
-    rzx   = pme->recipbox[ZZ][XX];
-    rzy   = pme->recipbox[ZZ][YY];
-    rzz   = pme->recipbox[ZZ][ZZ];
-
     int spline_n = spline->n;
     int *spline_ind = spline->ind;
     real *atc_coefficient = atc->coefficient;
@@ -241,7 +230,6 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
       (grid, bClearF,
        order,
        nx, ny, nz, pnx, pny, pnz,
-       rxx, ryx, ryy, rzx, rzy, rzz,
        spline_ind, spline_n,
        atc_coefficient, atc->f, atc->idx,
        spline_theta, spline_dtheta,

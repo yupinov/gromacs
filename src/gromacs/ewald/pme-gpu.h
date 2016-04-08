@@ -208,7 +208,6 @@ CUDA_FUNC_QUALIFIER void gather_f_bsplines_gpu
 (real gmx_unused *grid, const gmx_bool gmx_unused bClearF,
  int gmx_unused order,
  int gmx_unused nx, int gmx_unused ny, int gmx_unused nz, int gmx_unused pnx, int gmx_unused pny, int gmx_unused pnz,
- real gmx_unused rxx, real gmx_unused ryx, real gmx_unused ryy, real gmx_unused rzx, real gmx_unused rzy, real gmx_unused rzz,
  int gmx_unused *spline_ind, int gmx_unused spline_n,
  real gmx_unused *atc_coefficient, rvec gmx_unused *atc_f, ivec gmx_unused *atc_idx,
  splinevec gmx_unused *spline_theta, splinevec gmx_unused *spline_dtheta,

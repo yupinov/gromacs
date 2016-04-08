@@ -50,7 +50,6 @@ __launch_bounds__(4 * warp_size, 16)
 __global__ void pme_gather_kernel
 (const real * __restrict__ grid, const int n,
  const real * __restrict__ nXYZ, const int pnx, const int pny, const int pnz,
- const real rxx, const real ryx, const real ryy, const real rzx, const real rzy, const real rzz,
  const real * __restrict__ theta,
  const real * __restrict__ dtheta,
  real * __restrict__ atc_f, const real * __restrict__ coefficient_v,
@@ -204,6 +203,7 @@ __global__ void pme_gather_kernel
     // new, different particle indices
     const int localIndexFinal = threadLocalId;
 
+    //reduce by components, again
     if (localIndexFinal < particlesPerBlock)
     {
         const float3 fSum = fSumArray[localIndexFinal];
@@ -211,17 +211,27 @@ __global__ void pme_gather_kernel
         const real coefficient = coefficient_v[globalIndexFinal];
         const int idim = globalIndexFinal * DIM;
 
+        int dimIndex;
         if (bClearF)
         {
-            atc_f[idim + XX] = -coefficient * ( fSum.x * rxx );
-            atc_f[idim + YY] = -coefficient * ( fSum.x * ryx + fSum.y * ryy );
-            atc_f[idim + ZZ] = -coefficient * ( fSum.x * rzx + fSum.y * rzy + fSum.z * rzz );
+
+            //for (int dimIndex = 0; dimIndex < DIM; dimIndex++)
+            dimIndex = XX;
+            atc_f[idim + dimIndex] = -coefficient * (RECIPBOX[dimIndex].x * fSum.x);
+            dimIndex = YY;
+            atc_f[idim + dimIndex] = -coefficient * (RECIPBOX[dimIndex].x * fSum.x + RECIPBOX[dimIndex].y * fSum.y);
+            dimIndex = ZZ;
+            atc_f[idim + dimIndex] = -coefficient * (RECIPBOX[dimIndex].x * fSum.x + RECIPBOX[dimIndex].y * fSum.y + RECIPBOX[dimIndex].z * fSum.z);
         }
         else
         {
-            atc_f[idim + XX] += -coefficient * ( fSum.x * rxx );
-            atc_f[idim + YY] += -coefficient * ( fSum.x * ryx + fSum.y * ryy );
-            atc_f[idim + ZZ] += -coefficient * ( fSum.x * rzx + fSum.y * rzy + fSum.z * rzz );
+            dimIndex = XX;
+            atc_f[idim + dimIndex] = -coefficient * (RECIPBOX[dimIndex].x * fSum.x);
+            dimIndex = YY;
+            atc_f[idim + dimIndex] = -coefficient * (RECIPBOX[dimIndex].x * fSum.x + RECIPBOX[dimIndex].y * fSum.y);
+            dimIndex = ZZ;
+            atc_f[idim + dimIndex] = -coefficient * (RECIPBOX[dimIndex].x * fSum.x + RECIPBOX[dimIndex].y * fSum.y + RECIPBOX[dimIndex].z * fSum.z);
+
         }
     }
 }
@@ -297,7 +307,6 @@ void gather_f_bsplines_gpu
 (real *grid, const gmx_bool bClearF,
  const int order,
  int nx, int ny, int nz, int pnx, int pny, int pnz,
- real rxx, real ryx, real ryy, real rzx, real rzy, real rzz,
  int *spline_ind, int n,
  real *atc_coefficient, rvec *atc_f, ivec *atc_idx,
  splinevec *spline_theta, splinevec *spline_dtheta,
@@ -560,6 +569,14 @@ void gather_f_bsplines_gpu
     float3 nXYZ = {(real)nx, (real)ny, (real)nz};
     real *nXYZ_d = PMEFetchAndCopyRealArray(PME_ID_NXYZ, thread, &nXYZ, sizeof(nXYZ), ML_DEVICE, s);
 
+    const float3 recipbox_h[3] =
+    {
+        {pme->recipbox[XX][XX], pme->recipbox[YY][XX], pme->recipbox[ZZ][XX]},
+        {                  0.0, pme->recipbox[YY][YY], pme->recipbox[ZZ][YY]},
+        {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
+    };
+    PMECopyConstant(RECIPBOX, recipbox_h, sizeof(recipbox_h), s);
+
     const int blockSize = 4 * warp_size;
     const int particlesPerBlock = blockSize / order / order;
     dim3 nBlocks((n + blockSize - 1) / blockSize * order * order); //yupinov what does this mean?
@@ -573,7 +590,6 @@ void gather_f_bsplines_gpu
               (grid_d,
                n,
                nXYZ_d, pnx, pny, pnz,
-               rxx, ryx, ryy, rzx, rzy, rzz,
                theta_d, dtheta_d,
                atc_f_d, coefficients_d,
                idx_d);
@@ -582,7 +598,6 @@ void gather_f_bsplines_gpu
               (grid_d,
                n,
                nXYZ_d, pnx, pny, pnz,
-               rxx, ryx, ryy, rzx, rzy, rzz,
                theta_d, dtheta_d,
                atc_f_d, coefficients_d,
                idx_d);
