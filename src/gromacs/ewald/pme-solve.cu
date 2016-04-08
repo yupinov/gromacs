@@ -48,9 +48,6 @@ static const __constant__ real lb_scale_factor_symm_gpu[] = { 2.0/64, 12.0/64, 3
 
 #define THREADS_PER_BLOCK (4 * warp_size)
 
-
-__constant__ __device__ real ConstFactor;
-
 template<
         const gmx_bool bEnerVir,
         const gmx_bool YZXOrdering
@@ -63,7 +60,7 @@ __global__ void pme_solve_kernel
  const int localSizeMinor, /*const int localSizeMajor,*/ const int localSizeMiddle,
  const int nMinor, const int nMajor, const int nMiddle,
  const real rxx, const real ryx, const real ryy, const real rzx, const real rzy, const real rzz,
- const real elfac,
+ const real elfac, const real ewaldFactor,
  const real * __restrict__ BSplineModuleMinor,
  const real * __restrict__ BSplineModuleMajor,
  const real * __restrict__ BSplineModuleMiddle,
@@ -172,7 +169,7 @@ __global__ void pme_solve_kernel
 
             m2k       = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
             real denom = m2k * bMajorMiddle * BSplineModuleMinor[kMinor];
-            real tmp1  = -ConstFactor * m2k;
+            real tmp1  = -ewaldFactor * m2k;
 
             //calc_exponentials_q_one(elfac, denom, tmp1, eterm);
             denom = 1.0f / denom;
@@ -188,7 +185,7 @@ __global__ void pme_solve_kernel
             {
                 real tmp1k = 2.0f * (gridValue.x * gridValue.x + gridValue.y * gridValue.y) / etermk;
 
-                real vfactor = (ConstFactor + 1.0f / m2k) * 2.0f;
+                real vfactor = (ewaldFactor + 1.0f / m2k) * 2.0f;
                 real ets2 = corner_fac * tmp1k;
                 energy = ets2;
 
@@ -209,6 +206,7 @@ __global__ void pme_solve_kernel
         // reduction goes here
 
 #if (GMX_PTX_ARCH >= 300)
+        // there should be a shuffle reduction here
         /*
         if (!(blockSize & (blockSize - 1))) // only for orders of power of 2
         {
@@ -222,11 +220,6 @@ __global__ void pme_solve_kernel
             // 3.5k smem per block - a serious limiter!
 
             // 7-thread reduction in shared memory inspired by reduce_force_j_generic
-            // warp_size threads, only 7 of the work now, so can do everything 4 times faster?
-            // concidentally, blocksize / warp_size also equals 4 now....
-            // hmmmmm
-            // have to balance with blocksize for smem size?
-            // what about data positioning?
             virialAndEnergyShared[threadLocalId + 0 * blockSize] = virxx;
             virialAndEnergyShared[threadLocalId + 1 * blockSize] = viryy;
             virialAndEnergyShared[threadLocalId + 2 * blockSize] = virzz;
@@ -249,8 +242,7 @@ __global__ void pme_solve_kernel
                 __syncthreads();
             }
 
-            // currently 1 thread per component work :( we have warp_size active threads and 7 components => could be 4x faster?
-            const int threadsPerComponent = warp_size / sizing; //this is also the stride
+            const int threadsPerComponent = warp_size / sizing; // this is also the stride
             if (threadLocalId < sizing * threadsPerComponent)
             {
                 const int componentIndex = threadLocalId / threadsPerComponent;
@@ -354,8 +346,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     if (!pme->gpu->keepGPUDataBetweenR2CAndSolve)
         PMECopy(grid_d, grid, grid_size, ML_DEVICE, s);
 
-    const real factor = (M_PI * M_PI) / (ewaldcoeff * ewaldcoeff);
-    PMECopyConstant(&ConstFactor, &factor, sizeof(factor), s);
+    const real ewaldFactor = (M_PI * M_PI) / (ewaldcoeff * ewaldcoeff);
 
     // Z-dimension is too small in CUDA limitations (64 on CC30?), so instead of major-middle-minor sizing we do minor-middle-major
     const int blockSize = THREADS_PER_BLOCK;
@@ -390,7 +381,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
                local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
                nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
-               elfac,
+               elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
                energyAndVirial_d);
@@ -400,7 +391,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
                local_size[minorDim], /*local_size[majorDim],*/local_size[middleDim],
                nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
-               elfac,
+               elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
                energyAndVirial_d);
@@ -413,7 +404,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
                local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
                nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
-               elfac,
+               elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
                energyAndVirial_d);
@@ -423,7 +414,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
                local_size[minorDim], /*local_size[majorDim],*/local_size[middleDim],
                nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
-               elfac,
+               elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
                energyAndVirial_d);
