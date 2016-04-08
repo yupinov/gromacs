@@ -355,16 +355,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
         PMECopy(grid_d, grid, grid_size, ML_DEVICE, s);
 
     const real factor = (M_PI * M_PI) / (ewaldcoeff * ewaldcoeff);
-    cudaError_t stat = cudaMemcpyToSymbolAsync(ConstFactor, &factor, sizeof(factor), 0, cudaMemcpyHostToDevice, s);
-    CU_RET_ERR(stat, "PME solve cudaMemcpyToSymbol");
-
-    // GTX 660 Ti, 20160310
-    // number, occupancy, time from cudaEvents:
-    // 0.5  0.24  0.181
-    // 1    0.24  0.110
-    // 2    0.43  0.082
-    // 4    0.89  0.080
-    // 8    0.80  0.084
+    PMECopyConstant(&ConstFactor, &factor, sizeof(factor), s);
 
     // Z-dimension is too small in CUDA limitations (64 on CC30?), so instead of major-middle-minor sizing we do minor-middle-major
     const int blockSize = THREADS_PER_BLOCK;
@@ -386,7 +377,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     const int nReduced = 1;
     const int energyAndVirialSize = nReduced * (1 + 6) * sizeof(real);
     real *energyAndVirial_d = PMEFetchRealArray(PME_ID_ENERGY_AND_VIRIAL, thread, energyAndVirialSize, ML_DEVICE);
-    stat = cudaMemsetAsync(energyAndVirial_d, 0, energyAndVirialSize, s);
+    cudaError_t stat = cudaMemsetAsync(energyAndVirial_d, 0, energyAndVirialSize, s);
     CU_RET_ERR(stat, "PME solve cudaMemsetAsync");
 
     events_record_start(gpu_events_solve, s);
@@ -555,9 +546,6 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
 
     iyz0 = local_ndata[YY]*local_ndata[ZZ]* thread   /nthread;
     iyz1 = local_ndata[YY]*local_ndata[ZZ]*(thread+1)/nthread;
-
-    //cudaError_t stat = cudaMemcpyToSymbol( sqrt_M_PI_d, &sqrt_M_PI, sizeof(real));
-    //CU_RET_ERR(stat, "solve cudaMemcpyToSymbol");
 
     const int block_size = warp_size;
     int n = iyz1 - iyz0;

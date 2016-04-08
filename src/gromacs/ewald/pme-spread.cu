@@ -74,11 +74,6 @@ texture<float, 1, cudaReadModeElementType> fshTextureRef;
 #endif
 //yupinov
 
-// wrap kernel thingies - should be kept in pme-cuda.h as common?
-static const int OVERLAP_ZONES = 7;
-__constant__ __device__ int OVERLAP_CELLS_COUNTS[OVERLAP_ZONES];
-__constant__ __device__ int2 OVERLAP_SIZES[OVERLAP_ZONES];
-
 __constant__ __device__ float3 RECIPBOX[3];
 
 template <
@@ -816,14 +811,13 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
         PMECopy(xptr_d, xptr_h, 4 * n_blocked * sizeof(real), ML_DEVICE, s);
         */
 
-        float3 recipbox_h[3] =
+        const float3 recipbox_h[3] =
         {
             {pme->recipbox[XX][XX], pme->recipbox[YY][XX], pme->recipbox[ZZ][XX]},
             {                  0.0, pme->recipbox[YY][YY], pme->recipbox[ZZ][YY]},
             {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
         };
-        stat = cudaMemcpyToSymbolAsync(RECIPBOX, recipbox_h, sizeof(recipbox_h), 0, cudaMemcpyHostToDevice, s);
-        CU_RET_ERR(stat, "cudaMemcpyToSymbolAsync");
+        PMECopyConstant(RECIPBOX, recipbox_h, sizeof(recipbox_h), s);
     }
 
 
@@ -993,10 +987,8 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                 const int overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
                 const int nBlocks = (overlappedCells + blockSize - 1) / blockSize;
 
-                stat = cudaMemcpyToSymbolAsync(OVERLAP_SIZES, zoneSizesYZ_h, sizeof(zoneSizesYZ_h), 0, cudaMemcpyHostToDevice, s);
-                CU_RET_ERR(stat, "PME spread cudaMemcpyToSymbol");
-                stat = cudaMemcpyToSymbolAsync(OVERLAP_CELLS_COUNTS, cellsAccumCount_h, sizeof(cellsAccumCount_h), 0, cudaMemcpyHostToDevice, s);
-                CU_RET_ERR(stat, "PME spread cudaMemcpyToSymbol");
+                PMECopyConstant(OVERLAP_SIZES, zoneSizesYZ_h, sizeof(zoneSizesYZ_h), s);
+                PMECopyConstant(OVERLAP_CELLS_COUNTS, cellsAccumCount_h, sizeof(cellsAccumCount_h), s);
                 //other constants
 
                 events_record_start(gpu_events_wrap, s);

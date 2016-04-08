@@ -157,6 +157,7 @@ int *PMEFetchAndCopyIntegerArray(PMEDataID id, int unusedTag, void *src, int siz
 
 void PMECopy(void *dest, void *src, int size, MemLocType destination, cudaStream_t s, gmx_bool sync) //yupinov move everything onto this function - or not
 {
+    // synchronous copies are not used anywhere currently, I think
     assert(s != 0);
     cudaError_t stat;
     if (destination == ML_DEVICE)
@@ -175,6 +176,13 @@ void PMECopy(void *dest, void *src, int size, MemLocType destination, cudaStream
             stat = cudaMemcpyAsync(dest, src, size, cudaMemcpyDeviceToHost, s);
         CU_RET_ERR(stat, "PME cudaMemcpyDeviceToHost error");
     }
+}
+
+void PMECopyConstant(const void *dest, void const *src, size_t size, cudaStream_t s)
+{
+    assert(s != 0);
+    cudaError_t stat = cudaMemcpyToSymbolAsync(dest, src, size, 0, cudaMemcpyHostToDevice, s);
+    CU_RET_ERR(stat, "PME cudaMemcpyToSymbolAsync");
 }
 
 int PMEGetAllocatedSize(PMEDataID id, int unusedTag, MemLocType location)

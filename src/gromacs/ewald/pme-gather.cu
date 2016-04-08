@@ -15,9 +15,6 @@
 #include <assert.h>
 
 // wrap kernel thingies - should be kept in pme-cuda.h as common?
-static const int OVERLAP_ZONES = 7;
-__constant__ __device__ int OVERLAP_CELLS_COUNTS[OVERLAP_ZONES];
-__constant__ __device__ int2 OVERLAP_SIZES[OVERLAP_ZONES];
 
 void gpu_forces_copyback(gmx_pme_t *pme, int n, rvec *forces)
 {
@@ -361,10 +358,8 @@ void gather_f_bsplines_gpu
             const int overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
             const int nBlocks = (overlappedCells + blockSize - 1) / blockSize;
 
-            cudaError_t stat = cudaMemcpyToSymbolAsync(OVERLAP_SIZES, zoneSizesYZ_h, sizeof(zoneSizesYZ_h), 0, cudaMemcpyHostToDevice, s);
-            CU_RET_ERR(stat, "PME spread cudaMemcpyToSymbol");
-            stat = cudaMemcpyToSymbolAsync(OVERLAP_CELLS_COUNTS, cellsAccumCount_h, sizeof(cellsAccumCount_h), 0, cudaMemcpyHostToDevice, s);
-            CU_RET_ERR(stat, "PME spread cudaMemcpyToSymbol");
+            PMECopyConstant(OVERLAP_SIZES, zoneSizesYZ_h, sizeof(zoneSizesYZ_h), s);
+            PMECopyConstant(OVERLAP_CELLS_COUNTS, cellsAccumCount_h, sizeof(cellsAccumCount_h), s);
             //other constants
 
             events_record_start(gpu_events_unwrap, s);

@@ -21,7 +21,11 @@ struct gmx_pme_cuda_t
 //yupinov dealloc
 //yupinov grid indices with tags?
 
-
+// device constants
+// wrap/unwrap overlap zones
+static const int OVERLAP_ZONES = 7;
+__constant__ __device__ int2 OVERLAP_SIZES[OVERLAP_ZONES];
+__constant__ __device__ int OVERLAP_CELLS_COUNTS[OVERLAP_ZONES];
 
 #define PME_CUFFT_INPLACE
 // comment this to enable out-of-place cuFFT
@@ -106,6 +110,7 @@ t_complex *PMEFetchComplexArray(PMEDataID id, int unusedTag, int size, MemLocTyp
 //yupinov warn on wrong param
 
 void PMECopy(void *dest, void *src, int size, MemLocType destination, cudaStream_t s, gmx_bool sync = false); //yupinov alloc as well
+void PMECopyConstant(const void *dest, const void *src, size_t size, cudaStream_t s); //H2D only
 
 int *PMEFetchAndCopyIntegerArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s);
 real *PMEFetchAndCopyRealArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s, gmx_bool sync = false);
