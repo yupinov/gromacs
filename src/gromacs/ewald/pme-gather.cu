@@ -226,12 +226,11 @@ __global__ void pme_gather_kernel
         else
         {
             dimIndex = XX;
-            atc_f[idim + dimIndex] = -coefficient * (RECIPBOX[dimIndex].x * fSum.x);
+            atc_f[idim + dimIndex] += -coefficient * (RECIPBOX[dimIndex].x * fSum.x);
             dimIndex = YY;
-            atc_f[idim + dimIndex] = -coefficient * (RECIPBOX[dimIndex].x * fSum.x + RECIPBOX[dimIndex].y * fSum.y);
+            atc_f[idim + dimIndex] += -coefficient * (RECIPBOX[dimIndex].x * fSum.x + RECIPBOX[dimIndex].y * fSum.y);
             dimIndex = ZZ;
-            atc_f[idim + dimIndex] = -coefficient * (RECIPBOX[dimIndex].x * fSum.x + RECIPBOX[dimIndex].y * fSum.y + RECIPBOX[dimIndex].z * fSum.z);
-
+            atc_f[idim + dimIndex] += -coefficient * (RECIPBOX[dimIndex].x * fSum.x + RECIPBOX[dimIndex].y * fSum.y + RECIPBOX[dimIndex].z * fSum.z);
         }
     }
 }
