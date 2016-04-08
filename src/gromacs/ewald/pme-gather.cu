@@ -200,46 +200,27 @@ __global__ void pme_gather_kernel
     }
     __syncthreads();
 
-    // new, different particle indices
-    const int localIndexFinal = threadLocalId;
-
     //reduce by components, again
-    if (localIndexFinal < particlesPerBlock)
+    if (threadLocalId < DIM * particlesPerBlock)
     {
+        // new, different particle indices
+        const int localIndexFinal = threadLocalId / DIM;
+        const int dimIndex = threadLocalId - localIndexFinal * DIM;
+
         const float3 fSum = fSumArray[localIndexFinal];
-        const int globalIndexFinal = blockIdx.x * particlesPerBlock + threadLocalId;
+        const int globalIndexFinal = blockIdx.x * particlesPerBlock + localIndexFinal;
         const real coefficient = coefficient_v[globalIndexFinal];
         const int idim = globalIndexFinal * DIM;
 
-        /*
-                  const float3 recipbox_h[3] =
-        {
-            {pme->recipbox[XX][XX], pme->recipbox[YY][XX], pme->recipbox[ZZ][XX]},
-            {                  0.0, pme->recipbox[YY][YY], pme->recipbox[ZZ][YY]},
-            {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
-        };
-        */
 
-        int dimIndex;
+        // by columns!
+        real *ptr = ((real *)RECIPBOX) + dimIndex;
+
+        const real contrib = -coefficient * (ptr[0] * fSum.x + ptr[DIM] * fSum.y + ptr[2 * DIM] * fSum.z);
         if (bClearF)
-        {
-            //for (int dimIndex = 0; dimIndex < DIM; dimIndex++)
-            dimIndex = XX;
-            atc_f[idim + dimIndex] = -coefficient * (RECIPBOX[XX].x * fSum.x);
-            dimIndex = YY;
-            atc_f[idim + dimIndex] = -coefficient * (RECIPBOX[XX].y * fSum.x + RECIPBOX[YY].y * fSum.y);
-            dimIndex = ZZ;
-            atc_f[idim + dimIndex] = -coefficient * (RECIPBOX[XX].z * fSum.x + RECIPBOX[YY].z * fSum.y + RECIPBOX[ZZ].z * fSum.z);
-        }
+            atc_f[blockIdx.x * particlesPerBlock * DIM + threadLocalId] = contrib;
         else
-        {
-            dimIndex = XX;
-            atc_f[idim + dimIndex] += -coefficient * (RECIPBOX[XX].x * fSum.x);
-            dimIndex = YY;
-            atc_f[idim + dimIndex] += -coefficient * (RECIPBOX[XX].y * fSum.x + RECIPBOX[YY].y * fSum.y);
-            dimIndex = ZZ;
-            atc_f[idim + dimIndex] += -coefficient * (RECIPBOX[XX].z * fSum.x + RECIPBOX[YY].z * fSum.y + RECIPBOX[ZZ].z * fSum.z);
-       }
+            atc_f[blockIdx.x * particlesPerBlock * DIM + threadLocalId] += contrib;
     }
 }
 
