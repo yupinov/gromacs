@@ -95,7 +95,6 @@ __launch_bounds__(THREADS_PER_BLOCK, MIN_BLOCKS_PER_MP)
 __global__ void pme_spline_and_spread_kernel
 (const float3 nXYZ,
  int start_ix, int start_iy, int start_iz,
- const float3 * __restrict__ recipbox,
  const int pny, const int pnz,
  const int3 nnOffset,
 #if USE_TEXTURES
@@ -178,7 +177,7 @@ __global__ void pme_spline_and_spread_kernel
             }
 
             const float3 x = xptr[globalIndexCalc];
-            const float3 recip = recipbox[dimIndex];//yupinov 3x RECIPBOX[dimIndex];
+            const float3 recip = RECIPBOX[dimIndex];
             // Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes
             t[threadLocalId] = (x.x * recip.x + x.y * recip.y + x.z * recip.z + 2.0f) * n;
             tInt[threadLocalId] = (int)t[threadLocalId]; //yupinov test registers
@@ -338,7 +337,6 @@ template <
 __global__ void pme_spline_kernel
 (const float3 nXYZ,
  const int start_ix, const int start_iy, const int start_iz,
- const float3 * __restrict__ recipbox,
  const int3 nnOffset,
 #if USE_TEXTURES
 #if USE_TEXOBJ
@@ -415,7 +413,7 @@ __global__ void pme_spline_kernel
         }
 
         const float3 x = xptr[globalIndexCalc];
-        const float3 recip = recipbox[dimIndex];//yupinov 3x RECIPBOX[dimIndex];
+        const float3 recip = RECIPBOX[dimIndex];
         // Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes
         t[threadLocalId] = (x.x * recip.x + x.y * recip.y + x.z * recip.z + 2.0f) * n;
         tInt[threadLocalId] = (int)t[threadLocalId]; //yupinov test registers
@@ -744,8 +742,6 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     const float3 nXYZ = {(real)nx, (real)ny, (real)nz};
     const int3 nnOffset = {0, 5 * nx, 5 * (nx + ny)};
 
-    float3 *recipbox_d = NULL;
-
     if (bCalcSplines)
     {
         const int fshSize = 5 * (nx + ny + nz) * sizeof(real);
@@ -826,7 +822,6 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
             {                  0.0, pme->recipbox[YY][YY], pme->recipbox[ZZ][YY]},
             {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
         };
-        recipbox_d = (float3 *)PMEFetchAndCopyRealArray(PME_ID_RECIPBOX, thread, recipbox_h, sizeof(recipbox_h), ML_DEVICE, s); // yupinov test constant memory?
         stat = cudaMemcpyToSymbolAsync(RECIPBOX, recipbox_h, sizeof(recipbox_h), 0, cudaMemcpyHostToDevice, s);
         CU_RET_ERR(stat, "cudaMemcpyToSymbolAsync");
     }
@@ -883,7 +878,6 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                         pme_spline_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocks, dimBlock, 0, s>>>
                                                                                                    (nXYZ,
                                                                                                     pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
-                                                                                                    recipbox_d,
                                                                                                     nnOffset,
 #if USE_TEXTURES
 #if USE_TEXOBJ
@@ -935,7 +929,6 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                             pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, FALSE, TRUE> <<<nBlocks, dimBlock, 0, s>>>
                                                                                                                               (nXYZ,
                                                                                                                                pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
-                                                                                                                               recipbox_d,
                                                                                                                                pny, pnz,
                                                                                                                                nnOffset,
 #if USE_TEXTURES
