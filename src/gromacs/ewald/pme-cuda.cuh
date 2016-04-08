@@ -26,14 +26,18 @@ struct gmx_pme_cuda_t
 static const int OVERLAP_ZONES = 7;
 __constant__ __device__ int2 OVERLAP_SIZES[OVERLAP_ZONES];
 __constant__ __device__ int OVERLAP_CELLS_COUNTS[OVERLAP_ZONES];
+// spread/solve/gather pme inverted box
+__constant__ __device__ float3 RECIPBOX[3];
+//yupinov - load them once in GPU init! check if loaded
 
 #define PME_CUFFT_INPLACE
 // comment this to enable out-of-place cuFFT
 // it requires a separate complex grid, seems to be virtually the same performance-wise
 
 #define PME_GPU_TIMINGS
-// should replace this to respect other GPU timings' variables
 // comment this to disable PME timing function bodies
+// should replace this to respect other GPU timings' variables
+
 
 static const bool PME_SKIP_ZEROES = false;
 // broken
@@ -85,8 +89,6 @@ enum PMEDataID
     // wrap/unwrap staging
     //PME_ID_CELL_COUNTS,
     //PME_ID_CELL_ZONES,
-
-    PME_ID_RECIPBOX, //yupinov should use in gather as well!
 
     PME_ID_END_INVALID
 };

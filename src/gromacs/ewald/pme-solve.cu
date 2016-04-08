@@ -59,7 +59,6 @@ __global__ void pme_solve_kernel
  const int localOffsetMinor, const int localOffsetMajor, const int localOffsetMiddle,
  const int localSizeMinor, /*const int localSizeMajor,*/ const int localSizeMiddle,
  const int nMinor, const int nMajor, const int nMiddle,
- const real rxx, const real ryx, const real ryy, const real rzx, const real rzy, const real rzz,
  const real elfac, const real ewaldFactor,
  const real * __restrict__ BSplineModuleMinor,
  const real * __restrict__ BSplineModuleMajor,
@@ -163,9 +162,9 @@ __global__ void pme_solve_kernel
 
         if (notZeroPoint) // this skips just one starting point in the whole grid on the rank 0
         {     
-            mhxk      = mX * rxx;
-            mhyk      = mX * ryx + mY * ryy;
-            mhzk      = mX * rzx + mY * rzy + mZ * rzz;
+            mhxk      = mX * RECIPBOX[XX].x;
+            mhyk      = mX * RECIPBOX[YY].x + mY * RECIPBOX[YY].y;
+            mhzk      = mX * RECIPBOX[ZZ].x + mY * RECIPBOX[ZZ].y + mZ * RECIPBOX[ZZ].z;
 
             m2k       = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
             real denom = m2k * bMajorMiddle * BSplineModuleMinor[kMinor];
@@ -324,14 +323,6 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
 
     const real elfac = ONE_4PI_EPS0 / pme->epsilon_r; // make it a constant as well
 
-    real rxx = pme->recipbox[XX][XX];
-    real ryx = pme->recipbox[YY][XX];
-    real ryy = pme->recipbox[YY][YY];
-    real rzx = pme->recipbox[ZZ][XX];
-    real rzy = pme->recipbox[ZZ][YY];
-    real rzz = pme->recipbox[ZZ][ZZ];
-
-
     //yupinov align minor dimension with cachelines!
 
     //const int n = local_ndata[majorDim] * local_ndata[middleDim] * local_ndata[minorDim];
@@ -371,6 +362,15 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     cudaError_t stat = cudaMemsetAsync(energyAndVirial_d, 0, energyAndVirialSize, s);
     CU_RET_ERR(stat, "PME solve cudaMemsetAsync");
 
+    const float3 recipbox_h[3] =
+    {
+        {pme->recipbox[XX][XX], pme->recipbox[YY][XX], pme->recipbox[ZZ][XX]},
+        {                  0.0, pme->recipbox[YY][YY], pme->recipbox[ZZ][YY]},
+        {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
+    };
+    PMECopyConstant(RECIPBOX, recipbox_h, sizeof(recipbox_h), s);
+    //yupinov - why is this not persistent?
+
     events_record_start(gpu_events_solve, s);
 
     if (YZXOrdering)
@@ -380,7 +380,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
               (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim],
                local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
                local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-               nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
+               nMinor, nMajor, nMiddle,
                elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
@@ -390,7 +390,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
               (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
                local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
                local_size[minorDim], /*local_size[majorDim],*/local_size[middleDim],
-               nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
+               nMinor, nMajor, nMiddle,
                elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
@@ -403,7 +403,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
               (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim],
                local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
                local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-               nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
+               nMinor, nMajor, nMiddle,
                elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
@@ -413,7 +413,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
               (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
                local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
                local_size[minorDim], /*local_size[majorDim],*/local_size[middleDim],
-               nMinor, nMajor, nMiddle, rxx, ryx, ryy, rzx, rzy, rzz,
+               nMinor, nMajor, nMiddle,
                elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,

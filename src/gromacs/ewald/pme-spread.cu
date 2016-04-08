@@ -72,9 +72,6 @@ texture<int, 1, cudaReadModeElementType> nnTextureRef;
 texture<float, 1, cudaReadModeElementType> fshTextureRef;
 #endif
 #endif
-//yupinov
-
-__constant__ __device__ float3 RECIPBOX[3];
 
 template <
         const int order,
