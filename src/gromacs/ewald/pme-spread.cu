@@ -126,8 +126,8 @@ __global__ void pme_spline_and_spread_kernel
     __shared__ real fractX[thetaStride];
     __shared__ real coefficient[particlesPerBlock];
 
-    __shared__ real theta_shared[thetaStride * order];
-    __shared__ real dtheta_shared[thetaStride * order];
+    __shared__ real thetaShared[thetaStride * order];
+    __shared__ real dthetaShared[thetaStride * order];
 
     int ithx, index_x, ithy, ithz;
 
@@ -233,12 +233,12 @@ __global__ void pme_spline_and_spread_kernel
                 }
                 /* differentiate */
                 const int thetaOffsetBase = localIndexCalc * DIM + dimIndex;
-                dtheta_shared[thetaOffsetBase] = -data[0];
+                dthetaShared[thetaOffsetBase] = -data[0];
 
 #pragma unroll
                 for (int k = 1; k < order; k++)
                 {
-                    dtheta_shared[thetaOffsetBase + k * thetaStride] = data[k - 1] - data[k];
+                    dthetaShared[thetaOffsetBase + k * thetaStride] = data[k - 1] - data[k];
                 }
 
                 div             = 1.0f / (order - 1);
@@ -253,7 +253,7 @@ __global__ void pme_spline_and_spread_kernel
 #pragma unroll
                 for (int k = 0; k < order; k++)
                 {
-                    theta_shared[thetaOffsetBase + k * thetaStride] = data[k];
+                    thetaShared[thetaOffsetBase + k * thetaStride] = data[k];
                 }
 
                 //yupinov store to global
@@ -263,8 +263,8 @@ __global__ void pme_spline_and_spread_kernel
                 {
                     const int thetaIndex = thetaOffsetBase + k * thetaStride;
 
-                    theta[thetaGlobalOffsetBase + thetaIndex] = theta_shared[thetaIndex];
-                    dtheta[thetaGlobalOffsetBase + thetaIndex] = dtheta_shared[thetaIndex];
+                    theta[thetaGlobalOffsetBase + thetaIndex] = thetaShared[thetaIndex];
+                    dtheta[thetaGlobalOffsetBase + thetaIndex] = dthetaShared[thetaIndex];
                 }
             }
         }
@@ -282,7 +282,7 @@ __global__ void pme_spline_and_spread_kernel
             for (int k = 0; k < order; k++)
             {
                 const int thetaIndex = thetaOffsetBase + k * thetaStride;
-                theta_shared[thetaIndex] = theta[thetaGlobalOffsetBase + thetaIndex];
+                thetaShared[thetaIndex] = theta[thetaGlobalOffsetBase + thetaIndex];
             }
 
             if (threadLocalId < particlesPerBlock)
@@ -306,11 +306,11 @@ __global__ void pme_spline_and_spread_kernel
             const int iz = idxShared[localIndex * DIM + ZZ] - offz;
 
             const int thetaOffsetBase = localIndex * DIM;
-            const real thz = theta_shared[thetaOffsetBase + ithz * thetaStride + ZZ];
-            const real thy = theta_shared[thetaOffsetBase + ithy * thetaStride + YY];
+            const real thz = thetaShared[thetaOffsetBase + ithz * thetaStride + ZZ];
+            const real thy = thetaShared[thetaOffsetBase + ithy * thetaStride + YY];
             const real constVal = thz * thy * coefficient[localIndex];
             const int constOffset = (iy + ithy) * pnz + (iz + ithz);
-            const real *thx = theta_shared + (thetaOffsetBase + XX);
+            const real *thx = thetaShared + (thetaOffsetBase + XX);
 
 #pragma unroll
             for (ithx = 0; (ithx < order); ithx++)
