@@ -365,8 +365,6 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     cudaError_t stat = cudaMemsetAsync(energyAndVirial_d, 0, energyAndVirialSize, s);
     CU_RET_ERR(stat, "PME solve cudaMemsetAsync");
 
-    pme_gpu_copy_recipbox(pme);
-
     events_record_start(gpu_events_solve, s);
 
     if (YZXOrdering)

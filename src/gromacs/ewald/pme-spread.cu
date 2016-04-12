@@ -823,8 +823,6 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
         xptr_d = (float4 *)PMEFetchRealArray(PME_ID_XPTR, thread, 4 * n_blocked * sizeof(real), ML_DEVICE);
         PMECopy(xptr_d, xptr_h, 4 * n_blocked * sizeof(real), ML_DEVICE, s);
         */
-
-        pme_gpu_copy_recipbox(pme); //passes current version from gmx_pme_t to device => only needed when the box changes!
     }
 
 
@@ -962,7 +960,6 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
             if (bSpread && pme->bGPUSingle)
             {
                 // wrap on GPU as a separate small kernel - we need a complete grid first!
-                pme_gpu_copy_overlap_zones(pme);
                 const int blockSize = 4 * warp_size; //yupinov this is everywhere! and arichitecture-specific
                 const int overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
                 const int nBlocks = (overlappedCells + blockSize - 1) / blockSize;

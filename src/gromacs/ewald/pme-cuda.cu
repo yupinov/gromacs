@@ -1,10 +1,12 @@
-#include <vector>
+#include <assert.h>
 #include <stdio.h>
+#include <vector>
+
 #include "gromacs/gpu_utils/cudautils.cuh"
 
 #include "pme-cuda.cuh"
+#include "pme-gpu.h"
 
-#include <assert.h>
 
 void pme_gpu_update_flags(
         gmx_pme_gpu_t *pmeGPU,
@@ -20,7 +22,7 @@ void pme_gpu_update_flags(
     pmeGPU->keepGPUDataBetweenC2RAndGather = keepGPUDataBetweenC2RAndGather;
 }
 
-void pme_gpu_init(gmx_pme_gpu_t **pmeGPU)
+void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme)
 {
     gmx_bool firstInit = !*pmeGPU;
     if (firstInit) // first init
@@ -42,7 +44,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU)
         //yupinov: fighting with nbnxn non-local for highest priority - check on MPI!
         CU_RET_ERR(stat, "cudaStreamCreateWithPriority on PME stream failed");
     #else
-        stat = cudaStreamCreate(&(*pme)->pmeStream);
+        stat = cudaStreamCreate(&(*pmeGPU)->pmeStream);
         CU_RET_ERR(stat, "PME cudaStreamCreate error");
     #endif
 
@@ -62,6 +64,8 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU)
         pme_gpu_update_flags(*pmeGPU, false, false, false, false);
     }
 
+    pme_gpu_copy_overlap_zones(pme);
+
     if (debug)
         fprintf(debug, "PME GPU %s\n", firstInit ? "init" : "reinit");
 }
@@ -74,6 +78,8 @@ __constant__ __device__ float3 RECIPBOX[3];
 
 void pme_gpu_copy_recipbox(gmx_pme_t *pme)
 {
+    if (!pme->bGPU)
+        return;
     const float3 box[3] =
     {
         {pme->recipbox[XX][XX], pme->recipbox[YY][XX], pme->recipbox[ZZ][XX]},
@@ -89,10 +95,14 @@ void pme_gpu_copy_recipbox(gmx_pme_t *pme)
 
 void pme_gpu_copy_overlap_zones(gmx_pme_t *pme)
 {
+    if (!pme->bGPU)
+        return;
     const int nx = pme->nkx;
     const int ny = pme->nky;
     const int nz = pme->nkz;
     const int overlap = pme->pme_order - 1;
+
+    printf("%d %d %d %d\n", nx, ny, nz, overlap);
 
     // cell count in 7 parts of overlap
     const int3 zoneSizes_h[OVERLAP_ZONES] =

@@ -2,7 +2,6 @@
 #define PMEGPU_H
 
 #include "pme-internal.h"
-//#include "gromacs/fft/parallel_3dfft.h"
 #include "gromacs/gpu_utils/gpu_macros.h"
 
 //yupinov also lots of unused parameters warnings!
@@ -28,6 +27,12 @@ typedef int gmx_nbnxn_gpu_t;
 //yupinov CUDA_FUNC_QUALIFIER everywhere? as weel as parameters
 // gmx_unused
 
+
+// copies the grid sizes for overlapping (PME wrap/unwrap)
+CUDA_FUNC_QUALIFIER void pme_gpu_copy_overlap_zones(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+
+// copies the reciprocal box to the device (PME spread/solve/gather)
+CUDA_FUNC_QUALIFIER void pme_gpu_copy_recipbox(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 
 
@@ -111,7 +116,7 @@ CUDA_FUNC_QUALIFIER void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_
          pmegrid_t *pmegrid) CUDA_FUNC_TERM
  // FFT
 
-CUDA_FUNC_QUALIFIER void pme_gpu_init(gmx_pme_gpu_t **pmeGPU) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_init(gmx_pme_gpu_t **CUDA_FUNC_ARGUMENT(pmeGPU), gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 CUDA_FUNC_QUALIFIER void pme_gpu_update_flags(
         gmx_pme_gpu_t *pmeGPU,
         gmx_bool keepGPUDataBetweenSpreadAndR2C,

@@ -587,9 +587,6 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     // some Internet people have succeeded in MPI cuFFT, but I dare not venture there - Iupinov
     //yupinov this variable doesn't actually work :(
 
-    if (pme->bGPU)
-        pme_gpu_init(&pme->gpu);
-
     pme->nthread = (pme->bGPU) ? 1 : nthread;
 
     /* Check if any of the PME MPI ranks uses threads */
@@ -635,6 +632,9 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
                                pme->bUseThreads,
                                TRUE,
                                NULL);
+
+    if (pme->bGPU)
+        pme_gpu_init(&pme->gpu, pme);
 
     if (pme->nnodes > 1)
     {
@@ -996,6 +996,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
     }
 
     gmx::invertBoxMatrix(box, pme->recipbox);
+    pme_gpu_copy_recipbox(pme); //yupinov test changing box
     bFirst = TRUE;
 
     /* For simplicity, we construct the splines for all particles if

@@ -334,8 +334,6 @@ void gather_f_bsplines_gpu
             const int blockSize = 4 * warp_size; //yupinov thsi is everywhere! and architecture-specific
             const int overlap = order - 1;
 
-            pme_gpu_copy_overlap_zones(pme);
-
             const int overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
             const int nBlocks = (overlappedCells + blockSize - 1) / blockSize;
 
@@ -538,10 +536,8 @@ void gather_f_bsplines_gpu
         PMECopy(atc_f_d, atc_f_h, size_forces, ML_DEVICE, s);
     //yupinov not really needed if we prelaunch the PME GPU?
 
-    float3 nXYZ = {(real)nx, (real)ny, (real)nz};
+    float3 nXYZ = {(real)nx, (real)ny, (real)nz}; //yupinov
     real *nXYZ_d = PMEFetchAndCopyRealArray(PME_ID_NXYZ, thread, &nXYZ, sizeof(nXYZ), ML_DEVICE, s);
-
-    pme_gpu_copy_recipbox(pme);
 
     const int blockSize = 4 * warp_size;
     const int particlesPerBlock = blockSize / order / order;

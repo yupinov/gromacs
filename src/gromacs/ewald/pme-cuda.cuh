@@ -19,11 +19,11 @@
 //yupinov - check on triclinic!
 //yupinov - load them once in GPU init! check if loaded
 
-#define PME_CUFFT_INPLACE
+#define PME_CUFFT_INPLACE 1
 // comment this to enable out-of-place cuFFT
 // it requires a separate complex grid, seems to be virtually the same performance-wise
 
-#define PME_GPU_TIMINGS
+#define PME_GPU_TIMINGS 1
 // comment this to disable PME timing function bodies
 // should replace this to respect other GPU timings' variables
 
@@ -36,11 +36,10 @@ static const bool PME_SKIP_ZEROES = false;
 
 
 #define PME_EXTERN_CMEM 0
+// constants as extern instead of arguments -> needs CUDA_SEPARABLE_COMPILATION which is off by default
 
 #if PME_EXTERN_CMEM
-// constants as extern instead of arguments -> needs CUDA_SEPARABLE_COMPILATION which is off by default
 #error "Unfinished separable compilation implementation"
-//yupinov
 
 // spread/solve/gather
 extern __constant__ __device__ float3 RECIPBOX[3];
@@ -48,8 +47,8 @@ extern __constant__ __device__ float3 RECIPBOX[3];
 #define OVERLAP_ZONES 7
 extern __constant__ __device__ int2 OVERLAP_SIZES[OVERLAP_ZONES];
 extern __constant__ __device__ int OVERLAP_CELLS_COUNTS[OVERLAP_ZONES];
-
 #else
+
 struct pme_gpu_recipbox_t
 {
     float3 box[DIM];
@@ -94,24 +93,25 @@ enum PMEDataID
     PME_ID_DTHETA,
 
     PME_ID_REAL_GRID, //this is pme_grid and it has overlap
-#ifndef PME_CUFFT_INPLACE
+#if !PME_CUFFT_INPLACE
     PME_ID_COMPLEX_GRID, //this is cfftgrid
 #endif
-
-
-    // gather
-    PME_ID_FORCES,
-    PME_ID_NXYZ,
-    PME_ID_NONZERO_INDICES, // compacted data indices
 
     // only used on host in gather now
     PME_ID_THX, PME_ID_THY, PME_ID_THZ,
     PME_ID_DTHX, PME_ID_DTHY, PME_ID_DTHZ,
 
-    // interpol_idx
+    // interpol/spline
     PME_ID_FSH,
     PME_ID_NN,
+
+    // spread
     PME_ID_XPTR,
+
+    // gather
+    PME_ID_FORCES,
+    PME_ID_NXYZ,
+    PME_ID_NONZERO_INDICES, // compacted data indices
 
     // spread and gather
 
@@ -121,18 +121,19 @@ enum PMEDataID
     PME_ID_COEFFICIENT, //atc->coefficient
 
     PME_ID_BSP_MOD_MINOR, PME_ID_BSP_MOD_MAJOR, PME_ID_BSP_MOD_MIDDLE,
+
+    // solve_lj
     PME_ID_ENERGY,
     PME_ID_VIRIAL,
+
+    // solve
     PME_ID_ENERGY_AND_VIRIAL,
 
-    // wrap/unwrap staging
-    //PME_ID_CELL_COUNTS,
-    //PME_ID_CELL_ZONES,
-
+    // end
     PME_ID_END_INVALID
 };
 
-#ifdef PME_CUFFT_INPLACE
+#if PME_CUFFT_INPLACE
 #define PME_ID_COMPLEX_GRID PME_ID_REAL_GRID
 #endif
 
@@ -158,9 +159,5 @@ real *PMEFetchAndCopyRealArray(PMEDataID id, int unusedTag, void *src, int size,
 t_complex *PMEFetchAndCopyComplexArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s);
 
 int PMEGetAllocatedSize(PMEDataID id, int unusedTag, MemLocType location);
-
-// copies the reciprocal box constants to the device
-void pme_gpu_copy_recipbox(gmx_pme_t *pme);
-void pme_gpu_copy_overlap_zones(gmx_pme_t *pme);
 
 #endif
