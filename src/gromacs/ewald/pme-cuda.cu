@@ -76,6 +76,8 @@ __constant__ __device__ int OVERLAP_CELLS_COUNTS[OVERLAP_ZONES];
 __constant__ __device__ float3 RECIPBOX[3];
 #endif
 
+//yupinov stuff more data into constants, like ewaldcoef, etc?
+
 void pme_gpu_copy_recipbox(gmx_pme_t *pme)
 {
     if (!pme->bGPU)
