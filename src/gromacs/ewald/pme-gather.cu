@@ -212,10 +212,24 @@ __global__ void pme_gather_kernel
         const int globalIndexFinal = blockIdx.x * particlesPerBlock + localIndexFinal;
         const real coefficient = coefficient_v[globalIndexFinal];
 
+        real contrib;
         // by columns!
-        const real *ptr = ((real *)RECIPBOX.box) + dimIndex;
+        switch (dimIndex)
+        {
+            case XX:
+            contrib = RECIPBOX.box[XX].x * fSum.x /*+ RECIPBOX.box[YY].x * fSum.y + RECIPBOX.box[ZZ].x * fSum.z*/;
+            break;
 
-        const real contrib = -coefficient * (ptr[0] * fSum.x + ptr[DIM] * fSum.y + ptr[2 * DIM] * fSum.z);
+            case YY:
+            contrib = RECIPBOX.box[XX].y * fSum.x + RECIPBOX.box[YY].y * fSum.y /* + RECIPBOX.box[ZZ].y * fSum.z*/;
+            break;
+
+            case ZZ:
+            contrib = RECIPBOX.box[XX].z * fSum.x + RECIPBOX.box[YY].z * fSum.y + RECIPBOX.box[ZZ].z * fSum.z;
+            break;
+        }
+        contrib *= -coefficient;
+
         if (bClearF)
             atc_f[blockIdx.x * particlesPerBlock * DIM + threadLocalId] = contrib;
         else
@@ -317,7 +331,7 @@ void gather_f_bsplines_gpu
     {
         if (order == 4)
         {
-            const int blockSize = 4 * warp_size; //yupinov thsi is everywhere! and arichitecture-specific
+            const int blockSize = 4 * warp_size; //yupinov thsi is everywhere! and architecture-specific
             const int overlap = order - 1;
 
             pme_gpu_copy_overlap_zones(pme);

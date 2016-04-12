@@ -189,7 +189,6 @@ void pme_gpu_copy_overlap_zones(gmx_pme_t *pme)
 
     memcpy(pme->gpu->overlap.overlapCellCounts, cellsAccumCount_h, sizeof(cellsAccumCount_h));
 }
-
 #endif
 
 
