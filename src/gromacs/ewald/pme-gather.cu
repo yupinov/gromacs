@@ -46,15 +46,15 @@ template <
         >
 __launch_bounds__(4 * warp_size, 16)
 __global__ void pme_gather_kernel
-(const real * __restrict__ grid, const int n,
+(const real * __restrict__ gridGlobal, const int n,
  const real * __restrict__ nXYZ, const int pnx, const int pny, const int pnz,
- const real * __restrict__ theta,
- const real * __restrict__ dtheta,
- real * __restrict__ atc_f, const real * __restrict__ coefficient_v,
+ const real * __restrict__ thetaGlobal,
+ const real * __restrict__ dthetaGlobal,
+ real * __restrict__ forcesGlobal, const real * __restrict__ coefficientGlobal,
  #if !PME_EXTERN_CMEM
   const struct pme_gpu_recipbox_t RECIPBOX,
  #endif
- const int * __restrict__ idx
+ const int * __restrict__ idxGlobal
  )
 {
     /* sum forces for local particles */
@@ -70,9 +70,9 @@ __global__ void pme_gather_kernel
     const int thetaStride = particlesPerBlock * DIM; // a global size dependency with spread!
     const int thetaSize = thetaStride * order;
     const int idxSize = thetaStride;
-    __shared__ int sharedIdx[idxSize];
-    __shared__ real thetaShared[thetaSize];
-    __shared__ real dthetaShared[thetaSize];
+    __shared__ int idx[idxSize];
+    __shared__ real theta[thetaSize];
+    __shared__ real dtheta[thetaSize];
 
 
     // spline Y/Z coordinates
@@ -89,12 +89,12 @@ __global__ void pme_gather_kernel
 
     if (threadLocalId < idxSize)
     {
-        sharedIdx[threadLocalId] = idx[blockIdx.x * idxSize + threadLocalId];
+        idx[threadLocalId] = idxGlobal[blockIdx.x * idxSize + threadLocalId];
     }
     if (threadLocalId < thetaSize) // (DIM * order) thetas < (order * order) threads per particle => works for any size
     {
-        thetaShared[threadLocalId] = theta[blockIdx.x * thetaSize + threadLocalId];
-        dthetaShared[threadLocalId] = dtheta[blockIdx.x * thetaSize + threadLocalId];
+        theta[threadLocalId] = thetaGlobal[blockIdx.x * thetaSize + threadLocalId];
+        dtheta[threadLocalId] = dthetaGlobal[blockIdx.x * thetaSize + threadLocalId];
     }
 
     //locality?
@@ -108,19 +108,19 @@ __global__ void pme_gather_kernel
     {
         const int thetaOffsetY = localIndex * DIM + ithy * thetaStride + YY;
         const int thetaOffsetZ = localIndex * DIM + ithz * thetaStride + ZZ;
-        const real ty = thetaShared[thetaOffsetY];
-        const real tz = thetaShared[thetaOffsetZ];
-        const real dy = dthetaShared[thetaOffsetY];
-        const real dz = dthetaShared[thetaOffsetZ];
+        const real ty = theta[thetaOffsetY];
+        const real tz = theta[thetaOffsetZ];
+        const real dy = dtheta[thetaOffsetY];
+        const real dz = dtheta[thetaOffsetZ];
         //yupinov need to reorder theta when transferring thetas to and from CPU!
         for (int ithx = 0; (ithx < order); ithx++)
         {
-            const int index_x = (sharedIdx[localIndex * DIM + XX] + ithx) * pny * pnz;
-            const int index_xy = index_x + (sharedIdx[localIndex * DIM + YY] + ithy) * pnz;
-            const real gridValue = grid[index_xy + (sharedIdx[localIndex * DIM + ZZ] + ithz)];
+            const int index_x = (idx[localIndex * DIM + XX] + ithx) * pny * pnz;
+            const int index_xy = index_x + (idx[localIndex * DIM + YY] + ithy) * pnz;
+            const real gridValue = gridGlobal[index_xy + (idx[localIndex * DIM + ZZ] + ithz)];
             const int thetaOffsetX = localIndex * DIM + ithx * thetaStride + XX;
-            const real tx = thetaShared[thetaOffsetX];
-            const real dx = dthetaShared[thetaOffsetX];
+            const real tx = theta[thetaOffsetX];
+            const real dx = dtheta[thetaOffsetX];
             const real fxy1 = tz * gridValue;
             const real fz1  = dz * gridValue;
             fx += dx * ty * fxy1;
@@ -210,7 +210,7 @@ __global__ void pme_gather_kernel
 
         const float3 fSum = fSumArray[localIndexFinal];
         const int globalIndexFinal = blockIdx.x * particlesPerBlock + localIndexFinal;
-        const real coefficient = coefficient_v[globalIndexFinal];
+        const real coefficient = coefficientGlobal[globalIndexFinal];
 
         real contrib;
         // by columns!
@@ -231,9 +231,9 @@ __global__ void pme_gather_kernel
         contrib *= -coefficient;
 
         if (bClearF)
-            atc_f[blockIdx.x * particlesPerBlock * DIM + threadLocalId] = contrib;
+            forcesGlobal[blockIdx.x * particlesPerBlock * DIM + threadLocalId] = contrib;
         else
-            atc_f[blockIdx.x * particlesPerBlock * DIM + threadLocalId] += contrib;
+            forcesGlobal[blockIdx.x * particlesPerBlock * DIM + threadLocalId] += contrib;
     }
 }
 
