@@ -5,7 +5,6 @@
 
 struct gmx_pme_cuda_t
 {
-    cudaStream_t pmeStream;
     gmx_bool keepGPUDataBetweenSpreadAndR2C; //yupinov BetweenSplineAndSpread?
     //yupinov should be same as keepGPUDataBetweenC2RAndGather ? or what do I do wit hdthetas?
     gmx_bool keepGPUDataBetweenR2CAndSolve;
@@ -14,6 +13,7 @@ struct gmx_pme_cuda_t
     //yupinov init
     //keep those as params in the th storage
 
+    cudaStream_t pmeStream;
     // synchronization events
     cudaEvent_t syncEnerVirH2D; // energy and virial have already been calculated in pme-solve, and have been copied to host
     cudaEvent_t syncForcesH2D;  // forces have already been calculated in pme-gather, and have been copied to host
