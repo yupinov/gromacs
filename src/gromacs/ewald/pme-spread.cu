@@ -146,43 +146,44 @@ __global__ void pme_spline_and_spread_kernel
     {
         // INTERPOLATION INDICES
 
-        __shared__ real t[thetaStride];
-        __shared__ int tInt[thetaStride];
         if ((globalIndexCalc < n) && (localIndexCalc < particlesPerBlock) && (dimIndex < DIM))
         {
-            int constIndex;
-            real n;
-            // we're doing this switch because accessing field in nnOffset/nXYZ directly with dimIndex offset puts them into registers instead of accesing the constant memory directly
+            int constIndex, tInt;
+            real n, t;
+            const float3 x = xptr[globalIndexCalc];
+            // accessing fields in nnOffset/nXYZ/RECIPBOX/... with dimIndex offset
+            // puts them into local memory (!) instead of accessing the constant memory directly
+            // that's the reason for the switch
             switch (dimIndex)
             {
                 case 0:
                 constIndex = nnOffset.x;
                 n = nXYZ.x;
+                t = x.x * RECIPBOX.box[dimIndex].x + x.y * RECIPBOX.box[dimIndex].y + x.z * RECIPBOX.box[dimIndex].z;
                 break;
 
                 case 1:
                 constIndex = nnOffset.y;
                 n = nXYZ.y;
+                t = /*x.x * RECIPBOX.box[dimIndex].x + */ x.y * RECIPBOX.box[dimIndex].y + x.z * RECIPBOX.box[dimIndex].z;
                 break;
 
                 case 2:
                 constIndex = nnOffset.z;
                 n = nXYZ.z;
+                t = /*x.x * RECIPBOX.box[dimIndex].x + x.y * RECIPBOX.box[dimIndex].y + */ x.z * RECIPBOX.box[dimIndex].z;
                 break;
             }
+            // parts of multiplication are commented because these components are actually 0
+            // thus, excessive constant memory
+            // should refactor if settling for this approach...
 
-            const float3 x = xptr[globalIndexCalc];
-            const float3 recip = RECIPBOX.box[dimIndex];
             // Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes
-            t[threadLocalId] = (x.x * recip.x + x.y * recip.y + x.z * recip.z + 2.0f) * n;
-            tInt[threadLocalId] = (int)t[threadLocalId]; //yupinov test registers
-            fractX[threadLocalId] = t[threadLocalId] - tInt[threadLocalId];
+            t = (t + 2.0f) * n;
+            tInt = (int)t;
+            fractX[threadLocalId] = t - tInt;
+            constIndex += tInt;
 
-            /* Because decomposition only occurs in x and y,
-            * we never have a fraction correction in z.
-            */
-
-            constIndex += tInt[threadLocalId];
 #if USE_TEXTURES
 #if USE_TEXOBJ
             fractX[threadLocalId] += tex1Dfetch<real>(fshTexture, constIndex);
@@ -195,7 +196,7 @@ __global__ void pme_spline_and_spread_kernel
             fractX[threadLocalId] += fsh[constIndex];
             idxShared[threadLocalId] = nn[constIndex];
 #endif
-           //staging for both parts
+            // staging for both parts
 
             idx[globalIndexCalc * DIM + dimIndex] = idxShared[threadLocalId]; //yupinov fix indexing
             if (threadLocalId < particlesPerBlock)
@@ -322,7 +323,7 @@ __global__ void pme_spline_and_spread_kernel
 }
 
 
-// spline_and_spread split into spline and spread - as an experiment
+// pme_spline_and_spread split into pme_spline and pme_spread - as an experiment
 
 template <
         const int order,
@@ -382,53 +383,58 @@ __global__ void pme_spline_kernel
     const int dimIndex = threadLocalId - localIndexCalc * DIM;
 
     const int globalIndexCalc = globalParticleIndexBase + localIndexCalc;
-    __shared__ real t[thetaStride];
-    __shared__ int tInt[thetaStride];
 
     // INTERPOLATION INDICES
     if ((globalIndexCalc < n) && (localIndexCalc < particlesPerBlock) && (dimIndex < DIM))
     //yupinov - this is a single particle work!
     {
-        int constIndex;
-        real n;
-        // we're doing this switch because accesing fielsd in nnOffset/nXYZ directly with dimIndex offset puts them into registers instead of accessing the constant memory directly
+        int constIndex, tInt;
+        real n, t;
+        const float3 x = xptr[globalIndexCalc];
+        // accessing fields in nnOffset/nXYZ/RECIPBOX/... with dimIndex offset
+        // puts them into local memory (!) instead of accessing the constant memory directly
+        // that's the reason for the switch
         switch (dimIndex)
         {
             case 0:
             constIndex = nnOffset.x;
             n = nXYZ.x;
+            t = x.x * RECIPBOX.box[dimIndex].x + x.y * RECIPBOX.box[dimIndex].y + x.z * RECIPBOX.box[dimIndex].z;
             break;
 
             case 1:
             constIndex = nnOffset.y;
             n = nXYZ.y;
+            t = /*x.x * RECIPBOX.box[dimIndex].x + */ x.y * RECIPBOX.box[dimIndex].y + x.z * RECIPBOX.box[dimIndex].z;
             break;
 
             case 2:
             constIndex = nnOffset.z;
             n = nXYZ.z;
+            t = /*x.x * RECIPBOX.box[dimIndex].x + x.y * RECIPBOX.box[dimIndex].y + */ x.z * RECIPBOX.box[dimIndex].z;
             break;
         }
+        // parts of multiplication are commented because these components are actually 0
+        // thus, excessive constant memory
+        // should refactor if settling for this approach...
 
-        const float3 x = xptr[globalIndexCalc];
-        const float3 recip = RECIPBOX.box[dimIndex];
         // Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes
-        t[threadLocalId] = (x.x * recip.x + x.y * recip.y + x.z * recip.z + 2.0f) * n;
-        tInt[threadLocalId] = (int)t[threadLocalId]; //yupinov test registers
-        fractX[threadLocalId] = t[threadLocalId] - tInt[threadLocalId];
+        t = (t + 2.0f) * n;
+        tInt = (int)t;
+        fractX[threadLocalId] = t - tInt;
+        constIndex += tInt;
 
-        constIndex += tInt[threadLocalId];
 #if USE_TEXTURES
 #if USE_TEXOBJ
-            fractX[threadLocalId] += tex1Dfetch<real>(fshTexture, constIndex);
-            idxShared[threadLocalId] = tex1Dfetch<int>(nnTexture, constIndex);
+        fractX[threadLocalId] += tex1Dfetch<real>(fshTexture, constIndex);
+        idxShared[threadLocalId] = tex1Dfetch<int>(nnTexture, constIndex);
 #else
-            fractX[threadLocalId] += tex1Dfetch(fshTextureRef, constIndex);
-            idxShared[threadLocalId] = tex1Dfetch(nnTextureRef, constIndex);
+        fractX[threadLocalId] += tex1Dfetch(fshTextureRef, constIndex);
+        idxShared[threadLocalId] = tex1Dfetch(nnTextureRef, constIndex);
 #endif
 #else
-            fractX[threadLocalId] += fsh[constIndex];
-            idxShared[threadLocalId] = nn[constIndex];
+        fractX[threadLocalId] += fsh[constIndex];
+        idxShared[threadLocalId] = nn[constIndex];
 #endif
 
         //staging for both parts
@@ -602,7 +608,7 @@ __global__ void pme_wrap_kernel
     (const int nx, const int ny, const int nz,
      const int pny, const int pnz,
 #if !PME_EXTERN_CMEM
-    const struct pme_gpu_overlap_t OVERLAP,
+    const pme_gpu_overlap_t OVERLAP,
 #endif
      real * __restrict__ grid
      )
@@ -610,13 +616,13 @@ __global__ void pme_wrap_kernel
     // const int overlap = order - 1;
 
     // WRAP
-    int blockId = blockIdx.x
+    const int blockId = blockIdx.x
                  + blockIdx.y * gridDim.x
                  + gridDim.x * gridDim.y * blockIdx.z;
-    int threadId = blockId * (blockDim.x * blockDim.y * blockDim.z)
-                  + (threadIdx.z * (blockDim.x * blockDim.y))
-                  + (threadIdx.y * blockDim.x)
-                  + threadIdx.x;
+    const int threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
+            + (threadIdx.y * blockDim.x)
+            + threadIdx.x;
+    const int threadId = blockId * (blockDim.x * blockDim.y * blockDim.z) + threadLocalId;
 
     //should use ldg.128
 
