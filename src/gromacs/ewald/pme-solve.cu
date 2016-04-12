@@ -65,6 +65,9 @@ __global__ void pme_solve_kernel
  const real * __restrict__ BSplineModuleMiddle,
  float2 * __restrict__ grid,
  const real volume,
+ #if !PME_EXTERN_CMEM
+  const struct pme_gpu_recipbox_t RECIPBOX,
+ #endif
  real * __restrict__ virialAndEnergy)
 {
     // this is a PME solve kernel
@@ -162,9 +165,9 @@ __global__ void pme_solve_kernel
 
         if (notZeroPoint) // this skips just one starting point in the whole grid on the rank 0
         {     
-            mhxk      = mX * RECIPBOX[XX].x;
-            mhyk      = mX * RECIPBOX[XX].y + mY * RECIPBOX[YY].y;
-            mhzk      = mX * RECIPBOX[XX].z + mY * RECIPBOX[YY].z + mZ * RECIPBOX[ZZ].z;
+            mhxk      = mX * RECIPBOX.box[XX].x;
+            mhyk      = mX * RECIPBOX.box[XX].y + mY * RECIPBOX.box[YY].y;
+            mhzk      = mX * RECIPBOX.box[XX].z + mY * RECIPBOX.box[YY].z + mZ * RECIPBOX.box[ZZ].z;
 
             m2k       = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
             real denom = m2k * bMajorMiddle * BSplineModuleMinor[kMinor];
@@ -362,14 +365,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     cudaError_t stat = cudaMemsetAsync(energyAndVirial_d, 0, energyAndVirialSize, s);
     CU_RET_ERR(stat, "PME solve cudaMemsetAsync");
 
-    const float3 recipbox_h[3] =
-    {
-        {pme->recipbox[XX][XX], pme->recipbox[YY][XX], pme->recipbox[ZZ][XX]},
-        {                  0.0, pme->recipbox[YY][YY], pme->recipbox[ZZ][YY]},
-        {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
-    };
-    PMECopyConstant(RECIPBOX, recipbox_h, sizeof(recipbox_h), s);
-    //yupinov - why is this not persistent?
+    pme_gpu_copy_recipbox(pme);
 
     events_record_start(gpu_events_solve, s);
 
@@ -384,6 +380,9 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
+#if !PME_EXTERN_CMEM
+               pme->gpu->recipbox,
+#endif
                energyAndVirial_d);
         else
             pme_solve_kernel<FALSE, TRUE> <<<blocks, threads, 0, s>>>
@@ -394,6 +393,9 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
+#if !PME_EXTERN_CMEM
+              pme->gpu->recipbox,
+#endif
                energyAndVirial_d);
     }
     else
@@ -407,6 +409,9 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
+#if !PME_EXTERN_CMEM
+             pme->gpu->recipbox,
+#endif
                energyAndVirial_d);
         else
             pme_solve_kernel<FALSE, FALSE> <<<blocks, threads, 0, s>>>
@@ -417,6 +422,9 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
+#if !PME_EXTERN_CMEM
+            pme->gpu->recipbox,
+#endif
                energyAndVirial_d);
     }
     CU_LAUNCH_ERR("pme_solve_kernel");

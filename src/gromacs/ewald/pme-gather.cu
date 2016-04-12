@@ -14,8 +14,6 @@
 
 #include <assert.h>
 
-// wrap kernel thingies - should be kept in pme-cuda.h as common?
-
 void gpu_forces_copyback(gmx_pme_t *pme, int n, rvec *forces)
 {
     cudaStream_t s = pme->gpu->pmeStream;
@@ -53,6 +51,9 @@ __global__ void pme_gather_kernel
  const real * __restrict__ theta,
  const real * __restrict__ dtheta,
  real * __restrict__ atc_f, const real * __restrict__ coefficient_v,
+ #if !PME_EXTERN_CMEM
+  const struct pme_gpu_recipbox_t RECIPBOX,
+ #endif
  const int * __restrict__ idx
  )
 {
@@ -210,11 +211,9 @@ __global__ void pme_gather_kernel
         const float3 fSum = fSumArray[localIndexFinal];
         const int globalIndexFinal = blockIdx.x * particlesPerBlock + localIndexFinal;
         const real coefficient = coefficient_v[globalIndexFinal];
-        const int idim = globalIndexFinal * DIM;
-
 
         // by columns!
-        real *ptr = ((real *)RECIPBOX) + dimIndex;
+        const real *ptr = ((real *)RECIPBOX.box) + dimIndex;
 
         const real contrib = -coefficient * (ptr[0] * fSum.x + ptr[DIM] * fSum.y + ptr[2 * DIM] * fSum.z);
         if (bClearF)
@@ -232,11 +231,12 @@ template <
 __global__ void pme_unwrap_kernel
     (const int nx, const int ny, const int nz,
      const int pny, const int pnz,
+ #if !PME_EXTERN_CMEM
+     const struct pme_gpu_overlap_t OVERLAP,
+ #endif
      real * __restrict__ grid
      )
 {
-    // const int overlap = order - 1;
-
     // UNWRAP
     int blockId = blockIdx.x
                  + blockIdx.y * gridDim.x
@@ -248,17 +248,17 @@ __global__ void pme_unwrap_kernel
 
     //should use ldg.128
 
-    if (threadId < OVERLAP_CELLS_COUNTS[OVERLAP_ZONES - 1])
+    if (threadId < OVERLAP.overlapCellCounts[OVERLAP_ZONES - 1])
     {
         int zoneIndex = -1;
         do
         {
             zoneIndex++;
         }
-        while (threadId >= OVERLAP_CELLS_COUNTS[zoneIndex]);
-        const int2 zoneSizeYZ = OVERLAP_SIZES[zoneIndex];
+        while (threadId >= OVERLAP.overlapCellCounts[zoneIndex]);
+        const int2 zoneSizeYZ = OVERLAP.overlapSizes[zoneIndex];
         // this is the overlapped cells's index relative to the current zone
-        const int cellIndex = (zoneIndex > 0) ? (threadId - OVERLAP_CELLS_COUNTS[zoneIndex - 1]) : threadId;
+        const int cellIndex = (zoneIndex > 0) ? (threadId - OVERLAP.overlapCellCounts[zoneIndex - 1]) : threadId;
 
         // replace integer division/modular arithmetics - a big performance hit
         // try int_fastdiv?
@@ -320,48 +320,18 @@ void gather_f_bsplines_gpu
             const int blockSize = 4 * warp_size; //yupinov thsi is everywhere! and arichitecture-specific
             const int overlap = order - 1;
 
-            // cell count in 7 parts of overlap
-            const int3 zoneSizes_h[OVERLAP_ZONES] =
-            {
-                {     nx,        ny,   overlap},
-                {     nx,   overlap,        nz},
-                {overlap,        ny,        nz},
-                {     nx,   overlap,   overlap},
-                {overlap,        ny,   overlap},
-                {overlap,   overlap,        nz},
-                {overlap,   overlap,   overlap}
-            };
-
-            const int2 zoneSizesYZ_h[OVERLAP_ZONES] =
-            {
-                {     ny,   overlap},
-                {overlap,        nz},
-                {     ny,        nz},
-                {overlap,   overlap},
-                {     ny,   overlap},
-                {overlap,        nz},
-                {overlap,   overlap}
-            };
-
-            int cellsAccumCount_h[OVERLAP_ZONES];
-            for (int i = 0; i < OVERLAP_ZONES; i++)
-                cellsAccumCount_h[i] = zoneSizes_h[i].x * zoneSizes_h[i].y * zoneSizes_h[i].z;
-            // accumulate
-            for (int i = 1; i < OVERLAP_ZONES; i++)
-            {
-                cellsAccumCount_h[i] = cellsAccumCount_h[i] + cellsAccumCount_h[i - 1];
-            }
+            pme_gpu_copy_overlap_zones(pme);
 
             const int overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
             const int nBlocks = (overlappedCells + blockSize - 1) / blockSize;
 
-            PMECopyConstant(OVERLAP_SIZES, zoneSizesYZ_h, sizeof(zoneSizesYZ_h), s);
-            PMECopyConstant(OVERLAP_CELLS_COUNTS, cellsAccumCount_h, sizeof(cellsAccumCount_h), s);
-            //other constants
-
             events_record_start(gpu_events_unwrap, s);
 
-            pme_unwrap_kernel<4> <<<nBlocks, blockSize, 0, s>>>(nx, ny, nz, pny, pnz, grid_d);
+            pme_unwrap_kernel<4> <<<nBlocks, blockSize, 0, s>>>(nx, ny, nz, pny, pnz,
+#if !PME_EXTERN_CMEM
+                                                                pme->gpu->overlap,
+#endif
+                                                                grid_d);
 
             CU_LAUNCH_ERR("pme_unwrap_kernel");
 
@@ -557,13 +527,7 @@ void gather_f_bsplines_gpu
     float3 nXYZ = {(real)nx, (real)ny, (real)nz};
     real *nXYZ_d = PMEFetchAndCopyRealArray(PME_ID_NXYZ, thread, &nXYZ, sizeof(nXYZ), ML_DEVICE, s);
 
-    const float3 recipbox_h[3] =
-    {
-        {pme->recipbox[XX][XX], pme->recipbox[YY][XX], pme->recipbox[ZZ][XX]},
-        {                  0.0, pme->recipbox[YY][YY], pme->recipbox[ZZ][YY]},
-        {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
-    };
-    PMECopyConstant(RECIPBOX, recipbox_h, sizeof(recipbox_h), s);
+    pme_gpu_copy_recipbox(pme);
 
     const int blockSize = 4 * warp_size;
     const int particlesPerBlock = blockSize / order / order;
@@ -580,6 +544,9 @@ void gather_f_bsplines_gpu
                nXYZ_d, pnx, pny, pnz,
                theta_d, dtheta_d,
                atc_f_d, coefficients_d,
+#if !PME_EXTERN_CMEM
+               pme->gpu->recipbox,
+#endif
                idx_d);
         else
             pme_gather_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocks, dimBlock, 0, s>>>
@@ -588,6 +555,9 @@ void gather_f_bsplines_gpu
                nXYZ_d, pnx, pny, pnz,
                theta_d, dtheta_d,
                atc_f_d, coefficients_d,
+#if !PME_EXTERN_CMEM
+               pme->gpu->recipbox,
+#endif
                idx_d);
     else
         gmx_fatal(FARGS, "gather: orders other than 4 untested!");

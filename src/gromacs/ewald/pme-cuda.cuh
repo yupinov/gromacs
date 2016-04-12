@@ -3,35 +3,19 @@
 
 #include "pme-internal.h"
 
-struct gmx_pme_cuda_t
-{
-    gmx_bool keepGPUDataBetweenSpreadAndR2C; //yupinov BetweenSplineAndSpread?
-    //yupinov should be same as keepGPUDataBetweenC2RAndGather ? or what do I do wit hdthetas?
-    gmx_bool keepGPUDataBetweenR2CAndSolve;
-    gmx_bool keepGPUDataBetweenSolveAndC2R;
-    gmx_bool keepGPUDataBetweenC2RAndGather;
-    //yupinov init
-    //keep those as params in the th storage
-
-    cudaStream_t pmeStream;
-    // synchronization events
-    cudaEvent_t syncEnerVirH2D; // energy and virial have already been calculated in pme-solve, and have been copied to host
-    cudaEvent_t syncForcesH2D;  // forces have already been calculated in pme-gather, and have been copied to host
-};
 //yupinov dealloc
 //yupinov grid indices with tags?
 
 // device constants
 // wrap/unwrap overlap zones
-static const int OVERLAP_ZONES = 7;
-__constant__ __device__ int2 OVERLAP_SIZES[OVERLAP_ZONES];
-__constant__ __device__ int OVERLAP_CELLS_COUNTS[OVERLAP_ZONES];
+
+
 // spread/solve/gather pme inverted box
-__constant__ __device__ float3 RECIPBOX[3];
+
 // CAREFUL: the box is transposed as compared to the original pme->recipbox
-// basically, spread uses matrix columns(while solve and gather use rows)
+// basically, spread uses matrix columns (while solve and gather use rows)
 // that's the reason why I transposed the box initially
-// this can easily be changed
+// maybe swap it the otehr way around?
 //yupinov - check on triclinic!
 //yupinov - load them once in GPU init! check if loaded
 
@@ -51,6 +35,56 @@ static const bool PME_SKIP_ZEROES = false;
 // seems like a total waste of time! but what if we do it once at each NS?
 
 
+#define PME_EXTERN_CMEM 0
+
+#if PME_EXTERN_CMEM
+// constants as extern instead of arguments -> needs CUDA_SEPARABLE_COMPILATION which is off by default
+#error "Unfinished separable compilation implementation"
+//yupinov
+
+// spread/solve/gather
+extern __constant__ __device__ float3 RECIPBOX[3];
+// wrap/unwrap
+#define OVERLAP_ZONES 7
+extern __constant__ __device__ int2 OVERLAP_SIZES[OVERLAP_ZONES];
+extern __constant__ __device__ int OVERLAP_CELLS_COUNTS[OVERLAP_ZONES];
+
+#else
+struct pme_gpu_recipbox_t
+{
+    float3 box[DIM];
+};
+
+struct pme_gpu_overlap_t
+{
+#define OVERLAP_ZONES 7
+    int2 overlapSizes[OVERLAP_ZONES];
+    int overlapCellCounts[OVERLAP_ZONES];
+};
+#endif
+
+struct gmx_pme_cuda_t
+{
+    cudaStream_t pmeStream;
+
+    // synchronization events
+    cudaEvent_t syncEnerVirH2D; // energy and virial have already been calculated in pme-solve, and have been copied to host
+    cudaEvent_t syncForcesH2D;  // forces have already been calculated in pme-gather, and have been copied to host
+
+    // data-keeping flags
+    gmx_bool keepGPUDataBetweenSpreadAndR2C; //yupinov BetweenSplineAndSpread?
+    //yupinov should be same as keepGPUDataBetweenC2RAndGather ? or what do I do wit hdthetas?
+    gmx_bool keepGPUDataBetweenR2CAndSolve;
+    gmx_bool keepGPUDataBetweenSolveAndC2R;
+    gmx_bool keepGPUDataBetweenC2RAndGather;
+    //yupinov init
+    //keep those as params in the th storage
+#if !PME_EXTERN_CMEM
+    // constant structures for arguments
+    pme_gpu_recipbox_t recipbox;
+    pme_gpu_overlap_t overlap;
+#endif
+};
 
 
 // identifiers for PME data stored on GPU
@@ -124,5 +158,9 @@ real *PMEFetchAndCopyRealArray(PMEDataID id, int unusedTag, void *src, int size,
 t_complex *PMEFetchAndCopyComplexArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s);
 
 int PMEGetAllocatedSize(PMEDataID id, int unusedTag, MemLocType location);
+
+// copies the reciprocal box constants to the device
+void pme_gpu_copy_recipbox(gmx_pme_t *pme);
+void pme_gpu_copy_overlap_zones(gmx_pme_t *pme);
 
 #endif

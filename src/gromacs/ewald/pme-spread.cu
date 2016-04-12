@@ -101,6 +101,9 @@ __global__ void pme_spline_and_spread_kernel
  const float3 * __restrict__ xptr,
  const real * __restrict__ coefficientGlobal,
  real * __restrict__ grid, real * __restrict__ theta, real * __restrict__ dtheta, int * __restrict__ idx, //yupinov
+#if !PME_EXTERN_CMEM
+ const struct pme_gpu_recipbox_t RECIPBOX,
+#endif
  int n)
 {
 /*
@@ -149,7 +152,7 @@ __global__ void pme_spline_and_spread_kernel
         {
             int constIndex;
             real n;
-            // we're doing this switch because accesing field in nnOffset/nXYZ directly with dimIndex offset puts them into registers instead of accesing the constant memory directly
+            // we're doing this switch because accessing field in nnOffset/nXYZ directly with dimIndex offset puts them into registers instead of accesing the constant memory directly
             switch (dimIndex)
             {
                 case 0:
@@ -169,7 +172,7 @@ __global__ void pme_spline_and_spread_kernel
             }
 
             const float3 x = xptr[globalIndexCalc];
-            const float3 recip = RECIPBOX[dimIndex];
+            const float3 recip = RECIPBOX.box[dimIndex];
             // Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes
             t[threadLocalId] = (x.x * recip.x + x.y * recip.y + x.z * recip.z + 2.0f) * n;
             tInt[threadLocalId] = (int)t[threadLocalId]; //yupinov test registers
@@ -342,6 +345,9 @@ __global__ void pme_spline_kernel
  const float3 * __restrict__ xptr,
  const real * __restrict__ coefficientGlobal,
  real * __restrict__ theta, real * __restrict__ dtheta, int * __restrict__ idx, //yupinov
+ #if !PME_EXTERN_CMEM
+  const struct pme_gpu_recipbox_t RECIPBOX,
+ #endif
  const int n)
 {
 /*
@@ -405,7 +411,7 @@ __global__ void pme_spline_kernel
         }
 
         const float3 x = xptr[globalIndexCalc];
-        const float3 recip = RECIPBOX[dimIndex];
+        const float3 recip = RECIPBOX.box[dimIndex];
         // Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes
         t[threadLocalId] = (x.x * recip.x + x.y * recip.y + x.z * recip.z + 2.0f) * n;
         tInt[threadLocalId] = (int)t[threadLocalId]; //yupinov test registers
@@ -595,6 +601,9 @@ template <
 __global__ void pme_wrap_kernel
     (const int nx, const int ny, const int nz,
      const int pny, const int pnz,
+#if !PME_EXTERN_CMEM
+    const struct pme_gpu_overlap_t OVERLAP,
+#endif
      real * __restrict__ grid
      )
 {
@@ -611,17 +620,17 @@ __global__ void pme_wrap_kernel
 
     //should use ldg.128
 
-    if (threadId < OVERLAP_CELLS_COUNTS[OVERLAP_ZONES - 1])
+    if (threadId < OVERLAP.overlapCellCounts[OVERLAP_ZONES - 1])
     {   
         int zoneIndex = -1;
         do
         {
             zoneIndex++;
         }
-        while (threadId >= OVERLAP_CELLS_COUNTS[zoneIndex]);
-        const int2 zoneSizeYZ = OVERLAP_SIZES[zoneIndex];
+        while (threadId >= OVERLAP.overlapCellCounts[zoneIndex]);
+        const int2 zoneSizeYZ = OVERLAP.overlapSizes[zoneIndex];
         // this is the overlapped cells's index relative to the current zone
-        const int cellIndex = (zoneIndex > 0) ? (threadId - OVERLAP_CELLS_COUNTS[zoneIndex - 1]) : threadId;
+        const int cellIndex = (zoneIndex > 0) ? (threadId - OVERLAP.overlapCellCounts[zoneIndex - 1]) : threadId;
 
         // replace integer division/modular arithmetics - a big performance hit
         // try int_fastdiv?
@@ -808,13 +817,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
         PMECopy(xptr_d, xptr_h, 4 * n_blocked * sizeof(real), ML_DEVICE, s);
         */
 
-        const float3 recipbox_h[3] =
-        {
-            {pme->recipbox[XX][XX], pme->recipbox[YY][XX], pme->recipbox[ZZ][XX]},
-            {                  0.0, pme->recipbox[YY][YY], pme->recipbox[ZZ][YY]},
-            {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
-        };
-        PMECopyConstant(RECIPBOX, recipbox_h, sizeof(recipbox_h), s);
+        pme_gpu_copy_recipbox(pme); //passes current version from gmx_pme_t to device => only needed when the box changes!
     }
 
 
@@ -881,6 +884,9 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                                                                                                     xptr_d,
                                                                                                     coefficient_d,
                                                                                                     theta_d, dtheta_d, idx_d,
+#if !PME_EXTERN_CMEM
+                                                                                                    pme->gpu->recipbox,
+#endif
                                                                                                     n);
 
 
@@ -919,21 +925,22 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                         if (bSpread)
                         {
                             pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, FALSE, TRUE> <<<nBlocks, dimBlock, 0, s>>>
-                                                                                                                              (nXYZ,
-                                                                                                                               pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
-                                                                                                                               pny, pnz,
-                                                                                                                               nnOffset,
+                                  (nXYZ,
+                                   pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
+                                   pny, pnz,
+                                   nnOffset,
 #if USE_TEXTURES
 #if USE_TEXOBJ
-                                                                                                                               nnTexture, fshTexture,
+                                   nnTexture, fshTexture,
 #endif
 #else
-                                                                                                                               nn_d, fsh_d,
+                                   nn_d, fsh_d,
 #endif
-                                                                                                                               xptr_d,
-                                                                                                                               coefficient_d,
-                                                                                                                               grid_d, theta_d, dtheta_d, idx_d,
-                                                                                                                               n);
+                                   xptr_d, coefficient_d, grid_d, theta_d, dtheta_d, idx_d,
+#if !PME_EXTERN_CMEM
+                                   pme->gpu->recipbox,
+#endif
+                                   n);
                         }
                         else
                             gmx_fatal(FARGS, "the code for bSpread==false was not tested!");
@@ -948,50 +955,18 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
             if (bSpread && pme->bGPUSingle)
             {
                 // wrap on GPU as a separate small kernel - we need a complete grid first!
+                pme_gpu_copy_overlap_zones(pme);
                 const int blockSize = 4 * warp_size; //yupinov this is everywhere! and arichitecture-specific
-
-                // cell count in 7 parts of overlap
-                const int3 zoneSizes_h[OVERLAP_ZONES] =
-                {
-                    {     nx,        ny,   overlap},
-                    {     nx,   overlap,        nz},
-                    {overlap,        ny,        nz},
-                    {     nx,   overlap,   overlap},
-                    {overlap,        ny,   overlap},
-                    {overlap,   overlap,        nz},
-                    {overlap,   overlap,   overlap}
-                };
-
-                const int2 zoneSizesYZ_h[OVERLAP_ZONES] =
-                {
-                    {     ny,   overlap},
-                    {overlap,        nz},
-                    {     ny,        nz},
-                    {overlap,   overlap},
-                    {     ny,   overlap},
-                    {overlap,        nz},
-                    {overlap,   overlap}
-                };
-
-                int cellsAccumCount_h[OVERLAP_ZONES];
-                for (int i = 0; i < OVERLAP_ZONES; i++)
-                    cellsAccumCount_h[i] = zoneSizes_h[i].x * zoneSizes_h[i].y * zoneSizes_h[i].z;
-                // accumulate
-                for (int i = 1; i < OVERLAP_ZONES; i++)
-                {
-                    cellsAccumCount_h[i] = cellsAccumCount_h[i] + cellsAccumCount_h[i - 1];
-                }
-
                 const int overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
                 const int nBlocks = (overlappedCells + blockSize - 1) / blockSize;
 
-                PMECopyConstant(OVERLAP_SIZES, zoneSizesYZ_h, sizeof(zoneSizesYZ_h), s);
-                PMECopyConstant(OVERLAP_CELLS_COUNTS, cellsAccumCount_h, sizeof(cellsAccumCount_h), s);
-                //other constants
-
                 events_record_start(gpu_events_wrap, s);
 
-                pme_wrap_kernel<4> <<<nBlocks, blockSize, 0, s>>>(nx, ny, nz, pny, pnz, grid_d);
+                pme_wrap_kernel<4> <<<nBlocks, blockSize, 0, s>>>(nx, ny, nz, pny, pnz,
+#if !PME_EXTERN_CMEM
+                                                                  pme->gpu->overlap,
+#endif
+                                                                  grid_d);
 
                 CU_LAUNCH_ERR("pme_wrap_kernel");
 
