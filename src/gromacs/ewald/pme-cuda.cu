@@ -65,74 +65,12 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU)
     if (debug)
         fprintf(debug, "PME GPU %s\n", firstInit ? "init" : "reinit");
 }
+
 #if PME_EXTERN_CMEM
 __constant__ __device__ int2 OVERLAP_SIZES[OVERLAP_ZONES];
 __constant__ __device__ int OVERLAP_CELLS_COUNTS[OVERLAP_ZONES];
 __constant__ __device__ float3 RECIPBOX[3];
-
-void pme_gpu_copy_recipbox(gmx_pme_t *pme)
-{
-    cudaStream_t s = pme->gpu->pmeStream;
-    const float3 recipbox_h[3] =
-    {
-        {pme->recipbox[XX][XX], pme->recipbox[YY][XX], pme->recipbox[ZZ][XX]},
-        {                  0.0, pme->recipbox[YY][YY], pme->recipbox[ZZ][YY]},
-        {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
-    };
-    /*
-    void *testing;
-    cudaError_t stat = cudaGetSymbolAddress(&testing, RECIPBOX);
-    CU_RET_ERR(stat, "stat");
-    printf("copying %g to %p\n", pme->recipbox[0][0], testing);
-    */
-
-    PMECopyConstant(RECIPBOX, recipbox_h, sizeof(recipbox_h), s);
-}
-
-void pme_gpu_copy_overlap_zones(gmx_pme_t *pme)
-{
-    const int nx = pme->nkx;
-    const int ny = pme->nky;
-    const int nz = pme->nkz;
-
-    // cell count in 7 parts of overlap
-    const int3 zoneSizes_h[OVERLAP_ZONES] =
-    {
-        {     nx,        ny,   overlap},
-        {     nx,   overlap,        nz},
-        {overlap,        ny,        nz},
-        {     nx,   overlap,   overlap},
-        {overlap,        ny,   overlap},
-        {overlap,   overlap,        nz},
-        {overlap,   overlap,   overlap}
-    };
-
-    const int2 zoneSizesYZ_h[OVERLAP_ZONES] =
-    {
-        {     ny,   overlap},
-        {overlap,        nz},
-        {     ny,        nz},
-        {overlap,   overlap},
-        {     ny,   overlap},
-        {overlap,        nz},
-        {overlap,   overlap}
-    };
-
-    int cellsAccumCount_h[OVERLAP_ZONES];
-    for (int i = 0; i < OVERLAP_ZONES; i++)
-        cellsAccumCount_h[i] = zoneSizes_h[i].x * zoneSizes_h[i].y * zoneSizes_h[i].z;
-    // accumulate
-    for (int i = 1; i < OVERLAP_ZONES; i++)
-    {
-        cellsAccumCount_h[i] = cellsAccumCount_h[i] + cellsAccumCount_h[i - 1];
-    }
-
-    PMECopyConstant(OVERLAP_SIZES, zoneSizesYZ_h, sizeof(zoneSizesYZ_h), s);
-    PMECopyConstant(OVERLAP_CELLS_COUNTS, cellsAccumCount_h, sizeof(cellsAccumCount_h), s);
-    //other constants
-}
-
-#else
+#endif
 
 void pme_gpu_copy_recipbox(gmx_pme_t *pme)
 {
@@ -142,8 +80,11 @@ void pme_gpu_copy_recipbox(gmx_pme_t *pme)
         {                  0.0, pme->recipbox[YY][YY], pme->recipbox[ZZ][YY]},
         {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
     };
-
+#if PME_EXTERN_CMEM
+    PMECopyConstant(RECIPBOX, box, sizeof(box), s);
+#else
     memcpy(pme->gpu->recipbox.box, box, sizeof(box));
+#endif
 }
 
 void pme_gpu_copy_overlap_zones(gmx_pme_t *pme)
@@ -176,8 +117,6 @@ void pme_gpu_copy_overlap_zones(gmx_pme_t *pme)
         {overlap,   overlap}
     };
 
-    memcpy(pme->gpu->overlap.overlapSizes, zoneSizesYZ_h, sizeof(zoneSizesYZ_h));
-
     int cellsAccumCount_h[OVERLAP_ZONES];
     for (int i = 0; i < OVERLAP_ZONES; i++)
         cellsAccumCount_h[i] = zoneSizes_h[i].x * zoneSizes_h[i].y * zoneSizes_h[i].z;
@@ -186,11 +125,14 @@ void pme_gpu_copy_overlap_zones(gmx_pme_t *pme)
     {
         cellsAccumCount_h[i] = cellsAccumCount_h[i] + cellsAccumCount_h[i - 1];
     }
-
+#if PME_EXTERN_CMEM
+    PMECopyConstant(OVERLAP_SIZES, zoneSizesYZ_h, sizeof(zoneSizesYZ_h), s);
+    PMECopyConstant(OVERLAP_CELLS_COUNTS, cellsAccumCount_h, sizeof(cellsAccumCount_h), s);
+#else
+    memcpy(pme->gpu->overlap.overlapSizes, zoneSizesYZ_h, sizeof(zoneSizesYZ_h));
     memcpy(pme->gpu->overlap.overlapCellCounts, cellsAccumCount_h, sizeof(cellsAccumCount_h));
-}
 #endif
-
+}
 
 
 #define MAXTAGS 1

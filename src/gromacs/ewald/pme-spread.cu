@@ -101,7 +101,7 @@ __global__ void pme_spline_and_spread_kernel
  const float3 * __restrict__ coordinatesGlobal,
  const real * __restrict__ coefficientGlobal,
  real * __restrict__ gridGlobal, real * __restrict__ thetaGlobal,
- real * __restrict__ dthetaGlobal, int * __restrict__ idxGlobal, //yupinov
+ real * __restrict__ dthetaGlobal, int * __restrict__ idxGlobal,
 #if !PME_EXTERN_CMEM
  const struct pme_gpu_recipbox_t RECIPBOX,
 #endif
