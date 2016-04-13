@@ -681,6 +681,75 @@ __global__ void pme_wrap_kernel
     }
 }
 
+void pme_gpu_calc_spline_alloc(gmx_pme_t *pme)
+{
+    const int thread = 0;
+    cudaStream_t s = pme->gpu->pmeStream;
+
+    cudaError_t stat;
+
+    const int nx = pme->nkx;
+    const int ny = pme->nky;
+    const int nz = pme->nkz;
+
+    const int fshSize = 5 * (nx + ny + nz) * sizeof(real);
+    real *fshArray = pme->gpu->fshArray = PMEFetchRealArray(PME_ID_FSH, thread, fshSize, ML_DEVICE);
+    PMECopy(fshArray                , pme->fshx, 5 * nx * sizeof(real), ML_DEVICE, s);
+    PMECopy(fshArray + 5 * nx       , pme->fshy, 5 * ny * sizeof(real), ML_DEVICE, s);
+    PMECopy(fshArray + 5 * (nx + ny), pme->fshz, 5 * nz * sizeof(real), ML_DEVICE, s);
+
+    const int nnSize = 5 * (nx + ny + nz) * sizeof(int);
+    int *nnArray = pme->gpu->nnArray = PMEFetchIntegerArray(PME_ID_NN, thread, nnSize, ML_DEVICE);
+    PMECopy(nnArray                , pme->nnx, 5 * nx * sizeof(int), ML_DEVICE, s);
+    PMECopy(nnArray + 5 * nx       , pme->nny, 5 * ny * sizeof(int), ML_DEVICE, s);
+    PMECopy(nnArray + 5 * (nx + ny), pme->nnz, 5 * nz * sizeof(int), ML_DEVICE, s);
+
+    #if USE_TEXTURES
+    #if USE_TEXOBJ
+    //if (use_texobj(dev_info))
+    // commented texture object code - should check device info here for CC >= 3.0
+    {
+        cudaResourceDesc rd;
+        cudaTextureDesc td;
+
+        memset(&rd, 0, sizeof(rd));
+        rd.resType                  = cudaResourceTypeLinear;
+        rd.res.linear.devPtr        = fshArray;
+        rd.res.linear.desc.f        = cudaChannelFormatKindFloat;
+        rd.res.linear.desc.x        = 32;
+        rd.res.linear.sizeInBytes   = fshSize;
+        memset(&td, 0, sizeof(td));
+        td.readMode                 = cudaReadModeElementType;
+        stat = cudaCreateTextureObject(&fshTexture, &rd, &td, NULL);
+        CU_RET_ERR(stat, "cudaCreateTextureObject on fsh_d failed");
+
+
+        memset(&rd, 0, sizeof(rd));
+        rd.resType                  = cudaResourceTypeLinear;
+        rd.res.linear.devPtr        = nnArray;
+        rd.res.linear.desc.f        = cudaChannelFormatKindSigned;
+        rd.res.linear.desc.x        = 32;
+        rd.res.linear.sizeInBytes   = nnSize;
+        memset(&td, 0, sizeof(td));
+        td.readMode                 = cudaReadModeElementType;
+        stat = cudaCreateTextureObject(&nnTexture, &rd, &td, NULL); //yupinov destroy, keep allocated
+        CU_RET_ERR(stat, "cudaCreateTextureObject on nn_d failed");
+    }
+    else
+    #endif
+    {
+        cudaChannelFormatDesc cd_fsh = cudaCreateChannelDesc<float>();
+        stat = cudaBindTexture(NULL, &fshTextureRef, fshArray, &cd_fsh, fshSize);
+        CU_RET_ERR(stat, "cudaBindTexture on fsh failed");
+
+        cudaChannelFormatDesc cd_nn = cudaCreateChannelDesc<int>();
+        stat = cudaBindTexture(NULL, &nnTextureRef, nnArray, &cd_nn, nnSize);
+        CU_RET_ERR(stat, "cudaBindTexture on nn failed");
+        //yupinov unbind
+    }
+    #endif
+}
+
 void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
          int grid_index,
          pmegrid_t *pmegrid,
@@ -752,62 +821,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     int *nn_d = pme->gpu->nnArray;
     if (bCalcSplines)
     {
-        const int fshSize = 5 * (nx + ny + nz) * sizeof(real);
-        fsh_d = pme->gpu->fshArray = PMEFetchRealArray(PME_ID_FSH, thread, fshSize, ML_DEVICE);
-        PMECopy(fsh_d                , pme->fshx, 5 * nx * sizeof(real), ML_DEVICE, s);
-        PMECopy(fsh_d + 5 * nx       , pme->fshy, 5 * ny * sizeof(real), ML_DEVICE, s);
-        PMECopy(fsh_d + 5 * (nx + ny), pme->fshz, 5 * nz * sizeof(real), ML_DEVICE, s);
-
-        const int nnSize = 5 * (nx + ny + nz) * sizeof(int);
-        nn_d = pme->gpu->nnArray = PMEFetchIntegerArray(PME_ID_NN, thread, nnSize, ML_DEVICE);
-        PMECopy(nn_d                , pme->nnx, 5 * nx * sizeof(int), ML_DEVICE, s);
-        PMECopy(nn_d + 5 * nx       , pme->nny, 5 * ny * sizeof(int), ML_DEVICE, s);
-        PMECopy(nn_d + 5 * (nx + ny), pme->nnz, 5 * nz * sizeof(int), ML_DEVICE, s);
-
-#if USE_TEXTURES
-#if USE_TEXOBJ
-        //if (use_texobj(dev_info))
-        // commented texture object code - should check device info here for CC >= 3.0
-        {
-            cudaResourceDesc rd;
-            cudaTextureDesc td;
-
-            memset(&rd, 0, sizeof(rd));
-            rd.resType                  = cudaResourceTypeLinear;
-            rd.res.linear.devPtr        = fsh_d;
-            rd.res.linear.desc.f        = cudaChannelFormatKindFloat;
-            rd.res.linear.desc.x        = 32;
-            rd.res.linear.sizeInBytes   = fshSize;
-            memset(&td, 0, sizeof(td));
-            td.readMode                 = cudaReadModeElementType;
-            stat = cudaCreateTextureObject(&fshTexture, &rd, &td, NULL);
-            CU_RET_ERR(stat, "cudaCreateTextureObject on fsh_d failed");
-
-
-            memset(&rd, 0, sizeof(rd));
-            rd.resType                  = cudaResourceTypeLinear;
-            rd.res.linear.devPtr        = nn_d;
-            rd.res.linear.desc.f        = cudaChannelFormatKindSigned;
-            rd.res.linear.desc.x        = 32;
-            rd.res.linear.sizeInBytes   = nnSize;
-            memset(&td, 0, sizeof(td));
-            td.readMode                 = cudaReadModeElementType;
-            stat = cudaCreateTextureObject(&nnTexture, &rd, &td, NULL); //yupinov destroy, keep allocated
-            CU_RET_ERR(stat, "cudaCreateTextureObject on nn_d failed");
-        }
-        else
-#endif
-        {
-            cudaChannelFormatDesc cd_fsh = cudaCreateChannelDesc<float>();
-            stat = cudaBindTexture(NULL, &fshTextureRef, fsh_d, &cd_fsh, fshSize);
-            CU_RET_ERR(stat, "cudaBindTexture on fsh failed");
-
-            cudaChannelFormatDesc cd_nn = cudaCreateChannelDesc<int>();
-            stat = cudaBindTexture(NULL, &nnTextureRef, nn_d, &cd_nn, nnSize);
-            CU_RET_ERR(stat, "cudaBindTexture on nn failed");
-            //yupinov unbind
-        }
-#endif
+        pme_gpu_calc_spline_alloc(pme);
 
 
         float3 *xptr_h = (float3 *)atc->x;
