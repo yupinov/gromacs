@@ -14,6 +14,15 @@
 
 #include <assert.h>
 
+void pme_gpu_alloc_gather_forces(gmx_pme_t *pme)
+{
+    const int tag = 0;
+    const int n = pme->atc[0].n; //?
+    assert(n > 0);
+    const int forcesSize = DIM * n * sizeof(real);
+    pme->gpu->forces = PMEFetchRealArray(PME_ID_FORCES, tag, forcesSize, ML_DEVICE);
+}
+
 void gpu_forces_copyback(gmx_pme_t *pme, int n, rvec *forces)
 {
     cudaStream_t s = pme->gpu->pmeStream;
@@ -317,15 +326,16 @@ void gather_f_bsplines_gpu
  int thread
  )
 {
+    //yupinov bClearf!
+
     cudaStream_t s = pme->gpu->pmeStream;
     if (!n)
         return;
 
     const int ndatatot = pnx * pny * pnz;
     const int gridSize = ndatatot * sizeof(real);
-    real *grid_d = pme->gpu->grid;
     if (!pme->gpu->keepGPUDataBetweenC2RAndGather)
-        PMECopy(grid_d, grid, gridSize, ML_DEVICE, s);
+        PMECopy(pme->gpu->grid, grid, gridSize, ML_DEVICE, s);
 
     if (pme->bGPUSingle)
     {
@@ -343,7 +353,7 @@ void gather_f_bsplines_gpu
 #if !PME_EXTERN_CMEM
                                                                 pme->gpu->overlap,
 #endif
-                                                                grid_d);
+                                                                pme->gpu->grid);
 
             CU_LAUNCH_ERR("pme_unwrap_kernel");
 
@@ -531,10 +541,9 @@ void gather_f_bsplines_gpu
 
 
     // forces
-    real *atc_f_d = PMEFetchRealArray(PME_ID_FORCES, thread, size_forces, ML_DEVICE);
     if (!bClearF)
-        PMECopy(atc_f_d, atc_f_h, size_forces, ML_DEVICE, s);
-    //yupinov not really needed if we prelaunch the PME GPU?
+        PMECopy(pme->gpu->forces, atc_f_h, size_forces, ML_DEVICE, s);
+    //yupinov - not needed!
 
     float3 nXYZ = {(real)nx, (real)ny, (real)nz}; //yupinov
     real *nXYZ_d = PMEFetchAndCopyRealArray(PME_ID_NXYZ, thread, &nXYZ, sizeof(nXYZ), ML_DEVICE, s);
@@ -549,22 +558,22 @@ void gather_f_bsplines_gpu
     if (order == 4) //yupinov
         if (bClearF)
             pme_gather_kernel<4, blockSize / 4 / 4, TRUE> <<<nBlocks, dimBlock, 0, s>>>
-              (grid_d,
+              (pme->gpu->grid,
                n,
                nXYZ_d, pnx, pny, pnz,
                theta_d, dtheta_d,
-               atc_f_d, coefficients_d,
+               pme->gpu->forces, coefficients_d,
 #if !PME_EXTERN_CMEM
                pme->gpu->recipbox,
 #endif
                idx_d);
         else
             pme_gather_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocks, dimBlock, 0, s>>>
-              (grid_d,
+              (pme->gpu->grid,
                n,
                nXYZ_d, pnx, pny, pnz,
                theta_d, dtheta_d,
-               atc_f_d, coefficients_d,
+               pme->gpu->forces, coefficients_d,
 #if !PME_EXTERN_CMEM
                pme->gpu->recipbox,
 #endif
@@ -575,7 +584,7 @@ void gather_f_bsplines_gpu
 
     events_record_stop(gpu_events_gather, s, ewcsPME_GATHER, 0);
 
-    PMECopy(atc_f_h, atc_f_d, size_forces, ML_HOST, s);
+    PMECopy(atc_f_h, pme->gpu->forces, size_forces, ML_HOST, s);
     cudaError_t stat = cudaEventRecord(pme->gpu->syncForcesH2D, s);
     CU_RET_ERR(stat, "PME gather forces sync fail");
 }

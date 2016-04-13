@@ -736,8 +736,6 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
                                   pme->pmegrid_nz_base,
                                   &pme->nnz, &pme->fshz);
 
-    pme_gpu_init(&pme->gpu, pme);
-
     pme->spline_work = make_pme_spline_work(pme->pme_order);
 
     ndata[0]    = pme->nkx;
@@ -781,11 +779,6 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
                                     &pme->fftgrid[i], &pme->cfftgrid[i],
                                     pme->mpi_comm_d,
                                      bReproducible, pme->nthread);
-           if (pme->bGPUFFT) //yupinov does not do proper separate init
-                gmx_parallel_3dfft_init_gpu(&pme->pfft_setup_gpu[i], ndata,
-                                                &pme->fftgrid[i], &pme->cfftgrid[i],
-                                                pme->mpi_comm_d,
-                                               bReproducible, pme->nthread, pme);
 
         }
     }
@@ -813,6 +806,8 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
         pme->atc[0].n = homenr;
         pme_realloc_atomcomm_things(&pme->atc[0]);
     }
+
+    pme_gpu_init(&pme->gpu, pme);
 
     pme->lb_buf1       = NULL;
     pme->lb_buf2       = NULL;

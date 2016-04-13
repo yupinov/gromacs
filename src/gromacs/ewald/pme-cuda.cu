@@ -69,8 +69,39 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme)
     }
 
     // all these functions should only work when grid size changes, I think
-    pme_gpu_copy_overlap_zones(pme);
+    const int grid_index = 0;
+    pme_gpu_copy_wrap_zones(pme);
     pme_gpu_copy_calcspline_constants(pme);
+    pme_gpu_alloc_gather_forces(pme);
+    pme_gpu_alloc_grid(pme, grid_index);
+
+    if (pme->bGPUFFT) //copied from gmx_pme_init
+    {
+        ivec ndata;
+        ndata[0]    = pme->nkx;
+        ndata[1]    = pme->nky;
+        ndata[2]    = pme->nkz;
+        const gmx_bool bReproducible = false;
+        for (int i = 0; i < pme->ngrids; ++i)
+        {
+            /*
+            if ((i <  DO_Q && EEL_PME(ir->coulombtype) && (i == 0 ||
+                                                           bFreeEnergy_q)) ||
+                (i >= DO_Q && EVDW_PME(ir->vdwtype) && (i == 2 ||
+                                                        bFreeEnergy_lj ||
+                                                        ir->ljpme_combination_rule == eljpmeLB)))
+            */
+            if (pme->pfft_setup[i])  //yupinov does not do proper separate init
+            {
+                 gmx_parallel_3dfft_init_gpu(&pme->pfft_setup_gpu[i], ndata,
+                                                 &pme->fftgrid[i], &pme->cfftgrid[i],
+                                                 pme->mpi_comm_d,
+                                                 bReproducible, pme->nthread, pme);
+
+            }
+        }
+    }
+
 
     pme_gpu_step_reinit(pme);
 
@@ -124,7 +155,7 @@ void pme_gpu_copy_recipbox(gmx_pme_t *pme)
 #endif
 }
 
-void pme_gpu_copy_overlap_zones(gmx_pme_t *pme)
+void pme_gpu_copy_wrap_zones(gmx_pme_t *pme)
 {
     const int nx = pme->nkx;
     const int ny = pme->nky;

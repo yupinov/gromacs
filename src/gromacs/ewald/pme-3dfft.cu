@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <cufft.h>
 #include "pme-timings.cuh"
 #include "pme-cuda.cuh"
@@ -101,8 +102,11 @@ gmx_pme_t *pme)
     const int gridSizeComplex = setup->size_complex[XX] * setup->size_complex[YY] * setup->size_complex[ZZ];
     const int gridSizeReal = setup->size_real[XX] * setup->size_real[YY] * setup->size_real[ZZ];
 
-    setup->rdata = pme->gpu->grid;
+    setup->rdata = (cufftReal *)pme->gpu->grid;
+    assert(setup->rdata);
     setup->cdata = (cufftComplex *)PMEFetchComplexArray(PME_ID_COMPLEX_GRID, 0, gridSizeComplex * sizeof(cufftComplex), ML_DEVICE);
+
+    //printf("%p %p %p\n",  pme->gpu->grid, setup->rdata,  setup->cdata);
 
     //yupinov hack
     /*

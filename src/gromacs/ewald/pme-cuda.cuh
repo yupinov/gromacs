@@ -87,7 +87,7 @@ struct gmx_pme_cuda_t
 
     // device pointers/obejcts below
 
-    // bCalcSplines
+    // spline calculation
     // fractional shifts (pme->fsh*)
     real *fshArray;
     // indices (pme->nn*)
@@ -95,6 +95,14 @@ struct gmx_pme_cuda_t
 
     // grid - used everywhere
     real *grid;
+
+    // gather
+    // forces
+    real *forces;
+
+
+    //forces and coordinates should be shared with nonbondeds!
+
 };
 
 

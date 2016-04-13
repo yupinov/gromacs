@@ -28,10 +28,10 @@ typedef int gmx_nbnxn_gpu_t;
 // gmx_unused
 
 
-// data handling
+// internal data handling
 
 // copies the grid sizes for overlapping (PME wrap/unwrap)
-CUDA_FUNC_QUALIFIER void pme_gpu_copy_overlap_zones(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_copy_wrap_zones(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 // copies the reciprocal box to the device (PME spread/solve/gather)
 CUDA_FUNC_QUALIFIER void pme_gpu_copy_recipbox(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
@@ -39,10 +39,12 @@ CUDA_FUNC_QUALIFIER void pme_gpu_copy_recipbox(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme
 // copies the nn and fsh to the device (PME spline)
 CUDA_FUNC_QUALIFIER void pme_gpu_copy_calcspline_constants(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
-// clears the grid
-CUDA_FUNC_QUALIFIER void pme_gpu_clear_grid(struct gmx_pme_t *CUDA_FUNC_ARGUMENT(pme), const int CUDA_FUNC_ARGUMENT(grid_index)) CUDA_FUNC_TERM
+// clearing
+CUDA_FUNC_QUALIFIER void pme_gpu_clear_grid(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme), const int CUDA_FUNC_ARGUMENT(grid_index)) CUDA_FUNC_TERM
 
-
+// allocating
+CUDA_FUNC_QUALIFIER void pme_gpu_alloc_grid(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme), const int CUDA_FUNC_ARGUMENT(grid_index)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_alloc_gather_forces(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t gmx_unused *pfft_setup,
                                ivec        gmx_unused              ndata,
