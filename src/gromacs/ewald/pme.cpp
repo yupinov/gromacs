@@ -996,8 +996,9 @@ int gmx_pme_do(struct gmx_pme_t *pme,
     }
 
     gmx::invertBoxMatrix(box, pme->recipbox);
-    pme_gpu_copy_recipbox(pme); //yupinov test changing box
+
     bFirst = TRUE;
+    pme_gpu_step_init(pme);
 
     /* For simplicity, we construct the splines for all particles if
      * more than one PME calculations is needed. Some optimization

@@ -24,6 +24,8 @@ void pme_gpu_update_flags(
 
 void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme)
 {
+     // this is ran in the beginning/on DD
+
     gmx_bool firstInit = !*pmeGPU;
     if (firstInit) // first init
     {
@@ -68,6 +70,12 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme)
 
     if (debug)
         fprintf(debug, "PME GPU %s\n", firstInit ? "init" : "reinit");
+}
+
+void pme_gpu_step_init(gmx_pme_t *pme)
+{
+    // this is ran in the beginning of MD step
+    pme_gpu_copy_recipbox(pme); //yupinov test changing box
 }
 
 #if PME_EXTERN_CMEM
