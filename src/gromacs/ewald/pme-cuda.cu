@@ -24,7 +24,9 @@ void pme_gpu_update_flags(
 
 void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme)
 {
-     // this is ran in the beginning/on DD
+    // this is ran in the beginning/on DD
+    if (!pme->bGPU)
+        return;
 
     gmx_bool firstInit = !*pmeGPU;
     if (firstInit) // first init
@@ -70,6 +72,8 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme)
     pme_gpu_copy_overlap_zones(pme);
     pme_gpu_copy_calcspline_constants(pme);
 
+    pme_gpu_step_init(pme);
+
     if (debug)
         fprintf(debug, "PME GPU %s\n", firstInit ? "init" : "reinit");
 }
@@ -78,9 +82,12 @@ void pme_gpu_step_init(gmx_pme_t *pme)
 {
     // this is ran in the beginning of MD step
     // or should it be ran at the end of each step + from the pme_gpu_init?
-    // there should be a grid_index here, actually!
-    pme_gpu_copy_recipbox(pme); //yupinov test changing box
+    if (!pme->bGPU)
+        return;
 
+    const int grid_index = 0; //!
+    pme_gpu_copy_recipbox(pme); //yupinov test changing box
+    pme_gpu_clear_grid(pme, grid_index);
 
 }
 
@@ -94,8 +101,6 @@ __constant__ __device__ float3 RECIPBOX[3];
 
 void pme_gpu_copy_recipbox(gmx_pme_t *pme)
 {
-    if (!pme->bGPU)
-        return;
     const float3 box[3] =
     {
         {pme->recipbox[XX][XX], pme->recipbox[YY][XX], pme->recipbox[ZZ][XX]},
@@ -111,8 +116,6 @@ void pme_gpu_copy_recipbox(gmx_pme_t *pme)
 
 void pme_gpu_copy_overlap_zones(gmx_pme_t *pme)
 {
-    if (!pme->bGPU)
-        return;
     const int nx = pme->nkx;
     const int ny = pme->nky;
     const int nz = pme->nkz;

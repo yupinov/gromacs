@@ -323,7 +323,7 @@ void gather_f_bsplines_gpu
 
     const int ndatatot = pnx * pny * pnz;
     const int gridSize = ndatatot * sizeof(real);
-    real *grid_d = PMEFetchRealArray(PME_ID_REAL_GRID, thread, gridSize, ML_DEVICE);
+    real *grid_d = pme->gpu->grid;
     if (!pme->gpu->keepGPUDataBetweenC2RAndGather)
         PMECopy(grid_d, grid, gridSize, ML_DEVICE, s);
 

@@ -763,14 +763,13 @@ void pme_gpu_clear_grid(struct gmx_pme_t *pme, const int grid_index)
     const int pnx = pme->pmegrid_nx;
     const int pny = pme->pmegrid_ny;
     const int pnz = pme->pmegrid_nz;
-
     const int gridSize = pnx * pny * pnz * sizeof(real);
 
     cudaStream_t s = pme->gpu->pmeStream;
 
     const int tag = 0; // should be a grid_index?
-    real *grid_d = pme->gpu->grid = PMEFetchRealArray(PME_ID_REAL_GRID, tag, gridSize, ML_DEVICE);
-    cudaError_t stat = cudaMemsetAsync(grid_d, 0, gridSize, s);
+    pme->gpu->grid = PMEFetchRealArray(PME_ID_REAL_GRID, tag, gridSize, ML_DEVICE);
+    cudaError_t stat = cudaMemsetAsync(pme->gpu->grid, 0, gridSize, s);
     CU_RET_ERR(stat, "cudaMemsetAsync spread error");
 }
 
@@ -861,10 +860,6 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     //filtering?
 
     real *coefficient_d = PMEFetchAndCopyRealArray(PME_ID_COEFFICIENT, tag, atc->coefficient, n * sizeof(real), ML_DEVICE, s); //yupinov compact here as weel?
-
-    if (bSpread)
-        pme_gpu_clear_grid(pme, grid_index);
-
 
     /*
     const int N = 256;

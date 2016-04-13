@@ -28,6 +28,8 @@ typedef int gmx_nbnxn_gpu_t;
 // gmx_unused
 
 
+// data handling
+
 // copies the grid sizes for overlapping (PME wrap/unwrap)
 CUDA_FUNC_QUALIFIER void pme_gpu_copy_overlap_zones(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
@@ -36,6 +38,9 @@ CUDA_FUNC_QUALIFIER void pme_gpu_copy_recipbox(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme
 
 // copies the nn and fsh to the device (PME spline)
 CUDA_FUNC_QUALIFIER void pme_gpu_copy_calcspline_constants(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+
+// clears the grid
+CUDA_FUNC_QUALIFIER void pme_gpu_clear_grid(struct gmx_pme_t *CUDA_FUNC_ARGUMENT(pme), const int CUDA_FUNC_ARGUMENT(grid_index)) CUDA_FUNC_TERM
 
 
 
