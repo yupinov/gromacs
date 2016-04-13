@@ -751,6 +751,29 @@ void pme_gpu_copy_calcspline_constants(gmx_pme_t *pme)
 #endif
 }
 
+void pme_gpu_clear_grid(struct gmx_pme_t *pme, const int grid_index)
+{
+    /*
+    pmegrid_t *pmegrid = &(pme->pmegrid[grid_index].grid); //yupinov most PME GPU functions ignore grid indices anyway
+    const int pnx = pmegrid->n[XX];
+    const int pny = pmegrid->n[YY];
+    const int pnz = pmegrid->n[ZZ];
+    */
+
+    const int pnx = pme->pmegrid_nx;
+    const int pny = pme->pmegrid_ny;
+    const int pnz = pme->pmegrid_nz;
+
+    const int gridSize = pnx * pny * pnz * sizeof(real);
+
+    cudaStream_t s = pme->gpu->pmeStream;
+
+    const int tag = 0; // should be a grid_index?
+    real *grid_d = pme->gpu->grid = PMEFetchRealArray(PME_ID_REAL_GRID, tag, gridSize, ML_DEVICE);
+    cudaError_t stat = cudaMemsetAsync(grid_d, 0, gridSize, s);
+    CU_RET_ERR(stat, "cudaMemsetAsync spread error");
+}
+
 void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
          int grid_index,
          pmegrid_t *pmegrid,
@@ -765,14 +788,13 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     if (!bCalcSplines && !bSpread)
         gmx_fatal(FARGS, "No splining or spreading to be done?"); //yupinov use of gmx_fatal
 
-    const int thread = 0;
+    const int tag = 0;
     //yupinov
     // bCalcSplines is always true - untested, unfinished
     // bDoSplines is always false - untested
     // bSpread is always true - untested, unfinished
     // check bClearF as well
 
-    cudaError_t stat;
     cudaStream_t s = pme->gpu->pmeStream;
 
     atc->spline[0].n = atc->n; //yupinov - without it, the conserved energy went down by 0.5%! used in gather or sometwhere else?
@@ -800,17 +822,16 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     int n = atc->n;
     int n_blocked = n;//(n + warp_size - 1) / warp_size * warp_size;
-    int ndatatot = pnx * pny * pnz;
-    int size_grid = ndatatot * sizeof(real);
+    const int gridSize = pnx * pny * pnz * sizeof(real);
 
     int size_order = order * n * sizeof(real);
     int size_order_dim = size_order * DIM;
-    real *theta_d = PMEFetchRealArray(PME_ID_THETA, thread, size_order_dim, ML_DEVICE);
-    real *dtheta_d = PMEFetchRealArray(PME_ID_DTHETA, thread, size_order_dim, ML_DEVICE);
+    real *theta_d = PMEFetchRealArray(PME_ID_THETA, tag, size_order_dim, ML_DEVICE);
+    real *dtheta_d = PMEFetchRealArray(PME_ID_DTHETA, tag, size_order_dim, ML_DEVICE);
 
     // IDXPTR
     int idx_size = n * DIM * sizeof(int);
-    int *idx_d = PMEFetchIntegerArray(PME_ID_IDXPTR, thread, idx_size, ML_DEVICE);
+    int *idx_d = PMEFetchIntegerArray(PME_ID_IDXPTR, tag, idx_size, ML_DEVICE);
 
     float3 *xptr_d = NULL;
     //float4 *xptr_d = NULL;
@@ -821,7 +842,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     if (bCalcSplines)
     {
         float3 *xptr_h = (float3 *)atc->x;
-        xptr_d = (float3 *)PMEFetchRealArray(PME_ID_XPTR, thread, DIM * n_blocked * sizeof(real), ML_DEVICE);
+        xptr_d = (float3 *)PMEFetchRealArray(PME_ID_XPTR, tag, DIM * n_blocked * sizeof(real), ML_DEVICE);
         PMECopy(xptr_d, xptr_h, DIM * n_blocked * sizeof(real), ML_DEVICE, s);
         /*
         float4 *xptr_h = (float4 *)PMEFetchRealArray(PME_ID_XPTR, thread, 4 * n_blocked * sizeof(real), ML_HOST);
@@ -839,15 +860,11 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     //yupinov blocked approach everywhere or nowhere
     //filtering?
 
-    real *coefficient_d = PMEFetchAndCopyRealArray(PME_ID_COEFFICIENT, thread, atc->coefficient, n * sizeof(real), ML_DEVICE, s); //yupinov compact here as weel?
+    real *coefficient_d = PMEFetchAndCopyRealArray(PME_ID_COEFFICIENT, tag, atc->coefficient, n * sizeof(real), ML_DEVICE, s); //yupinov compact here as weel?
 
-    real *grid_d = NULL;
     if (bSpread)
-    {
-        grid_d = PMEFetchRealArray(PME_ID_REAL_GRID, thread, size_grid, ML_DEVICE);
-        stat = cudaMemsetAsync(grid_d, 0, size_grid, s); //yupinov
-        CU_RET_ERR(stat, "cudaMemsetAsync spread error");
-    }
+        pme_gpu_clear_grid(pme, grid_index);
+
 
     /*
     const int N = 256;
@@ -919,7 +936,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                                                                             (pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
                                                                              pny, pnz,
                                                                              coefficient_d,
-                                                                             grid_d, theta_d, idx_d,
+                                                                             pme->gpu->grid, theta_d, idx_d,
                                                                              n);
 
                     CU_LAUNCH_ERR("pme_spread_kernel");
@@ -951,7 +968,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 #else
                                    pme->gpu->nnArray, pme->gpu->fshArray,
 #endif
-                                   xptr_d, coefficient_d, grid_d, theta_d, dtheta_d, idx_d,
+                                   xptr_d, coefficient_d, pme->gpu->grid, theta_d, dtheta_d, idx_d,
 #if !PME_EXTERN_CMEM
                                    pme->gpu->recipbox,
 #endif
@@ -980,7 +997,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 #if !PME_EXTERN_CMEM
                                                                   pme->gpu->overlap,
 #endif
-                                                                  grid_d);
+                                                                  pme->gpu->grid);
 
                 CU_LAUNCH_ERR("pme_wrap_kernel");
 
@@ -995,12 +1012,12 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
     {
         if (bSpread)
-            PMECopy(pmegrid->grid, grid_d, size_grid, ML_HOST, s);
+            PMECopy(pmegrid->grid, pme->gpu->grid, gridSize, ML_HOST, s);
         for (int j = 0; j < DIM; ++j) //also breaking compacting in gather
         //and why not just check bGPUSingle here?
         {
-            PMECopy(atc->spline[thread].dtheta[j], dtheta_d + j * n * order, size_order, ML_HOST, s);
-            PMECopy(atc->spline[thread].theta[j], theta_d + j * n * order, size_order, ML_HOST, s);
+            PMECopy(atc->spline[tag].dtheta[j], dtheta_d + j * n * order, size_order, ML_HOST, s);
+            PMECopy(atc->spline[tag].theta[j], theta_d + j * n * order, size_order, ML_HOST, s);
         }
         //yupinov what about theta/dtheta/idx use in pme_realloc_atomcomm_things?
         PMECopy(atc->idx, idx_d, idx_size, ML_HOST, s);

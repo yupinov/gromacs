@@ -92,6 +92,9 @@ struct gmx_pme_cuda_t
     real *fshArray;
     // indices (pme->nn*)
     int *nnArray;
+
+    // grid - used everywhere
+    real *grid;
 };
 
 

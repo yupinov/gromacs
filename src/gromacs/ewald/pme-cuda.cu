@@ -77,7 +77,11 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme)
 void pme_gpu_step_init(gmx_pme_t *pme)
 {
     // this is ran in the beginning of MD step
+    // or should it be ran at the end of each step + from the pme_gpu_init?
+    // there should be a grid_index here, actually!
     pme_gpu_copy_recipbox(pme); //yupinov test changing box
+
+
 }
 
 #if PME_EXTERN_CMEM
