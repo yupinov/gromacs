@@ -104,8 +104,6 @@ void pme_gpu_copy_overlap_zones(gmx_pme_t *pme)
     const int nz = pme->nkz;
     const int overlap = pme->pme_order - 1;
 
-    printf("%d %d %d %d\n", nx, ny, nz, overlap);
-
     // cell count in 7 parts of overlap
     const int3 zoneSizes_h[OVERLAP_ZONES] =
     {
