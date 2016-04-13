@@ -4,6 +4,11 @@
 
 #include "gromacs/gpu_utils/cudautils.cuh"
 
+//for GPU init
+#include "gromacs/gpu_utils/gpu_utils.h"
+#include "gromacs/utility/cstringutil.h"
+#include "gromacs/hardware/hw_info.h"
+
 #include "pme-cuda.cuh"
 #include "pme-gpu.h"
 
@@ -22,10 +27,10 @@ void pme_gpu_update_flags(
     pmeGPU->keepGPUDataBetweenC2RAndGather = keepGPUDataBetweenC2RAndGather;
 }
 
-void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme)
+void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_opt_t *gpu_opt)
 {
     // this is ran in the beginning/on DD
-    if (!pme->bGPU)
+    if (!pme->bGPU) //yupinov fix this
         return;
 
     gmx_bool firstInit = !*pmeGPU;
@@ -34,6 +39,16 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme)
         *pmeGPU = new gmx_pme_gpu_t;
         cudaError_t stat;
     //yupinov dealloc@
+
+        const int PMEGPURank = 0; //yupinov !
+        FILE *fp = NULL; //yupinov pass this
+        char gpu_err_str[STRLEN];
+        if (!init_gpu(fp, PMEGPURank, gpu_err_str, &hwinfo->gpu_info, gpu_opt))
+            gmx_fatal(FARGS, "could not select GPU %d for PME rank %d\n", hwinfo->gpu_info.gpu_dev[gpu_opt->dev_use[PMEGPURank]].id, PMEGPURank);
+        //should set bGPU to and fall back
+
+        //first init and either of the hw structures NULL => also fall back to CPU
+
 
         // creating a PME stream
     #if GMX_CUDA_VERSION >= 5050

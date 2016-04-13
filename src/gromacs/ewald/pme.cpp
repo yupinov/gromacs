@@ -475,7 +475,9 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
                  gmx_bool           bFreeEnergy_lj,
                  gmx_bool           bReproducible,
                  int                nthread,
-                 gmx_bool           bPMEGPU)
+                 gmx_bool           bPMEGPU,
+                 const gmx_hw_info_t *hwinfo,
+                 const gmx_gpu_opt_t *gpu_opt)
 {
     struct gmx_pme_t *pme = NULL;
 
@@ -807,7 +809,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
         pme_realloc_atomcomm_things(&pme->atc[0]);
     }
 
-    pme_gpu_init(&pme->gpu, pme);
+    pme_gpu_init(&pme->gpu, pme, hwinfo, gpu_opt);
 
     pme->lb_buf1       = NULL;
     pme->lb_buf2       = NULL;

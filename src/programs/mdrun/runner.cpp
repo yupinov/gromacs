@@ -1130,7 +1130,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
     }
 #endif
 
-    if (bUseGPU)
+    if (bUseGPU) //yupinov
     {
         /* Select GPU id's to use */
         gmx_select_gpu_ids(mdlog, cr, &hwinfo->gpu_info, bForceUseGPU,
@@ -1312,7 +1312,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
         {
             status = gmx_pme_init(pmedata, cr, npme_major, npme_minor, inputrec,
                                   mtop ? mtop->natoms : 0, nChargePerturbed, nTypePerturbed,
-                                  (Flags & MD_REPRODUCIBLE), nthreads_pme, (Flags & MD_PMEGPU));
+                                  (Flags & MD_REPRODUCIBLE), nthreads_pme, (Flags & MD_PMEGPU), hwinfo, &hw_opt->gpu_opt);
             if (status != 0)
             {
                 gmx_fatal(FARGS, "Error %d initializing PME", status);
