@@ -66,7 +66,9 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme)
         pme_gpu_update_flags(*pmeGPU, false, false, false, false);
     }
 
+    // all these functions should only work when grid size changes, I think
     pme_gpu_copy_overlap_zones(pme);
+    pme_gpu_copy_calcspline_constants(pme);
 
     if (debug)
         fprintf(debug, "PME GPU %s\n", firstInit ? "init" : "reinit");

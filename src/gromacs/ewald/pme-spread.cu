@@ -60,10 +60,10 @@ gpu_events gpu_events_splineandspread;
 #define MIN_BLOCKS_PER_MP   (16)
 
 #define USE_TEXTURES 1
-//textures seems just a bit slower on GTX 660 Ti, so I'm keeping this define just in case
 
+//move all this into structure?
 #if USE_TEXTURES
-#define USE_TEXOBJ 0
+#define USE_TEXOBJ 0 // should check device info dynamically
 #if USE_TEXOBJ
 cudaTextureObject_t nnTexture;
 cudaTextureObject_t fshTexture;
@@ -681,7 +681,7 @@ __global__ void pme_wrap_kernel
     }
 }
 
-void pme_gpu_calc_spline_alloc(gmx_pme_t *pme)
+void pme_gpu_copy_calcspline_constants(gmx_pme_t *pme)
 {
     const int thread = 0;
     cudaStream_t s = pme->gpu->pmeStream;
@@ -704,10 +704,10 @@ void pme_gpu_calc_spline_alloc(gmx_pme_t *pme)
     PMECopy(nnArray + 5 * nx       , pme->nny, 5 * ny * sizeof(int), ML_DEVICE, s);
     PMECopy(nnArray + 5 * (nx + ny), pme->nnz, 5 * nz * sizeof(int), ML_DEVICE, s);
 
-    #if USE_TEXTURES
-    #if USE_TEXOBJ
+#if USE_TEXTURES
+#if USE_TEXOBJ
     //if (use_texobj(dev_info))
-    // commented texture object code - should check device info here for CC >= 3.0
+    // should check device info here for CC >= 3.0
     {
         cudaResourceDesc rd;
         cudaTextureDesc td;
@@ -735,8 +735,8 @@ void pme_gpu_calc_spline_alloc(gmx_pme_t *pme)
         stat = cudaCreateTextureObject(&nnTexture, &rd, &td, NULL); //yupinov destroy, keep allocated
         CU_RET_ERR(stat, "cudaCreateTextureObject on nn_d failed");
     }
-    else
-    #endif
+    //else
+#else
     {
         cudaChannelFormatDesc cd_fsh = cudaCreateChannelDesc<float>();
         stat = cudaBindTexture(NULL, &fshTextureRef, fshArray, &cd_fsh, fshSize);
@@ -747,7 +747,8 @@ void pme_gpu_calc_spline_alloc(gmx_pme_t *pme)
         CU_RET_ERR(stat, "cudaBindTexture on nn failed");
         //yupinov unbind
     }
-    #endif
+#endif
+#endif
 }
 
 void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
@@ -817,13 +818,8 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     const float3 nXYZ = {(real)nx, (real)ny, (real)nz};
     const int3 nnOffset = {0, 5 * nx, 5 * (nx + ny)};
 
-    real *fsh_d = pme->gpu->fshArray;
-    int *nn_d = pme->gpu->nnArray;
     if (bCalcSplines)
     {
-        pme_gpu_calc_spline_alloc(pme);
-
-
         float3 *xptr_h = (float3 *)atc->x;
         xptr_d = (float3 *)PMEFetchRealArray(PME_ID_XPTR, thread, DIM * n_blocked * sizeof(real), ML_DEVICE);
         PMECopy(xptr_d, xptr_h, DIM * n_blocked * sizeof(real), ML_DEVICE, s);
@@ -898,7 +894,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                                                                                                     nnTexture, fshTexture,
 #endif
 #else
-                                                                                                    nn_d, fsh_d,
+                                                                                                    pme->gpu->nnArray, pme->gpu->fshArray,
 #endif
                                                                                                     xptr_d,
                                                                                                     coefficient_d,
@@ -953,7 +949,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                                    nnTexture, fshTexture,
 #endif
 #else
-                                   nn_d, fsh_d,
+                                   pme->gpu->nnArray, pme->gpu->fshArray,
 #endif
                                    xptr_d, coefficient_d, grid_d, theta_d, dtheta_d, idx_d,
 #if !PME_EXTERN_CMEM

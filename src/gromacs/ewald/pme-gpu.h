@@ -34,6 +34,9 @@ CUDA_FUNC_QUALIFIER void pme_gpu_copy_overlap_zones(gmx_pme_t *CUDA_FUNC_ARGUMEN
 // copies the reciprocal box to the device (PME spread/solve/gather)
 CUDA_FUNC_QUALIFIER void pme_gpu_copy_recipbox(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
+// copies the nn and fsh to the device (PME spline)
+CUDA_FUNC_QUALIFIER void pme_gpu_copy_calcspline_constants(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+
 
 
 CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t gmx_unused *pfft_setup,
