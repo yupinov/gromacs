@@ -1674,5 +1674,6 @@ int gmx_pme_do(struct gmx_pme_t *pme,
             *energy_lj = 0;
         }
     }
+    pme_gpu_step_reinit(pme);
     return 0;
 }

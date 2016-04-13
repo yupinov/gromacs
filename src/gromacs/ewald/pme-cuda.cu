@@ -72,7 +72,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme)
     pme_gpu_copy_overlap_zones(pme);
     pme_gpu_copy_calcspline_constants(pme);
 
-    pme_gpu_step_init(pme);
+    pme_gpu_step_reinit(pme);
 
     if (debug)
         fprintf(debug, "PME GPU %s\n", firstInit ? "init" : "reinit");
@@ -81,15 +81,24 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme)
 void pme_gpu_step_init(gmx_pme_t *pme)
 {
     // this is ran in the beginning of MD step
-    // or should it be ran at the end of each step + from the pme_gpu_init?
+    // shoudl ideally be empty
+    if (!pme->bGPU)
+        return;
+
+    pme_gpu_copy_recipbox(pme); //yupinov test changing box
+}
+
+void pme_gpu_step_reinit(gmx_pme_t *pme)
+{
+    // this is ran in the end of MD step + at the DD init
     if (!pme->bGPU)
         return;
 
     const int grid_index = 0; //!
-    pme_gpu_copy_recipbox(pme); //yupinov test changing box
     pme_gpu_clear_grid(pme, grid_index);
-
 }
+
+
 
 #if PME_EXTERN_CMEM
 __constant__ __device__ int2 OVERLAP_SIZES[OVERLAP_ZONES];
@@ -107,6 +116,7 @@ void pme_gpu_copy_recipbox(gmx_pme_t *pme)
         {                  0.0, pme->recipbox[YY][YY], pme->recipbox[ZZ][YY]},
         {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
     };
+    assert(pme->recipbox[XX][XX] != 0.0);
 #if PME_EXTERN_CMEM
     PMECopyConstant(RECIPBOX, box, sizeof(box), s);
 #else

@@ -126,6 +126,7 @@ CUDA_FUNC_QUALIFIER void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_
 
 CUDA_FUNC_QUALIFIER void pme_gpu_init(gmx_pme_gpu_t **CUDA_FUNC_ARGUMENT(pmeGPU), gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 CUDA_FUNC_QUALIFIER void pme_gpu_step_init(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_step_reinit(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 CUDA_FUNC_QUALIFIER void pme_gpu_update_flags(
         gmx_pme_gpu_t *pmeGPU,
