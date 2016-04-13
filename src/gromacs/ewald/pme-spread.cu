@@ -742,24 +742,24 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     int idx_size = n * DIM * sizeof(int);
     int *idx_d = PMEFetchIntegerArray(PME_ID_IDXPTR, thread, idx_size, ML_DEVICE);
 
-    real *fsh_d = NULL;
-    int *nn_d = NULL;
     float3 *xptr_d = NULL;
     //float4 *xptr_d = NULL;
 
     const float3 nXYZ = {(real)nx, (real)ny, (real)nz};
     const int3 nnOffset = {0, 5 * nx, 5 * (nx + ny)};
 
+    real *fsh_d = pme->gpu->fshArray;
+    int *nn_d = pme->gpu->nnArray;
     if (bCalcSplines)
     {
         const int fshSize = 5 * (nx + ny + nz) * sizeof(real);
-        fsh_d = PMEFetchRealArray(PME_ID_FSH, thread, fshSize, ML_DEVICE);
+        fsh_d = pme->gpu->fshArray = PMEFetchRealArray(PME_ID_FSH, thread, fshSize, ML_DEVICE);
         PMECopy(fsh_d                , pme->fshx, 5 * nx * sizeof(real), ML_DEVICE, s);
         PMECopy(fsh_d + 5 * nx       , pme->fshy, 5 * ny * sizeof(real), ML_DEVICE, s);
         PMECopy(fsh_d + 5 * (nx + ny), pme->fshz, 5 * nz * sizeof(real), ML_DEVICE, s);
 
         const int nnSize = 5 * (nx + ny + nz) * sizeof(int);
-        nn_d = PMEFetchIntegerArray(PME_ID_NN, thread, nnSize, ML_DEVICE);
+        nn_d = pme->gpu->nnArray = PMEFetchIntegerArray(PME_ID_NN, thread, nnSize, ML_DEVICE);
         PMECopy(nn_d                , pme->nnx, 5 * nx * sizeof(int), ML_DEVICE, s);
         PMECopy(nn_d + 5 * nx       , pme->nny, 5 * ny * sizeof(int), ML_DEVICE, s);
         PMECopy(nn_d + 5 * (nx + ny), pme->nnz, 5 * nz * sizeof(int), ML_DEVICE, s);
@@ -767,7 +767,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 #if USE_TEXTURES
 #if USE_TEXOBJ
         //if (use_texobj(dev_info))
-        // commented texture object code - too lazy to check device info here for CC >= 3.0
+        // commented texture object code - should check device info here for CC >= 3.0
         {
             cudaResourceDesc rd;
             cudaTextureDesc td;
@@ -803,9 +803,9 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
             CU_RET_ERR(stat, "cudaBindTexture on fsh failed");
 
             cudaChannelFormatDesc cd_nn = cudaCreateChannelDesc<int>();
-            stat = cudaBindTexture(NULL, &nnTextureRef,nn_d, &cd_nn, nnSize);
+            stat = cudaBindTexture(NULL, &nnTextureRef, nn_d, &cd_nn, nnSize);
             CU_RET_ERR(stat, "cudaBindTexture on nn failed");
-
+            //yupinov unbind
         }
 #endif
 

@@ -633,9 +633,6 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
                                TRUE,
                                NULL);
 
-    if (pme->bGPU)
-        pme_gpu_init(&pme->gpu, pme);
-
     if (pme->nnodes > 1)
     {
         double imbal;
@@ -738,6 +735,9 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
                                   pme->pmegrid_start_iz,
                                   pme->pmegrid_nz_base,
                                   &pme->nnz, &pme->fshz);
+
+    if (pme->bGPU)
+        pme_gpu_init(&pme->gpu, pme);
 
     pme->spline_work = make_pme_spline_work(pme->pme_order);
 

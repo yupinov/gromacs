@@ -64,25 +64,34 @@ struct pme_gpu_overlap_t
 
 struct gmx_pme_cuda_t
 {
+    // a stream where everything should happen
     cudaStream_t pmeStream;
 
     // synchronization events
     cudaEvent_t syncEnerVirH2D; // energy and virial have already been calculated in pme-solve, and have been copied to host
     cudaEvent_t syncForcesH2D;  // forces have already been calculated in pme-gather, and have been copied to host
 
-    // data-keeping flags
+    // crude data-keeping flags
     gmx_bool keepGPUDataBetweenSpreadAndR2C; //yupinov BetweenSplineAndSpread?
     //yupinov should be same as keepGPUDataBetweenC2RAndGather ? or what do I do wit hdthetas?
     gmx_bool keepGPUDataBetweenR2CAndSolve;
     gmx_bool keepGPUDataBetweenSolveAndC2R;
     gmx_bool keepGPUDataBetweenC2RAndGather;
-    //yupinov init
+
     //keep those as params in the th storage
 #if !PME_EXTERN_CMEM
     // constant structures for arguments
     pme_gpu_recipbox_t recipbox;
     pme_gpu_overlap_t overlap;
 #endif
+
+    // device pointers/obejcts below
+
+    // bCalcSplines
+    // fractional shifts (pme->fsh*)
+    real *fshArray;
+    // indices (pme->nn*)
+    int *nnArray;
 };
 
 
