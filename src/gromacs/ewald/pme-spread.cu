@@ -49,10 +49,6 @@
 
 #include <assert.h>
 
-gpu_events gpu_events_spline;
-gpu_events gpu_events_spread;
-gpu_events gpu_events_splineandspread;
-
 //yupinov optimizing unused parameters away?
 //have to debug all boolean params
 
@@ -900,7 +896,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
             {
                 if (bCalcSplines)
                 {
-                    events_record_start(gpu_events_spline, s);
+                    pme_gpu_timing_start(pme, ewcsPME_SPLINE);
 
                     if (bDoSplines)
                         gmx_fatal(FARGS, "the code for bDoSplines==true was not tested!");
@@ -930,11 +926,11 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
                     CU_LAUNCH_ERR("pme_spline_kernel");
 
-                    events_record_stop(gpu_events_spline, s, ewcsPME_SPLINE, 0);
+                    pme_gpu_timing_stop(pme, ewcsPME_SPLINE);
                 }
                 if (bSpread)
                 {
-                    events_record_start(gpu_events_spread, s);
+                    pme_gpu_timing_start(pme, ewcsPME_SPREAD);
 
                     pme_spread_kernel<4, blockSize / 4 / 4> <<<nBlocks, dimBlock, 0, s>>>
                                                                             (pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
@@ -945,12 +941,12 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
                     CU_LAUNCH_ERR("pme_spread_kernel");
 
-                    events_record_stop(gpu_events_spread, s, ewcsPME_SPREAD, 0);
+                    pme_gpu_timing_stop(pme, ewcsPME_SPREAD);
                 }
             }
             else // a single monster kernel here
             {
-                events_record_start(gpu_events_splineandspread, s);
+                pme_gpu_timing_start(pme, ewcsPME_SPLINEANDSPREAD);
 
                 if (bCalcSplines)
                 {
@@ -986,7 +982,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                     gmx_fatal(FARGS, "the code for bCalcSplines==false was not tested!"); //yupinov
                 CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
 
-                events_record_stop(gpu_events_splineandspread, s, ewcsPME_SPLINEANDSPREAD, 0);
+                pme_gpu_timing_stop(pme, ewcsPME_SPLINEANDSPREAD);
             }
             if (bSpread && pme->bGPUSingle)
             {
@@ -995,7 +991,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                 const int overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
                 const int nBlocks = (overlappedCells + blockSize - 1) / blockSize;
 
-                events_record_start(gpu_events_wrap, s);
+                pme_gpu_timing_start(pme, ewcsPME_WRAP);
 
                 pme_wrap_kernel<4> <<<nBlocks, blockSize, 0, s>>>(nx, ny, nz, pny, pnz,
 #if !PME_EXTERN_CMEM
@@ -1005,7 +1001,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
                 CU_LAUNCH_ERR("pme_wrap_kernel");
 
-                events_record_stop(gpu_events_wrap, s, ewcsPME_WRAP, 0);
+                pme_gpu_timing_stop(pme, ewcsPME_WRAP);
             }
             break;
 

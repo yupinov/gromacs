@@ -347,7 +347,7 @@ void gather_f_bsplines_gpu
             const int overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
             const int nBlocks = (overlappedCells + blockSize - 1) / blockSize;
 
-            events_record_start(gpu_events_unwrap, s);
+            pme_gpu_timing_start(pme, ewcsPME_UNWRAP);
 
             pme_unwrap_kernel<4> <<<nBlocks, blockSize, 0, s>>>(nx, ny, nz, pny, pnz,
 #if !PME_EXTERN_CMEM
@@ -357,7 +357,7 @@ void gather_f_bsplines_gpu
 
             CU_LAUNCH_ERR("pme_unwrap_kernel");
 
-            events_record_stop(gpu_events_unwrap, s, ewcsPME_UNWRAP, 0);
+            pme_gpu_timing_stop(pme, ewcsPME_UNWRAP);
 
         }
         else
@@ -553,7 +553,7 @@ void gather_f_bsplines_gpu
     dim3 nBlocks((n + blockSize - 1) / blockSize * order * order); //yupinov what does this mean?
     dim3 dimBlock(order, order, particlesPerBlock);
 
-    events_record_start(gpu_events_gather, s);
+    pme_gpu_timing_start(pme, ewcsPME_GATHER);
 
     if (order == 4) //yupinov
         if (bClearF)
@@ -582,7 +582,7 @@ void gather_f_bsplines_gpu
         gmx_fatal(FARGS, "gather: orders other than 4 untested!");
     CU_LAUNCH_ERR("pme_gather_kernel");
 
-    events_record_stop(gpu_events_gather, s, ewcsPME_GATHER, 0);
+    pme_gpu_timing_stop(pme, ewcsPME_GATHER);
 
     PMECopy(atc_f_h, pme->gpu->forces, size_forces, ML_HOST, s);
     cudaError_t stat = cudaEventRecord(pme->gpu->syncForcesH2D, s);

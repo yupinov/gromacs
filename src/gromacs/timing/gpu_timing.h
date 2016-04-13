@@ -71,7 +71,7 @@ struct gmx_wallclock_gpu_t
 #include "wallcycle.h"
 struct gmx_wallclock_gpu_pme_t
 {
-  struct gmx_nbnxn_kernel_timing_data_t pme_time[PME_GPU_STAGES][PME_GPU_STAGES];
+  struct gmx_nbnxn_kernel_timing_data_t pme_time[PME_GPU_STAGES];
 };
 
 extern struct gmx_wallclock_gpu_pme_t gmx_wallclock_gpu_pme;

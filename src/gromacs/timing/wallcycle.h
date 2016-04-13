@@ -75,8 +75,8 @@ enum {
     ewcsNB_F_BUF_OPS,
     //yupinov: change in the cpp as well!
     ewcsPME_INTERPOL_IDX,
-    ewcsPME_SPLINE, //unused
-    ewcsPME_SPREAD,  //?
+    ewcsPME_SPLINE,
+    ewcsPME_SPREAD,
     ewcsPME_SPLINEANDSPREAD,
     ewcsPME_INTERPCALCSPLINEANDSPREAD,
     ewcsPME_WRAP,
@@ -92,7 +92,6 @@ enum {
 #ifndef PME_GPU_STAGES
 #define PME_GPU_STAGES (ewcsPME_GATHER - ewcsPME_INTERPOL_IDX + 1)
 #endif
-
 
 gmx_bool wallcycle_have_counter(void);
 /* Returns if cycle counting is supported */

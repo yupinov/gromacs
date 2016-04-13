@@ -1,6 +1,8 @@
 #ifndef GMX_EWALD_CHECK_H
 #define GMX_EWALD_CHECK_H
 
+#include "pme-internal.h"
+
 #ifdef DEBUG_PME_GPU
 
 #include "gromacs/utility/basedefinitions.h"
@@ -22,17 +24,15 @@ void print_unlock();
 #endif
 
 
-#include "gromacs/timing/wallcycle.h"
-struct gpu_events
+struct pme_gpu_timing
 {
     bool created;
     cudaEvent_t event_start, event_stop;
-    gpu_events() : created(false) { }
+    pme_gpu_timing() : created(false) { }
 };
-void events_record_start(gpu_events &events, cudaStream_t s);
-void events_record_stop(gpu_events &events, cudaStream_t s, int ewcsn, int j);
 
-extern gpu_events gpu_events_wrap, gpu_events_unwrap, gpu_events_gather, gpu_events_solve;
-//yupinov - gpu_events_solve is now needed for copyback sync!
+void pme_gpu_timing_start(gmx_pme_t *pme, int ewcsn);
+void pme_gpu_timing_stop(gmx_pme_t *pme, int ewcsn);
+void pme_gpu_timing_calculate(gmx_pme_t *pme);
 
 #endif // GMX_EWALD_CHECK_H

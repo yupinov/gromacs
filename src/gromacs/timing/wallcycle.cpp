@@ -410,11 +410,8 @@ void wallcycle_reset_all(gmx_wallcycle_t wc)
     //yupinov
     for (i = 0; i < PME_GPU_STAGES; i++)
     {
-        for (int j = 0; j < PME_GPU_STAGES; j++)
-        {
-            gmx_wallclock_gpu_pme.pme_time[i][j].t = 0.0;
-            gmx_wallclock_gpu_pme.pme_time[i][j].c = 0;
-        }
+        gmx_wallclock_gpu_pme.pme_time[i].t = 0.0;
+        gmx_wallclock_gpu_pme.pme_time[i].c = 0;
     }
 }
 
@@ -927,10 +924,7 @@ void wallcycle_print(FILE *fplog, const gmx::MDLogger &mdlog, int nnodes, int np
         //yupinov
         for (i = 0; i < PME_GPU_STAGES; i++)
         {
-            for (j = 0; j < PME_GPU_STAGES; j++)
-            {
-                tot_k += gmx_wallclock_gpu_pme.pme_time[i][j].t;
-            }
+            tot_k += gmx_wallclock_gpu_pme.pme_time[i].t;
         }
         tot_gpu += tot_k;
 
@@ -962,15 +956,12 @@ void wallcycle_print(FILE *fplog, const gmx::MDLogger &mdlog, int nnodes, int np
         }
         for (i = 0; i < PME_GPU_STAGES; i++) //yupinov
         {
-            for (j = 0; j < PME_GPU_STAGES; j++)
+            if (gmx_wallclock_gpu_pme.pme_time[i].c)
             {
-                if (gmx_wallclock_gpu_pme.pme_time[i][j].c)
-                {
-                    print_gputimes(fplog, wcsn[ewcsPME_INTERPOL_IDX + i],
-                            gmx_wallclock_gpu_pme.pme_time[i][j].c,
-                            gmx_wallclock_gpu_pme.pme_time[i][j].t,
-                            tot_gpu);//, j == 0 ? ' ' : '0' + j);
-                }
+                print_gputimes(fplog, wcsn[ewcsPME_INTERPOL_IDX + i],
+                        gmx_wallclock_gpu_pme.pme_time[i].c,
+                        gmx_wallclock_gpu_pme.pme_time[i].t,
+                        tot_gpu);
             }
         }
 

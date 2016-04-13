@@ -365,7 +365,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     cudaError_t stat = cudaMemsetAsync(energyAndVirial_d, 0, energyAndVirialSize, s);
     CU_RET_ERR(stat, "PME solve cudaMemsetAsync");
 
-    events_record_start(gpu_events_solve, s);
+    pme_gpu_timing_start(pme, ewcsPME_SOLVE);
 
     if (YZXOrdering)
     {
@@ -392,7 +392,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
 #if !PME_EXTERN_CMEM
-              pme->gpu->recipbox,
+               pme->gpu->recipbox,
 #endif
                energyAndVirial_d);
     }
@@ -408,7 +408,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
 #if !PME_EXTERN_CMEM
-             pme->gpu->recipbox,
+                pme->gpu->recipbox,
 #endif
                energyAndVirial_d);
         else
@@ -421,13 +421,13 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
 #if !PME_EXTERN_CMEM
-            pme->gpu->recipbox,
+               pme->gpu->recipbox,
 #endif
                energyAndVirial_d);
     }
     CU_LAUNCH_ERR("pme_solve_kernel");
 
-    events_record_stop(gpu_events_solve, s, ewcsPME_SOLVE, 0);
+    pme_gpu_timing_stop(pme, ewcsPME_SOLVE);
 
     if (!pme->gpu->keepGPUDataBetweenSolveAndC2R)
     {
@@ -564,7 +564,7 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
     for (int ig = 0; ig < MAGIC_GRID_NUMBER; ++ig)
         PMECopy(grid_d + ig * grid_n, grid[ig], grid_size, ML_DEVICE, s);
 
-    events_record_start(gpu_events_solve, s);
+    pme_gpu_timing_start(pme, ewcsPME_SOLVE);
 
     solve_pme_lj_yzx_iyz_loop_kernel<<<n_blocks, block_size, 0, s>>>
       (iyz0, iyz1, local_ndata[ZZ], local_ndata[XX],
@@ -578,7 +578,7 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
        energy_d, virial_d);
     CU_LAUNCH_ERR("solve_pme_lj_yzx_iyz_loop_kernel");
 
-    events_record_stop(gpu_events_solve, s, ewcsPME_SOLVE, 0);
+    pme_gpu_timing_stop(pme, ewcsPME_SOLVE);
 
     for (int ig = 0; ig < MAGIC_GRID_NUMBER; ++ig)
         PMECopy(grid[ig], grid_d + ig * grid_n, grid_size, ML_HOST, s);

@@ -125,10 +125,11 @@ void pme_gpu_step_reinit(gmx_pme_t *pme)
     if (!pme->bGPU)
         return;
 
+    pme_gpu_timing_calculate(pme);
+
     const int grid_index = 0; //!
     pme_gpu_clear_grid(pme, grid_index);
 }
-
 
 
 #if PME_EXTERN_CMEM

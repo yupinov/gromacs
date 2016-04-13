@@ -46,12 +46,6 @@
 
 #include <cuda_runtime.h>
 
-typedef real *splinevec[DIM];
-#ifdef DEBUG_PME_TIMINGS_GPU
-gpu_events gpu_events_spread;
-#endif
-
-
 template <int order, int N, int K, int D>
 __global__ void spread3_kernel
 (int nx, int ny, int nz,

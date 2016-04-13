@@ -6,41 +6,56 @@
 #include "gromacs/timing/wallcycle.h"
 #include "gromacs/gpu_utils/cudautils.cuh"
 
-gpu_events gpu_events_wrap, gpu_events_unwrap, gpu_events_gather, gpu_events_solve;
-
-void events_record_start(gpu_events &events, cudaStream_t s)
+void pme_gpu_timing_start(gmx_pme_t *pme, int ewcsn)
 {
 #if PME_GPU_TIMINGS
+    const int i = ewcsn - ewcsPME_INTERPOL_IDX;
+    pme_gpu_timing *event = &pme->gpu->timingEvents[i];
     cudaError_t stat;
-    if (!events.created)
+    if (!event->created)
     {
-        stat = cudaEventCreate(&events.event_start);
+        stat = cudaEventCreate(&event->event_start);
         CU_RET_ERR(stat, "?");
-        stat = cudaEventCreate(&events.event_stop);
+        stat = cudaEventCreate(&event->event_stop);
         CU_RET_ERR(stat, "?");
-        events.created = true;
+        event->created = true;
     }
-    stat = cudaEventRecord(events.event_start, s);
+    stat = cudaEventRecord(event->event_start, pme->gpu->pmeStream);
     CU_RET_ERR(stat, "?");
 #endif
 }
 
-void events_record_stop(gpu_events &events, cudaStream_t s, int ewcsn, int j)
+void pme_gpu_timing_stop(gmx_pme_t *pme, int ewcsn)
 {
 #if PME_GPU_TIMINGS
+    const int i = ewcsn - ewcsPME_INTERPOL_IDX;
+    pme_gpu_timing *event = &pme->gpu->timingEvents[i];
     cudaError_t stat;
-    stat = cudaEventRecord(events.event_stop, s);
+    stat = cudaEventRecord(event->event_stop, pme->gpu->pmeStream);
     CU_RET_ERR(stat, "?");
-    stat = cudaEventSynchronize(events.event_stop);
-    CU_RET_ERR(stat, "?");
-    float milliseconds = 0;
-    stat = cudaEventElapsedTime(&milliseconds, events.event_start, events.event_stop);
-    CU_RET_ERR(stat, "?");
-    int idx = ewcsn - ewcsPME_INTERPOL_IDX;
-    gmx_wallclock_gpu_pme.pme_time[idx][j].t += milliseconds;
-    ++gmx_wallclock_gpu_pme.pme_time[idx][j].c;
+    ++gmx_wallclock_gpu_pme.pme_time[i].c;
 #endif
 }
+
+void pme_gpu_timing_calculate(gmx_pme_t *pme)
+{
+#if PME_GPU_TIMINGS
+    cudaError_t stat = cudaStreamSynchronize(pme->gpu->pmeStream);
+    CU_RET_ERR(stat, "?");
+
+    for (int i = 0; i < PME_GPU_STAGES; i++)
+    {
+        if (pme->gpu->timingEvents[i].created)
+        {
+            real milliseconds = 0;
+            stat = cudaEventElapsedTime(&milliseconds, pme->gpu->timingEvents[i].event_start, pme->gpu->timingEvents[i].event_stop);
+            CU_RET_ERR(stat, "?");
+            gmx_wallclock_gpu_pme.pme_time[i].t += milliseconds;
+        }
+    }
+#endif
+}
+
 
 #ifdef DEBUG_PME_GPU
 

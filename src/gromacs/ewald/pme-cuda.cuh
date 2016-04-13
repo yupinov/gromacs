@@ -3,6 +3,8 @@
 
 #include "pme-internal.h"
 
+#include "pme-timings.cuh"
+
 //yupinov dealloc
 //yupinov grid indices with tags?
 
@@ -62,6 +64,8 @@ struct pme_gpu_overlap_t
 };
 #endif
 
+struct pme_gpu_timing;
+
 struct gmx_pme_cuda_t
 {
     // a stream where everything should happen
@@ -84,6 +88,8 @@ struct gmx_pme_cuda_t
     pme_gpu_recipbox_t recipbox;
     pme_gpu_overlap_t overlap;
 #endif
+
+    pme_gpu_timing timingEvents[PME_GPU_STAGES];
 
     // device pointers/obejcts below
 
