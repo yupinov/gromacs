@@ -80,7 +80,7 @@ __global__ void pme_solve_kernel
     // if we do FFTW, I forgot what happens with the size, probably, nothing and not very aligned
     // then the grid is in YZX order, so X is a contihuous dimension
 
-    //const int blockId = blockIdx.x + blockIdx.y * gridDim.x + gridDim.x * gridDim.y * blockIdx.z;
+    const int blockId = blockIdx.x + blockIdx.y * gridDim.x + gridDim.x * gridDim.y * blockIdx.z;
     const int threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
             + (threadIdx.y * blockDim.x)
             + threadIdx.x;
@@ -259,8 +259,6 @@ __global__ void pme_solve_kernel
                 // write to global memory
                 atomicAdd(virialAndEnergy + componentIndex, sum);
             }
-
-
             /*
             // a naive shared mem reduction
             virialAndEnergyShared[sizing * threadLocalId + 0] = virxx;
@@ -445,7 +443,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     //return local_ndata[YY]*local_ndata[XX]; //yupinov why
 }
 
-void gpu_energy_virial_copyback(gmx_pme_t *pme)
+void pme_gpu_get_energy_virial(gmx_pme_t *pme)
 {
     const int thread = 0;
 

@@ -27,6 +27,8 @@ void pme_gpu_update_flags(
     pmeGPU->keepGPUDataBetweenC2RAndGather = keepGPUDataBetweenC2RAndGather;
 }
 
+void pme_gpu_step_reinit(gmx_pme_t *pme);
+
 void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_opt_t *gpu_opt)
 {
     // this is ran in the beginning/on DD
@@ -117,31 +119,45 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         }
     }
 
-
     pme_gpu_step_reinit(pme);
 
     if (debug)
         fprintf(debug, "PME GPU %s\n", firstInit ? "init" : "reinit");
 }
 
+
 void pme_gpu_step_init(gmx_pme_t *pme)
 {
-    // this is ran in the beginning of MD step
-    // shoudl ideally be empty
+    // this is ran at the beginning of MD step
+    // should ideally be empty
     if (!pme->bGPU)
         return;
 
     pme_gpu_copy_recipbox(pme); //yupinov test changing box
 }
 
-void pme_gpu_step_reinit(gmx_pme_t *pme)
+void pme_gpu_step_end(gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCalcEnerVir)
 {
-    // this is ran in the end of MD step + at the DD init
+    // this is ran at the end of MD step
     if (!pme->bGPU)
         return;
 
+    cudaError_t stat = cudaStreamSynchronize(pme->gpu->pmeStream); //neede for timings and for copy back events
+    CU_RET_ERR(stat, "failed to synchronize the PME GPU stream!");
+
+    if (bCalcF)
+        pme_gpu_get_forces(pme, pme->atc[0].spline[0].n, pme->atc[0].f);
+    if (bCalcEnerVir)
+        pme_gpu_get_energy_virial(pme);
+
     pme_gpu_timing_calculate(pme);
 
+    pme_gpu_step_reinit(pme);
+}
+
+void pme_gpu_step_reinit(gmx_pme_t *pme)
+{
+    // this is ran at the end of MD step + at the DD init
     const int grid_index = 0; //!
     pme_gpu_clear_grid(pme, grid_index);
 }
@@ -231,7 +247,7 @@ T *PMEFetch(PMEDataID id, int unusedTag, int size, MemLocType location)
 {
     //yupinov grid resize mistake!
     assert(unusedTag == 0);
-    cudaError_t stat;
+    cudaError_t stat = cudaSuccess;
     int i = (location * PME_ID_END_INVALID + id) * MAXTAGS + unusedTag;
 
     if ((PMEStorageSizes[i] > 0) && (size > 0) && (size > PMEStorageSizes[i]))
@@ -250,7 +266,9 @@ T *PMEFetch(PMEDataID id, int unusedTag, int size, MemLocType location)
             }
             else
             {
-                delete[] (T *) PMEStoragePointers[i];
+                //delete[] (T *) PMEStoragePointers[i];
+                stat = cudaFreeHost(PMEStoragePointers[i]);
+                CU_RET_ERR(stat, "PME cudaFreeHost error");
             }
             PMEStoragePointers[i] = NULL;
         }
@@ -258,17 +276,24 @@ T *PMEFetch(PMEDataID id, int unusedTag, int size, MemLocType location)
         {
             if (debugMemoryPrint)
                 printf("asked to alloc %d", size);
-            size = size * 1.02; //yupinov overalloc
+            size = size * 1.02; // slight overalloc for no apparent reason
             if (debugMemoryPrint)
                 printf(", actually allocating %d\n", size);
             if (location == ML_DEVICE)
             {
-                stat = cudaMalloc((void **) &PMEStoragePointers[i], size);
+                stat = cudaMalloc((void **)&PMEStoragePointers[i], size);
                 CU_RET_ERR(stat, "PME cudaMalloc error");
             }
             else
             {
-                PMEStoragePointers[i] = new T[size / sizeof(T)]; //yupinov cudaHostMalloc?
+                //PMEStoragePointers[i] = new T[size / sizeof(T)];
+
+                unsigned int allocFlags = cudaHostAllocDefault;
+                //allocFlags |= cudaHostAllocWriteCombined;
+                //yupinov try cudaHostAllocWriteCombined for almost-constant global memory? do I even have that?
+                // yes, I do: coordinates/coefficients and thetas/dthetas. should be helpful for spread being overwhelmed by L2 cache!
+                stat = cudaHostAlloc((void **)&PMEStoragePointers[i], size, allocFlags);
+                CU_RET_ERR(stat, "PME cudaHostAlloc error");
             }
             PMEStorageSizes[i] = size;
         }

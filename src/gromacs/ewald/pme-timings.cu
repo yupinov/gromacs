@@ -40,9 +40,7 @@ void pme_gpu_timing_stop(gmx_pme_t *pme, int ewcsn)
 void pme_gpu_timing_calculate(gmx_pme_t *pme)
 {
 #if PME_GPU_TIMINGS
-    cudaError_t stat = cudaStreamSynchronize(pme->gpu->pmeStream);
-    CU_RET_ERR(stat, "?");
-
+    cudaError_t stat;
     for (int i = 0; i < PME_GPU_STAGES; i++)
     {
         if (pme->gpu->timingEvents[i].created)

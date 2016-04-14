@@ -135,7 +135,9 @@ CUDA_FUNC_QUALIFIER void pme_gpu_init(gmx_pme_gpu_t **CUDA_FUNC_ARGUMENT(pmeGPU)
                                       const gmx_gpu_opt_t *CUDA_FUNC_ARGUMENT(gpu_opt)) CUDA_FUNC_TERM
 
 CUDA_FUNC_QUALIFIER void pme_gpu_step_init(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
-CUDA_FUNC_QUALIFIER void pme_gpu_step_reinit(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_step_end(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
+                                          const gmx_bool CUDA_FUNC_ARGUMENT(bCalcF),
+                                          const gmx_bool CUDA_FUNC_ARGUMENT(bCalcEnerVir)) CUDA_FUNC_TERM
 
 CUDA_FUNC_QUALIFIER void pme_gpu_update_flags(
         gmx_pme_gpu_t *pmeGPU,
@@ -239,7 +241,7 @@ CUDA_FUNC_QUALIFIER void gather_f_bsplines_gpu
  real gmx_unused scale, gmx_pme_t *pme, int gmx_unused thread
  ) CUDA_FUNC_TERM
 
-CUDA_FUNC_QUALIFIER void gpu_forces_copyback(gmx_pme_t *pme, int n, rvec *forces) CUDA_FUNC_TERM
-CUDA_FUNC_QUALIFIER void gpu_energy_virial_copyback(gmx_pme_t *pme) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_get_forces(gmx_pme_t *pme, int n, rvec *forces) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_get_energy_virial(gmx_pme_t *pme) CUDA_FUNC_TERM
 
 #endif // PMEGPU_H

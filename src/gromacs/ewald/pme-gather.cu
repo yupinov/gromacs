@@ -23,7 +23,7 @@ void pme_gpu_alloc_gather_forces(gmx_pme_t *pme)
     pme->gpu->forces = PMEFetchRealArray(PME_ID_FORCES, tag, forcesSize, ML_DEVICE);
 }
 
-void gpu_forces_copyback(gmx_pme_t *pme, int n, rvec *forces)
+void pme_gpu_get_forces(gmx_pme_t *pme, int n, rvec *forces)
 {
     cudaStream_t s = pme->gpu->pmeStream;
     cudaError_t stat = cudaStreamWaitEvent(s, pme->gpu->syncForcesH2D, 0);

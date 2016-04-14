@@ -1017,6 +1017,9 @@ int gmx_pme_do(struct gmx_pme_t *pme,
     /* If we are doing LJ-PME with LB, we only do Q here */
     max_grid_index = (pme->ljpme_combination_rule == eljpmeLB) ? DO_Q : DO_Q_AND_LJ;
 
+    if (pme->bGPU)
+        GMX_RELEASE_ASSERT(!(flags & GMX_PME_DO_LJ) && !pme->bFEP, "PME GPU has only been tried for a single grid. Shouldn't be difficult to extend though.\n");
+
     for (grid_index = 0; grid_index < max_grid_index; ++grid_index)
     {
         /* Check if we should do calculations at this grid_index
@@ -1184,8 +1187,8 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                                           box[XX][XX]*box[YY][YY]*box[ZZ][ZZ],
                                           bCalcEnerVir,
                                           pme->nthread, thread);
-                         if (pme->bGPU && bCalcEnerVir)
-                            gpu_energy_virial_copyback(pme);
+                         //if (pme->bGPU && bCalcEnerVir)
+                         //   pme_gpu_get_energy_virial(pme);
                     }
                     else
                     {
@@ -1295,8 +1298,8 @@ int gmx_pme_do(struct gmx_pme_t *pme,
             */
             where();
 
-            if (pme->bGPU)
-                gpu_forces_copyback(pme, atc->n, atc->f); //yupinov fix compacted particle count
+            //if (pme->bGPU)
+            //    gpu_forces_copyback(pme, atc->n, atc->f); //yupinov fix compacted particle count
 
             inc_nrnb(nrnb, eNR_GATHERFBSP,
                      pme->pme_order*pme->pme_order*pme->pme_order*pme->atc[0].n);
@@ -1572,8 +1575,8 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                         inc_nrnb(nrnb, eNR_GATHERFBSP,
                                  pme->pme_order*pme->pme_order*pme->pme_order*pme->atc[0].n);
                     }
-                    if (pme->bGPU)
-                        gpu_forces_copyback(pme, atc->n, atc->f); //yupinov fix compacted particle count
+                    //if (pme->bGPU)
+                    //    gpu_forces_copyback(pme, atc->n, atc->f); //yupinov fix compacted particle count
 
                     wallcycle_stop(wcycle, ewcPME_SPREADGATHER);
 
@@ -1582,6 +1585,27 @@ int gmx_pme_do(struct gmx_pme_t *pme,
             }     /* if (bCalcF) */
         }         /* for (fep_state = 0; fep_state < fep_states_lj; ++fep_state) */
     }             /* if ((flags & GMX_PME_DO_LJ) && pme->ljpme_combination_rule == eljpmeLB) */
+
+    pme_gpu_step_end(pme, bCalcF, bCalcEnerVir);
+    if (pme->bGPU)
+    {
+        const int grid_index = 0;
+        if (bCalcEnerVir) // copied from up there in the loop..
+        {
+            /* This should only be called on the master thread
+             * and after the threads have synchronized.
+             */
+            if (grid_index < 2)
+            {
+                get_pme_ener_vir_q(pme->solve_work, pme->nthread, &energy_AB[grid_index], vir_AB[grid_index]);
+            }
+            else
+            {
+                get_pme_ener_vir_lj(pme->solve_work, pme->nthread, &energy_AB[grid_index], vir_AB[grid_index]);
+            }
+        }
+
+    }
 
     if (bCalcF && pme->nnodes > 1)
     {
@@ -1671,6 +1695,5 @@ int gmx_pme_do(struct gmx_pme_t *pme,
             *energy_lj = 0;
         }
     }
-    pme_gpu_step_reinit(pme);
     return 0;
 }

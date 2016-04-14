@@ -29,7 +29,6 @@
 // comment this to disable PME timing function bodies
 // should replace this to respect other GPU timings' variables
 
-
 static const bool PME_SKIP_ZEROES = false;
 // broken
 // skipping particles with zero charges on a CPU side
