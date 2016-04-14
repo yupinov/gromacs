@@ -845,9 +845,11 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     if (bCalcSplines)
     {
-        float3 *xptr_h = (float3 *)atc->x;
-        xptr_d = (float3 *)(real *)PMEMemoryFetch(PME_ID_XPTR, tag, DIM * n_blocked * sizeof(real), ML_DEVICE);
-        PMEMemoryCopy(xptr_d, xptr_h, DIM * n_blocked * sizeof(real), ML_DEVICE, s);
+        const size_t coordinatesSize = DIM * n_blocked * sizeof(real);
+        float3 *xptr_h = (float3 *)PMEMemoryFetch(PME_ID_XPTR, tag, coordinatesSize, ML_HOST);
+        memcpy(xptr_h, atc->x, coordinatesSize);
+        xptr_d = (float3 *)PMEMemoryFetch(PME_ID_XPTR, tag, coordinatesSize, ML_DEVICE);
+        PMEMemoryCopy(xptr_d, xptr_h, coordinatesSize, ML_DEVICE, pme->gpu->pmeStream);
         /*
         float4 *xptr_h = (float4 *)(real *)PMEFetch(PME_ID_XPTR, thread, 4 * n_blocked * sizeof(real), ML_HOST);
         memset(xptr_h, 0, 4 * n_blocked * sizeof(real));
@@ -864,15 +866,11 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     //yupinov blocked approach everywhere or nowhere
     //filtering?
 
-    real *coefficient_d = (real *)PMEMemoryFetchAndCopy(PME_ID_COEFFICIENT, tag, atc->coefficient, n * sizeof(real), ML_DEVICE, s); //yupinov compact here as weel?
-
-    /*
-    const int N = 256;
-    const int D = 2;
-    int n_blocks = (n + N - 1) / N;
-    dim3 dimGrid(n_blocks, 1, 1);
-    dim3 dimBlock(order, order, D);
-    */
+    const size_t coefficientSize = n * sizeof(real);
+    real *coefficient_h = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, tag, coefficientSize, ML_HOST);
+    memcpy(coefficient_h, atc->coefficient, coefficientSize);
+    real *coefficient_d = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, tag, coefficientSize, ML_DEVICE);
+    PMEMemoryCopy(coefficient_d, coefficient_h, coefficientSize, ML_DEVICE, s);
 
     // in spread-unified each kernel thread works on one particle: calculates its splines, spreads it to [order^3] gridpoints
     // here each kernel thread works on [order] contiguous x grid points, so we multiply the total number of threads by [order^2]

@@ -164,7 +164,7 @@ enum PMEDataID
 
 enum MemLocType
 {
-    ML_HOST, ML_DEVICE, ML_END_INVALID
+    ML_HOST = 0, ML_DEVICE, ML_END_INVALID
 };
 
 // ML_HOST under-used; what about pinning memory?
@@ -173,7 +173,6 @@ enum MemLocType
 
 void *PMEMemoryFetch(PMEDataID id, int unusedTag, int size, MemLocType location);
 void PMEMemoryCopy(void *dest, void *src, int size, MemLocType destination, cudaStream_t s);
-void *PMEMemoryFetchAndCopy(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s);
 
 void PMEConstantCopy(const void *dest, const void *src, size_t size, cudaStream_t s); //H2D only
 

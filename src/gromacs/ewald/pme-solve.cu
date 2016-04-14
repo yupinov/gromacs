@@ -330,9 +330,25 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     const int grid_n = local_size[majorDim] * local_size[middleDim] * local_size[minorDim];
     const int grid_size = grid_n * sizeof(float2);
 
-    real *bspModMinor_d = (real *)PMEMemoryFetchAndCopy(PME_ID_BSP_MOD_MINOR, thread, pme->bsp_mod[minorDim], nMinor * sizeof(real), ML_DEVICE, s);
-    real *bspModMajor_d = (real *)PMEMemoryFetchAndCopy(PME_ID_BSP_MOD_MAJOR, thread, pme->bsp_mod[majorDim], nMajor * sizeof(real), ML_DEVICE, s);
-    real *bspModMiddle_d = (real *)PMEMemoryFetchAndCopy(PME_ID_BSP_MOD_MIDDLE, thread, pme->bsp_mod[middleDim], nMiddle * sizeof(real), ML_DEVICE, s);
+    int modSize;
+
+    modSize = nMinor * sizeof(real);
+    real *bspModMinor_h = (real *)PMEMemoryFetch(PME_ID_BSP_MOD_MINOR, thread, modSize, ML_HOST);
+    memcpy(bspModMinor_h, pme->bsp_mod[minorDim], modSize);
+    real *bspModMinor_d = (real *)PMEMemoryFetch(PME_ID_BSP_MOD_MINOR, thread, modSize, ML_DEVICE);
+    PMEMemoryCopy(bspModMinor_d, bspModMinor_h, modSize, ML_DEVICE, s);
+
+    modSize = nMajor * sizeof(real);
+    real *bspModMajor_h = (real *)PMEMemoryFetch(PME_ID_BSP_MOD_MAJOR, thread, modSize, ML_HOST);
+    memcpy(bspModMajor_h, pme->bsp_mod[majorDim], modSize);
+    real *bspModMajor_d = (real *)PMEMemoryFetch(PME_ID_BSP_MOD_MAJOR, thread, modSize, ML_DEVICE);
+    PMEMemoryCopy(bspModMajor_d, bspModMajor_h, modSize, ML_DEVICE, s);
+
+    modSize = nMiddle * sizeof(real);
+    real *bspModMiddle_h = (real *)PMEMemoryFetch(PME_ID_BSP_MOD_MIDDLE, thread, modSize, ML_HOST);
+    memcpy(bspModMiddle_h, pme->bsp_mod[middleDim], modSize);
+    real *bspModMiddle_d = (real *)PMEMemoryFetch(PME_ID_BSP_MOD_MIDDLE, thread, modSize, ML_DEVICE);
+    PMEMemoryCopy(bspModMiddle_d, bspModMiddle_h, modSize, ML_DEVICE, s);
 
     float2 *grid_d = (float2 *)PMEMemoryFetch(PME_ID_COMPLEX_GRID, thread, grid_size, ML_DEVICE); //yupinov no need for special function
     if (!pme->gpu->keepGPUDataBetweenR2CAndSolve)
@@ -434,7 +450,8 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
 
     if (bEnerVir)
     {
-        (real *)PMEMemoryFetchAndCopy(PME_ID_ENERGY_AND_VIRIAL, thread, energyAndVirial_d, energyAndVirialSize, ML_HOST, s);
+        real *energyAndVirial_h = (real *)PMEMemoryFetch(PME_ID_ENERGY_AND_VIRIAL, thread, energyAndVirialSize, ML_HOST);
+        PMEMemoryCopy(energyAndVirial_h, energyAndVirial_d, energyAndVirialSize, ML_HOST, s);
         stat = cudaEventRecord(pme->gpu->syncEnerVirH2D, s);
         CU_RET_ERR(stat, "PME solve energy/virial sync fail");
     }
@@ -768,9 +785,12 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
     int grid_n = local_size[YY] * local_size[ZZ] * local_size[XX];
     int grid_size = grid_n * sizeof(t_complex);
     float2 *grid_d = (float2 *)PMEMemoryFetch(PME_ID_COMPLEX_GRID, thread, grid_size * MAGIC_GRID_NUMBER, ML_DEVICE); //6 grids!
+    /* //yupinov fix
     real *pme_bsp_mod_x_d = (real *)PMEMemoryFetchAndCopy(PME_ID_BSP_MOD_MINOR, thread, pme_bsp_mod[XX], nx * sizeof(real), ML_DEVICE, s);
     real *pme_bsp_mod_y_d = (real *)PMEMemoryFetchAndCopy(PME_ID_BSP_MOD_MAJOR, thread, pme_bsp_mod[YY], ny * sizeof(real), ML_DEVICE, s);
     real *pme_bsp_mod_z_d = (real *)PMEMemoryFetchAndCopy(PME_ID_BSP_MOD_MIDDLE, thread, pme_bsp_mod[ZZ], nz * sizeof(real), ML_DEVICE, s);
+    */
+    real *pme_bsp_mod_x_d = NULL, *pme_bsp_mod_y_d = NULL, *pme_bsp_mod_z_d = NULL;
     int energy_size = n * sizeof(real);
     int virial_size = 6 * n * sizeof(real);
     real *energy_d = (real *)PMEMemoryFetch(PME_ID_ENERGY, thread, energy_size, ML_DEVICE);
@@ -799,6 +819,7 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
 
     if (bEnerVir)
     {
+        /* //yupinov fix
         real *energy_h = (real *)PMEMemoryFetchAndCopy(PME_ID_ENERGY, thread, energy_d, energy_size, ML_HOST, s);
         real *virial_h = (real *)PMEMemoryFetchAndCopy(PME_ID_VIRIAL, thread, virial_d, virial_size, ML_HOST, s);
         //yupinov - workaround for a zero point - do in kernel?
@@ -822,6 +843,7 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
         work_vir_lj[XX][YY] = work_vir_lj[YY][XX] = 0.25 * virxy;
         work_vir_lj[XX][ZZ] = work_vir_lj[ZZ][XX] = 0.25 * virxz;
         work_vir_lj[YY][ZZ] = work_vir_lj[ZZ][YY] = 0.25 * viryz;
+        */
 
         /* This energy should be corrected for a charged system */
         *work_energy_lj = 0.5 * energy;

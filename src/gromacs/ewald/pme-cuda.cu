@@ -321,13 +321,6 @@ void PMEMemoryCopy(void *dest, void *src, int size, MemLocType destination, cuda
     }
 }
 
-void *PMEMemoryFetchAndCopy(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s)
-{
-    void *result = PMEMemoryFetch(id, unusedTag, size, location);
-    PMEMemoryCopy(result, src, size, location, s);
-    return result;
-}
-
 void PMEConstantCopy(const void *dest, void const *src, size_t size, cudaStream_t s)
 {
     assert(s != 0);

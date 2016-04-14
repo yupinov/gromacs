@@ -317,16 +317,8 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     PMECopy(xptr_d, xptr_h, 3 * n_blocked * sizeof(real), ML_DEVICE, s);
 
     // COEFFICIENT
-    real *coefficient_d = (real *)PMEFetchAndCopy(PME_ID_COEFFICIENT, thread, atc->coefficient, n * sizeof(real), ML_DEVICE, s); //yupinov compact here as weel?
+    real *coefficient_d = (real *)PMEFetchAndCopy(PME_ID_COEFFICIENT, thread, atc->coefficient, n * sizeof(real), ML_DEVICE, s); /
 
-    // GRID
-    /*
-    for (int i = 0; i < ndatatot; i++)
-    {
-      // FIX clear grid on device instead
-      grid[i] = 0;
-    }
-    */
 
     real *grid_d = (real *)PMEFetch(PME_ID_REAL_GRID_WITH_OVERLAP, thread, size_grid, ML_DEVICE);
     stat = cudaMemsetAsync(grid_d, 0, size_grid, s); //yupinov

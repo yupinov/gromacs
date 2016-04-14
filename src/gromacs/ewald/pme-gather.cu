@@ -56,7 +56,7 @@ template <
 __launch_bounds__(4 * warp_size, 16)
 __global__ void pme_gather_kernel
 (const real * __restrict__ gridGlobal, const int n,
- const real * __restrict__ nXYZ, const int pnx, const int pny, const int pnz,
+ const float3 nXYZ, const int pnx, const int pny, const int pnz,
  const real * __restrict__ thetaGlobal,
  const real * __restrict__ dthetaGlobal,
  real * __restrict__ forcesGlobal, const real * __restrict__ coefficientGlobal,
@@ -187,7 +187,7 @@ __global__ void pme_gather_kernel
 
         // a single operation for all 3 components!
         if (splineIndex < 3)
-            *((real *)(&fSumArray[localIndex]) + splineIndex) = fx * nXYZ[splineIndex];
+            *((real *)(&fSumArray[localIndex]) + splineIndex) = fx * ((real *)&nXYZ)[splineIndex];
     }
     else
 #endif
@@ -205,7 +205,7 @@ __global__ void pme_gather_kernel
             {
                 f += fSharedArray[blockSize * splineIndex + j];
             }
-            *((real *)(&fSumArray[localIndex]) + splineIndex) = f * nXYZ[splineIndex];
+            *((real *)(&fSumArray[localIndex]) + splineIndex) = f * ((real *)&nXYZ)[splineIndex];
         }
     }
     __syncthreads();
@@ -364,7 +364,7 @@ void gather_f_bsplines_gpu
             gmx_fatal(FARGS, "gather: orders other than 4 untested!");
     }
 
-    int size_forces = DIM * n * sizeof(real);
+    int forcesSize = DIM * n * sizeof(real);
     int size_indices = n * sizeof(int);
     int size_splines = order * n * sizeof(int);
     int size_coefficients = n * sizeof(real);
@@ -392,7 +392,7 @@ void gather_f_bsplines_gpu
         atc_i_compacted_h = (int *)PMEMemoryFetch(PME_ID_NONZERO_INDICES, thread, size_indices, ML_HOST);
 
         // forces
-        atc_f_h = (real *)PMEMemoryFetch(PME_ID_FORCES, thread, size_forces, ML_HOST);
+        atc_f_h = (real *)PMEMemoryFetch(PME_ID_FORCES, thread, forcesSize, ML_HOST);
 
         // thetas
         theta_x_h = (real *)PMEMemoryFetch(PME_ID_THX, thread, size_splines, ML_HOST);
@@ -461,7 +461,7 @@ void gather_f_bsplines_gpu
         size_coefficients = n * sizeof(real);
         size_splines = order * n * sizeof(int);
         size_indices = n * sizeof(int);
-        size_forces = DIM * n * sizeof(real);
+        forcesSize = DIM * n * sizeof(real);
     }
     else
     {
@@ -542,11 +542,11 @@ void gather_f_bsplines_gpu
 
     // forces
     if (!bClearF)
-        PMEMemoryCopy(pme->gpu->forces, atc_f_h, size_forces, ML_DEVICE, s);
+        PMEMemoryCopy(pme->gpu->forces, atc_f_h, forcesSize, ML_DEVICE, s);
     //yupinov - not needed!
 
-    float3 nXYZ = {(real)nx, (real)ny, (real)nz}; //yupinov
-    real *nXYZ_d = (real *)PMEMemoryFetchAndCopy(PME_ID_NXYZ, thread, &nXYZ, sizeof(nXYZ), ML_DEVICE, s);
+    const float3 nXYZ = {(real)nx, (real)ny, (real)nz};
+
 
     const int blockSize = 4 * warp_size;
     const int particlesPerBlock = blockSize / order / order;
@@ -560,7 +560,7 @@ void gather_f_bsplines_gpu
             pme_gather_kernel<4, blockSize / 4 / 4, TRUE> <<<nBlocks, dimBlock, 0, s>>>
               (pme->gpu->grid,
                n,
-               nXYZ_d, pnx, pny, pnz,
+               nXYZ, pnx, pny, pnz,
                theta_d, dtheta_d,
                pme->gpu->forces, coefficients_d,
 #if !PME_EXTERN_CMEM
@@ -571,7 +571,7 @@ void gather_f_bsplines_gpu
             pme_gather_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocks, dimBlock, 0, s>>>
               (pme->gpu->grid,
                n,
-               nXYZ_d, pnx, pny, pnz,
+               nXYZ, pnx, pny, pnz,
                theta_d, dtheta_d,
                pme->gpu->forces, coefficients_d,
 #if !PME_EXTERN_CMEM
@@ -584,7 +584,7 @@ void gather_f_bsplines_gpu
 
     pme_gpu_timing_stop(pme, ewcsPME_GATHER);
 
-    PMEMemoryCopy(atc_f_h, pme->gpu->forces, size_forces, ML_HOST, s);
+    PMEMemoryCopy(atc_f_h, pme->gpu->forces, forcesSize, ML_HOST, s);
     cudaError_t stat = cudaEventRecord(pme->gpu->syncForcesH2D, s);
     CU_RET_ERR(stat, "PME gather forces sync fail");
 }
