@@ -62,7 +62,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
                                                 //cudaStreamNonBlocking,
                                                 cudaStreamDefault,
                                                 highest_priority);
-        //yupinov: fighting with nbnxn non-local for highest priority - check on MPI!
+
         CU_RET_ERR(stat, "cudaStreamCreateWithPriority on PME stream failed");
     #else
         stat = cudaStreamCreate(&(*pmeGPU)->pmeStream);
@@ -242,7 +242,7 @@ static std::vector<void *> PMEStoragePointers(ML_END_INVALID * PME_ID_END_INVALI
 
 static bool debugMemoryPrint = false;
 
-void *PMEMemoryFetch(PMEDataID id, int unusedTag, int size, MemLocType location)
+void *PMEMemoryFetch(PMEDataID id, int unusedTag, size_t size, MemLocType location)
 {
     //yupinov grid resize mistake!
     assert(unusedTag == 0);
@@ -297,12 +297,25 @@ void *PMEMemoryFetch(PMEDataID id, int unusedTag, int size, MemLocType location)
     return PMEStoragePointers[i];
 }
 
-void PMEMemoryCopy(void *dest, void *src, int size, MemLocType destination, cudaStream_t s)
+void PMEMemoryCopy(void *dest, void *src, size_t size, MemLocType destination, cudaStream_t s)
 {
     // synchronous copies are not used anywhere currently, I think
     assert(s != 0);
     cudaError_t stat;
     const gmx_bool sync = false;
+
+    /*
+    cudaPointerAttributes attributes;
+    stat = cudaPointerGetAttributes(&attributes, src);
+    if (stat != cudaSuccess)
+        stat = cudaHostRegister(src, size, cudaHostRegisterDefault);
+    CU_RET_ERR(stat, "src not pinned");
+    stat = cudaPointerGetAttributes(&attributes, dest);
+    if (stat != cudaSuccess)
+        stat = cudaHostRegister(dest, size, cudaHostRegisterDefault);
+    CU_RET_ERR(stat, "src not pinned");
+    */
+
     if (destination == ML_DEVICE)
     {
         if (sync)

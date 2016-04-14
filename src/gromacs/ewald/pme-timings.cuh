@@ -1,5 +1,5 @@
-#ifndef GMX_EWALD_CHECK_H
-#define GMX_EWALD_CHECK_H
+#ifndef PME_TIMINGS_CUH
+#define PME_TIMINGS_CUH
 
 #include "pme-internal.h"
 
@@ -14,4 +14,4 @@ void pme_gpu_timing_start(gmx_pme_t *pme, int ewcsn);
 void pme_gpu_timing_stop(gmx_pme_t *pme, int ewcsn);
 void pme_gpu_timing_calculate(gmx_pme_t *pme);
 
-#endif // GMX_EWALD_CHECK_H
+#endif

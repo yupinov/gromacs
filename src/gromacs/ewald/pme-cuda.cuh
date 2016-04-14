@@ -169,10 +169,9 @@ enum MemLocType
 
 // ML_HOST under-used; what about pinning memory?
 
-// all sizes here are in bytes
-
-void *PMEMemoryFetch(PMEDataID id, int unusedTag, int size, MemLocType location);
-void PMEMemoryCopy(void *dest, void *src, int size, MemLocType destination, cudaStream_t s);
+void *PMEMemoryFetch(PMEDataID id, int unusedTag, size_t size, MemLocType location);
+void PMEMemoryCopy(void *dest, void *src, size_t size, MemLocType destination, cudaStream_t s);
+// should check that all memory passed into PMEMemoryCopy is pinned
 
 void PMEConstantCopy(const void *dest, const void *src, size_t size, cudaStream_t s); //H2D only
 
