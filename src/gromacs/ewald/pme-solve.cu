@@ -46,6 +46,20 @@ static const __constant__ real lb_scale_factor_symm_gpu[] = { 2.0/64, 12.0/64, 3
   tmp2 = sqrt_M_PI_d*mk*erfcf(mk);
   }*/
 
+void pme_gpu_alloc_energy_virial(struct gmx_pme_t *pme, const int grid_index)
+{
+    const int tag = 0;
+    pme->gpu->energyAndVirialSize = 7 * sizeof(real); // 6 virial components + energy
+    pme->gpu->energyAndVirial = (real *)PMEMemoryFetch(PME_ID_ENERGY_AND_VIRIAL, tag, pme->gpu->energyAndVirialSize, ML_DEVICE);
+}
+
+void pme_gpu_clear_energy_virial(struct gmx_pme_t *pme, const int grid_index)
+{
+    cudaError_t stat = cudaMemsetAsync(pme->gpu->energyAndVirial, 0, pme->gpu->energyAndVirialSize, pme->gpu->pmeStream);
+    CU_RET_ERR(stat, "PME solve energies/virial cudaMemsetAsync");
+}
+
+
 #define THREADS_PER_BLOCK (4 * warp_size)
 
 template<
@@ -373,12 +387,6 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     // integer number of blocks is working on integer number of gridlines
     dim3 threads(gridLineSize, gridLinesPerBlock, 1);
 
-    const int nReduced = 1;
-    const int energyAndVirialSize = nReduced * (1 + 6) * sizeof(real);
-    real *energyAndVirial_d = (real *)PMEMemoryFetch(PME_ID_ENERGY_AND_VIRIAL, thread, energyAndVirialSize, ML_DEVICE);
-    cudaError_t stat = cudaMemsetAsync(energyAndVirial_d, 0, energyAndVirialSize, s);
-    CU_RET_ERR(stat, "PME solve cudaMemsetAsync");
-
     pme_gpu_timing_start(pme, ewcsPME_SOLVE);
 
     if (YZXOrdering)
@@ -395,7 +403,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
 #if !PME_EXTERN_CMEM
                pme->gpu->recipbox,
 #endif
-               energyAndVirial_d);
+               pme->gpu->energyAndVirial);
         else
             pme_solve_kernel<FALSE, TRUE> <<<blocks, threads, 0, s>>>
               (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
@@ -408,7 +416,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
 #if !PME_EXTERN_CMEM
                pme->gpu->recipbox,
 #endif
-               energyAndVirial_d);
+               pme->gpu->energyAndVirial);
     }
     else
     {
@@ -422,9 +430,9 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
 #if !PME_EXTERN_CMEM
-                pme->gpu->recipbox,
+               pme->gpu->recipbox,
 #endif
-               energyAndVirial_d);
+               pme->gpu->energyAndVirial);
         else
             pme_solve_kernel<FALSE, FALSE> <<<blocks, threads, 0, s>>>
               (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
@@ -437,7 +445,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
 #if !PME_EXTERN_CMEM
                pme->gpu->recipbox,
 #endif
-               energyAndVirial_d);
+               pme->gpu->energyAndVirial);
     }
     CU_LAUNCH_ERR("pme_solve_kernel");
 
@@ -450,9 +458,9 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
 
     if (bEnerVir)
     {
-        real *energyAndVirial_h = (real *)PMEMemoryFetch(PME_ID_ENERGY_AND_VIRIAL, thread, energyAndVirialSize, ML_HOST);
-        PMEMemoryCopy(energyAndVirial_h, energyAndVirial_d, energyAndVirialSize, ML_HOST, s);
-        stat = cudaEventRecord(pme->gpu->syncEnerVirH2D, s);
+        real *energyAndVirial_h = (real *)PMEMemoryFetch(PME_ID_ENERGY_AND_VIRIAL, thread, pme->gpu->energyAndVirialSize, ML_HOST);
+        PMEMemoryCopy(energyAndVirial_h, pme->gpu->energyAndVirial, pme->gpu->energyAndVirialSize, ML_HOST, s);
+        cudaError_t stat = cudaEventRecord(pme->gpu->syncEnerVirH2D, s);
         CU_RET_ERR(stat, "PME solve energy/virial sync fail");
     }
 
@@ -470,17 +478,14 @@ void pme_gpu_get_energy_virial(gmx_pme_t *pme)
     real *work_energy_q = &(work->energy_q);
     matrix &work_vir_q = work->vir_q;
 
-    int energyAndVirialSize = PMEGetAllocatedSize(PME_ID_ENERGY_AND_VIRIAL, thread, ML_DEVICE);
-    assert(energyAndVirialSize > 0);
-    int nReduced = energyAndVirialSize / (1 + 6) / sizeof(real);
     // will be 1, actually
 
     cudaError_t stat = cudaStreamWaitEvent(s, pme->gpu->syncEnerVirH2D, 0);
     CU_RET_ERR(stat, "error while waiting for PME solve");
-    real *energyAndVirial_h = (real *)PMEMemoryFetch(PME_ID_ENERGY_AND_VIRIAL, thread, energyAndVirialSize, ML_HOST);
+    real *energyAndVirial_h = (real *)PMEMemoryFetch(PME_ID_ENERGY_AND_VIRIAL, thread, pme->gpu->energyAndVirialSize, ML_HOST);
     real energy = 0.0;
     real virxx = 0.0, virxy = 0.0, virxz = 0.0, viryy = 0.0, viryz = 0.0, virzz = 0.0;
-    for (int i = 0, j = 0; i < nReduced; ++i)
+    for (int i = 0, j = 0; i < 1; ++i)
     {
         virxx += energyAndVirial_h[j++];
         viryy += energyAndVirial_h[j++];
@@ -822,6 +827,8 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
         /* //yupinov fix
         real *energy_h = (real *)PMEMemoryFetchAndCopy(PME_ID_ENERGY, thread, energy_d, energy_size, ML_HOST, s);
         real *virial_h = (real *)PMEMemoryFetchAndCopy(PME_ID_VIRIAL, thread, virial_d, virial_size, ML_HOST, s);
+        */
+        real *energy_h = NULL, *virial_h = NULL;
         //yupinov - workaround for a zero point - do in kernel?
         memset(energy_h, 0, sizeof(real));
         memset(virial_h, 0, 6 * sizeof(real));
@@ -843,7 +850,7 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
         work_vir_lj[XX][YY] = work_vir_lj[YY][XX] = 0.25 * virxy;
         work_vir_lj[XX][ZZ] = work_vir_lj[ZZ][XX] = 0.25 * virxz;
         work_vir_lj[YY][ZZ] = work_vir_lj[ZZ][YY] = 0.25 * viryz;
-        */
+
 
         /* This energy should be corrected for a charged system */
         *work_energy_lj = 0.5 * energy;

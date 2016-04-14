@@ -91,6 +91,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
     pme_gpu_copy_calcspline_constants(pme);
     pme_gpu_alloc_gather_forces(pme);
     pme_gpu_alloc_grid(pme, grid_index);
+    pme_gpu_alloc_energy_virial(pme, grid_index);
 
     if (pme->bGPUFFT) //copied from gmx_pme_init
     {
@@ -160,6 +161,7 @@ void pme_gpu_step_reinit(gmx_pme_t *pme)
     // this is ran at the end of MD step + at the DD init
     const int grid_index = 0; //!
     pme_gpu_clear_grid(pme, grid_index);
+    pme_gpu_clear_energy_virial(pme, grid_index);
 }
 
 

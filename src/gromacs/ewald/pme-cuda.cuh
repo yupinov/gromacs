@@ -90,7 +90,7 @@ struct gmx_pme_cuda_t
 
     pme_gpu_timing timingEvents[PME_GPU_STAGES];
 
-    // device pointers/obejcts below
+    // device pointers/objects below
 
     // spline calculation
     // fractional shifts (pme->fsh*)
@@ -100,6 +100,11 @@ struct gmx_pme_cuda_t
 
     // grid - used everywhere
     real *grid;
+
+    // solve
+    // 6 virial components, energy => 7 elements
+    real *energyAndVirial;
+    size_t energyAndVirialSize; //bytes
 
     // gather
     // forces
