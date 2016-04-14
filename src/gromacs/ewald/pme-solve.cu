@@ -437,7 +437,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     if (bEnerVir)
     {
         PMEFetchAndCopyRealArray(PME_ID_ENERGY_AND_VIRIAL, thread, energyAndVirial_d, energyAndVirialSize, ML_HOST, s);
-        stat = cudaEventRecord(pme->gpu->syncEnerVirH2D);
+        stat = cudaEventRecord(pme->gpu->syncEnerVirH2D, s);
         CU_RET_ERR(stat, "PME solve energy/virial sync fail");
     }
 
