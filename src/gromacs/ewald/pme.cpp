@@ -1018,8 +1018,10 @@ int gmx_pme_do(struct gmx_pme_t *pme,
     max_grid_index = (pme->ljpme_combination_rule == eljpmeLB) ? DO_Q : DO_Q_AND_LJ;
 
     if (pme->bGPU)
+    {
         GMX_RELEASE_ASSERT(!(flags & GMX_PME_DO_LJ) && !pme->bFEP, "PME GPU has only been tried for a single grid. Shouldn't be difficult to extend though.\n");
-
+        GMX_RELEASE_ASSERT(sizeof(real) == sizeof(float), "PME GPU was not been designed with double precision in mind.\nIt might be possible too implement, but would require meticulous code proofreading.\n");
+    }
     for (grid_index = 0; grid_index < max_grid_index; ++grid_index)
     {
         /* Check if we should do calculations at this grid_index
