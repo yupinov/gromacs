@@ -242,8 +242,7 @@ static std::vector<void *> PMEStoragePointers(ML_END_INVALID * PME_ID_END_INVALI
 
 static bool debugMemoryPrint = false;
 
-template <typename T>
-T *PMEFetch(PMEDataID id, int unusedTag, int size, MemLocType location)
+void *PMEMemoryFetch(PMEDataID id, int unusedTag, int size, MemLocType location)
 {
     //yupinov grid resize mistake!
     assert(unusedTag == 0);
@@ -266,7 +265,6 @@ T *PMEFetch(PMEDataID id, int unusedTag, int size, MemLocType location)
             }
             else
             {
-                //delete[] (T *) PMEStoragePointers[i];
                 stat = cudaFreeHost(PMEStoragePointers[i]);
                 CU_RET_ERR(stat, "PME cudaFreeHost error");
             }
@@ -286,8 +284,6 @@ T *PMEFetch(PMEDataID id, int unusedTag, int size, MemLocType location)
             }
             else
             {
-                //PMEStoragePointers[i] = new T[size / sizeof(T)];
-
                 unsigned int allocFlags = cudaHostAllocDefault;
                 //allocFlags |= cudaHostAllocWriteCombined;
                 //yupinov try cudaHostAllocWriteCombined for almost-constant global memory? do I even have that?
@@ -298,52 +294,15 @@ T *PMEFetch(PMEDataID id, int unusedTag, int size, MemLocType location)
             PMEStorageSizes[i] = size;
         }
     }
-    return (T *) PMEStoragePointers[i];
+    return PMEStoragePointers[i];
 }
 
-real *PMEFetchRealArray(PMEDataID id, int unusedTag, int size, MemLocType location)
-{
-    return PMEFetch<real>(id, unusedTag, size, location);
-}
-
-t_complex *PMEFetchComplexArray(PMEDataID id, int unusedTag, int size, MemLocType location)
-{
-    return PMEFetch<t_complex>(id, unusedTag, size, location);
-}
-
-int *PMEFetchIntegerArray(PMEDataID id, int unusedTag, int size, MemLocType location)
-{
-    return PMEFetch<int>(id, unusedTag, size, location);
-}
-
-template <typename T>
-T *PMEFetchAndCopy(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s, gmx_bool sync = false)
-{
-    T *result = PMEFetch<T>(id, unusedTag, size, location);
-    PMECopy(result, src, size, location, s, sync);
-    return result;
-}
-
-t_complex *PMEFetchAndCopyComplexArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s)
-{
-    return PMEFetchAndCopy<t_complex>(id, unusedTag, src, size, location, s);
-}
-
-real *PMEFetchAndCopyRealArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s, gmx_bool sync)
-{
-    return PMEFetchAndCopy<real>(id, unusedTag, src, size, location, s, sync);
-}
-
-int *PMEFetchAndCopyIntegerArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s)
-{
-    return PMEFetchAndCopy<int>(id, unusedTag, src, size, location, s);
-}
-
-void PMECopy(void *dest, void *src, int size, MemLocType destination, cudaStream_t s, gmx_bool sync) //yupinov move everything onto this function - or not
+void PMEMemoryCopy(void *dest, void *src, int size, MemLocType destination, cudaStream_t s)
 {
     // synchronous copies are not used anywhere currently, I think
     assert(s != 0);
     cudaError_t stat;
+    const gmx_bool sync = false;
     if (destination == ML_DEVICE)
     {
         if (sync)
@@ -362,7 +321,14 @@ void PMECopy(void *dest, void *src, int size, MemLocType destination, cudaStream
     }
 }
 
-void PMECopyConstant(const void *dest, void const *src, size_t size, cudaStream_t s)
+void *PMEMemoryFetchAndCopy(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s)
+{
+    void *result = PMEMemoryFetch(id, unusedTag, size, location);
+    PMEMemoryCopy(result, src, size, location, s);
+    return result;
+}
+
+void PMEConstantCopy(const void *dest, void const *src, size_t size, cudaStream_t s)
 {
     assert(s != 0);
     cudaError_t stat = cudaMemcpyToSymbolAsync(dest, src, size, 0, cudaMemcpyHostToDevice, s);

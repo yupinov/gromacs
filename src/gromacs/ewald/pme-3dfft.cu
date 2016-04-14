@@ -101,7 +101,7 @@ gmx_pme_t *pme)
 
     setup->rdata = (cufftReal *)pme->gpu->grid;
     assert(setup->rdata);
-    setup->cdata = (cufftComplex *)PMEFetchComplexArray(PME_ID_COMPLEX_GRID, 0, gridSizeComplex * sizeof(cufftComplex), ML_DEVICE);
+    setup->cdata = (cufftComplex *)PMEMemoryFetch(PME_ID_COMPLEX_GRID, 0, gridSizeComplex * sizeof(cufftComplex), ML_DEVICE);
 
     //printf("%p %p %p\n",  pme->gpu->grid, setup->rdata,  setup->cdata);
 
@@ -110,9 +110,9 @@ gmx_pme_t *pme)
     //we want CPU FFT grids to be of same size, to include the overlap
     {
         free(setup->real_data);
-        *real_data = setup->real_data = PMEFetchRealArray(PME_ID_REAL_GRID, 0, gridSizeReal * sizeof(cufftReal), ML_HOST);
+        *real_data = setup->real_data = (real *)PMEFetch(PME_ID_REAL_GRID, 0, gridSizeReal * sizeof(cufftReal), ML_HOST);
         free(setup->complex_data);
-        *complex_data = setup->complex_data = PMEFetchComplexArray(PME_ID_COMPLEX_GRID, 0, gridSizeComplex * sizeof(cufftComplex), ML_HOST);
+        *complex_data = setup->complex_data = PMEFetch(PME_ID_COMPLEX_GRID, 0, gridSizeComplex * sizeof(cufftComplex), ML_HOST);
     }
     */
     const int rank = 3, batch = 1;
@@ -206,7 +206,7 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {      
         if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
-            PMECopy(setup->rdata, setup->real_data, gridSizeReal, ML_DEVICE, s);
+            PMEMemoryCopy(setup->rdata, setup->real_data, gridSizeReal, ML_DEVICE, s);
 
         pme_gpu_timing_start(pme, ewcsPME_FFT_R2C);
 
@@ -220,7 +220,7 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     else
     {
         if (!pme->gpu->keepGPUDataBetweenSolveAndC2R)
-            PMECopy(setup->cdata, setup->complex_data, gridSizeComplex, ML_DEVICE, s);
+            PMEMemoryCopy(setup->cdata, setup->complex_data, gridSizeComplex, ML_DEVICE, s);
 
         pme_gpu_timing_start(pme, ewcsPME_FFT_C2R);
 
@@ -235,12 +235,12 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {
         if (!pme->gpu->keepGPUDataBetweenR2CAndSolve)
-            PMECopy(setup->complex_data, setup->cdata, gridSizeComplex, ML_HOST, s);
+            PMEMemoryCopy(setup->complex_data, setup->cdata, gridSizeComplex, ML_HOST, s);
     }
     else
     {
         if (!pme->gpu->keepGPUDataBetweenC2RAndGather)
-            PMECopy(setup->real_data, setup->rdata, gridSizeReal, ML_HOST, s);
+            PMEMemoryCopy(setup->real_data, setup->rdata, gridSizeReal, ML_HOST, s);
     }
 }
 

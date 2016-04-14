@@ -278,21 +278,21 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     int size_order = order * n * sizeof(real);
     int size_order_dim = size_order * DIM;
-    real *theta_d = PMEFetchRealArray(PME_ID_THETA, thread, size_order_dim, ML_DEVICE);
-    real *dtheta_d = PMEFetchRealArray(PME_ID_DTHETA, thread, size_order_dim, ML_DEVICE);
+    real *theta_d = (real *)PMEFetch(PME_ID_THETA, thread, size_order_dim, ML_DEVICE);
+    real *dtheta_d = (real *)PMEFetch(PME_ID_DTHETA, thread, size_order_dim, ML_DEVICE);
 
     // IDXPTR
     int idx_size = n * DIM * sizeof(int);
-    int *idx_d = PMEFetchIntegerArray(PME_ID_IDXPTR, thread, idx_size, ML_DEVICE); //why is it not stored?
+    int *idx_d = (int *)PMEFetch(PME_ID_IDXPTR, thread, idx_size, ML_DEVICE); //why is it not stored?
 
     // FSH
-    real *fshx_d = PMEFetchRealArray(PME_ID_FSH, thread, 5 * (nx + ny) * sizeof(real), ML_DEVICE);
+    real *fshx_d = (real *)PMEFetch(PME_ID_FSH, thread, 5 * (nx + ny) * sizeof(real), ML_DEVICE);
     real *fshy_d = fshx_d + 5 * nx;
     PMECopy(fshx_d, pme->fshx, 5 * nx * sizeof(real), ML_DEVICE, s);
     PMECopy(fshy_d, pme->fshy, 5 * ny * sizeof(real), ML_DEVICE, s);
 
     // NN
-    int *nnx_d = PMEFetchIntegerArray(PME_ID_NN, thread, 5 * (nx + ny + nz) * sizeof(int), ML_DEVICE);
+    int *nnx_d = (int *)PMEFetch(PME_ID_NN, thread, 5 * (nx + ny + nz) * sizeof(int), ML_DEVICE);
     int *nny_d = nnx_d + 5 * nx;
     int *nnz_d = nny_d + 5 * ny;
     PMECopy(nnx_d, pme->nnx, 5 * nx * sizeof(int), ML_DEVICE, s);
@@ -300,8 +300,8 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     PMECopy(nnz_d, pme->nnz, 5 * nz * sizeof(int), ML_DEVICE, s);
 
     // XPTR
-    real *xptr_h = PMEFetchRealArray(PME_ID_XPTR, thread, 3 * n_blocked * sizeof(real), ML_HOST);
-    real *xptr_d = PMEFetchRealArray(PME_ID_XPTR, thread, 3 * n_blocked * sizeof(real), ML_DEVICE);
+    real *xptr_h = (real *)PMEFetch(PME_ID_XPTR, thread, 3 * n_blocked * sizeof(real), ML_HOST);
+    real *xptr_d = (real *)PMEFetch(PME_ID_XPTR, thread, 3 * n_blocked * sizeof(real), ML_DEVICE);
     real *yptr_d = xptr_d + n_blocked;
     real *zptr_d = yptr_d + n_blocked;
     {
@@ -317,7 +317,7 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     PMECopy(xptr_d, xptr_h, 3 * n_blocked * sizeof(real), ML_DEVICE, s);
 
     // COEFFICIENT
-    real *coefficient_d = PMEFetchAndCopyRealArray(PME_ID_COEFFICIENT, thread, atc->coefficient, n * sizeof(real), ML_DEVICE, s); //yupinov compact here as weel?
+    real *coefficient_d = (real *)PMEFetchAndCopy(PME_ID_COEFFICIENT, thread, atc->coefficient, n * sizeof(real), ML_DEVICE, s); //yupinov compact here as weel?
 
     // GRID
     /*
@@ -328,7 +328,7 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     }
     */
 
-    real *grid_d = PMEFetchRealArray(PME_ID_REAL_GRID_WITH_OVERLAP, thread, size_grid, ML_DEVICE);
+    real *grid_d = (real *)PMEFetch(PME_ID_REAL_GRID_WITH_OVERLAP, thread, size_grid, ML_DEVICE);
     stat = cudaMemsetAsync(grid_d, 0, size_grid, s); //yupinov
     CU_RET_ERR(stat, "cudaMemsetAsync spread error");
     #ifdef DEBUG_PME_TIMINGS_GPU

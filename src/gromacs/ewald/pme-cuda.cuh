@@ -171,17 +171,11 @@ enum MemLocType
 
 // all sizes here are in bytes
 
-real *PMEFetchRealArray(PMEDataID id, int unusedTag, int size, MemLocType location);
-int *PMEFetchIntegerArray(PMEDataID id, int unusedTag, int size, MemLocType location);
-t_complex *PMEFetchComplexArray(PMEDataID id, int unusedTag, int size, MemLocType location);
-//yupinov warn on wrong param
+void *PMEMemoryFetch(PMEDataID id, int unusedTag, int size, MemLocType location);
+void PMEMemoryCopy(void *dest, void *src, int size, MemLocType destination, cudaStream_t s);
+void *PMEMemoryFetchAndCopy(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s);
 
-void PMECopy(void *dest, void *src, int size, MemLocType destination, cudaStream_t s, gmx_bool sync = false); //yupinov alloc as well
-void PMECopyConstant(const void *dest, const void *src, size_t size, cudaStream_t s); //H2D only
-
-int *PMEFetchAndCopyIntegerArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s);
-real *PMEFetchAndCopyRealArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s, gmx_bool sync = false);
-t_complex *PMEFetchAndCopyComplexArray(PMEDataID id, int unusedTag, void *src, int size, MemLocType location, cudaStream_t s);
+void PMEConstantCopy(const void *dest, const void *src, size_t size, cudaStream_t s); //H2D only
 
 int PMEGetAllocatedSize(PMEDataID id, int unusedTag, MemLocType location);
 

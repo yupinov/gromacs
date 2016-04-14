@@ -689,16 +689,16 @@ void pme_gpu_copy_calcspline_constants(gmx_pme_t *pme)
     const int nz = pme->nkz;
 
     const int fshSize = 5 * (nx + ny + nz) * sizeof(real);
-    real *fshArray = pme->gpu->fshArray = PMEFetchRealArray(PME_ID_FSH, thread, fshSize, ML_DEVICE);
-    PMECopy(fshArray                , pme->fshx, 5 * nx * sizeof(real), ML_DEVICE, s);
-    PMECopy(fshArray + 5 * nx       , pme->fshy, 5 * ny * sizeof(real), ML_DEVICE, s);
-    PMECopy(fshArray + 5 * (nx + ny), pme->fshz, 5 * nz * sizeof(real), ML_DEVICE, s);
+    real *fshArray = pme->gpu->fshArray = (real *)PMEMemoryFetch(PME_ID_FSH, thread, fshSize, ML_DEVICE);
+    PMEMemoryCopy(fshArray                , pme->fshx, 5 * nx * sizeof(real), ML_DEVICE, s);
+    PMEMemoryCopy(fshArray + 5 * nx       , pme->fshy, 5 * ny * sizeof(real), ML_DEVICE, s);
+    PMEMemoryCopy(fshArray + 5 * (nx + ny), pme->fshz, 5 * nz * sizeof(real), ML_DEVICE, s);
 
     const int nnSize = 5 * (nx + ny + nz) * sizeof(int);
-    int *nnArray = pme->gpu->nnArray = PMEFetchIntegerArray(PME_ID_NN, thread, nnSize, ML_DEVICE);
-    PMECopy(nnArray                , pme->nnx, 5 * nx * sizeof(int), ML_DEVICE, s);
-    PMECopy(nnArray + 5 * nx       , pme->nny, 5 * ny * sizeof(int), ML_DEVICE, s);
-    PMECopy(nnArray + 5 * (nx + ny), pme->nnz, 5 * nz * sizeof(int), ML_DEVICE, s);
+    int *nnArray = pme->gpu->nnArray = (int *)PMEMemoryFetch(PME_ID_NN, thread, nnSize, ML_DEVICE);
+    PMEMemoryCopy(nnArray                , pme->nnx, 5 * nx * sizeof(int), ML_DEVICE, s);
+    PMEMemoryCopy(nnArray + 5 * nx       , pme->nny, 5 * ny * sizeof(int), ML_DEVICE, s);
+    PMEMemoryCopy(nnArray + 5 * (nx + ny), pme->nnz, 5 * nz * sizeof(int), ML_DEVICE, s);
 
 #if USE_TEXTURES
 #if USE_TEXOBJ
@@ -755,7 +755,7 @@ void pme_gpu_alloc_grid(struct gmx_pme_t *pme, const int grid_index)
     const int gridSize = pnx * pny * pnz * sizeof(real);
 
     const int tag = 0; // should be a grid_index?
-    pme->gpu->grid = PMEFetchRealArray(PME_ID_REAL_GRID, tag, gridSize, ML_DEVICE);
+    pme->gpu->grid = (real *)PMEMemoryFetch(PME_ID_REAL_GRID, tag, gridSize, ML_DEVICE);
 }
 
 void pme_gpu_clear_grid(struct gmx_pme_t *pme, const int grid_index)
@@ -830,12 +830,12 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     int size_order = order * n * sizeof(real);
     int size_order_dim = size_order * DIM;
-    real *theta_d = PMEFetchRealArray(PME_ID_THETA, tag, size_order_dim, ML_DEVICE);
-    real *dtheta_d = PMEFetchRealArray(PME_ID_DTHETA, tag, size_order_dim, ML_DEVICE);
+    real *theta_d = (real *)PMEMemoryFetch(PME_ID_THETA, tag, size_order_dim, ML_DEVICE);
+    real *dtheta_d = (real *)PMEMemoryFetch(PME_ID_DTHETA, tag, size_order_dim, ML_DEVICE);
 
     // IDXPTR
     int idx_size = n * DIM * sizeof(int);
-    int *idx_d = PMEFetchIntegerArray(PME_ID_IDXPTR, tag, idx_size, ML_DEVICE);
+    int *idx_d = (int *)PMEMemoryFetch(PME_ID_IDXPTR, tag, idx_size, ML_DEVICE);
 
     float3 *xptr_d = NULL;
     //float4 *xptr_d = NULL;
@@ -846,16 +846,16 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     if (bCalcSplines)
     {
         float3 *xptr_h = (float3 *)atc->x;
-        xptr_d = (float3 *)PMEFetchRealArray(PME_ID_XPTR, tag, DIM * n_blocked * sizeof(real), ML_DEVICE);
-        PMECopy(xptr_d, xptr_h, DIM * n_blocked * sizeof(real), ML_DEVICE, s);
+        xptr_d = (float3 *)(real *)PMEMemoryFetch(PME_ID_XPTR, tag, DIM * n_blocked * sizeof(real), ML_DEVICE);
+        PMEMemoryCopy(xptr_d, xptr_h, DIM * n_blocked * sizeof(real), ML_DEVICE, s);
         /*
-        float4 *xptr_h = (float4 *)PMEFetchRealArray(PME_ID_XPTR, thread, 4 * n_blocked * sizeof(real), ML_HOST);
+        float4 *xptr_h = (float4 *)(real *)PMEFetch(PME_ID_XPTR, thread, 4 * n_blocked * sizeof(real), ML_HOST);
         memset(xptr_h, 0, 4 * n_blocked * sizeof(real));
         for (int i = 0; i < n; i++)
         {
            memcpy(xptr_h + i, atc->x + i, sizeof(rvec));
         }
-        xptr_d = (float4 *)PMEFetchRealArray(PME_ID_XPTR, thread, 4 * n_blocked * sizeof(real), ML_DEVICE);
+        xptr_d = (float4 *)(real *)PMEFetch(PME_ID_XPTR, thread, 4 * n_blocked * sizeof(real), ML_DEVICE);
         PMECopy(xptr_d, xptr_h, 4 * n_blocked * sizeof(real), ML_DEVICE, s);
         */
     }
@@ -864,7 +864,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     //yupinov blocked approach everywhere or nowhere
     //filtering?
 
-    real *coefficient_d = PMEFetchAndCopyRealArray(PME_ID_COEFFICIENT, tag, atc->coefficient, n * sizeof(real), ML_DEVICE, s); //yupinov compact here as weel?
+    real *coefficient_d = (real *)PMEMemoryFetchAndCopy(PME_ID_COEFFICIENT, tag, atc->coefficient, n * sizeof(real), ML_DEVICE, s); //yupinov compact here as weel?
 
     /*
     const int N = 256;
@@ -1012,15 +1012,15 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
     {
         if (bSpread)
-            PMECopy(pmegrid->grid, pme->gpu->grid, gridSize, ML_HOST, s);
+            PMEMemoryCopy(pmegrid->grid, pme->gpu->grid, gridSize, ML_HOST, s);
         for (int j = 0; j < DIM; ++j) //also breaking compacting in gather
         //and why not just check bGPUSingle here?
         {
-            PMECopy(atc->spline[tag].dtheta[j], dtheta_d + j * n * order, size_order, ML_HOST, s);
-            PMECopy(atc->spline[tag].theta[j], theta_d + j * n * order, size_order, ML_HOST, s);
+            PMEMemoryCopy(atc->spline[tag].dtheta[j], dtheta_d + j * n * order, size_order, ML_HOST, s);
+            PMEMemoryCopy(atc->spline[tag].theta[j], theta_d + j * n * order, size_order, ML_HOST, s);
         }
         //yupinov what about theta/dtheta/idx use in pme_realloc_atomcomm_things?
-        PMECopy(atc->idx, idx_d, idx_size, ML_HOST, s);
+        PMEMemoryCopy(atc->idx, idx_d, idx_size, ML_HOST, s);
     }
     //yupinov check flags like bSpread etc. before copying...
 
