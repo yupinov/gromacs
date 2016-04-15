@@ -85,7 +85,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         pme_gpu_update_flags(*pmeGPU, false, false, false, false);
     }
 
-    // all these functions should only work when grid size changes, I think
+    // all these functions should only be called when the grid size changes
     const int grid_index = 0;
     pme_gpu_copy_wrap_zones(pme);
     pme_gpu_copy_calcspline_constants(pme);
