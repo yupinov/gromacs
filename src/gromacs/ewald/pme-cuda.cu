@@ -47,7 +47,6 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
     {
         *pmeGPU = new gmx_pme_gpu_t;
         cudaError_t stat;
-    //yupinov dealloc@
 
         PMEStorageSizes.assign(PMEStorageSizes.size(), 0);
         PMEStoragePointers.assign(PMEStoragePointers.size(), NULL);
@@ -85,18 +84,11 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         CU_RET_ERR(stat, "cudaEventCreate on syncEnerVirH2D failed");
         stat = cudaEventCreateWithFlags(&(*pmeGPU)->syncForcesH2D, cudaEventDisableTiming);
         CU_RET_ERR(stat, "cudaEventCreate on syncForcesH2D failed");
-        //yupinov again dealloc
-        /*
-        stat = cudaEventDestroy(nb->nonlocal_done);
-        CU_RET_ERR(stat, "cudaEventDestroy failed on timers->nonlocal_done");
-        stat = cudaEventDestroy(nb->misc_ops_and_local_H2D_done);
-        CU_RET_ERR(stat, "cudaEventDestroy failed on timers->misc_ops_and_local_H2D_done");
-        */
 
         pme_gpu_update_flags(*pmeGPU, false, false, false, false);
     }
 
-    // all these functions should only be called when the grid size changes
+    // all these functions should only be called when the grid size changes (e.g. DD)
     const int grid_index = 0;
     pme_gpu_copy_wrap_zones(pme);
     pme_gpu_copy_calcspline_constants(pme);
@@ -141,8 +133,14 @@ void pme_gpu_deinit(//gmx_pme_gpu_t **pmeGPU,
                     gmx_pme_t **pme)
 {
     // this is ran at the end of run
-    // clean this up!
-    //for (int i = 0; i < PMEStorageSizes.size(); i++)
+
+    if (!(*pme)->bGPU) //yupinov - could this boolean change during the run?
+        return;
+
+    cudaError_t stat;
+
+    // these are all the GPU/host pointers allocated through PMEMemoryFetch - grids included
+    // a temporary solution
     for (unsigned int id = 0; id < PME_ID_END_INVALID; id++)
         for (unsigned int location = 0; location < ML_END_INVALID; location++)
             for (unsigned int tag = 0; tag < MAXTAGS; tag++)
@@ -150,9 +148,24 @@ void pme_gpu_deinit(//gmx_pme_gpu_t **pmeGPU,
                 PMEMemoryFetch((PMEDataID)id, tag, 0, (MemLocType)location); // dealloc
             }
 
+    // FFT
     for (int i = 0; i < (*pme)->ngrids; i++)
         gmx_parallel_3dfft_destroy_gpu((*pme)->pfft_setup_gpu[i]);
     sfree((*pme)->pfft_setup_gpu);
+
+    // destroy synchronization events
+    stat = cudaEventDestroy((*pme)->gpu->syncEnerVirH2D);
+    CU_RET_ERR(stat, "cudaEventDestroy failed on syncEnerVirH2D");
+    stat = cudaEventDestroy((*pme)->gpu->syncForcesH2D);
+    CU_RET_ERR(stat, "cudaEventDestroy failed on syncForcesH2D");
+
+    // destroy the stream
+    stat = cudaStreamDestroy((*pme)->gpu->pmeStream);
+    CU_RET_ERR(stat, "PME cudaStreamDestroy error");
+
+    // delete the structure itself
+    delete ((*pme)->gpu);
+    (*pme)->gpu = NULL;
 }
 
 

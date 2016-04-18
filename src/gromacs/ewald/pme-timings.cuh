@@ -3,11 +3,21 @@
 
 #include "pme-internal.h"
 
-struct pme_gpu_timing
+class pme_gpu_timing
 {
-    bool created;
+    bool initialized;
     cudaEvent_t event_start, event_stop;
-    pme_gpu_timing() : created(false) { }
+    unsigned int call_count;
+
+    void check_init();
+public:
+    pme_gpu_timing() : initialized(false), call_count(0) {};
+    ~pme_gpu_timing();
+
+    void start_recording(cudaStream_t s);
+    void stop_recording(cudaStream_t s);
+    real get_time_milliseconds();
+    unsigned int get_call_count();
 };
 
 void pme_gpu_timing_start(gmx_pme_t *pme, int ewcsn);
