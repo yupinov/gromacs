@@ -25,8 +25,8 @@ struct gmx_parallel_3dfft_gpu
 
     cufftHandle planR2C;
     cufftHandle planC2R;
-    cufftReal *rdata;
-    cufftComplex *cdata;
+    cufftReal *realGrid;
+    cufftComplex *complexGrid;
 };
 
 //yupinov warn against double precision
@@ -76,9 +76,9 @@ gmx_pme_t *pme)
     const int gridSizeComplex = setup->size_complex[XX] * setup->size_complex[YY] * setup->size_complex[ZZ];
     const int gridSizeReal = setup->size_real[XX] * setup->size_real[YY] * setup->size_real[ZZ];
 
-    setup->rdata = (cufftReal *)pme->gpu->grid;
-    assert(setup->rdata);
-    setup->cdata = (cufftComplex *)PMEMemoryFetch(PME_ID_COMPLEX_GRID, 0, gridSizeComplex * sizeof(cufftComplex), ML_DEVICE);
+    setup->realGrid = (cufftReal *)pme->gpu->grid;
+    assert(setup->realGrid);
+    setup->complexGrid = (cufftComplex *)PMEMemoryFetch(PME_ID_COMPLEX_GRID, 0, gridSizeComplex * sizeof(cufftComplex), ML_DEVICE);
 
     //printf("%p %p %p\n",  pme->gpu->grid, setup->rdata,  setup->cdata);
 
@@ -183,11 +183,11 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {      
         if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
-            PMEMemoryCopy(setup->rdata, setup->real_data, gridSizeReal, ML_DEVICE, s);
+            PMEMemoryCopy(setup->realGrid, setup->real_data, gridSizeReal, ML_DEVICE, s);
 
         pme_gpu_timing_start(pme, ewcsPME_FFT_R2C);
 
-        cufftResult_t result = cufftExecR2C(setup->planR2C, setup->rdata, setup->cdata);
+        cufftResult_t result = cufftExecR2C(setup->planR2C, setup->realGrid, setup->complexGrid);
 
         pme_gpu_timing_stop(pme, ewcsPME_FFT_R2C);
 
@@ -197,11 +197,11 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     else
     {
         if (!pme->gpu->keepGPUDataBetweenSolveAndC2R)
-            PMEMemoryCopy(setup->cdata, setup->complex_data, gridSizeComplex, ML_DEVICE, s);
+            PMEMemoryCopy(setup->complexGrid, setup->complex_data, gridSizeComplex, ML_DEVICE, s);
 
         pme_gpu_timing_start(pme, ewcsPME_FFT_C2R);
 
-        cufftResult_t result = cufftExecC2R(setup->planC2R, setup->cdata, setup->rdata);
+        cufftResult_t result = cufftExecC2R(setup->planC2R, setup->complexGrid, setup->realGrid);
 
         pme_gpu_timing_stop(pme, ewcsPME_FFT_C2R);
 
@@ -212,12 +212,12 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {
         if (!pme->gpu->keepGPUDataBetweenR2CAndSolve)
-            PMEMemoryCopy(setup->complex_data, setup->cdata, gridSizeComplex, ML_HOST, s);
+            PMEMemoryCopy(setup->complex_data, setup->complexGrid, gridSizeComplex, ML_HOST, s);
     }
     else
     {
         if (!pme->gpu->keepGPUDataBetweenC2RAndGather)
-            PMEMemoryCopy(setup->real_data, setup->rdata, gridSizeReal, ML_HOST, s);
+            PMEMemoryCopy(setup->real_data, setup->realGrid, gridSizeReal, ML_HOST, s);
     }
 }
 

@@ -52,12 +52,13 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         PMEStorageSizes.assign(PMEStorageSizes.size(), 0);
         PMEStoragePointers.assign(PMEStoragePointers.size(), NULL);
 
+        // crude GPU selection copied from non-bondeds
         const int PMEGPURank = 0; //yupinov !
         FILE *fp = NULL; //yupinov pass this
         char gpu_err_str[STRLEN];
         if (!init_gpu(fp, PMEGPURank, gpu_err_str, &hwinfo->gpu_info, gpu_opt))
             gmx_fatal(FARGS, "could not select GPU %d for PME rank %d\n", hwinfo->gpu_info.gpu_dev[gpu_opt->dev_use[PMEGPURank]].id, PMEGPURank);
-        //should set bGPU to and fall back
+        //should set bGPU to false and fall back
 
         //first init and either of the hw structures NULL => also fall back to CPU
 
