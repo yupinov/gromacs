@@ -513,7 +513,8 @@ void gather_f_bsplines_gpu
     real *dtheta_z_d = dtheta_d + 2 * order * n;
 
     // coefficients
-    real *coefficients_d = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, thread, size_coefficients, ML_DEVICE);
+    //real *coefficients_d = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, thread, size_coefficients, ML_DEVICE);
+    //yupinov
 
     // indices
     int *idx_d = (int *)PMEMemoryFetch(PME_ID_IDXPTR, thread, DIM * size_indices, ML_DEVICE);
@@ -528,17 +529,10 @@ void gather_f_bsplines_gpu
         PMEMemoryCopy(dtheta_y_d, dtheta_y_h, size_splines, ML_DEVICE, s);
         PMEMemoryCopy(dtheta_z_d, dtheta_z_h, size_splines, ML_DEVICE, s);
 
-        PMEMemoryCopy(coefficients_d, coefficients_h, size_coefficients, ML_DEVICE, s);
+        //yupinov PMEMemoryCopy(pme->gpu->coefficients, coefficients_h, size_coefficients, ML_DEVICE, s);
 
         PMEMemoryCopy(idx_d, idx_h, DIM * size_indices, ML_DEVICE, s);
     }
-    //indices
-    /*
-    int *i0_d = PMEFetchAndCopyIntegerArray(PME_ID_I0, thread, i0_h, size_indices, ML_DEVICE, s);
-    int *j0_d = PMEFetchAndCopyIntegerArray(PME_ID_J0, thread, j0_h, size_indices, ML_DEVICE, s);
-    int *k0_d = PMEFetchAndCopyIntegerArray(PME_ID_K0, thread, k0_h, size_indices, ML_DEVICE, s);
-    */
-
 
     // forces
     if (!bClearF)
@@ -562,7 +556,7 @@ void gather_f_bsplines_gpu
                n,
                nXYZ, pnx, pny, pnz,
                theta_d, dtheta_d,
-               pme->gpu->forces, coefficients_d,
+               pme->gpu->forces, pme->gpu->coefficients,
 #if !PME_EXTERN_CMEM
                pme->gpu->recipbox,
 #endif
@@ -573,7 +567,7 @@ void gather_f_bsplines_gpu
                n,
                nXYZ, pnx, pny, pnz,
                theta_d, dtheta_d,
-               pme->gpu->forces, coefficients_d,
+               pme->gpu->forces, pme->gpu->coefficients,
 #if !PME_EXTERN_CMEM
                pme->gpu->recipbox,
 #endif

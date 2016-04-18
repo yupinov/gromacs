@@ -1069,6 +1069,9 @@ int gmx_pme_do(struct gmx_pme_t *pme,
             wallcycle_stop(wcycle, ewcPME_REDISTXF);
         }
 
+        if (pme->bGPU)
+            pme_gpu_copy_charges(pme); //yupinov
+
         if (debug)
         {
             fprintf(debug, "Rank= %6d, pme local particles=%6d\n",

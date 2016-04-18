@@ -754,7 +754,7 @@ void pme_gpu_alloc_grid(struct gmx_pme_t *pme, const int grid_index)
     const int pnz = pme->pmegrid_nz;
     const int gridSize = pnx * pny * pnz * sizeof(real);
 
-    const int tag = 0; // should be a grid_index?
+    const int tag = grid_index;
     pme->gpu->grid = (real *)PMEMemoryFetch(PME_ID_REAL_GRID, tag, gridSize, ML_DEVICE);
 }
 
@@ -825,7 +825,6 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     const int nz = pme->nkz;
 
     int n = atc->n;
-    int n_blocked = n;//(n + warp_size - 1) / warp_size * warp_size;
     const int gridSize = pnx * pny * pnz * sizeof(real);
 
     int size_order = order * n * sizeof(real);
@@ -837,40 +836,32 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     int idx_size = n * DIM * sizeof(int);
     int *idx_d = (int *)PMEMemoryFetch(PME_ID_IDXPTR, tag, idx_size, ML_DEVICE);
 
-    float3 *xptr_d = NULL;
-    //float4 *xptr_d = NULL;
-
     const float3 nXYZ = {(real)nx, (real)ny, (real)nz};
     const int3 nnOffset = {0, 5 * nx, 5 * (nx + ny)};
 
+
     if (bCalcSplines)
     {
+         /*
         const size_t coordinatesSize = DIM * n_blocked * sizeof(real);
         float3 *xptr_h = (float3 *)PMEMemoryFetch(PME_ID_XPTR, tag, coordinatesSize, ML_HOST);
         memcpy(xptr_h, atc->x, coordinatesSize);
         xptr_d = (float3 *)PMEMemoryFetch(PME_ID_XPTR, tag, coordinatesSize, ML_DEVICE);
         PMEMemoryCopy(xptr_d, xptr_h, coordinatesSize, ML_DEVICE, pme->gpu->pmeStream);
-        /*
-        float4 *xptr_h = (float4 *)(real *)PMEFetch(PME_ID_XPTR, thread, 4 * n_blocked * sizeof(real), ML_HOST);
-        memset(xptr_h, 0, 4 * n_blocked * sizeof(real));
-        for (int i = 0; i < n; i++)
-        {
-           memcpy(xptr_h + i, atc->x + i, sizeof(rvec));
-        }
-        xptr_d = (float4 *)(real *)PMEFetch(PME_ID_XPTR, thread, 4 * n_blocked * sizeof(real), ML_DEVICE);
-        PMECopy(xptr_d, xptr_h, 4 * n_blocked * sizeof(real), ML_DEVICE, s);
         */
     }
 
 
     //yupinov blocked approach everywhere or nowhere
     //filtering?
+    /*
 
     const size_t coefficientSize = n * sizeof(real);
     real *coefficient_h = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, tag, coefficientSize, ML_HOST);
     memcpy(coefficient_h, atc->coefficient, coefficientSize);
     real *coefficient_d = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, tag, coefficientSize, ML_DEVICE);
     PMEMemoryCopy(coefficient_d, coefficient_h, coefficientSize, ML_DEVICE, s);
+    */
 
     // in spread-unified each kernel thread works on one particle: calculates its splines, spreads it to [order^3] gridpoints
     // here each kernel thread works on [order] contiguous x grid points, so we multiply the total number of threads by [order^2]
@@ -911,8 +902,8 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 #else
                                                                                                     pme->gpu->nnArray, pme->gpu->fshArray,
 #endif
-                                                                                                    xptr_d,
-                                                                                                    coefficient_d,
+                                                                                                    pme->gpu->coordinates,
+                                                                                                    pme->gpu->coefficients,
                                                                                                     theta_d, dtheta_d, idx_d,
 #if !PME_EXTERN_CMEM
                                                                                                     pme->gpu->recipbox,
@@ -933,7 +924,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                     pme_spread_kernel<4, blockSize / 4 / 4> <<<nBlocks, dimBlock, 0, s>>>
                                                                             (pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
                                                                              pny, pnz,
-                                                                             coefficient_d,
+                                                                             pme->gpu->coefficients,
                                                                              pme->gpu->grid, theta_d, idx_d,
                                                                              n);
 
@@ -966,7 +957,7 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 #else
                                    pme->gpu->nnArray, pme->gpu->fshArray,
 #endif
-                                   xptr_d, coefficient_d, pme->gpu->grid, theta_d, dtheta_d, idx_d,
+                                   pme->gpu->coordinates, pme->gpu->coefficients, pme->gpu->grid, theta_d, dtheta_d, idx_d,
 #if !PME_EXTERN_CMEM
                                    pme->gpu->recipbox,
 #endif
@@ -1021,15 +1012,5 @@ void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
         PMEMemoryCopy(atc->idx, idx_d, idx_size, ML_HOST, s);
     }
     //yupinov check flags like bSpread etc. before copying...
-
-    //yupinov free, keep allocated
-    /*
-    cudaFree(theta_d);
-    cudaFree(dtheta_d);
-    cudaFree(fractx_d);
-    cudaFree(coefficient_d);
-    free(fractx_h);
-    free(coefficient_h);
-    */
 }
 

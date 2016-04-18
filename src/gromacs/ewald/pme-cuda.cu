@@ -177,6 +177,8 @@ void pme_gpu_step_init(gmx_pme_t *pme)
         return;
 
     pme_gpu_copy_recipbox(pme); //yupinov test changing box
+
+    pme_gpu_copy_coordinates(pme);
 }
 
 void pme_gpu_step_end(gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCalcEnerVir)
@@ -229,6 +231,41 @@ void pme_gpu_copy_recipbox(gmx_pme_t *pme)
 #else
     memcpy(pme->gpu->recipbox.box, box, sizeof(box));
 #endif
+}
+
+void pme_gpu_copy_coordinates(gmx_pme_t *pme)
+{
+    const int n = pme->atc[0].n;
+    const int tag = 0;
+
+    // coordinates
+    const size_t coordinatesSize = DIM * n * sizeof(real);
+    float3 *coordinates_h = (float3 *)PMEMemoryFetch(PME_ID_XPTR, tag, coordinatesSize, ML_HOST);
+    memcpy(coordinates_h, pme->atc[0].x, coordinatesSize);
+    pme->gpu->coordinates = (float3 *)PMEMemoryFetch(PME_ID_XPTR, tag, coordinatesSize, ML_DEVICE);
+    PMEMemoryCopy(pme->gpu->coordinates, coordinates_h, coordinatesSize, ML_DEVICE, pme->gpu->pmeStream);
+    /*
+    float4 *xptr_h = (float4 *)(real *)PMEFetch(PME_ID_XPTR, thread, 4 * n_blocked * sizeof(real), ML_HOST);
+    memset(xptr_h, 0, 4 * n_blocked * sizeof(real));
+    for (int i = 0; i < n; i++)
+    {
+       memcpy(xptr_h + i, atc->x + i, sizeof(rvec));
+    }
+    xptr_d = (float4 *)(real *)PMEFetch(PME_ID_XPTR, thread, 4 * n_blocked * sizeof(real), ML_DEVICE);
+    PMECopy(pme->gpu->coordinates, xptr_h, 4 * n_blocked * sizeof(real), ML_DEVICE, pme->gpu->pmeStream);
+    */
+}
+
+void pme_gpu_copy_charges(gmx_pme_t *pme)
+{
+    const int n = pme->atc[0].n;
+    const int tag = 0;
+    // coefficients - can be different for PME/LJ?
+    const size_t coefficientSize = n * sizeof(real);
+    real *coefficients_h = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, tag, coefficientSize, ML_HOST);
+    memcpy(coefficients_h, pme->atc[0].coefficient, coefficientSize); // why not just register host memory?
+    pme->gpu->coefficients = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, tag, coefficientSize, ML_DEVICE);
+    PMEMemoryCopy(pme->gpu->coefficients, coefficients_h, coefficientSize, ML_DEVICE, pme->gpu->pmeStream);
 }
 
 void pme_gpu_copy_wrap_zones(gmx_pme_t *pme)

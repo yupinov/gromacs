@@ -32,13 +32,20 @@ typedef int gmx_nbnxn_gpu_t;
 
 // internal data handling
 
-// copies the grid sizes for overlapping (PME wrap/unwrap)
+// copies the grid sizes for overlapping (used in PME wrap/unwrap)
 CUDA_FUNC_QUALIFIER void pme_gpu_copy_wrap_zones(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
-// copies the reciprocal box to the device (PME spread/solve/gather)
+// copies the reciprocal box to the device (used in PME spread/solve/gather)
 CUDA_FUNC_QUALIFIER void pme_gpu_copy_recipbox(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
-// copies the nn and fsh to the device (PME spline)
+// copies the coordinates to the device (used in PME spread)
+CUDA_FUNC_QUALIFIER void pme_gpu_copy_coordinates(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+// copies the charges to the device (used in PME spread/gather)
+CUDA_FUNC_QUALIFIER void pme_gpu_copy_charges(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+
+
+
+// copies the nn and fsh to the device (used in PME spread(spline))
 CUDA_FUNC_QUALIFIER void pme_gpu_copy_calcspline_constants(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 // clearing
@@ -147,6 +154,9 @@ CUDA_FUNC_QUALIFIER void pme_gpu_step_init(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) C
 CUDA_FUNC_QUALIFIER void pme_gpu_step_end(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
                                           const gmx_bool CUDA_FUNC_ARGUMENT(bCalcF),
                                           const gmx_bool CUDA_FUNC_ARGUMENT(bCalcEnerVir)) CUDA_FUNC_TERM
+
+// every grid has different coefficients, etc. - several grids per step;
+//CUDA_FUNC_QUALIFIER void pme_gpu_grid_init(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 
 

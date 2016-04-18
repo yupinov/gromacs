@@ -112,7 +112,8 @@ struct gmx_pme_cuda_t
 
 
     //forces and coordinates should be shared with nonbondeds!
-
+    float3 *coordinates;
+    real *coefficients;
 };
 
 
