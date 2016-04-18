@@ -15,7 +15,6 @@ struct gmx_parallel_3dfft_gpu
     /* unused */
     MPI_Comm                  comm[2];
     gmx_bool                  bReproducible;
-    int                       nthreads;
 
     ivec                      complex_order;
     ivec                      local_offset;
@@ -38,11 +37,10 @@ void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup,
                                    t_complex **complex_data,
                                    MPI_Comm                  comm[2],
 gmx_bool                  bReproducible,
-int                       nthreads,
 gmx_pme_t *pme)
 {
     cufftResult_t result;
-    gmx_parallel_3dfft_gpu_t setup = new gmx_parallel_3dfft_gpu();
+    gmx_parallel_3dfft_gpu_t setup = new gmx_parallel_3dfft_gpu;
 
     //yupinov FIXME: this copies the already setup pointer, to check them after execute
 
@@ -53,26 +51,13 @@ gmx_pme_t *pme)
     setup->comm[0] = comm[0];
     setup->comm[1] = comm[1];
     setup->bReproducible = bReproducible;
-    setup->nthreads = nthreads;
 
-    /*
-    // (local pme and fft differs only by overlap (and pme > fft))
-    pmeidx = ix*(local_pme[YY]*local_pme[ZZ])+iy*(local_pme[ZZ])+iz;
-    fftidx = ix*(local_fft[YY]*local_fft[ZZ])+iy*(local_fft[ZZ])+iz;
-    fftgrid[fftidx] = pmegrid[pmeidx];
-    // TODO: align cufft minor dim to 128 bytes
-   */
     setup->ndata_real[0] = ndata[XX];
     setup->ndata_real[1] = ndata[YY];
     setup->ndata_real[2] = ndata[ZZ]; //yupinov ZZ
 
     *pfft_setup = setup;
 
-    /*
-    ndata[XX] += pme->pme_order - 1;
-    ndata[YY] += pme->pme_order - 1;
-    ndata[ZZ] += pme->pme_order - 1;
-    */
     if (pme->bGPUSingle)
     {
         ndata[XX] = pme->pmegrid_nx;
@@ -81,14 +66,6 @@ gmx_pme_t *pme)
     }
     else
         gmx_fatal(FARGS, "FFT size choice not implemented");
-
-    /*
-    setup->size_real[XX] = ndata[XX];
-    setup->size_real[YY] = ndata[YY];
-    setup->size_real[ZZ] = (ndata[ZZ] / 2 + 1) * 2;
-    const int alignment = 1; //warp_size; //yupinov change it so it's in X for YZX solve (what?)
-    setup->size_real[ZZ] = (setup->size_real[ZZ] + alignment - 1) / alignment * alignment;
-    */
 
     memcpy(setup->size_real, ndata, sizeof(setup->size_real));
 
@@ -244,18 +221,19 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     }
 }
 
-void gmx_parallel_3dfft_destroy_gpu(gmx_parallel_3dfft_gpu_t pfft_setup)
+void gmx_parallel_3dfft_destroy_gpu(const gmx_parallel_3dfft_gpu_t &pfft_setup)
 {
-    //fprintf(stderr, "3dfft_destroy_gpu\n");
-    gmx_parallel_3dfft_gpu_t setup = pfft_setup;
+    if (pfft_setup)
+    {
+        cufftResult_t result;
 
-    cufftDestroy(setup->planR2C);
-    cufftDestroy(setup->planC2R);
-    printf("free\n"); //yupinov
-    cudaError_t stat = cudaFree((void **)setup->rdata);
-    CU_RET_ERR(stat, "cudaFree error");
-    stat = cudaFree((void **)setup->cdata);
-    CU_RET_ERR(stat, "cudaFree error");
+        result = cufftDestroy(pfft_setup->planR2C);
+        if (result != CUFFT_SUCCESS)
+            gmx_fatal(FARGS, "cufftDestroy R2C error %d\n", result);
+        result = cufftDestroy(pfft_setup->planC2R);
+        if (result != CUFFT_SUCCESS)
+            gmx_fatal(FARGS, "cufftDestroy C2R error %d\n", result);
 
-    delete setup;
+        delete pfft_setup;
+    }
 }

@@ -77,11 +77,11 @@ int gmx_pme_init(struct gmx_pme_t **pmedata, struct t_commrec *cr,
                  gmx_bool bReproducible, int nthread,
                  gmx_bool bPMEGPU, const gmx_hw_info_t *hwinfo = NULL, const gmx_gpu_opt_t *gpu_opt = NULL);
 
-/*! \brief Destroy the pme data structures resepectively.
+/*! \brief Destroy the PME data structures respectively.
  *
  * \return 0 indicates all well, non zero is an error code.
  */
-int gmx_pme_destroy(FILE *log, struct gmx_pme_t **pmedata);
+int gmx_pme_destroy(struct gmx_pme_t **pmedata);
 
 //@{
 /*! \brief Flag values that control what gmx_pme_do() will calculate

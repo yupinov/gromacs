@@ -119,7 +119,7 @@ struct gmx_pme_cuda_t
 // identifiers for PME data stored on GPU
 enum PMEDataID
 {
-    PME_ID_THETA = 1,
+    PME_ID_THETA = 0,
     PME_ID_DTHETA,
 
     PME_ID_REAL_GRID, //this is pme_grid and it has overlap

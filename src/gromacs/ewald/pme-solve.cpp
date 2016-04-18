@@ -139,7 +139,7 @@ void pme_free_all_work(struct pme_solve_work_t **work, int nthread)
     {
         free_work(&(*work)[thread]);
     }
-    sfree(work);
+    sfree(*work);
     *work = NULL;
 }
 

@@ -152,14 +152,9 @@ static void setup_coordinate_communication(pme_atomcomm_t *atc)
     }
 }
 
-int gmx_pme_destroy(FILE *log, struct gmx_pme_t **pmedata)
+int gmx_pme_destroy(struct gmx_pme_t **pmedata)
 {
     int i;
-
-    if (NULL != log)
-    {
-        fprintf(log, "Destroying PME data structures.\n");
-    }
 
     sfree((*pmedata)->nnx);
     sfree((*pmedata)->nny);
@@ -168,18 +163,15 @@ int gmx_pme_destroy(FILE *log, struct gmx_pme_t **pmedata)
     for (i = 0; i < (*pmedata)->ngrids; ++i)
     {
         pmegrids_destroy(&(*pmedata)->pmegrid[i]);
-        sfree((*pmedata)->fftgrid[i]);
-        sfree((*pmedata)->cfftgrid[i]);
         gmx_parallel_3dfft_destroy((*pmedata)->pfft_setup[i]);
-        gmx_parallel_3dfft_destroy_gpu((*pmedata)->pfft_setup_gpu[i]);
-        //yupinov this is not called!
-        //this probably doesn't dealloc grids fully!
     }
 
     sfree((*pmedata)->lb_buf1);
     sfree((*pmedata)->lb_buf2);
 
     pme_free_all_work(&(*pmedata)->solve_work, (*pmedata)->nthread);
+
+    pme_gpu_deinit(&(*pmedata));
 
     sfree(*pmedata);
     *pmedata = NULL;
@@ -757,7 +749,8 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     snew(pme->fftgrid, pme->ngrids);
     snew(pme->cfftgrid, pme->ngrids);
     snew(pme->pfft_setup, pme->ngrids);
-    snew(pme->pfft_setup_gpu, pme->ngrids); //yupinov destroy!
+    if (pme->bGPU)
+        snew(pme->pfft_setup_gpu, pme->ngrids); //yupinov destroy!
 
     for (i = 0; i < pme->ngrids; ++i)
     {
@@ -1589,10 +1582,11 @@ int gmx_pme_do(struct gmx_pme_t *pme,
     }             /* if ((flags & GMX_PME_DO_LJ) && pme->ljpme_combination_rule == eljpmeLB) */
 
     pme_gpu_step_end(pme, bCalcF, bCalcEnerVir);
-    if (pme->bGPU)
+
+    if (pme->bGPU) // whole body copied from up there in the loop...
     {
         const int grid_index = 0;
-        if (bCalcEnerVir) // copied from up there in the loop..
+        if (bCalcEnerVir)
         {
             /* This should only be called on the master thread
              * and after the threads have synchronized.
@@ -1606,8 +1600,21 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                 get_pme_ener_vir_lj(pme->solve_work, pme->nthread, &energy_AB[grid_index], vir_AB[grid_index]);
             }
         }
-
     }
+
+    // debug
+    /*
+    rvec test = {0, 0, 0};
+    for (int i = 0; i < pme->atc[0].n; i++)
+        if (memcmp(test, pme->atc[0].f[i], sizeof(rvec)))
+        {
+            printf("FOUND something %d %g %g %g\n", i, pme->atc[0].f[i][XX], pme->atc[0].f[i][YY], pme->atc[0].f[i][ZZ]);
+            break;
+        }
+
+    printf("%g\n", energy_AB[0]);
+    */
+    // debug end
 
     if (bCalcF && pme->nnodes > 1)
     {

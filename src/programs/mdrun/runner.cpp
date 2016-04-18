@@ -1400,6 +1400,12 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
 
     wallcycle_stop(wcycle, ewcRUN);
 
+    if (pmedata)
+    {
+        gmx_pme_destroy(pmedata);
+        pmedata = NULL;
+    }
+
     /* Finish up, write some stuff
      * if rerunMD, don't write last frame again
      */
@@ -1407,7 +1413,6 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
                inputrec, nrnb, wcycle, walltime_accounting,
                fr ? fr->nbv : NULL,
                EI_DYNAMICS(inputrec->eI) && !MULTISIM(cr));
-
 
     /* Free GPU memory and context */
     free_gpu_resources(fr, cr, &hwinfo->gpu_info, fr ? fr->gpu_opt : NULL);

@@ -28,6 +28,8 @@ typedef int gmx_nbnxn_gpu_t;
 // gmx_unused
 
 
+
+
 // internal data handling
 
 // copies the grid sizes for overlapping (PME wrap/unwrap)
@@ -54,7 +56,6 @@ CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t gm
                                t_complex gmx_unused **complex_data,
                                MPI_Comm  gmx_unused                comm[2],
                                gmx_bool    gmx_unused              bReproducible,
-                               int         gmx_unused              nthreads,
                                 gmx_pme_t *pme)  CUDA_FUNC_TERM
 
 CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_real_limits_gpu(gmx_parallel_3dfft_gpu_t gmx_unused pfft_setup,
@@ -131,15 +132,23 @@ CUDA_FUNC_QUALIFIER void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_
 struct gmx_hw_info_t;
 struct gmx_gpu_opt_t;
 
+
+// nice external functions
+
 CUDA_FUNC_QUALIFIER void pme_gpu_init(gmx_pme_gpu_t **CUDA_FUNC_ARGUMENT(pmeGPU),
                                       gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
                                       const gmx_hw_info_t *CUDA_FUNC_ARGUMENT(hwinfo),
                                       const gmx_gpu_opt_t *CUDA_FUNC_ARGUMENT(gpu_opt)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_deinit(//gmx_pme_gpu_t **CUDA_FUNC_ARGUMENT(pmeGPU),
+                                      gmx_pme_t **CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+
 
 CUDA_FUNC_QUALIFIER void pme_gpu_step_init(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 CUDA_FUNC_QUALIFIER void pme_gpu_step_end(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
                                           const gmx_bool CUDA_FUNC_ARGUMENT(bCalcF),
                                           const gmx_bool CUDA_FUNC_ARGUMENT(bCalcEnerVir)) CUDA_FUNC_TERM
+
+
 
 CUDA_FUNC_QUALIFIER void pme_gpu_update_flags(
         gmx_pme_gpu_t *pmeGPU,
@@ -147,11 +156,11 @@ CUDA_FUNC_QUALIFIER void pme_gpu_update_flags(
         gmx_bool keepGPUDataBetweenR2CAndSolve,
         gmx_bool keepGPUDataBetweenSolveAndC2R,
         gmx_bool keepGPUDataBetweenC2RAndGather
-        ) CUDA_FUNC_TERM
+        ) CUDA_FUNC_TERM //?
 //yupinov - this isn't just about grids though
 
 
-CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_destroy_gpu(gmx_parallel_3dfft_gpu_t gmx_unused pfft_setup) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_destroy_gpu(const gmx_parallel_3dfft_gpu_t &CUDA_FUNC_ARGUMENT(pfft_setup)) CUDA_FUNC_TERM
 
 inline int gmx_parallel_3dfft_real_limits_wrapper(struct gmx_pme_t *pme,
                                int                       grid_index,

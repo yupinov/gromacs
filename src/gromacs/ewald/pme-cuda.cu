@@ -4,13 +4,20 @@
 
 #include "gromacs/gpu_utils/cudautils.cuh"
 
-//for GPU init
+#include "gromacs/utility/smalloc.h"
+
+// for GPU init
 #include "gromacs/gpu_utils/gpu_utils.h"
 #include "gromacs/utility/cstringutil.h"
 #include "gromacs/hardware/hw_info.h"
 
 #include "pme-cuda.cuh"
 #include "pme-gpu.h"
+
+#define MAXTAGS 1
+
+static std::vector<size_t> PMEStorageSizes(ML_END_INVALID * PME_ID_END_INVALID * MAXTAGS);
+static std::vector<void *> PMEStoragePointers(ML_END_INVALID * PME_ID_END_INVALID * MAXTAGS);
 
 
 void pme_gpu_update_flags(
@@ -41,6 +48,9 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         *pmeGPU = new gmx_pme_gpu_t;
         cudaError_t stat;
     //yupinov dealloc@
+
+        PMEStorageSizes.assign(PMEStorageSizes.size(), 0);
+        PMEStoragePointers.assign(PMEStoragePointers.size(), NULL);
 
         const int PMEGPURank = 0; //yupinov !
         FILE *fp = NULL; //yupinov pass this
@@ -114,7 +124,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
                  gmx_parallel_3dfft_init_gpu(&pme->pfft_setup_gpu[i], ndata,
                                                  &pme->fftgrid[i], &pme->cfftgrid[i],
                                                  pme->mpi_comm_d,
-                                                 bReproducible, pme->nthread, pme);
+                                                 bReproducible, pme);
 
             }
         }
@@ -124,6 +134,24 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
 
     if (debug)
         fprintf(debug, "PME GPU %s\n", firstInit ? "init" : "reinit");
+}
+
+void pme_gpu_deinit(//gmx_pme_gpu_t **pmeGPU,
+                    gmx_pme_t **pme)
+{
+    // this is ran at the end of run
+    // clean this up!
+    //for (int i = 0; i < PMEStorageSizes.size(); i++)
+    for (unsigned int id = 0; id < PME_ID_END_INVALID; id++)
+        for (unsigned int location = 0; location < ML_END_INVALID; location++)
+            for (unsigned int tag = 0; tag < MAXTAGS; tag++)
+            {
+                PMEMemoryFetch((PMEDataID)id, tag, 0, (MemLocType)location); // dealloc
+            }
+
+    for (int i = 0; i < (*pme)->ngrids; i++)
+        gmx_parallel_3dfft_destroy_gpu((*pme)->pfft_setup_gpu[i]);
+    sfree((*pme)->pfft_setup_gpu);
 }
 
 
@@ -236,12 +264,6 @@ void pme_gpu_copy_wrap_zones(gmx_pme_t *pme)
 #endif
 }
 
-
-#define MAXTAGS 1
-
-static std::vector<int> PMEStorageSizes(ML_END_INVALID * PME_ID_END_INVALID * MAXTAGS);
-static std::vector<void *> PMEStoragePointers(ML_END_INVALID * PME_ID_END_INVALID * MAXTAGS);
-
 static bool debugMemoryPrint = false;
 
 void *PMEMemoryFetch(PMEDataID id, int unusedTag, size_t size, MemLocType location)
@@ -252,14 +274,14 @@ void *PMEMemoryFetch(PMEDataID id, int unusedTag, size_t size, MemLocType locati
     int i = (location * PME_ID_END_INVALID + id) * MAXTAGS + unusedTag;
 
     if ((PMEStorageSizes[i] > 0) && (size > 0) && (size > PMEStorageSizes[i]))
-        printf("asked to realloc %d into %d with ID %d\n", PMEStorageSizes[i], size, id);
+        printf("asked to realloc %lu into %lu with ID %d\n", PMEStorageSizes[i], size, id);
 
     if (PMEStorageSizes[i] < size || size == 0) //delete
     {
         if (PMEStoragePointers[i])
         {
             if (debugMemoryPrint)
-                fprintf(stderr, "free! %p\n", PMEStoragePointers[i]);
+                printf("free! %p %d %d\n", PMEStoragePointers[i], id, location);
             if (location == ML_DEVICE)
             {
                 stat = cudaFree(PMEStoragePointers[i]);
@@ -275,10 +297,10 @@ void *PMEMemoryFetch(PMEDataID id, int unusedTag, size_t size, MemLocType locati
         if (size > 0)
         {
             if (debugMemoryPrint)
-                printf("asked to alloc %d", size);
+                printf("asked to alloc %lu", size);
             size = size * 1.02; // slight overalloc for no apparent reason
             if (debugMemoryPrint)
-                printf(", actually allocating %d\n", size);
+                printf(", actually allocating %lu\n", size);
             if (location == ML_DEVICE)
             {
                 stat = cudaMalloc((void **)&PMEStoragePointers[i], size);
