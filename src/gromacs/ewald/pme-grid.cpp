@@ -764,7 +764,7 @@ void pmegrids_destroy(pmegrids_t *grids)
 {
     if (grids->grid.grid != NULL)
     {
-        sfree(grids->grid.grid);
+        sfree_aligned(grids->grid.grid);
 
         if ((grids->nthread > 0) && grids->grid_th)
         {
