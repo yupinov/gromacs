@@ -536,7 +536,6 @@ __global__ void pme_spread_kernel
     __shared__ real coefficient[particlesPerBlock];
 
     __shared__ real theta[thetaStride * order];
-    //printf("%d %d %d %d %d %d\n", blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z);
 
     int ithx, index_x, ithy, ithz;
 

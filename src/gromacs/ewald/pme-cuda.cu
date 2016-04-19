@@ -140,7 +140,7 @@ void pme_gpu_deinit(//gmx_pme_gpu_t **pmeGPU,
     cudaError_t stat;
 
     // these are all the GPU/host pointers allocated through PMEMemoryFetch - grids included
-    // a temporary solution
+    // it's a temporary solution
     for (unsigned int id = 0; id < PME_ID_END_INVALID; id++)
         for (unsigned int location = 0; location < ML_END_INVALID; location++)
             for (unsigned int tag = 0; tag < MAXTAGS; tag++)
