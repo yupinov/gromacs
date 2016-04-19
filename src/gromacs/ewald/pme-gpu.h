@@ -90,6 +90,13 @@ CUDA_FUNC_QUALIFIER void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_
         const gmx_bool bDoSplines
 ) CUDA_FUNC_TERM
 
+CUDA_FUNC_QUALIFIER void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
+              pme_atomcomm_t *atc,
+              splinedata_t *spline,
+              real scale) CUDA_FUNC_TERM
+
+
+
  // FFT
 
 struct gmx_hw_info_t;

@@ -51,7 +51,7 @@ void pme_gpu_get_forces(gmx_pme_t *pme, int n, rvec *forces)
 template <
         const int order,
         const int particlesPerBlock,
-        const gmx_bool bClearF
+        const gmx_bool bOverwriteForces
         >
 __launch_bounds__(4 * warp_size, 16)
 __global__ void pme_gather_kernel
@@ -100,7 +100,7 @@ __global__ void pme_gather_kernel
     {
         idx[threadLocalId] = idxGlobal[blockIdx.x * idxSize + threadLocalId];
     }
-    if (threadLocalId < thetaSize) // (DIM * order) thetas < (order * order) threads per particle => works for any size
+    if ((threadLocalId < thetaSize))
     {
         theta[threadLocalId] = thetaGlobal[blockIdx.x * thetaSize + threadLocalId];
         dtheta[threadLocalId] = dthetaGlobal[blockIdx.x * thetaSize + threadLocalId];
@@ -239,7 +239,7 @@ __global__ void pme_gather_kernel
         }
         contrib *= -coefficient;
 
-        if (bClearF)
+        if (bOverwriteForces)
             forcesGlobal[blockIdx.x * particlesPerBlock * DIM + threadLocalId] = contrib;
         else
             forcesGlobal[blockIdx.x * particlesPerBlock * DIM + threadLocalId] += contrib;
@@ -315,14 +315,22 @@ __global__ void pme_unwrap_kernel
 }
 
 void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
-                   gmx_bool bClearF, pme_atomcomm_t *atc,
+                   pme_atomcomm_t *atc,
                    splinedata_t *spline,
-                   real scale, int thread)
+                   real scale)
 {
     //yupinov bClearf!
     int n = spline->n;
     if (!n)
         return;
+
+    const int thread = 0;
+
+    const gmx_bool bOverwriteForces = true;
+    // false: we use some other GPU forces buffer for the final reduction, so we want to add to that
+    // in that case, maybe we want to replace + with atomicAdd at the end of kernel?
+    // true: we have our own buffer, so just write directly into that
+
 
     const int *spline_ind = spline->ind;
     const splinevec *spline_theta = &spline->theta;
@@ -470,14 +478,6 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
                     dtheta_z_h[ooorder + o] = (*spline_dtheta)[ZZ][iiorder + o];
                 }
 
-                // forces
-                if (!bClearF)
-                {
-                    atc_f_h[iCompacted * DIM + XX] = atc_f[iOriginal][XX];
-                    atc_f_h[iCompacted * DIM + YY] = atc_f[iOriginal][YY];
-                    atc_f_h[iCompacted * DIM + ZZ] = atc_f[iOriginal][ZZ];
-                }
-
                 // indices of uncompacted particles stored in a compacted array
                 atc_i_compacted_h[iCompacted] = iOriginal;
 
@@ -562,11 +562,6 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
         PMEMemoryCopy(idx_d, idx_h, DIM * size_indices, ML_DEVICE, s);
     }
 
-    // forces
-    if (!bClearF)
-        PMEMemoryCopy(pme->gpu->forces, atc_f_h, forcesSize, ML_DEVICE, s);
-    //yupinov - not needed!
-
     const float3 nXYZ = {(real)nx, (real)ny, (real)nz};
 
 
@@ -578,7 +573,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
     pme_gpu_timing_start(pme, ewcsPME_GATHER);
 
     if (order == 4) //yupinov
-        if (bClearF)
+        if (bOverwriteForces)
             pme_gather_kernel<4, blockSize / 4 / 4, TRUE> <<<nBlocks, dimBlock, 0, s>>>
               (pme->gpu->grid,
                n,

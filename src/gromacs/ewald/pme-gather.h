@@ -37,6 +37,7 @@
 
 #include "gromacs/utility/real.h"
 
+#include "pme-gpu.h"
 #include "pme-internal.h"
 
 void
@@ -49,12 +50,6 @@ real
 gather_energy_bsplines(struct gmx_pme_t *pme, real *grid,
                        pme_atomcomm_t *atc);
 
-void
-gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
-              gmx_bool bClearF, pme_atomcomm_t *atc,
-              splinedata_t *spline,
-              real scale, int thread);
-
 inline void gather_f_bsplines_wrapper(struct gmx_pme_t *pme, real *grid,
                           gmx_bool bClearF, pme_atomcomm_t *atc,
                           splinedata_t *spline,
@@ -63,7 +58,10 @@ inline void gather_f_bsplines_wrapper(struct gmx_pme_t *pme, real *grid,
     if (thread == 0)
         wallcycle_sub_start(wcycle, ewcsPME_GATHER);
     if (pme->bGPU)
-        gather_f_bsplines_gpu(pme, grid, bClearF, atc, spline, scale, thread);
+    {
+        if (thread == 0)
+            gather_f_bsplines_gpu(pme, grid, atc, spline, scale);
+    }
     else
         gather_f_bsplines(pme, grid, bClearF, atc, spline, scale);
     if (thread == 0)
