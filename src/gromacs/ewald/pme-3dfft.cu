@@ -80,20 +80,6 @@ gmx_pme_t *pme)
     assert(setup->realGrid);
     setup->complexGrid = (cufftComplex *)PMEMemoryFetch(PME_ID_COMPLEX_GRID, 0, gridSizeComplex * sizeof(cufftComplex), ML_DEVICE);
 
-    //printf("%p %p %p\n",  pme->gpu->grid, setup->rdata,  setup->cdata);
-
-    //yupinov hack
-    /*
-    //we want CPU FFT grids to be of same size, to include the overlap
-    {
-        free(setup->real_data);
-        *real_data = setup->real_data = (real *)PMEFetch(PME_ID_REAL_GRID, 0, gridSizeReal * sizeof(cufftReal), ML_HOST);
-        free(setup->complex_data);
-        *complex_data = setup->complex_data = PMEFetch(PME_ID_COMPLEX_GRID, 0, gridSizeComplex * sizeof(cufftComplex), ML_HOST);
-    }
-    */
-    const int rank = 3, batch = 1;
-
     /*
     result = cufftPlan3d(&setup->planR2C, setup->ndata_real[XX], setup->ndata_real[YY], setup->ndata_real[ZZ], CUFFT_R2C);
     if (result != CUFFT_SUCCESS)
@@ -104,6 +90,8 @@ gmx_pme_t *pme)
         gmx_fatal(FARGS, "cufftPlan3d C2R error %d\n", result);
     */
 
+
+    const int rank = 3, batch = 1;
     result = cufftPlanMany(&setup->planR2C, rank, setup->ndata_real,
                                        setup->size_real, 1, gridSizeReal,
                                        setup->size_complex, 1, gridSizeComplex,
