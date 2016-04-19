@@ -314,23 +314,51 @@ __global__ void pme_unwrap_kernel
     }
 }
 
-void gather_f_bsplines_gpu
-(real *grid, const gmx_bool bClearF,
- const int order,
- int nx, int ny, int nz, int pnx, int pny, int pnz,
- int *spline_ind, int n,
- real *atc_coefficient, rvec *atc_f, ivec *atc_idx,
- splinevec *spline_theta, splinevec *spline_dtheta,
- real scale,
- gmx_pme_t *pme,
- int thread
- )
+void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
+                   gmx_bool bClearF, pme_atomcomm_t *atc,
+                   splinedata_t *spline,
+                   real scale, int thread)
 {
     //yupinov bClearf!
-
-    cudaStream_t s = pme->gpu->pmeStream;
+    int n = spline->n;
     if (!n)
         return;
+
+    const int *spline_ind = spline->ind;
+    const splinevec *spline_theta = &spline->theta;
+    const splinevec *spline_dtheta = &spline->dtheta;
+
+    cudaStream_t s = pme->gpu->pmeStream;
+
+    //pme_atomcomm_t atc = pme->atc[0];
+    real *atc_coefficient = atc->coefficient;
+    rvec *atc_f = atc->f;
+    ivec *atc_idx = atc->idx;
+
+
+    const int order = pme->pme_order;
+    /*
+    gmx_parallel_3dfft_real_limits_wrapper(pme, grid_index, local_ndata, local_offset, local_size);
+    const int pnx = local_size[XX];
+    const int pny = local_size[YY];
+    const int pnz = local_size[ZZ];
+    const int nx = local_ndata[XX];
+    const int ny = local_ndata[YY];
+    const int nz = local_ndata[ZZ];
+    */
+
+    /*
+    const int pnx = pmegrid->n[XX];
+    const int pny = pmegrid->n[YY];
+    const int pnz = pmegrid->n[ZZ];
+    */
+    const int pnx   = pme->pmegrid_nx;
+    const int pny   = pme->pmegrid_ny;
+    const int pnz   = pme->pmegrid_nz;
+    const int nx = pme->nkx;
+    const int ny = pme->nky;
+    const int nz = pme->nkz;
+
 
     const int ndatatot = pnx * pny * pnz;
     const int gridSize = ndatatot * sizeof(real);

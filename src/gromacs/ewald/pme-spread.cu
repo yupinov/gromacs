@@ -777,7 +777,7 @@ void pme_gpu_clear_grid(struct gmx_pme_t *pme, const int grid_index)
     CU_RET_ERR(stat, "cudaMemsetAsync spread error");
 }
 
-void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
+void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
          int grid_index,
          pmegrid_t *pmegrid,
          const gmx_bool bCalcSplines,

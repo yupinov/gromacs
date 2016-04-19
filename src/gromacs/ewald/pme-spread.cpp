@@ -107,39 +107,31 @@ static void calc_interpolation_idx(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
         }
     }
 
-    /*if (pme->bGPU)
-        calc_interpolation_idx_gpu_core(nx, ny, nz,
-                 rxx, ryx, ryy, rzx, rzy, rzz,
-				 fshx, fshy,
-				 nnx, nny, nnz,
-				 atc->x, atc->idx, atc->fractx,
-				 start, end, thread);
-    else*/
-        for (i = start; i < end; i++)
-        {
-            xptr   = atc->x[i];
-            idxptr = atc->idx[i];
-            fptr   = atc->fractx[i];
+    for (i = start; i < end; i++)
+    {
+        xptr   = atc->x[i];
+        idxptr = atc->idx[i];
+        fptr   = atc->fractx[i];
 
-            /* Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes */
-            tx = nx * ( xptr[XX] * rxx + xptr[YY] * ryx + xptr[ZZ] * rzx + 2.0 );
-            ty = ny * (                  xptr[YY] * ryy + xptr[ZZ] * rzy + 2.0 );
-            tz = nz * (                                   xptr[ZZ] * rzz + 2.0 );
+        /* Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes */
+        tx = nx * ( xptr[XX] * rxx + xptr[YY] * ryx + xptr[ZZ] * rzx + 2.0 );
+        ty = ny * (                  xptr[YY] * ryy + xptr[ZZ] * rzy + 2.0 );
+        tz = nz * (                                   xptr[ZZ] * rzz + 2.0 );
 
-            tix = (int)(tx);
-            tiy = (int)(ty);
-            tiz = (int)(tz);
+        tix = (int)(tx);
+        tiy = (int)(ty);
+        tiz = (int)(tz);
 
-            /* Because decomposition only occurs in x and y,
-             * we never have a fraction correction in z.
-             */
-            fptr[XX] = tx - tix + fshx[tix];
-            fptr[YY] = ty - tiy + fshy[tiy];
-            fptr[ZZ] = tz - tiz;
+        /* Because decomposition only occurs in x and y,
+         * we never have a fraction correction in z.
+         */
+        fptr[XX] = tx - tix + fshx[tix];
+        fptr[YY] = ty - tiy + fshy[tiy];
+        fptr[ZZ] = tz - tiz;
 
-            idxptr[XX] = nnx[tix];
-            idxptr[YY] = nny[tiy];
-            idxptr[ZZ] = nnz[tiz];
+        idxptr[XX] = nnx[tix];
+        idxptr[YY] = nny[tiy];
+        idxptr[ZZ] = nnz[tiz];
         }
 
     if (bThreads)
@@ -294,16 +286,6 @@ static void make_bsplines(splinevec theta, splinevec dtheta, int order,
             }
         }
     }
-}
-
-static void make_bsplines_wrapper(splinevec theta, splinevec dtheta, int order,
-                          rvec fractx[], int nr, int ind[], real coefficient[],
-                          gmx_bool bDoSplines, int thread, gmx_bool bGPU)
-{
-    /*if (bGPU)
-        make_bsplines_gpu(theta, dtheta, order, fractx, nr, ind, coefficient, bDoSplines, thread);
-    else*/
-        make_bsplines(theta, dtheta, order, fractx, nr, ind, coefficient, bDoSplines);
 }
 
 /* This has to be a macro to enable full compiler optimization with xlC (and probably others too) */
@@ -956,12 +938,10 @@ void spread_on_grid(struct gmx_pme_t *pme,
     if (pme->bGPU)
     {
         wallcycle_sub_start(wcycle, ewcsPME_INTERPCALCSPLINEANDSPREAD);
-        spread_on_grid_lines_gpu(pme, atc, grid_index, &grids->grid, bCalcSplines, bSpread, bDoSplines);
+        spread_on_grid_gpu(pme, atc, grid_index, &grids->grid, bCalcSplines, bSpread, bDoSplines);
         wallcycle_sub_stop(wcycle, ewcsPME_INTERPCALCSPLINEANDSPREAD);
-    //yupinov grid index here and everywhere else?
-        //yupinov check flags
+        //yupinov grid index here and everywhere else?
         //yupinov copy_local_grid
-        //yup wrap kernels?
     }
     else
     {
@@ -1043,8 +1023,8 @@ void spread_on_grid(struct gmx_pme_t *pme,
 
             if (bCalcSplines)
             {
-                make_bsplines_wrapper(spline->theta, spline->dtheta, pme->pme_order,
-                              atc->fractx, spline->n, spline->ind, atc->coefficient, bDoSplines, thread, pme->bGPU); //yupinov
+                make_bsplines(spline->theta, spline->dtheta, pme->pme_order,
+                              atc->fractx, spline->n, spline->ind, atc->coefficient, bDoSplines);
             }
 
             if (bSpread)

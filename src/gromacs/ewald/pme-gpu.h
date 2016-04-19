@@ -82,47 +82,7 @@ CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t
                             gmx_pme_t *pme) CUDA_FUNC_TERM
 
 
-CUDA_FUNC_QUALIFIER void calc_interpolation_idx_gpu_core
-(int gmx_unused nx, int gmx_unused ny, int gmx_unused nz,
- real gmx_unused rxx, real gmx_unused ryx, real gmx_unused ryy, real gmx_unused rzx, real gmx_unused rzy, real gmx_unused rzz,
- real gmx_unused *fshx, real gmx_unused *fshy,
- int gmx_unused *nnx, int gmx_unused *nny, int gmx_unused *nnz,
- rvec gmx_unused *xptr_v, ivec gmx_unused *idxptr_v, rvec gmx_unused *fptr_v,
- int gmx_unused start, int gmx_unused end, int gmx_unused thread) CUDA_FUNC_TERM
-
-CUDA_FUNC_QUALIFIER void make_bsplines_gpu(splinevec gmx_unused theta_v, splinevec gmx_unused dtheta_v, int gmx_unused order,
-               rvec gmx_unused fractx_v[], int gmx_unused nr, int gmx_unused ind[], real gmx_unused coefficient[],
-               gmx_bool gmx_unused bDoSplines, int gmx_unused thread) CUDA_FUNC_TERM //yupinov why thread (here, and in other _gpu functions?!
-
-CUDA_FUNC_QUALIFIER void spread_coefficients_bsplines_thread_gpu_2
-(int gmx_unused pnx, int gmx_unused pny, int gmx_unused pnz, int gmx_unused offx, int gmx_unused offy, int gmx_unused offz,
- real gmx_unused *grid, int gmx_unused order, ivec gmx_unused *atc_idx, int gmx_unused *spline_ind, int gmx_unused spline_n,
- real gmx_unused *atc_coefficient, splinevec gmx_unused *spline_theta, int gmx_unused atc_n_foo,
- int gmx_unused thread) CUDA_FUNC_TERM
-
-
-CUDA_FUNC_QUALIFIER void spread1_coefficients_bsplines_thread_gpu_2
-(int gmx_unused pnx, int gmx_unused pny, int gmx_unused pnz, int gmx_unused offx, int gmx_unused offy, int gmx_unused offz,
- real gmx_unused *grid, int gmx_unused order, ivec gmx_unused *atc_idx, int gmx_unused *spline_ind, int gmx_unused spline_n,
- real gmx_unused *atc_coefficient, splinevec gmx_unused *spline_theta, int gmx_unused atc_n_foo,
- int gmx_unused thread) CUDA_FUNC_TERM
-
-CUDA_FUNC_QUALIFIER void spread1_nvidia_coefficients_bsplines_thread_gpu_2
-(int gmx_unused pnx, int gmx_unused pny, int gmx_unused pnz, int gmx_unused offx, int gmx_unused offy, int gmx_unused offz,
- real gmx_unused *grid, int gmx_unused order, ivec gmx_unused *atc_idx, int gmx_unused *spline_ind, int gmx_unused spline_n,
- real gmx_unused *atc_coefficient, splinevec gmx_unused *spline_theta, int gmx_unused atc_n_foo,
- int gmx_unused thread) CUDA_FUNC_TERM
-
-//yupinov inline?
-
-CUDA_FUNC_QUALIFIER void spread2_coefficients_bsplines_thread_gpu_2
-(int gmx_unused pnx, int gmx_unused pny, int gmx_unused pnz, int gmx_unused offx, int gmx_unused offy, int gmx_unused offz,
- real gmx_unused *grid, int gmx_unused order, ivec gmx_unused *atc_idx, int gmx_unused *spline_ind, int gmx_unused spline_n,
- real gmx_unused *atc_coefficie, splinevec gmx_unused *spline_theta, int gmx_unused atc_n_foo,
- int gmx_unused thread) CUDA_FUNC_TERM
-
-
-CUDA_FUNC_QUALIFIER void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
+CUDA_FUNC_QUALIFIER void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
         int grid_index,
         pmegrid_t *pmegrid,
         const gmx_bool bCalcSplines,
@@ -130,10 +90,6 @@ CUDA_FUNC_QUALIFIER void spread_on_grid_lines_gpu(struct gmx_pme_t *pme, pme_ato
         const gmx_bool bDoSplines
 ) CUDA_FUNC_TERM
 
-
-CUDA_FUNC_QUALIFIER void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
-         int grid_index,
-         pmegrid_t *pmegrid) CUDA_FUNC_TERM
  // FFT
 
 struct gmx_hw_info_t;
@@ -251,16 +207,6 @@ CUDA_FUNC_QUALIFIER int solve_pme_lj_yzx_gpu(int gmx_unused nx, int gmx_unused n
              real gmx_unused ewaldcoeff, real gmx_unused vol,
              gmx_bool gmx_unused bEnerVir, gmx_pme_t *pme,
                                               int gmx_unused nthread, int gmx_unused thread) CUDA_FUNC_TERM
-
-CUDA_FUNC_QUALIFIER void gather_f_bsplines_gpu
-(real gmx_unused *grid, const gmx_bool gmx_unused bClearF,
- int gmx_unused order,
- int gmx_unused nx, int gmx_unused ny, int gmx_unused nz, int gmx_unused pnx, int gmx_unused pny, int gmx_unused pnz,
- int gmx_unused *spline_ind, int gmx_unused spline_n,
- real gmx_unused *atc_coefficient, rvec gmx_unused *atc_f, ivec gmx_unused *atc_idx,
- splinevec gmx_unused *spline_theta, splinevec gmx_unused *spline_dtheta,
- real gmx_unused scale, gmx_pme_t *pme, int gmx_unused thread
- ) CUDA_FUNC_TERM
 
 CUDA_FUNC_QUALIFIER void pme_gpu_get_forces(gmx_pme_t *pme, int n, rvec *forces) CUDA_FUNC_TERM
 CUDA_FUNC_QUALIFIER void pme_gpu_get_energy_virial(gmx_pme_t *pme) CUDA_FUNC_TERM

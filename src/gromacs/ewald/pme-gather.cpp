@@ -193,51 +193,6 @@ void gather_f_bsplines(struct gmx_pme_t *pme, real *grid,
      */
 }
 
-void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
-               gmx_bool bClearF, pme_atomcomm_t *atc,
-               splinedata_t *spline,
-               real scale, int thread)
-{
-    const int order = pme->pme_order;
-    /*
-    gmx_parallel_3dfft_real_limits_wrapper(pme, grid_index, local_ndata, local_offset, local_size);
-    const int pnx = local_size[XX];
-    const int pny = local_size[YY];
-    const int pnz = local_size[ZZ];
-    const int nx = local_ndata[XX];
-    const int ny = local_ndata[YY];
-    const int nz = local_ndata[ZZ];
-    */
-    /*
-    const int pnx = pmegrid->n[XX];
-    const int pny = pmegrid->n[YY];
-    const int pnz = pmegrid->n[ZZ];
-    */
-    const int pnx   = pme->pmegrid_nx;
-    const int pny   = pme->pmegrid_ny;
-    const int pnz   = pme->pmegrid_nz;
-    const int nx = pme->nkx;
-    const int ny = pme->nky;
-    const int nz = pme->nkz;
-
-
-    int spline_n = spline->n;
-    int *spline_ind = spline->ind;
-    real *atc_coefficient = atc->coefficient;
-    splinevec *spline_theta = &spline->theta;
-    splinevec *spline_dtheta = &spline->dtheta;
-    gather_f_bsplines_gpu
-      (grid, bClearF,
-       order,
-       nx, ny, nz, pnx, pny, pnz,
-       spline_ind, spline_n,
-       atc_coefficient, atc->f, atc->idx,
-       spline_theta, spline_dtheta,
-       scale,
-       pme,
-       thread);
-}
-
 real gather_energy_bsplines(struct gmx_pme_t *pme, real *grid,
                             pme_atomcomm_t *atc)
 {
