@@ -396,77 +396,6 @@ static void spread_coefficients_bsplines_thread(pmegrid_t                       
     }
 }
 
-
-static void spread_coefficients_bsplines_thread_gpu(pmegrid_t                    *pmegrid,
-                            pme_atomcomm_t               *atc,
-                            splinedata_t                 *spline,
-                            struct pme_spline_work gmx_unused *work,
-                            int thread)
-{
-    int pnx = pmegrid->s[XX];
-    int pny = pmegrid->s[YY];
-    int pnz = pmegrid->s[ZZ];
-
-    int offx = pmegrid->offset[XX];
-    int offy = pmegrid->offset[YY];
-    int offz = pmegrid->offset[ZZ];
-
-    real *grid     = pmegrid->grid;
-    int order = pmegrid->order;
-    ivec *atc_idx = atc->idx;
-    int *spline_ind = spline->ind;
-    int spline_n = spline->n;
-    real *atc_coefficient = atc->coefficient;
-    splinevec *spline_theta = &spline->theta;
-    int atc_n_foo = atc->n; // for bunch testing
-/*
-    spread_coefficients_bsplines_thread_gpu_2
-      (pnx, pny, pnz, offx, offy, offz,
-       grid, order, atc_idx, spline_ind, spline_n,
-       atc_coefficient, spline_theta,
-       atc_n_foo,
-       thread);
-
-
-    spread1_coefficients_bsplines_thread_gpu_2
-      (pnx, pny, pnz, offx, offy, offz,
-       grid, order, atc_idx, spline_ind, spline_n,
-       atc_coefficient, spline_theta,
-       atc_n_foo,
-       thread);
-
-
-    spread1_nvidia_coefficients_bsplines_thread_gpu_2
-      (pnx, pny, pnz, offx, offy, offz,
-       grid, order, atc_idx, spline_ind, spline_n,
-       atc_coefficient, spline_theta,
-       atc_n_foo,
-       thread);
-*/
-/*
-    spread2_coefficients_bsplines_thread_gpu_2
-      (pnx, pny, pnz, offx, offy, offz,
-       grid, order, atc_idx, spline_ind, spline_n,
-       atc_coefficient, spline_theta,
-       atc_n_foo,
-       thread);
-       */
-}
-
-static void spread_coefficients_bsplines_thread_wrapper(pmegrid_t                    *pmegrid,
-                            pme_atomcomm_t               *atc,
-                            splinedata_t                 *spline,
-                            struct pme_spline_work gmx_unused *work,
-                            int thread,
-                            gmx_bool bGPU)
-{
-    /*
-    if (bGPU)
-        spread_coefficients_bsplines_thread_gpu(pmegrid, atc, spline, work, thread);
-    else*/
-        spread_coefficients_bsplines_thread(pmegrid, atc, spline, work);
-}
-
 static void copy_local_grid(struct gmx_pme_t *pme, pmegrids_t *pmegrids,
                             int grid_index, int thread, real *fftgrid)
 {
@@ -1033,7 +962,7 @@ void spread_on_grid(struct gmx_pme_t *pme,
 #ifdef PME_TIME_SPREAD
                 ct1a = omp_cyc_start();
 #endif
-                spread_coefficients_bsplines_thread_wrapper(grid, atc, spline, pme->spline_work, thread, pme->bGPU);
+                spread_coefficients_bsplines_thread(grid, atc, spline, pme->spline_work);
                 if (pme->bUseThreads)
                 {
                     copy_local_grid(pme, grids, grid_index, thread, fftgrid);
