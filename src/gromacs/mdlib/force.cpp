@@ -181,13 +181,15 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
         enerd->term[F_EQM] = calculate_QMMM(cr, x, f, fr);
     }
 
-    //yupinov - copypasted from below for a GPU PME call, partially commented
+    //yupinov - copypasted from below for a GPU PME call, partially commented with #if UNUSED_COPYPASTED_CODE_MARKER
+#define UNUSED_COPYPASTED_CODE_MARKER 0
     if (EEL_FULL(fr->eeltype) || EVDW_PME(fr->vdwtype))
     {
         int  status            = 0;
+#if UNUSED_COPYPASTED_CODE_MARKER
         real Vlr_q             = 0, Vlr_lj = 0, Vcorr_q = 0, Vcorr_lj = 0;
         real dvdl_long_range_q = 0, dvdl_long_range_lj = 0;
-
+#endif
         bSB = (ir->nwall == 2);
         if (bSB)
         {
@@ -198,6 +200,7 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
 
         if (EEL_PME_EWALD(fr->eeltype) || EVDW_PME(fr->vdwtype))
         {
+#if UNUSED_COPYPASTED_CODE_MARKER
             real dvdl_long_range_correction_q   = 0;
             real dvdl_long_range_correction_lj  = 0;
             /* With the Verlet scheme exclusion forces are calculated
@@ -208,6 +211,7 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
              * contributions will be calculated in
              * gmx_pme_calc_energy.
              */
+
             if ((ir->cutoff_scheme == ecutsGROUP && fr->n_tpi == 0) ||
                 ir->ewald_geometry != eewg3D ||
                 ir->epsilon_surface != 0)
@@ -297,7 +301,7 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
 
             enerd->dvdl_lin[efptCOUL] += dvdl_long_range_correction_q;
             enerd->dvdl_lin[efptVDW]  += dvdl_long_range_correction_lj;
-
+#endif
             if ((EEL_PME(fr->eeltype) || EVDW_PME(fr->vdwtype)) && (cr->duty & DUTY_PME))
             {
                 /* Do reciprocal PME for Coulomb and/or LJ. */
@@ -339,7 +343,6 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                                         nrnb, wcycle,
                                         fr->vir_el_recip, fr->ewaldcoeff_q,
                                         fr->vir_lj_recip, fr->ewaldcoeff_lj,
-                                        &Vlr_q, &Vlr_lj,
                                         lambda[efptCOUL], lambda[efptVDW],
                                         pme_flags);
                     *cycles_pme = wallcycle_stop(wcycle, ewcPMEMESH);
@@ -347,21 +350,15 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                     {
                         gmx_fatal(FARGS, "Error %d in reciprocal PME GPU routine", status);
                     }
-                    /* We should try to do as little computation after
-                     * this as possible, because parallel PME synchronizes
-                     * the nodes, so we want all load imbalance of the
-                     * rest of the force calculation to be before the PME
-                     * call.  DD load balancing is done on the whole time
-                     * of the force call (without PME).
-                     */
                 }
+#if UNUSED_COPYPASTED_CODE_MARKER
                 if (fr->n_tpi > 0)
                 {
                     if (EVDW_PME(ir->vdwtype))
                     {
-
                         gmx_fatal(FARGS, "Test particle insertion not implemented with LJ-PME");
                     }
+
                     /* Determine the PME grid energy of the test molecule
                      * with the PME grid potential of the other charges.
                      */
@@ -370,9 +367,10 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                                         md->chargeA + md->homenr - fr->n_tpi,
                                         &Vlr_q);
                 }
+#endif
             }
         }
-
+#if UNUSED_COPYPASTED_CODE_MARKER
         if (!EEL_PME(fr->eeltype) && EEL_PME_EWALD(fr->eeltype))
         {
             Vlr_q = do_ewald(ir, x, fr->f_novirsum,
@@ -397,6 +395,7 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                     Vlr_lj, Vcorr_lj, enerd->term[F_LJ_RECIP]);
             pr_rvecs(debug, 0, "vir_lj_recip after corr", fr->vir_lj_recip, DIM);
         }
+#endif
     }
     //yupinov end copypaste
 

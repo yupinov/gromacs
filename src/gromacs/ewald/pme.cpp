@@ -1678,7 +1678,6 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                t_nrnb *nrnb,    gmx_wallcycle_t wcycle,
                matrix vir_q,    real ewaldcoeff_q,
                matrix vir_lj,   real ewaldcoeff_lj,
-               real *energy_q,  real *energy_lj,
                real lambda_q,   real lambda_lj,
                int flags)
 {
