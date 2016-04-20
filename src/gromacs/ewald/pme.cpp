@@ -886,7 +886,7 @@ void gmx_pme_calc_energy(struct gmx_pme_t *pme, int n, rvec *x, real *q, real *V
     grid = &pme->pmegrid[PME_GRID_QA];
 
     /* Only calculate the spline coefficients, don't actually spread */
-    spread_on_grid(pme, atc, NULL, TRUE, FALSE, pme->fftgrid[PME_GRID_QA], FALSE, PME_GRID_QA, NULL); //yupinov
+    spread_on_grid(pme, atc, NULL, TRUE, FALSE, pme->fftgrid[PME_GRID_QA], FALSE, PME_GRID_QA, NULL);
 
     *V = gather_energy_bsplines(pme, grid->grid.grid, atc);
 }
@@ -948,7 +948,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
     matrix               vir_AB[4];
     real                 scale, lambda;
     gmx_bool             bClearF;
-    //gmx_parallel_3dfft_t pfft_setup;
+    gmx_parallel_3dfft_t pfft_setup;
     real              *  fftgrid;
     t_complex          * cfftgrid;
     int                  thread;
@@ -993,7 +993,6 @@ int gmx_pme_do(struct gmx_pme_t *pme,
     gmx::invertBoxMatrix(box, pme->recipbox);
 
     bFirst = TRUE;
-    pme_gpu_step_init(pme);
 
     /* For simplicity, we construct the splines for all particles if
      * more than one PME calculations is needed. Some optimization
@@ -1034,7 +1033,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
         pmegrid    = &pme->pmegrid[grid_index];
         fftgrid    = pme->fftgrid[grid_index];
         cfftgrid   = pme->cfftgrid[grid_index];
-        //pfft_setup = pme->pfft_setup[grid_index];
+        pfft_setup = pme->pfft_setup[grid_index];
         switch (grid_index)
         {
             case 0: coefficient = chargeA + start; break;
@@ -1092,8 +1091,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
 
             if (!pme->bUseThreads)
             {
-                if (!pme->bGPUSingle) // only wrap CPU PME grid if we haven't done it on GPU in a single GPU mode
-                    wrap_periodic_pmegrid(pme, grid); //yupinov - unwrap as well
+                wrap_periodic_pmegrid(pme, grid);
 
                 /* sum contributions to local grid from other nodes */
 #if GMX_MPI
@@ -1103,6 +1101,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     where();
                 }
 #endif
+
                 copy_pmegrid_to_fftgrid(pme, grid, fftgrid, grid_index);
             }
 
@@ -1113,8 +1112,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                copy_pmegrid_to_fftgrid() will perhaps live in the same
                source file and the following debugging function can live
                there too. */
-
-             /*
+            /*
                dump_local_fftgrid(pme,fftgrid);
                exit(0);
              */

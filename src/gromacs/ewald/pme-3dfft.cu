@@ -70,7 +70,7 @@ gmx_pme_t *pme)
     memcpy(setup->size_real, ndata, sizeof(setup->size_real));
 
     memcpy(setup->size_complex, setup->size_real, sizeof(setup->size_real));
-    GMX_ASSERT(setup->size_complex[ZZ] % 2 == 0, "odd inplace cuFFT dimension size");
+    GMX_RELEASE_ASSERT(setup->size_complex[ZZ] % 2 == 0, "odd inplace cuFFT dimension size");
     setup->size_complex[ZZ] /= 2;
 
     const int gridSizeComplex = setup->size_complex[XX] * setup->size_complex[YY] * setup->size_complex[ZZ];
