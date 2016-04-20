@@ -689,15 +689,15 @@ void pme_gpu_copy_calcspline_constants(gmx_pme_t *pme)
 
     const int fshSize = 5 * (nx + ny + nz) * sizeof(real);
     real *fshArray = pme->gpu->fshArray = (real *)PMEMemoryFetch(PME_ID_FSH, thread, fshSize, ML_DEVICE);
-    PMEMemoryCopy(fshArray                , pme->fshx, 5 * nx * sizeof(real), ML_DEVICE, s);
-    PMEMemoryCopy(fshArray + 5 * nx       , pme->fshy, 5 * ny * sizeof(real), ML_DEVICE, s);
-    PMEMemoryCopy(fshArray + 5 * (nx + ny), pme->fshz, 5 * nz * sizeof(real), ML_DEVICE, s);
+    cu_copy_H2D_async(fshArray                , pme->fshx, 5 * nx * sizeof(real), s);
+    cu_copy_H2D_async(fshArray + 5 * nx       , pme->fshy, 5 * ny * sizeof(real), s);
+    cu_copy_H2D_async(fshArray + 5 * (nx + ny), pme->fshz, 5 * nz * sizeof(real), s);
 
     const int nnSize = 5 * (nx + ny + nz) * sizeof(int);
     int *nnArray = pme->gpu->nnArray = (int *)PMEMemoryFetch(PME_ID_NN, thread, nnSize, ML_DEVICE);
-    PMEMemoryCopy(nnArray                , pme->nnx, 5 * nx * sizeof(int), ML_DEVICE, s);
-    PMEMemoryCopy(nnArray + 5 * nx       , pme->nny, 5 * ny * sizeof(int), ML_DEVICE, s);
-    PMEMemoryCopy(nnArray + 5 * (nx + ny), pme->nnz, 5 * nz * sizeof(int), ML_DEVICE, s);
+    cu_copy_H2D_async(nnArray                , pme->nnx, 5 * nx * sizeof(int), s);
+    cu_copy_H2D_async(nnArray + 5 * nx       , pme->nny, 5 * ny * sizeof(int), s);
+    cu_copy_H2D_async(nnArray + 5 * (nx + ny), pme->nnz, 5 * nz * sizeof(int), s);
 
 #if USE_TEXTURES
 #if USE_TEXOBJ
@@ -846,7 +846,7 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
         float3 *xptr_h = (float3 *)PMEMemoryFetch(PME_ID_XPTR, tag, coordinatesSize, ML_HOST);
         memcpy(xptr_h, atc->x, coordinatesSize);
         xptr_d = (float3 *)PMEMemoryFetch(PME_ID_XPTR, tag, coordinatesSize, ML_DEVICE);
-        PMEMemoryCopy(xptr_d, xptr_h, coordinatesSize, ML_DEVICE, pme->gpu->pmeStream);
+        cu_copy_H2D_async(xptr_d, xptr_h, coordinatesSize, ML_DEVICE, pme->gpu->pmeStream);
         */
     }
 
@@ -859,7 +859,7 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     real *coefficient_h = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, tag, coefficientSize, ML_HOST);
     memcpy(coefficient_h, atc->coefficient, coefficientSize);
     real *coefficient_d = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, tag, coefficientSize, ML_DEVICE);
-    PMEMemoryCopy(coefficient_d, coefficient_h, coefficientSize, ML_DEVICE, s);
+    cu_copy_H2D_async(coefficient_d, coefficient_h, coefficientSize, s);
     */
 
     // in spread-unified each kernel thread works on one particle: calculates its splines, spreads it to [order^3] gridpoints
@@ -1000,15 +1000,15 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
     {
         if (bSpread)
-            PMEMemoryCopy(pmegrid->grid, pme->gpu->grid, gridSize, ML_HOST, s);
+            cu_copy_D2H_async(pmegrid->grid, pme->gpu->grid, gridSize, s);
         for (int j = 0; j < DIM; ++j) //also breaking compacting in gather
         //and why not just check bGPUSingle here?
         {
-            PMEMemoryCopy(atc->spline[tag].dtheta[j], dtheta_d + j * n * order, size_order, ML_HOST, s);
-            PMEMemoryCopy(atc->spline[tag].theta[j], theta_d + j * n * order, size_order, ML_HOST, s);
+            cu_copy_D2H_async(atc->spline[tag].dtheta[j], dtheta_d + j * n * order, size_order, s);
+            cu_copy_D2H_async(atc->spline[tag].theta[j], theta_d + j * n * order, size_order, s);
         }
         //yupinov what about theta/dtheta/idx use in pme_realloc_atomcomm_things?
-        PMEMemoryCopy(atc->idx, idx_d, idx_size, ML_HOST, s);
+        cu_copy_D2H_async(atc->idx, idx_d, idx_size, s);
     }
     //yupinov check flags like bSpread etc. before copying...
 }

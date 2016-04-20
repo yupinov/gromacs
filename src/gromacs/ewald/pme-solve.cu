@@ -350,23 +350,23 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     real *bspModMinor_h = (real *)PMEMemoryFetch(PME_ID_BSP_MOD_MINOR, thread, modSize, ML_HOST);
     memcpy(bspModMinor_h, pme->bsp_mod[minorDim], modSize);
     real *bspModMinor_d = (real *)PMEMemoryFetch(PME_ID_BSP_MOD_MINOR, thread, modSize, ML_DEVICE);
-    PMEMemoryCopy(bspModMinor_d, bspModMinor_h, modSize, ML_DEVICE, s);
+    cu_copy_H2D_async(bspModMinor_d, bspModMinor_h, modSize, s);
 
     modSize = nMajor * sizeof(real);
     real *bspModMajor_h = (real *)PMEMemoryFetch(PME_ID_BSP_MOD_MAJOR, thread, modSize, ML_HOST);
     memcpy(bspModMajor_h, pme->bsp_mod[majorDim], modSize);
     real *bspModMajor_d = (real *)PMEMemoryFetch(PME_ID_BSP_MOD_MAJOR, thread, modSize, ML_DEVICE);
-    PMEMemoryCopy(bspModMajor_d, bspModMajor_h, modSize, ML_DEVICE, s);
+    cu_copy_H2D_async(bspModMajor_d, bspModMajor_h, modSize, s);
 
     modSize = nMiddle * sizeof(real);
     real *bspModMiddle_h = (real *)PMEMemoryFetch(PME_ID_BSP_MOD_MIDDLE, thread, modSize, ML_HOST);
     memcpy(bspModMiddle_h, pme->bsp_mod[middleDim], modSize);
     real *bspModMiddle_d = (real *)PMEMemoryFetch(PME_ID_BSP_MOD_MIDDLE, thread, modSize, ML_DEVICE);
-    PMEMemoryCopy(bspModMiddle_d, bspModMiddle_h, modSize, ML_DEVICE, s);
+    cu_copy_H2D_async(bspModMiddle_d, bspModMiddle_h, modSize, s);
 
     float2 *grid_d = (float2 *)PMEMemoryFetch(PME_ID_COMPLEX_GRID, thread, grid_size, ML_DEVICE); //yupinov no need for special function
     if (!pme->gpu->keepGPUDataBetweenR2CAndSolve)
-        PMEMemoryCopy(grid_d, grid, grid_size, ML_DEVICE, s);
+        cu_copy_H2D_async(grid_d, grid, grid_size, s);
 
     const real ewaldFactor = (M_PI * M_PI) / (ewaldcoeff * ewaldcoeff);
 
@@ -453,13 +453,13 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
 
     if (!pme->gpu->keepGPUDataBetweenSolveAndC2R)
     {
-        PMEMemoryCopy(grid, grid_d, grid_size, ML_HOST, s);
+        cu_copy_D2H_async(grid, grid_d, grid_size, s);
     }
 
     if (bEnerVir)
     {
         real *energyAndVirial_h = (real *)PMEMemoryFetch(PME_ID_ENERGY_AND_VIRIAL, thread, pme->gpu->energyAndVirialSize, ML_HOST);
-        PMEMemoryCopy(energyAndVirial_h, pme->gpu->energyAndVirial, pme->gpu->energyAndVirialSize, ML_HOST, s);
+        cu_copy_D2H_async(energyAndVirial_h, pme->gpu->energyAndVirial, pme->gpu->energyAndVirialSize, s);
         cudaError_t stat = cudaEventRecord(pme->gpu->syncEnerVirH2D, s);
         CU_RET_ERR(stat, "PME solve energy/virial sync fail");
     }
@@ -791,9 +791,9 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
     int grid_size = grid_n * sizeof(t_complex);
     float2 *grid_d = (float2 *)PMEMemoryFetch(PME_ID_COMPLEX_GRID, thread, grid_size * MAGIC_GRID_NUMBER, ML_DEVICE); //6 grids!
     /* //yupinov fix
-    real *pme_bsp_mod_x_d = (real *)PMEMemoryFetchAndCopy(PME_ID_BSP_MOD_MINOR, thread, pme_bsp_mod[XX], nx * sizeof(real), ML_DEVICE, s);
-    real *pme_bsp_mod_y_d = (real *)PMEMemoryFetchAndCopy(PME_ID_BSP_MOD_MAJOR, thread, pme_bsp_mod[YY], ny * sizeof(real), ML_DEVICE, s);
-    real *pme_bsp_mod_z_d = (real *)PMEMemoryFetchAndCopy(PME_ID_BSP_MOD_MIDDLE, thread, pme_bsp_mod[ZZ], nz * sizeof(real), ML_DEVICE, s);
+    real *pme_bsp_mod_x_d = (real *)PMEMemoryFetchAndCopy(PME_ID_BSP_MOD_MINOR, thread, pme_bsp_mod[XX], nx * sizeof(real), s);
+    real *pme_bsp_mod_y_d = (real *)PMEMemoryFetchAndCopy(PME_ID_BSP_MOD_MAJOR, thread, pme_bsp_mod[YY], ny * sizeof(real), s);
+    real *pme_bsp_mod_z_d = (real *)PMEMemoryFetchAndCopy(PME_ID_BSP_MOD_MIDDLE, thread, pme_bsp_mod[ZZ], nz * sizeof(real), s);
     */
     real *pme_bsp_mod_x_d = NULL, *pme_bsp_mod_y_d = NULL, *pme_bsp_mod_z_d = NULL;
     int energy_size = n * sizeof(real);
@@ -801,7 +801,7 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
     real *energy_d = (real *)PMEMemoryFetch(PME_ID_ENERGY, thread, energy_size, ML_DEVICE);
     real *virial_d = (real *)PMEMemoryFetch(PME_ID_VIRIAL, thread, virial_size, ML_DEVICE);
     for (int ig = 0; ig < MAGIC_GRID_NUMBER; ++ig)
-        PMEMemoryCopy(grid_d + ig * grid_n, grid[ig], grid_size, ML_DEVICE, s);
+        cu_copy_H2D_async(grid_d + ig * grid_n, grid[ig], grid_size, s);
 
     pme_gpu_timing_start(pme, ewcsPME_SOLVE);
 
@@ -820,7 +820,7 @@ int solve_pme_lj_yzx_gpu(int nx, int ny, int nz,
     pme_gpu_timing_stop(pme, ewcsPME_SOLVE);
 
     for (int ig = 0; ig < MAGIC_GRID_NUMBER; ++ig)
-        PMEMemoryCopy(grid[ig], grid_d + ig * grid_n, grid_size, ML_HOST, s);
+        cu_copy_D2H_async(grid[ig], grid_d + ig * grid_n, grid_size, s);
 
     if (bEnerVir)
     {

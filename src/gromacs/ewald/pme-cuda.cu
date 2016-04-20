@@ -243,15 +243,15 @@ void pme_gpu_copy_coordinates(gmx_pme_t *pme)
     float3 *coordinates_h = (float3 *)PMEMemoryFetch(PME_ID_XPTR, tag, coordinatesSize, ML_HOST);
     memcpy(coordinates_h, pme->atc[0].x, coordinatesSize);
     pme->gpu->coordinates = (float3 *)PMEMemoryFetch(PME_ID_XPTR, tag, coordinatesSize, ML_DEVICE);
-    PMEMemoryCopy(pme->gpu->coordinates, coordinates_h, coordinatesSize, ML_DEVICE, pme->gpu->pmeStream);
+    cu_copy_H2D_async(pme->gpu->coordinates, coordinates_h, coordinatesSize, pme->gpu->pmeStream);
     /*
-    float4 *xptr_h = (float4 *)(real *)PMEFetch(PME_ID_XPTR, thread, 4 * n_blocked * sizeof(real), ML_HOST);
+    float4 *xptr_h = (float4 *)(real *)PMEMemoryFetch(PME_ID_XPTR, thread, 4 * n_blocked * sizeof(real), ML_HOST);
     memset(xptr_h, 0, 4 * n_blocked * sizeof(real));
     for (int i = 0; i < n; i++)
     {
        memcpy(xptr_h + i, atc->x + i, sizeof(rvec));
     }
-    xptr_d = (float4 *)(real *)PMEFetch(PME_ID_XPTR, thread, 4 * n_blocked * sizeof(real), ML_DEVICE);
+    xptr_d = (float4 *)(real *)PMEMemoryFetch(PME_ID_XPTR, thread, 4 * n_blocked * sizeof(real), ML_DEVICE);
     PMECopy(pme->gpu->coordinates, xptr_h, 4 * n_blocked * sizeof(real), ML_DEVICE, pme->gpu->pmeStream);
     */
 }
@@ -265,7 +265,7 @@ void pme_gpu_copy_charges(gmx_pme_t *pme)
     real *coefficients_h = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, tag, coefficientSize, ML_HOST);
     memcpy(coefficients_h, pme->atc[0].coefficient, coefficientSize); // why not just register host memory?
     pme->gpu->coefficients = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, tag, coefficientSize, ML_DEVICE);
-    PMEMemoryCopy(pme->gpu->coefficients, coefficients_h, coefficientSize, ML_DEVICE, pme->gpu->pmeStream);
+    cu_copy_H2D_async(pme->gpu->coefficients, coefficients_h, coefficientSize, pme->gpu->pmeStream);
 }
 
 void pme_gpu_copy_wrap_zones(gmx_pme_t *pme)
@@ -370,47 +370,6 @@ void *PMEMemoryFetch(PMEDataID id, int unusedTag, size_t size, MemLocType locati
         }
     }
     return PMEStoragePointers[i];
-}
-
-void PMEMemoryCopy(void *dest, void *src, size_t size, MemLocType destination, cudaStream_t s)
-{
-    // synchronous copies are not used anywhere currently, I think
-    assert(s != 0);
-    cudaError_t stat;
-    const gmx_bool sync = false;
-
-    /*
-    cudaPointerAttributes attributes;
-    stat = cudaPointerGetAttributes(&attributes, src);
-    if (stat != cudaSuccess)
-        stat = cudaHostRegister(src, size, cudaHostRegisterDefault);
-    CU_RET_ERR(stat, "src not pinned");
-    stat = cudaPointerGetAttributes(&attributes, dest);
-    if (stat != cudaSuccess)
-        stat = cudaHostRegister(dest, size, cudaHostRegisterDefault);
-    CU_RET_ERR(stat, "src not pinned");
-    */
-
-    if (destination == ML_DEVICE)
-    {
-        if (sync)
-            stat = cudaMemcpy(dest, src, size, cudaMemcpyHostToDevice);
-        else
-            stat = cudaMemcpyAsync(dest, src, size, cudaMemcpyHostToDevice, s);
-        if (stat)
-            printf("copying %lu from %p to %p\n", size, src, dest);
-        CU_RET_ERR(stat, "PME cudaMemcpyHostToDevice error");
-    }
-    else
-    {
-        if (sync)
-            stat = cudaMemcpy(dest, src, size, cudaMemcpyDeviceToHost);
-        else
-            stat = cudaMemcpyAsync(dest, src, size, cudaMemcpyDeviceToHost, s);
-        if (stat)
-            printf("copying %lu from %p to %p\n", size, src, dest);
-        CU_RET_ERR(stat, "PME cudaMemcpyDeviceToHost error");
-    }
 }
 
 void PMEConstantCopy(const void *dest, void const *src, size_t size, cudaStream_t s)

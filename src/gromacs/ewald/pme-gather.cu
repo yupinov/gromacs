@@ -378,7 +378,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
     const int ndatatot = pnx * pny * pnz;
     const int gridSize = ndatatot * sizeof(real);
     if (!pme->gpu->keepGPUDataBetweenC2RAndGather)
-        PMEMemoryCopy(pme->gpu->grid, grid, gridSize, ML_DEVICE, s);
+        cu_copy_H2D_async(pme->gpu->grid, grid, gridSize, s);
 
     if (pme->bGPUSingle)
     {
@@ -525,12 +525,12 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
 
     // thetas
     /*
-    real *theta_x_d = (real *)PMEFetchAndCopy(PME_ID_THX, thread, theta_x_h, size_splines, ML_DEVICE, s);
-    real *theta_y_d = (real *)PMEFetchAndCopy(PME_ID_THY, thread, theta_y_h, size_splines, ML_DEVICE, s);
-    real *theta_z_d = (real *)PMEFetchAndCopy(PME_ID_THZ, thread, theta_z_h, size_splines, ML_DEVICE, s);
-    real *dtheta_x_d = (real *)PMEFetchAndCopy(PME_ID_DTHX, thread, dtheta_x_h, size_splines, ML_DEVICE, s);
-    real *dtheta_y_d = (real *)PMEFetchAndCopy(PME_ID_DTHY, thread, dtheta_y_h, size_splines, ML_DEVICE, s);
-    real *dtheta_z_d = (real *)PMEFetchAndCopy(PME_ID_DTHZ, thread, dtheta_z_h, size_splines, ML_DEVICE, s);
+    real *theta_x_d = (real *)PMEFetchAndCopy(PME_ID_THX, thread, theta_x_h, size_splines, s);
+    real *theta_y_d = (real *)PMEFetchAndCopy(PME_ID_THY, thread, theta_y_h, size_splines, s);
+    real *theta_z_d = (real *)PMEFetchAndCopy(PME_ID_THZ, thread, theta_z_h, size_splines, s);
+    real *dtheta_x_d = (real *)PMEFetchAndCopy(PME_ID_DTHX, thread, dtheta_x_h, size_splines, s);
+    real *dtheta_y_d = (real *)PMEFetchAndCopy(PME_ID_DTHY, thread, dtheta_y_h, size_splines, s);
+    real *dtheta_z_d = (real *)PMEFetchAndCopy(PME_ID_DTHZ, thread, dtheta_z_h, size_splines, s);
     */
     real *theta_d = (real *)PMEMemoryFetch(PME_ID_THETA, thread, DIM * size_splines, ML_DEVICE);
     real *theta_x_d = theta_d + 0 * order * n;
@@ -551,17 +551,17 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
 
     if (!pme->gpu->keepGPUDataBetweenC2RAndGather) // compare with spread and compacting
     {
-        PMEMemoryCopy(theta_x_d, theta_x_h, size_splines, ML_DEVICE, s);
-        PMEMemoryCopy(theta_y_d, theta_y_h, size_splines, ML_DEVICE, s);
-        PMEMemoryCopy(theta_z_d, theta_z_h, size_splines, ML_DEVICE, s);
+        cu_copy_H2D_async(theta_x_d, theta_x_h, size_splines, s);
+        cu_copy_H2D_async(theta_y_d, theta_y_h, size_splines, s);
+        cu_copy_H2D_async(theta_z_d, theta_z_h, size_splines, s);
 
-        PMEMemoryCopy(dtheta_x_d, dtheta_x_h, size_splines, ML_DEVICE, s);
-        PMEMemoryCopy(dtheta_y_d, dtheta_y_h, size_splines, ML_DEVICE, s);
-        PMEMemoryCopy(dtheta_z_d, dtheta_z_h, size_splines, ML_DEVICE, s);
+        cu_copy_H2D_async(dtheta_x_d, dtheta_x_h, size_splines, s);
+        cu_copy_H2D_async(dtheta_y_d, dtheta_y_h, size_splines, s);
+        cu_copy_H2D_async(dtheta_z_d, dtheta_z_h, size_splines, s);
 
-        //yupinov PMEMemoryCopy(pme->gpu->coefficients, coefficients_h, size_coefficients, ML_DEVICE, s);
+        //yupinov cu_copy_H2D_async(pme->gpu->coefficients, coefficients_h, size_coefficients, s);
 
-        PMEMemoryCopy(idx_d, idx_h, DIM * size_indices, ML_DEVICE, s);
+        cu_copy_H2D_async(idx_d, idx_h, DIM * size_indices, s);
     }
 
     const float3 nXYZ = {(real)nx, (real)ny, (real)nz};
@@ -603,7 +603,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
 
     pme_gpu_timing_stop(pme, ewcsPME_GATHER);
 
-    PMEMemoryCopy(atc_f_h, pme->gpu->forces, forcesSize, ML_HOST, s);
+    cu_copy_D2H_async(atc_f_h, pme->gpu->forces, forcesSize, s);
     cudaError_t stat = cudaEventRecord(pme->gpu->syncForcesH2D, s);
     CU_RET_ERR(stat, "PME gather forces sync fail");
 }
