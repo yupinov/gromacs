@@ -850,7 +850,7 @@ static void sum_fftgrid_dd(struct gmx_pme_t *pme, real *fftgrid, int grid_index)
 void spread_on_grid(struct gmx_pme_t *pme,
                     pme_atomcomm_t *atc, pmegrids_t *grids,
                     gmx_bool bCalcSplines, gmx_bool bSpread,
-                    real *fftgrid, gmx_bool bDoSplines, int grid_index, gmx_wallcycle_t wcycle)
+                    real *fftgrid, gmx_bool bDoSplines, int grid_index)
 {
     int nthread, thread;
 #ifdef PME_TIME_THREADS
@@ -863,24 +863,11 @@ void spread_on_grid(struct gmx_pme_t *pme,
     nthread = pme->nthread;
     assert(nthread > 0);
 
-
-    if (pme->bGPU)
-    {
-        wallcycle_sub_start(wcycle, ewcsPME_INTERPCALCSPLINEANDSPREAD);
-        spread_on_grid_gpu(pme, atc, grid_index, &grids->grid, bCalcSplines, bSpread, bDoSplines);
-        wallcycle_sub_stop(wcycle, ewcsPME_INTERPCALCSPLINEANDSPREAD);
-        //yupinov grid index here and everywhere else?
-        //yupinov copy_local_grid
-    }
-    else
-    {
-
 #ifdef PME_TIME_THREADS
     c1 = omp_cyc_start();
 #endif
     if (bCalcSplines)
     {
-        wallcycle_sub_start(wcycle, ewcsPME_INTERPOL_IDX);
 #pragma omp parallel for num_threads(nthread) schedule(static)
         for (thread = 0; thread < nthread; thread++)
         {
@@ -901,7 +888,6 @@ void spread_on_grid(struct gmx_pme_t *pme,
             }
             GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
         }
-        wallcycle_sub_stop(wcycle, ewcsPME_INTERPOL_IDX);
     }
 #ifdef PME_TIME_THREADS
     c1   = omp_cyc_end(c1);
@@ -911,7 +897,7 @@ void spread_on_grid(struct gmx_pme_t *pme,
 #ifdef PME_TIME_THREADS
     c2 = omp_cyc_start();
 #endif
-    wallcycle_sub_start(wcycle, ewcsPME_SPLINEANDSPREAD);
+
 #pragma omp parallel for num_threads(nthread) schedule(static)
     for (thread = 0; thread < nthread; thread++)
     {
@@ -975,14 +961,11 @@ void spread_on_grid(struct gmx_pme_t *pme,
         }
         GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
     }
-    wallcycle_sub_stop(wcycle, ewcsPME_SPLINEANDSPREAD);
+
 #ifdef PME_TIME_THREADS
     c2   = omp_cyc_end(c2);
     cs2 += (double)c2;
 #endif
-
-
-    }//yupinov
 
     if (bSpread && pme->bUseThreads)
     {
