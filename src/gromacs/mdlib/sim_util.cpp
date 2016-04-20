@@ -1026,6 +1026,49 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
         wallcycle_stop(wcycle, ewcNB_XF_BUF_OPS);
     }
 
+    // copypaste from further below begin
+    if (bDoForces)
+    {
+        /* Reset forces for which the virial is calculated separately:
+         * PME/Ewald forces if necessary */
+        if (fr->bF_NoVirSum)
+        {
+            if (flags & GMX_FORCE_VIRIAL)
+            {
+                fr->f_novirsum = fr->f_novirsum_alloc;
+                if (fr->bDomDec)
+                {
+                    clear_rvecs(fr->f_novirsum_n, fr->f_novirsum);
+                }
+                else
+                {
+                    clear_rvecs(homenr, fr->f_novirsum+start);
+                }
+            }
+            else
+            {
+                /* We are not calculating the pressure so we do not need
+                 * a separate array for forces that do not contribute
+                 * to the pressure.
+                 */
+                fr->f_novirsum = f;
+            }
+        }
+
+        /* Clear the short- and long-range forces */
+        clear_rvecs(fr->natoms_force_constr, f);
+
+        clear_rvec(fr->vir_diag_posres);
+    }
+    // copypaste end
+
+    do_pme_gpu_launch(fr, inputrec,
+                      cr, nrnb, wcycle, mdatoms,
+                      x, box,
+                      lambda,
+                      flags,
+                      &cycles_pme);
+
     if (bUseGPU)
     {
         wallcycle_start(wcycle, ewcLAUNCH_GPU_NB);
@@ -1180,6 +1223,9 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
      * since that will interfere with the dynamic load balancing.
      */
     wallcycle_start(wcycle, ewcFORCE);
+
+#define UNUSED_COPYPASTED_CODE_MARKER 0
+#if UNUSED_COPYPASTED_CODE_MARKER
     if (bDoForces)
     {
         /* Reset forces for which the virial is calculated separately:
@@ -1219,6 +1265,7 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
 
         clear_rvec(fr->vir_diag_posres);
     }
+#endif
 
     if (inputrec->bPull && pull_have_constraint(inputrec->pull_work))
     {

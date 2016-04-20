@@ -397,6 +397,8 @@ void PMEMemoryCopy(void *dest, void *src, size_t size, MemLocType destination, c
             stat = cudaMemcpy(dest, src, size, cudaMemcpyHostToDevice);
         else
             stat = cudaMemcpyAsync(dest, src, size, cudaMemcpyHostToDevice, s);
+        if (stat)
+            printf("copying %lu from %p to %p\n", size, src, dest);
         CU_RET_ERR(stat, "PME cudaMemcpyHostToDevice error");
     }
     else
@@ -405,6 +407,8 @@ void PMEMemoryCopy(void *dest, void *src, size_t size, MemLocType destination, c
             stat = cudaMemcpy(dest, src, size, cudaMemcpyDeviceToHost);
         else
             stat = cudaMemcpyAsync(dest, src, size, cudaMemcpyDeviceToHost, s);
+        if (stat)
+            printf("copying %lu from %p to %p\n", size, src, dest);
         CU_RET_ERR(stat, "PME cudaMemcpyDeviceToHost error");
     }
 }

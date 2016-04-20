@@ -127,47 +127,26 @@ static void reduce_thread_energies(tensor vir_q, tensor vir_lj,
     }
 }
 
-void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
-                       t_idef     *idef,    t_commrec  *cr,
+void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
+                       t_commrec  *cr,
                        t_nrnb     *nrnb,    gmx_wallcycle_t wcycle,
                        t_mdatoms  *md,
-                       rvec       x[],      history_t  *hist,
-                       rvec       f[],
-                       gmx_enerdata_t *enerd,
-                       t_fcdata   *fcd,
-                       gmx_localtop_t *top,
-                       gmx_genborn_t *born,
-                       gmx_bool       bBornRadii,
+                       rvec       x[],
                        matrix     box,
-                       t_lambda   *fepvals,
                        real       *lambda,
-                       t_graph    *graph,
-                       t_blocka   *excl,
-                       rvec       mu_tot[],
                        int        flags,
                        float      *cycles_pme)
 {
-    int         i, j;
-    int         donb_flags;
+    // yupinov check GPU condition here
+
+    int         i;
     gmx_bool    bSB;
     int         pme_flags;
     matrix      boxs;
     rvec        box_size;
     t_pbc       pbc;
-    real        dvdl_dum[efptNR], dvdl_nb[efptNR];
-
-#if GMX_MPI
-    double  t0 = 0.0, t1, t2, t3; /* time measurement for coarse load balancing */
-#endif
 
     set_pbc(&pbc, fr->ePBC, box);
-
-    /* reset free energy components */
-    for (i = 0; i < efptNR; i++)
-    {
-        dvdl_nb[i]  = 0;
-        dvdl_dum[i] = 0;
-    }
 
     /* Reset box */
     for (i = 0; (i < DIM); i++)
@@ -175,14 +154,8 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
         box_size[i] = box[i][i];
     }
 
-    /* do QMMM first if requested */
-    if (fr->bQMMM)
-    {
-        enerd->term[F_EQM] = calculate_QMMM(cr, x, f, fr);
-    }
-
-    //yupinov - copypasted from below for a GPU PME call, partially commented with #if UNUSED_COPYPASTED_CODE_MARKER
-    /* PME one-time preparation (common for GPU/CPU codes) */
+    //yupinov - copypasted from do_force_lowlevel, partially commented with #if UNUSED_COPYPASTED_CODE_MARKER
+    /* PME preparation (common for GPU/CPU codes) */
     if (EEL_FULL(fr->eeltype) || EVDW_PME(fr->vdwtype))
     {
         bSB = (ir->nwall == 2);
@@ -442,6 +415,104 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
 #endif
     }
     //yupinov end copypaste
+}
+
+void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
+                       t_idef     *idef,    t_commrec  *cr,
+                       t_nrnb     *nrnb,    gmx_wallcycle_t wcycle,
+                       t_mdatoms  *md,
+                       rvec       x[],      history_t  *hist,
+                       rvec       f[],
+                       gmx_enerdata_t *enerd,
+                       t_fcdata   *fcd,
+                       gmx_localtop_t *top,
+                       gmx_genborn_t *born,
+                       gmx_bool       bBornRadii,
+                       matrix     box,
+                       t_lambda   *fepvals,
+                       real       *lambda,
+                       t_graph    *graph,
+                       t_blocka   *excl,
+                       rvec       mu_tot[],
+                       int        flags,
+                       float      *cycles_pme)
+{
+    int         i, j;
+    int         donb_flags;
+    gmx_bool    bSB;
+    int         pme_flags;
+    matrix      boxs;
+    rvec        box_size;
+    t_pbc       pbc;
+    real        dvdl_dum[efptNR], dvdl_nb[efptNR];
+
+#if GMX_MPI
+    double  t0 = 0.0, t1, t2, t3; /* time measurement for coarse load balancing */
+#endif
+
+    set_pbc(&pbc, fr->ePBC, box);
+
+    /* reset free energy components */
+    for (i = 0; i < efptNR; i++)
+    {
+        dvdl_nb[i]  = 0;
+        dvdl_dum[i] = 0;
+    }
+
+    /* Reset box */
+    for (i = 0; (i < DIM); i++)
+    {
+        box_size[i] = box[i][i];
+    }
+
+    /* do QMMM first if requested */
+    if (fr->bQMMM)
+    {
+        enerd->term[F_EQM] = calculate_QMMM(cr, x, f, fr);
+    }
+
+    //yupinov - copypasted from below for a GPU PME call, partially commented with #if UNUSED_COPYPASTED_CODE_MARKER
+    /* PME preparation (common for GPU/CPU codes) */
+    if (EEL_FULL(fr->eeltype) || EVDW_PME(fr->vdwtype))
+    {
+        bSB = (ir->nwall == 2);
+        if (bSB)
+        {
+            copy_mat(box, boxs);
+            svmul(ir->wall_ewald_zfac, boxs[ZZ], boxs[ZZ]);
+            box_size[ZZ] *= ir->wall_ewald_zfac;
+        }
+        if ((EEL_PME(fr->eeltype) || EVDW_PME(fr->vdwtype)) && (cr->duty & DUTY_PME))
+        {
+            /* set PME flags */
+            assert(fr->n_tpi >= 0);
+            if (fr->n_tpi == 0 || (flags & GMX_FORCE_STATECHANGED))
+            {
+                pme_flags = GMX_PME_SPREAD | GMX_PME_SOLVE;
+                if (EEL_PME(fr->eeltype))
+                {
+                    pme_flags |= GMX_PME_DO_COULOMB;
+                }
+                if (EVDW_PME(fr->vdwtype))
+                {
+                    pme_flags |= GMX_PME_DO_LJ;
+                }
+                if (flags & GMX_FORCE_FORCES)
+                {
+                    pme_flags |= GMX_PME_CALC_F;
+                }
+                if (flags & GMX_FORCE_VIRIAL)
+                {
+                    pme_flags |= GMX_PME_CALC_ENER_VIR;
+                }
+                if (fr->n_tpi > 0)
+                {
+                    /* We don't calculate f, but we do want the potential */
+                    pme_flags |= GMX_PME_CALC_POT;
+                }
+            }
+        }
+    }
 
     /* Call the short range functions all in one go. */
 
