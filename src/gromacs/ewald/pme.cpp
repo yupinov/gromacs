@@ -930,6 +930,16 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                real *dvdlambda_q, real *dvdlambda_lj,
                int flags)
 {
+    if (pme->bGPU)
+    {
+        gmx_pme_gpu_launch(pme, start, homenr, x, f, chargeA, chargeB, c6A, c6B, sigmaA, sigmaB, box,
+                       cr, maxshift_x, maxshift_y, nrnb, wcycle, vir_q, ewaldcoeff_q, vir_lj, ewaldcoeff_lj,
+                       energy_q, energy_lj, lambda_q, lambda_lj, flags);
+        gmx_pme_gpu_get_results(pme, f, cr, wcycle, vir_q, vir_lj, energy_q, energy_lj,
+                       lambda_q, lambda_lj, dvdlambda_q, dvdlambda_lj, flags);
+        return 0;
+    }
+
     int                  d, i, j, npme, grid_index, max_grid_index;
     int                  n_d;
     pme_atomcomm_t      *atc        = NULL;
@@ -1009,11 +1019,6 @@ int gmx_pme_do(struct gmx_pme_t *pme,
     /* If we are doing LJ-PME with LB, we only do Q here */
     max_grid_index = (pme->ljpme_combination_rule == eljpmeLB) ? DO_Q : DO_Q_AND_LJ;
 
-    if (pme->bGPU)
-    {
-        GMX_RELEASE_ASSERT(!(flags & GMX_PME_DO_LJ) && !pme->bFEP, "PME GPU has only been tried for a single grid. Shouldn't be difficult to extend though.\n");
-        GMX_RELEASE_ASSERT(sizeof(real) == sizeof(float), "PME GPU was not been designed with double precision in mind.\nIt might be possible too implement, but would require meticulous code proofreading.\n");
-    }
     for (grid_index = 0; grid_index < max_grid_index; ++grid_index)
     {
         /* Check if we should do calculations at this grid_index
@@ -1068,32 +1073,10 @@ int gmx_pme_do(struct gmx_pme_t *pme,
             wallcycle_stop(wcycle, ewcPME_REDISTXF);
         }
 
-        if (pme->bGPU)
-            pme_gpu_copy_charges(pme); //yupinov
-
         if (debug)
         {
             fprintf(debug, "Rank= %6d, pme local particles=%6d\n",
                     cr->nodeid, atc->n);
-        }
-        gmx_bool keepGPUDataBetweenSpreadAndR2C = FALSE;
-        gmx_bool keepGPUDataBetweenC2RAndGather = FALSE; //yupinov inconvenient
-        if (pme->bGPU)
-        {
-            //yupinov - these are not checked anywhere yet
-            //check for spread and solve flags here as well!
-            // bGPUSingle
-            //yupinov set to true to segfault
-            keepGPUDataBetweenSpreadAndR2C = pme->bGPUSingle && pme->bGPUFFT; //yupinov -> no wrap kernels! different grids!
-            gmx_bool keepGPUDataBetweenR2CAndSolve = pme->bGPUSingle && pme->bGPUFFT && (grid_index < DO_Q); // no LJ support
-            gmx_bool keepGPUDataBetweenSolveAndC2R = pme->bGPUSingle && keepGPUDataBetweenR2CAndSolve && bBackFFT;
-            keepGPUDataBetweenC2RAndGather = pme->bGPUSingle && pme->bGPUFFT; // bCalcF!
-            pme_gpu_update_flags(pme->gpu,
-                                 keepGPUDataBetweenSpreadAndR2C,
-                                 keepGPUDataBetweenR2CAndSolve,
-                                 keepGPUDataBetweenSolveAndC2R,
-                                 keepGPUDataBetweenC2RAndGather
-                                 );
         }
 
         if (flags & GMX_PME_SPREAD)
@@ -1708,3 +1691,812 @@ int gmx_pme_do(struct gmx_pme_t *pme,
     }
     return 0;
 }
+
+// a slimmed down GPU version of the gmx_pme_do
+// will only work with 1 grid for now
+
+#define UNUSED_CPU_CODE_MARKER 0
+
+int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
+               int start,       int homenr,
+               rvec x[],        rvec f[],
+               real chargeA[],  real chargeB[],
+               real c6A[],      real c6B[],
+               real sigmaA[],   real sigmaB[],
+               matrix box,      t_commrec *cr,
+               int  maxshift_x, int maxshift_y,
+               t_nrnb *nrnb,    gmx_wallcycle_t wcycle,
+               matrix vir_q,    real ewaldcoeff_q,
+               matrix vir_lj,   real ewaldcoeff_lj,
+               real *energy_q,  real *energy_lj,
+               real lambda_q,   real lambda_lj,
+               int flags)
+{
+    int                  d, i, j, npme, grid_index, max_grid_index;
+    int                  n_d;
+    pme_atomcomm_t      *atc        = NULL;
+    pmegrids_t          *pmegrid    = NULL;
+    real                *grid       = NULL;
+    rvec                *f_d;
+    real                *coefficient = NULL;
+    real                 scale, lambda;
+    gmx_bool             bClearF;
+    //gmx_parallel_3dfft_t pfft_setup;
+    real              *  fftgrid;
+    t_complex          * cfftgrid;
+    int                  thread = 0;
+    gmx_bool             bFirst, bDoSplines;
+    int                  fep_state;
+    int                  fep_states_lj           = pme->bFEP_lj ? 2 : 1;
+    const gmx_bool       bCalcEnerVir            = flags & GMX_PME_CALC_ENER_VIR;
+    const gmx_bool       bBackFFT                = flags & (GMX_PME_CALC_F | GMX_PME_CALC_POT);
+    const gmx_bool       bCalcF                  = flags & GMX_PME_CALC_F;
+
+    assert(pme->nnodes > 0);
+    assert(pme->nnodes == 1 || pme->ndecompdim > 0);
+
+#if UNUSED_CPU_CODE_MARKER
+    if (pme->nnodes > 1)
+    {
+        atc      = &pme->atc[0];
+        atc->npd = homenr;
+        if (atc->npd > atc->pd_nalloc)
+        {
+            atc->pd_nalloc = over_alloc_dd(atc->npd);
+            srenew(atc->pd, atc->pd_nalloc);
+        }
+        for (d = pme->ndecompdim-1; d >= 0; d--)
+        {
+            atc           = &pme->atc[d];
+            atc->maxshift = (atc->dimind == 0 ? maxshift_x : maxshift_y);
+        }
+    }
+    else
+#endif
+    {
+        atc = &pme->atc[0];
+        /* This could be necessary for TPI */
+        pme->atc[0].n = homenr;
+        if (DOMAINDECOMP(cr))
+        {
+            pme_realloc_atomcomm_things(atc);
+        }
+        atc->x = x;
+        atc->f = f;
+    }
+
+    gmx::invertBoxMatrix(box, pme->recipbox);
+
+    bFirst = TRUE;
+    pme_gpu_step_init(pme);
+
+    /* For simplicity, we construct the splines for all particles if
+     * more than one PME calculations is needed. Some optimization
+     * could be done by keeping track of which atoms have splines
+     * constructed, and construct new splines on each pass for atoms
+     * that don't yet have them.
+     */
+
+    bDoSplines = pme->bFEP || ((flags & GMX_PME_DO_COULOMB) && (flags & GMX_PME_DO_LJ));
+
+    /* We need a maximum of four separate PME calculations:
+     * grid_index=0: Coulomb PME with charges from state A
+     * grid_index=1: Coulomb PME with charges from state B
+     * grid_index=2: LJ PME with C6 from state A
+     * grid_index=3: LJ PME with C6 from state B
+     * For Lorentz-Berthelot combination rules, a separate loop is used to
+     * calculate all the terms
+     */
+
+    /* If we are doing LJ-PME with LB, we only do Q here */
+    max_grid_index = (pme->ljpme_combination_rule == eljpmeLB) ? DO_Q : DO_Q_AND_LJ;
+
+    GMX_RELEASE_ASSERT(!(flags & GMX_PME_DO_LJ) && !pme->bFEP, "PME GPU has only been tried for a single grid. Shouldn't be difficult to extend though.\n");
+    GMX_RELEASE_ASSERT(sizeof(real) == sizeof(float), "PME GPU was not been designed with double precision in mind.\nIt might be possible too implement, but would require meticulous code proofreading.\n");
+    for (grid_index = 0; grid_index < max_grid_index; ++grid_index)
+    {
+        /* Check if we should do calculations at this grid_index
+         * If grid_index is odd we should be doing FEP
+         * If grid_index < 2 we should be doing electrostatic PME
+         * If grid_index >= 2 we should be doing LJ-PME
+         */
+        if ((grid_index <  DO_Q && (!(flags & GMX_PME_DO_COULOMB) ||
+                                    (grid_index == 1 && !pme->bFEP_q))) ||
+            (grid_index >= DO_Q && (!(flags & GMX_PME_DO_LJ) ||
+                                    (grid_index == 3 && !pme->bFEP_lj))))
+        {
+            continue;
+        }
+        assert(grid_index == 0);
+        /* Unpack structure */
+        pmegrid    = &pme->pmegrid[grid_index];
+        fftgrid    = pme->fftgrid[grid_index];
+        cfftgrid   = pme->cfftgrid[grid_index];
+        //pfft_setup = pme->pfft_setup[grid_index];
+        switch (grid_index)
+        {
+            case 0: coefficient = chargeA + start; break;
+            case 1: coefficient = chargeB + start; break;
+            case 2: coefficient = c6A + start; break;
+            case 3: coefficient = c6B + start; break;
+        }
+
+        grid = pmegrid->grid.grid;
+
+        if (debug)
+        {
+            fprintf(debug, "PME: number of ranks = %d, rank = %d\n",
+                    cr->nnodes, cr->nodeid);
+            fprintf(debug, "Grid = %p\n", (void*)grid);
+            if (grid == NULL)
+            {
+                gmx_fatal(FARGS, "No grid!");
+            }
+        }
+        where();
+
+        if (pme->nnodes == 1)
+        {
+            atc->coefficient = coefficient;
+        }
+        else
+        {
+            wallcycle_start(wcycle, ewcPME_REDISTXF);
+            do_redist_pos_coeffs(pme, cr, start, homenr, bFirst, x, coefficient);
+            where();
+            wallcycle_stop(wcycle, ewcPME_REDISTXF);
+        }
+
+        pme_gpu_copy_charges(pme); //yupinov
+
+        if (debug)
+        {
+            fprintf(debug, "Rank= %6d, pme local particles=%6d\n",
+                    cr->nodeid, atc->n);
+        }
+        gmx_bool keepGPUDataBetweenSpreadAndR2C = FALSE;
+        gmx_bool keepGPUDataBetweenC2RAndGather = FALSE; //yupinov inconvenient
+        //yupinov - these are not checked anywhere yet
+        //check for spread and solve flags here as well!
+        // bGPUSingle
+        keepGPUDataBetweenSpreadAndR2C = pme->bGPUSingle && pme->bGPUFFT; //yupinov -> no wrap kernels! different grids!
+        gmx_bool keepGPUDataBetweenR2CAndSolve = pme->bGPUSingle && pme->bGPUFFT && (grid_index < DO_Q); // no LJ support
+        gmx_bool keepGPUDataBetweenSolveAndC2R = pme->bGPUSingle && keepGPUDataBetweenR2CAndSolve && bBackFFT;
+        keepGPUDataBetweenC2RAndGather = pme->bGPUSingle && pme->bGPUFFT; // bCalcF!
+        pme_gpu_update_flags(pme->gpu,
+                             keepGPUDataBetweenSpreadAndR2C,
+                             keepGPUDataBetweenR2CAndSolve,
+                             keepGPUDataBetweenSolveAndC2R,
+                             keepGPUDataBetweenC2RAndGather
+                             );
+
+        if (flags & GMX_PME_SPREAD)
+        {
+            wallcycle_start(wcycle, ewcPME_SPREADGATHER);
+
+            /* Spread the coefficients on a grid */
+            wallcycle_sub_start(wcycle, ewcsPME_INTERPCALCSPLINEANDSPREAD);
+            spread_on_grid_gpu(pme, &pme->atc[0], grid_index, &pmegrid->grid, bFirst, TRUE, bDoSplines);
+            wallcycle_sub_stop(wcycle, ewcsPME_INTERPCALCSPLINEANDSPREAD);
+
+            //spread_on_grid_gpu(pme, &pme->atc[0], grid_index, &grids->grid, bCalcSplines, bSpread, bDoSplines);
+#if UNUSED_CPU_CODE_MARKER
+            if (bFirst)
+            {
+                inc_nrnb(nrnb, eNR_WEIGHTS, DIM*atc->n);
+            }
+            inc_nrnb(nrnb, eNR_SPREADBSP,
+                     pme->pme_order*pme->pme_order*pme->pme_order*atc->n);
+#endif
+
+            //if (!pme->bUseThreads)
+            {
+                if (!pme->bGPUSingle) // only wrap CPU PME grid if we haven't done it on GPU in a single GPU mode
+                    wrap_periodic_pmegrid(pme, grid); //yupinov - unwrap as well
+
+                /* sum contributions to local grid from other nodes */
+#if GMX_MPI
+                if (pme->nnodes > 1)
+                {
+                    gmx_sum_qgrid_dd(pme, grid, GMX_SUM_GRID_FORWARD);
+                    where();
+                }
+#endif
+                if (!keepGPUDataBetweenSpreadAndR2C) // only copy CPU PME grid to CPU FFT grid if we don't keep the data on GPU
+                    copy_pmegrid_to_fftgrid(pme, grid, fftgrid, grid_index);
+            }
+
+            wallcycle_stop(wcycle, ewcPME_SPREADGATHER);
+
+            /* TODO If the OpenMP and single-threaded implementations
+               converge, then spread_on_grid() and
+               copy_pmegrid_to_fftgrid() will perhaps live in the same
+               source file and the following debugging function can live
+               there too. */
+
+             /*
+               dump_local_fftgrid(pme,fftgrid);
+               exit(0);
+             */
+        }
+
+        try
+        {
+            if (flags & GMX_PME_SOLVE)
+            {
+                int loop_count;
+
+                /*
+                #pragma omp barrier
+                if (thread == 0)
+                    dump_local_fftgrid(pme, fftgrid, grid_index);
+                #pragma omp barrier
+                */
+
+                /* do 3d-fft */
+                gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_REAL_TO_COMPLEX,
+                                           thread, wcycle);
+                where();
+
+                /*
+                #pragma omp barrier
+                if (thread == 0)
+                    dump_local_fftgrid(pme, (const real *)cfftgrid, grid_index);
+                #pragma omp barrier
+                */
+
+
+                /* solve in k-space for our local cells */
+                if (thread == 0)
+                {
+                    wallcycle_start(wcycle, (grid_index < DO_Q ? ewcPME_SOLVE : ewcLJPME));
+                    wallcycle_sub_start(wcycle, ewcsPME_SOLVE);
+                }
+                if (grid_index < DO_Q)
+                {
+                    loop_count =
+                        solve_pme_yzx_wrapper(pme, cfftgrid, ewaldcoeff_q,
+                                      box[XX][XX]*box[YY][YY]*box[ZZ][ZZ],
+                                      bCalcEnerVir,
+                                      pme->nthread, thread);
+                     //if (pme->bGPU && bCalcEnerVir)
+                     //   pme_gpu_get_energy_virial(pme);
+                }
+#if UNUSED_CPU_CODE_MARKER
+                else
+                {
+                    loop_count =
+                        solve_pme_lj_yzx_wrapper(pme, &cfftgrid, FALSE, ewaldcoeff_lj,
+                                         box[XX][XX]*box[YY][YY]*box[ZZ][ZZ],
+                                         bCalcEnerVir,
+                                         pme->nthread, thread);  //yupinov implement LJ
+                }
+#endif
+                /*
+                #pragma omp barrier
+                if (thread == 0)
+                    dump_local_fftgrid(pme, (const real *)cfftgrid, grid_index);
+                #pragma omp barrier
+                */
+                if (thread == 0)
+                {
+                    wallcycle_stop(wcycle, (grid_index < DO_Q ? ewcPME_SOLVE : ewcLJPME));
+                    wallcycle_sub_stop(wcycle, ewcsPME_SOLVE);
+#if UNUSED_CPU_CODE_MARKER
+                    inc_nrnb(nrnb, eNR_SOLVEPME, loop_count);
+#endif
+                }
+            }
+
+            if (bBackFFT)
+            {
+                /* do 3d-invfft */
+                if (thread == 0) //bring back openmp?
+                {
+                    where();
+                }
+                gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_COMPLEX_TO_REAL,
+                                          thread, wcycle);
+                /*
+                #pragma omp barrier
+                if (thread == 0)
+                    dump_local_fftgrid(pme,(const real *)fftgrid, grid_index);
+                #pragma omp barrier
+                */
+                if (thread == 0)
+                {
+#if UNUSED_CPU_CODE_MARKER
+                    where();
+
+                    if (pme->nodeid == 0)
+                    {
+                        real ntot = pme->nkx*pme->nky*pme->nkz;
+                        npme  = static_cast<int>(ntot*std::log(ntot)/std::log(2.0));
+                        inc_nrnb(nrnb, eNR_FFT, 2*npme);
+                    }
+#endif
+
+                    /* Note: this wallcycle region is closed below
+                       outside an OpenMP region, so take care if
+                       refactoring code here. */
+                    wallcycle_start(wcycle, ewcPME_SPREADGATHER);
+                }
+                if (!keepGPUDataBetweenC2RAndGather)
+                    copy_fftgrid_to_pmegrid(pme, fftgrid, grid, grid_index, pme->nthread, thread);
+            }
+        } GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
+        /* End of thread parallel section.
+         * With MPI we have to synchronize here before gmx_sum_qgrid_dd.
+         */
+
+        if (bBackFFT)
+        {
+            /* distribute local grid to all nodes */
+#if GMX_MPI
+            if (pme->nnodes > 1)
+            {
+                gmx_sum_qgrid_dd(pme, grid, GMX_SUM_GRID_BACKWARD);
+            }
+#endif
+            where();
+            if (!pme->bGPUSingle) //yupinov check GPUFFT instead?
+                unwrap_periodic_pmegrid(pme, grid);
+        }
+
+        if (bCalcF)
+        {
+            /* interpolate forces for our local atoms */
+
+            where();
+
+            /* If we are running without parallelization,
+             * atc->f is the actual force array, not a buffer,
+             * therefore we should not clear it.
+             */
+            lambda  = grid_index < DO_Q ? lambda_q : lambda_lj;
+            bClearF = (bFirst && PAR(cr)); //yupinov! we need bFirst on GPU if we're doing several grids!
+#pragma omp parallel for num_threads(pme->nthread) schedule(static)
+            for (thread = 0; thread < pme->nthread; thread++)
+            {
+                try
+                {
+                    gather_f_bsplines_wrapper(pme, grid, bClearF, atc,
+                                      &atc->spline[thread],
+                                      pme->bFEP ? (grid_index % 2 == 0 ? 1.0-lambda : lambda) : 1.0, wcycle, thread);
+                }
+                GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
+            }
+            /*
+            #pragma omp barrier
+            dump_local_fftgrid(pme, (const real *)grid, grid_index);
+            #pragma omp barrier
+            */
+#if UNUSED_CPU_CODE_MARKER
+            where();
+
+
+            inc_nrnb(nrnb, eNR_GATHERFBSP,
+                     pme->pme_order*pme->pme_order*pme->pme_order*pme->atc[0].n);
+#endif
+            /* Note: this wallcycle region is opened above inside an OpenMP
+               region, so take care if refactoring code here. */
+            wallcycle_stop(wcycle, ewcPME_SPREADGATHER);
+        }
+#if UNUSED_CPU_CODE_MARKER
+        if (bCalcEnerVir)
+        {
+            /* This should only be called on the master thread
+             * and after the threads have synchronized.
+             */
+            if (grid_index < 2)
+            {
+                get_pme_ener_vir_q(pme->solve_work, pme->nthread, &energy_AB[grid_index], vir_AB[grid_index]);
+            }
+            else
+            {
+                get_pme_ener_vir_lj(pme->solve_work, pme->nthread, &energy_AB[grid_index], vir_AB[grid_index]);
+            }
+        }
+#endif
+        bFirst = FALSE;
+    } /* of grid_index-loop */
+
+    /* For Lorentz-Berthelot combination rules in LJ-PME, we need to calculate
+     * seven terms. */
+#if UNUSED_CPU_CODE_MARKER
+    if ((flags & GMX_PME_DO_LJ) && pme->ljpme_combination_rule == eljpmeLB)
+    {
+        /* Loop over A- and B-state if we are doing FEP */
+        for (fep_state = 0; fep_state < fep_states_lj; ++fep_state)
+        {
+            real *local_c6 = NULL, *local_sigma = NULL, *RedistC6 = NULL, *RedistSigma = NULL;
+            if (pme->nnodes == 1)
+            {
+                if (pme->lb_buf1 == NULL)
+                {
+                    pme->lb_buf_nalloc = pme->atc[0].n;
+                    snew(pme->lb_buf1, pme->lb_buf_nalloc);
+                }
+                pme->atc[0].coefficient = pme->lb_buf1;
+                switch (fep_state)
+                {
+                    case 0:
+                        local_c6      = c6A;
+                        local_sigma   = sigmaA;
+                        break;
+                    case 1:
+                        local_c6      = c6B;
+                        local_sigma   = sigmaB;
+                        break;
+                    default:
+                        gmx_incons("Trying to access wrong FEP-state in LJ-PME routine");
+                }
+            }
+            else
+            {
+                atc = &pme->atc[0];
+                switch (fep_state)
+                {
+                    case 0:
+                        RedistC6      = c6A;
+                        RedistSigma   = sigmaA;
+                        break;
+                    case 1:
+                        RedistC6      = c6B;
+                        RedistSigma   = sigmaB;
+                        break;
+                    default:
+                        gmx_incons("Trying to access wrong FEP-state in LJ-PME routine");
+                }
+                wallcycle_start(wcycle, ewcPME_REDISTXF);
+
+                do_redist_pos_coeffs(pme, cr, start, homenr, bFirst, x, RedistC6);
+                if (pme->lb_buf_nalloc < atc->n)
+                {
+                    pme->lb_buf_nalloc = atc->nalloc;
+                    srenew(pme->lb_buf1, pme->lb_buf_nalloc);
+                    srenew(pme->lb_buf2, pme->lb_buf_nalloc);
+                }
+                local_c6 = pme->lb_buf1;
+                for (i = 0; i < atc->n; ++i)
+                {
+                    local_c6[i] = atc->coefficient[i];
+                }
+                where();
+
+                do_redist_pos_coeffs(pme, cr, start, homenr, FALSE, x, RedistSigma);
+                local_sigma = pme->lb_buf2;
+                for (i = 0; i < atc->n; ++i)
+                {
+                    local_sigma[i] = atc->coefficient[i];
+                }
+                where();
+
+                wallcycle_stop(wcycle, ewcPME_REDISTXF);
+            }
+            calc_initial_lb_coeffs(pme, local_c6, local_sigma);
+
+            /*Seven terms in LJ-PME with LB, grid_index < 2 reserved for electrostatics*/
+            for (grid_index = 2; grid_index < 9; ++grid_index)
+            {
+                /* Unpack structure */
+                pmegrid    = &pme->pmegrid[grid_index];
+                fftgrid    = pme->fftgrid[grid_index];
+                //pfft_setup = pme->pfft_setup[grid_index];
+                calc_next_lb_coeffs(pme, local_sigma);
+                grid = pmegrid->grid.grid;
+                where();
+
+                if (flags & GMX_PME_SPREAD)
+                {
+                    wallcycle_start(wcycle, ewcPME_SPREADGATHER);
+                    /* Spread the c6 on a grid */
+                    spread_on_grid(pme, &pme->atc[0], pmegrid, bFirst, TRUE, fftgrid, bDoSplines, grid_index, wcycle);
+
+                    if (bFirst)
+                    {
+                        inc_nrnb(nrnb, eNR_WEIGHTS, DIM*atc->n);
+                    }
+
+                    inc_nrnb(nrnb, eNR_SPREADBSP,
+                             pme->pme_order*pme->pme_order*pme->pme_order*atc->n);
+                    if (pme->nthread == 1)
+                    {
+                        wrap_periodic_pmegrid(pme, grid);
+                        /* sum contributions to local grid from other nodes */
+#if GMX_MPI
+                        if (pme->nnodes > 1)
+                        {
+                            gmx_sum_qgrid_dd(pme, grid, GMX_SUM_GRID_FORWARD);
+                            where();
+                        }
+#endif
+                        copy_pmegrid_to_fftgrid(pme, grid, fftgrid, grid_index);
+                    }
+                    wallcycle_stop(wcycle, ewcPME_SPREADGATHER);
+                }
+                /*Here we start a large thread parallel region*/
+#pragma omp parallel num_threads(pme->nthread) private(thread)
+                {
+                    try
+                    {
+                        thread = gmx_omp_get_thread_num();
+                        if (flags & GMX_PME_SOLVE)
+                        {
+                            /* do 3d-fft */
+                            gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_REAL_TO_COMPLEX,
+                                                       thread, wcycle);
+                            where();
+                        }
+                    }
+                    GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
+                }
+                bFirst = FALSE;
+            }
+            if (flags & GMX_PME_SOLVE)
+            {
+                /* solve in k-space for our local cells */
+#pragma omp parallel num_threads(pme->nthread) private(thread)
+                {
+                    try
+                    {
+                        int loop_count;
+                        thread = gmx_omp_get_thread_num();
+                        if (thread == 0)
+                        {
+                            wallcycle_start(wcycle, ewcLJPME);
+                        }
+
+                        loop_count =
+                            solve_pme_lj_yzx(pme, &pme->cfftgrid[2], TRUE, ewaldcoeff_lj,
+                                             box[XX][XX]*box[YY][YY]*box[ZZ][ZZ],
+                                             bCalcEnerVir,
+                                             pme->nthread, thread);
+                        if (thread == 0)
+                        {
+                            wallcycle_stop(wcycle, ewcLJPME);
+                            where();
+                            inc_nrnb(nrnb, eNR_SOLVEPME, loop_count);
+                        }
+                    }
+                    GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
+                }
+            }
+
+            if (bCalcEnerVir)
+            {
+                /* This should only be called on the master thread and
+                 * after the threads have synchronized.
+                 */
+                get_pme_ener_vir_lj(pme->solve_work, pme->nthread, &energy_AB[2+fep_state], vir_AB[2+fep_state]);
+            }
+
+            if (bBackFFT)
+            {
+                bFirst = !(flags & GMX_PME_DO_COULOMB);
+                calc_initial_lb_coeffs(pme, local_c6, local_sigma);
+                for (grid_index = 8; grid_index >= 2; --grid_index)
+                {
+                    /* Unpack structure */
+                    pmegrid    = &pme->pmegrid[grid_index];
+                    fftgrid    = pme->fftgrid[grid_index];
+                    //pfft_setup = pme->pfft_setup[grid_index];
+                    grid       = pmegrid->grid.grid;
+                    calc_next_lb_coeffs(pme, local_sigma);
+                    where();
+#pragma omp parallel num_threads(pme->nthread) private(thread)
+                    {
+                        try
+                        {
+                            thread = gmx_omp_get_thread_num();
+                            /* do 3d-invfft */
+                            if (thread == 0)
+                            {
+                                where();
+                            }
+
+                            gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_COMPLEX_TO_REAL,
+                                                       thread, wcycle);
+                            if (thread == 0)
+                            {
+                                where();
+
+                                if (pme->nodeid == 0)
+                                {
+                                    real ntot = pme->nkx*pme->nky*pme->nkz;
+                                    npme  = static_cast<int>(ntot*std::log(ntot)/std::log(2.0));
+                                    inc_nrnb(nrnb, eNR_FFT, 2*npme);
+                                }
+                                wallcycle_start(wcycle, ewcPME_SPREADGATHER);
+                            }
+
+                            copy_fftgrid_to_pmegrid(pme, fftgrid, grid, grid_index, pme->nthread, thread);
+                        }
+                        GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
+                    } /*#pragma omp parallel*/
+
+                    /* distribute local grid to all nodes */
+#if GMX_MPI
+                    if (pme->nnodes > 1)
+                    {
+                        gmx_sum_qgrid_dd(pme, grid, GMX_SUM_GRID_BACKWARD);
+                    }
+#endif
+                    where();
+
+                    unwrap_periodic_pmegrid(pme, grid);
+
+                    if (bCalcF)
+                    {
+                        /* interpolate forces for our local atoms */
+                        where();
+                        bClearF = (bFirst && PAR(cr));
+                        scale   = pme->bFEP ? (fep_state < 1 ? 1.0-lambda_lj : lambda_lj) : 1.0;
+                        scale  *= lb_scale_factor[grid_index-2];
+
+#pragma omp parallel for num_threads(pme->nthread) schedule(static)
+                        for (thread = 0; thread < pme->nthread; thread++)
+                        {
+                            try
+                            {
+                                gather_f_bsplines_wrapper(pme, grid, bClearF, &pme->atc[0],
+                                                  &pme->atc[0].spline[thread],
+                                                  scale, wcycle, thread);
+                            }
+                            GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
+                        }
+
+                        where();
+
+                        inc_nrnb(nrnb, eNR_GATHERFBSP,
+                                 pme->pme_order*pme->pme_order*pme->pme_order*pme->atc[0].n);
+                    }
+                    //if (pme->bGPU)
+                    //    gpu_forces_copyback(pme, atc->n, atc->f); //yupinov fix compacted particle count
+
+                    wallcycle_stop(wcycle, ewcPME_SPREADGATHER);
+
+                    bFirst = FALSE;
+                } /* for (grid_index = 8; grid_index >= 2; --grid_index) */
+            }     /* if (bCalcF) */
+        }         /* for (fep_state = 0; fep_state < fep_states_lj; ++fep_state) */
+    }             /* if ((flags & GMX_PME_DO_LJ) && pme->ljpme_combination_rule == eljpmeLB) */
+#endif
+
+
+    return 0;
+}
+
+// this function should just fetch results
+
+int gmx_pme_gpu_get_results(struct gmx_pme_t *pme,
+               rvec f[],
+               t_commrec *cr,
+               gmx_wallcycle_t wcycle,
+               matrix vir_q,
+               matrix vir_lj,
+               real *energy_q,  real *energy_lj,
+               real lambda_q,   real lambda_lj,
+               real *dvdlambda_q, real *dvdlambda_lj,
+               int flags)
+{
+    const int grid_index = 0;
+
+    const gmx_bool       bCalcEnerVir            = flags & GMX_PME_CALC_ENER_VIR;
+    const gmx_bool       bCalcF                  = flags & GMX_PME_CALC_F;
+
+    real                 energy_AB[4];
+    matrix               vir_AB[4];
+
+
+    pme_gpu_step_end(pme, bCalcF, bCalcEnerVir);
+
+    // copied from up there in the loop...
+    assert(grid_index == 0);
+    if (bCalcEnerVir)
+    {
+        /* This should only be called on the master thread
+         * and after the threads have synchronized.
+         */
+        if (grid_index < 2)
+        {
+            get_pme_ener_vir_q(pme->solve_work, pme->nthread, &energy_AB[grid_index], vir_AB[grid_index]);
+        }
+        else
+        {
+            get_pme_ener_vir_lj(pme->solve_work, pme->nthread, &energy_AB[grid_index], vir_AB[grid_index]);
+        }
+    }
+
+#if UNUSED_CPU_CODE_MARKER
+    if (bCalcF && pme->nnodes > 1)
+    {
+        wallcycle_start(wcycle, ewcPME_REDISTXF);
+        for (d = 0; d < pme->ndecompdim; d++)
+        {
+            atc = &pme->atc[d];
+            if (d == pme->ndecompdim - 1)
+            {
+                n_d = homenr;
+                f_d = f + start;
+            }
+            else
+            {
+                n_d = pme->atc[d+1].n;
+                f_d = pme->atc[d+1].f;
+            }
+            if (DOMAINDECOMP(cr))
+            {
+                dd_pmeredist_f(pme, atc, n_d, f_d,
+                               d == pme->ndecompdim-1 && pme->bPPnode);
+            }
+        }
+
+        wallcycle_stop(wcycle, ewcPME_REDISTXF);
+    }
+    where();
+#endif
+
+    if (bCalcEnerVir)
+    {
+        if (flags & GMX_PME_DO_COULOMB)
+        {
+            if (!pme->bFEP_q)
+            {
+                *energy_q = energy_AB[0];
+                m_add(vir_q, vir_AB[0], vir_q);
+            }
+            else
+            {
+                *energy_q       = (1.0-lambda_q)*energy_AB[0] + lambda_q*energy_AB[1];
+                *dvdlambda_q   += energy_AB[1] - energy_AB[0];
+                for (int i = 0; i < DIM; i++)
+                {
+                    for (int j = 0; j < DIM; j++)
+                    {
+                        vir_q[i][j] += (1.0-lambda_q)*vir_AB[0][i][j] +
+                            lambda_q*vir_AB[1][i][j];
+                    }
+                }
+            }
+            if (debug)
+            {
+                fprintf(debug, "Electrostatic PME mesh energy: %g\n", *energy_q);
+            }
+        }
+        else
+        {
+            *energy_q = 0;
+        }
+
+        if (flags & GMX_PME_DO_LJ)
+        {
+            if (!pme->bFEP_lj)
+            {
+                *energy_lj = energy_AB[2];
+                m_add(vir_lj, vir_AB[2], vir_lj);
+            }
+            else
+            {
+                *energy_lj     = (1.0-lambda_lj)*energy_AB[2] + lambda_lj*energy_AB[3];
+                *dvdlambda_lj += energy_AB[3] - energy_AB[2];
+                for (int i = 0; i < DIM; i++)
+                {
+                    for (int j = 0; j < DIM; j++)
+                    {
+                        vir_lj[i][j] += (1.0-lambda_lj)*vir_AB[2][i][j] + lambda_lj*vir_AB[3][i][j];
+                    }
+                }
+            }
+            if (debug)
+            {
+                fprintf(debug, "Lennard-Jones PME mesh energy: %g\n", *energy_lj);
+            }
+        }
+        else
+        {
+            *energy_lj = 0;
+        }
+    }
+}
+

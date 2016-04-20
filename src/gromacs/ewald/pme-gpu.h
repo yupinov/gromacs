@@ -105,6 +105,8 @@ struct gmx_gpu_opt_t;
 
 // nice external functions
 
+
+
 CUDA_FUNC_QUALIFIER void pme_gpu_init(gmx_pme_gpu_t **CUDA_FUNC_ARGUMENT(pmeGPU),
                                       gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
                                       const gmx_hw_info_t *CUDA_FUNC_ARGUMENT(hwinfo),
