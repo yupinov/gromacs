@@ -931,14 +931,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                int flags)
 {
     if (pme->bGPU)
-    {
-        gmx_pme_gpu_launch(pme, start, homenr, x, f, chargeA, chargeB, c6A, c6B, sigmaA, sigmaB, box,
-                       cr, maxshift_x, maxshift_y, nrnb, wcycle, vir_q, ewaldcoeff_q, vir_lj, ewaldcoeff_lj,
-                       energy_q, energy_lj, lambda_q, lambda_lj, flags);
-        gmx_pme_gpu_get_results(pme, f, cr, wcycle, vir_q, vir_lj, energy_q, energy_lj,
-                       lambda_q, lambda_lj, dvdlambda_q, dvdlambda_lj, flags);
         return 0;
-    }
 
     int                  d, i, j, npme, grid_index, max_grid_index;
     int                  n_d;
@@ -1106,8 +1099,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                     where();
                 }
 #endif
-                if (!keepGPUDataBetweenSpreadAndR2C) // only copy CPU PME grid to CPU FFT grid if we don't keep the data on GPU
-                    copy_pmegrid_to_fftgrid(pme, grid, fftgrid, grid_index);
+                copy_pmegrid_to_fftgrid(pme, grid, fftgrid, grid_index);
             }
 
             wallcycle_stop(wcycle, ewcPME_SPREADGATHER);
@@ -1225,8 +1217,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                            refactoring code here. */
                         wallcycle_start(wcycle, ewcPME_SPREADGATHER);
                     }
-                    if (!keepGPUDataBetweenC2RAndGather)
-                        copy_fftgrid_to_pmegrid(pme, fftgrid, grid, grid_index, pme->nthread, thread);
+                    copy_fftgrid_to_pmegrid(pme, fftgrid, grid, grid_index, pme->nthread, thread);
                 }
             } GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
         }
@@ -1566,27 +1557,6 @@ int gmx_pme_do(struct gmx_pme_t *pme,
         }         /* for (fep_state = 0; fep_state < fep_states_lj; ++fep_state) */
     }             /* if ((flags & GMX_PME_DO_LJ) && pme->ljpme_combination_rule == eljpmeLB) */
 
-    pme_gpu_step_end(pme, bCalcF, bCalcEnerVir);
-
-    if (pme->bGPU) // whole body copied from up there in the loop...
-    {
-        const int grid_index = 0;
-        if (bCalcEnerVir)
-        {
-            /* This should only be called on the master thread
-             * and after the threads have synchronized.
-             */
-            if (grid_index < 2)
-            {
-                get_pme_ener_vir_q(pme->solve_work, pme->nthread, &energy_AB[grid_index], vir_AB[grid_index]);
-            }
-            else
-            {
-                get_pme_ener_vir_lj(pme->solve_work, pme->nthread, &energy_AB[grid_index], vir_AB[grid_index]);
-            }
-        }
-    }
-
     // debug
     /*
     rvec test = {0, 0, 0};
@@ -1712,6 +1682,8 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                real lambda_q,   real lambda_lj,
                int flags)
 {
+    if (!pme->bGPU)
+        return 0;
     int                  d, i, j, npme, grid_index, max_grid_index;
     int                  n_d;
     pme_atomcomm_t      *atc        = NULL;
@@ -2380,6 +2352,9 @@ int gmx_pme_gpu_get_results(struct gmx_pme_t *pme,
                real *dvdlambda_q, real *dvdlambda_lj,
                int flags)
 {
+    if (!pme->bGPU)
+        return 0;
+
     const int grid_index = 0;
 
     const gmx_bool       bCalcEnerVir            = flags & GMX_PME_CALC_ENER_VIR;
@@ -2498,5 +2473,6 @@ int gmx_pme_gpu_get_results(struct gmx_pme_t *pme,
             *energy_lj = 0;
         }
     }
+    return 0;
 }
 
