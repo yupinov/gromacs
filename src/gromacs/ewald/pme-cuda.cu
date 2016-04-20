@@ -191,7 +191,7 @@ void pme_gpu_step_end(gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCal
     CU_RET_ERR(stat, "failed to synchronize the PME GPU stream!");
 
     if (bCalcF)
-        pme_gpu_get_forces(pme, pme->atc[0].spline[0].n, pme->atc[0].f);
+        pme_gpu_get_forces(pme);
     if (bCalcEnerVir)
         pme_gpu_get_energy_virial(pme);
 

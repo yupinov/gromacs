@@ -23,12 +23,19 @@ void pme_gpu_alloc_gather_forces(gmx_pme_t *pme)
     pme->gpu->forces = (real *)PMEMemoryFetch(PME_ID_FORCES, tag, forcesSize, ML_DEVICE);
 }
 
-void pme_gpu_get_forces(gmx_pme_t *pme, int n, rvec *forces)
+void pme_gpu_get_forces(gmx_pme_t *pme)
 {
     cudaStream_t s = pme->gpu->pmeStream;
     cudaError_t stat = cudaStreamWaitEvent(s, pme->gpu->syncForcesH2D, 0);
     CU_RET_ERR(stat, "error while waiting for PME forces");
 
+    const int tag = 0;
+    const int n = pme->atc[0].n;
+    const int forcesSize = DIM * n * sizeof(real);
+    real *forces = (real *)PMEMemoryFetch(PME_ID_FORCES, tag, forcesSize, ML_HOST);
+    memcpy(pme->atc[0].f, forces, forcesSize);
+
+    /*
     if (PME_SKIP_ZEROES)
     {
         const int thread = 0;
@@ -44,6 +51,7 @@ void pme_gpu_get_forces(gmx_pme_t *pme, int n, rvec *forces)
             forces[i][ZZ] = atc_f_h[iCompacted * DIM + ZZ];
         }
     }
+    */
 }
 
 
@@ -340,7 +348,6 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
 
     //pme_atomcomm_t atc = pme->atc[0];
     real *atc_coefficient = atc->coefficient;
-    rvec *atc_f = atc->f;
     ivec *atc_idx = atc->idx;
 
 
@@ -405,7 +412,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
     int size_splines = order * n * sizeof(int);
     int size_coefficients = n * sizeof(real);
 
-    real *atc_f_h = NULL;
+    real *atc_f_h = (real *)PMEMemoryFetch(PME_ID_FORCES, thread, forcesSize, ML_HOST);
     ivec *idx_h = NULL;
 
     real *coefficients_h = NULL;
@@ -426,9 +433,6 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
     if (PME_SKIP_ZEROES)
     {
         atc_i_compacted_h = (int *)PMEMemoryFetch(PME_ID_NONZERO_INDICES, thread, size_indices, ML_HOST);
-
-        // forces
-        atc_f_h = (real *)PMEMemoryFetch(PME_ID_FORCES, thread, forcesSize, ML_HOST);
 
         // thetas
         theta_x_h = (real *)PMEMemoryFetch(PME_ID_THX, thread, size_splines, ML_HOST);
@@ -508,8 +512,6 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
 
         // indices
         idx_h = atc_idx;
-        // forces
-        atc_f_h = (real *)atc_f;
         // coefficients
         coefficients_h = atc_coefficient;
         // thetas

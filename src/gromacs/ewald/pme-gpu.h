@@ -217,7 +217,7 @@ CUDA_FUNC_QUALIFIER int solve_pme_lj_yzx_gpu(int gmx_unused nx, int gmx_unused n
              gmx_bool gmx_unused bEnerVir, gmx_pme_t *pme,
                                               int gmx_unused nthread, int gmx_unused thread) CUDA_FUNC_TERM
 
-CUDA_FUNC_QUALIFIER void pme_gpu_get_forces(gmx_pme_t *pme, int n, rvec *forces) CUDA_FUNC_TERM
-CUDA_FUNC_QUALIFIER void pme_gpu_get_energy_virial(gmx_pme_t *pme) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_get_forces(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_get_energy_virial(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 #endif // PMEGPU_H
