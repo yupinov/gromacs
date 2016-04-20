@@ -372,16 +372,10 @@ void *PMEMemoryFetch(PMEDataID id, int unusedTag, size_t size, MemLocType locati
     return PMEStoragePointers[i];
 }
 
-void PMEConstantCopy(const void *dest, void const *src, size_t size, cudaStream_t s)
+void PMECopyConstant(const void *dest, void const *src, size_t size, cudaStream_t s)
 {
     assert(s != 0);
     cudaError_t stat = cudaMemcpyToSymbolAsync(dest, src, size, 0, cudaMemcpyHostToDevice, s);
     CU_RET_ERR(stat, "PME cudaMemcpyToSymbolAsync");
-}
-
-int PMEGetAllocatedSize(PMEDataID id, int unusedTag, MemLocType location)
-{
-    int i = (location * PME_ID_END_INVALID + id) * MAXTAGS + unusedTag;
-    return PMEStorageSizes[i];
 }
 

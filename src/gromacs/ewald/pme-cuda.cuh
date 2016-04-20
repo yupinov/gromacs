@@ -177,8 +177,5 @@ enum MemLocType
 
 void *PMEMemoryFetch(PMEDataID id, int unusedTag, size_t size, MemLocType location);
 
-void PMEConstantCopy(const void *dest, const void *src, size_t size, cudaStream_t s); //H2D only
-
-int PMEGetAllocatedSize(PMEDataID id, int unusedTag, MemLocType location);
-
+void PMECopyConstant(const void *dest, const void *src, size_t size, cudaStream_t s); //H2D only
 #endif
