@@ -863,6 +863,10 @@ void gmx_pme_calc_energy(struct gmx_pme_t *pme, int n, rvec *x, real *q, real *V
     {
         gmx_incons("gmx_pme_calc_energy with free energy");
     }
+    if (pme->bGPU)
+    {
+        gmx_incons("gmx_pme_calc_energy not implemented on GPU");
+    }
 
     atc            = &pme->atc_energy;
     atc->nthread   = 1;
