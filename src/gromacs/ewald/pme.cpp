@@ -569,17 +569,6 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
         pme->bPPnode = (cr->duty & DUTY_PP);
     }
 
-    pme->bGPU = bPMEGPU && (pme->nodeid == 0);
-    // only a single rank should do PME GPU currently - small steps
-    // currently PME GPU mdrun with MPI crashes anyway :(
-
-    pme->bGPUSingle = pme->bGPU && (pme->nnodes == 1);
-    // a convenience variable
-
-    pme->bGPUFFT = pme->bGPUSingle && !getenv("GMX_PME_GPU_FFTW");
-    // currently cuFFT is only used for a single rank
-    //yupinov this variable doesn't actually work correctly :(
-
     pme->nthread = nthread;
 
     /* Check if any of the PME MPI ranks uses threads */
@@ -693,6 +682,30 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     snew(pme->bsp_mod[XX], pme->nkx);
     snew(pme->bsp_mod[YY], pme->nky);
     snew(pme->bsp_mod[ZZ], pme->nkz);
+
+    pme->bGPU = bPMEGPU;
+    // here we have some safeguards for enabling PME GPU
+    pme->bGPU = pme->bGPU && (pme->nodeid == 0);
+    // only a single rank should do PME GPU for now.
+    // currently PME GPU mdrun with MPI crashes anyway :(
+    pme->bGPU = pme->bGPU && (!pme->bFEP);
+    // PME GPU has only been tried for a single grid; shouldn't be difficult to extend though
+    pme->bGPU = pme->bGPU && (!EVDW_PME(ir->vdwtype));
+    // also, the LJ solve kernel isn't implemented; again, not a big effort to implement that
+    pme->bGPU = pme->bGPU && (sizeof(real) == sizeof(float));
+    // most likely current FFT/solve wouldn't work on double precision
+    pme->bGPU = pme->bGPU && (pme->pme_order == 4);
+    // only been tried for order of 4. what other orders would make sense anyway? 8 would require a small spread/gather rewrite.
+    // put a log line about our final CPU/GPU decision?
+    // gmx_warning("PME will run on %s", pme->bGPU ? "GPU" : "CPU");
+
+    pme->bGPUSingle = pme->bGPU && (pme->nnodes == 1);
+    // a convenience variable
+
+    pme->bGPUFFT = pme->bGPUSingle && !getenv("GMX_PME_GPU_FFTW");
+    // currently cuFFT is only used for a single rank
+    //yupinov this variable doesn't actually work correctly :(
+
 
     /* The required size of the interpolation grid, including overlap.
      * The allocated size (pmegrid_n?) might be slightly larger.
