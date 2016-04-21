@@ -53,15 +53,17 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         const int PMEGPURank = 0; //yupinov !
         FILE *fp = NULL; //yupinov pass this
         char gpu_err_str[STRLEN];
+        (*pmeGPU)->deviceInfo = &hwinfo->gpu_info.gpu_dev[gpu_opt->dev_use[PMEGPURank]];
         if (!init_gpu(fp, PMEGPURank, gpu_err_str, &hwinfo->gpu_info, gpu_opt))
-            gmx_fatal(FARGS, "could not select GPU %d for PME rank %d\n", hwinfo->gpu_info.gpu_dev[gpu_opt->dev_use[PMEGPURank]].id, PMEGPURank);
-        //should set bGPU to false and fall back
-
+            gmx_fatal(FARGS, "could not select GPU %d for PME rank %d\n", (*pmeGPU)->deviceInfo->id, PMEGPURank);
+        // fallback instead?
         //first init and either of the hw structures NULL => also fall back to CPU
+
+        (*pmeGPU)->useTextureObjects = ((*pmeGPU)->deviceInfo->prop.major >= 3);
 
 
         // creating a PME stream
-    #if GMX_CUDA_VERSION >= 5050
+#if GMX_CUDA_VERSION >= 5050
         int highest_priority;
         int lowest_priority;
         stat = cudaDeviceGetStreamPriorityRange(&lowest_priority, &highest_priority);
@@ -72,10 +74,10 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
                                                 highest_priority);
 
         CU_RET_ERR(stat, "cudaStreamCreateWithPriority on PME stream failed");
-    #else
+#else
         stat = cudaStreamCreate(&(*pmeGPU)->pmeStream);
         CU_RET_ERR(stat, "PME cudaStreamCreate error");
-    #endif
+#endif
 
         // creating synchronization events
         stat = cudaEventCreateWithFlags(&(*pmeGPU)->syncEnerVirH2D, cudaEventDisableTiming);

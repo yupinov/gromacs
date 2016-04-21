@@ -55,10 +55,8 @@
 #define THREADS_PER_BLOCK   (4 * warp_size)
 #define MIN_BLOCKS_PER_MP   (16)
 
-#define USE_TEXTURES 1
-
 //move all this into structure?
-#if USE_TEXTURES
+#if PME_USE_TEXTURES
 #define USE_TEXOBJ 0 // should check device info dynamically
 #if USE_TEXOBJ
 cudaTextureObject_t nnTexture;
@@ -85,7 +83,7 @@ __global__ void pme_spline_and_spread_kernel
  int start_ix, int start_iy, int start_iz,
  const int pny, const int pnz,
  const int3 nnOffset,
-#if USE_TEXTURES
+#if PME_USE_TEXTURES
 #if USE_TEXOBJ
  cudaTextureObject_t nnTexture,
  cudaTextureObject_t fshTexture,
@@ -181,7 +179,7 @@ __global__ void pme_spline_and_spread_kernel
             fractX[threadLocalId] = t - tInt;
             constIndex += tInt;
 
-#if USE_TEXTURES
+#if PME_USE_TEXTURES
 #if USE_TEXOBJ
             fractX[threadLocalId] += tex1Dfetch<real>(fshTexture, constIndex);
             idx[threadLocalId] = tex1Dfetch<int>(nnTexture, constIndex);
@@ -331,7 +329,7 @@ __global__ void pme_spline_kernel
 (const float3 nXYZ,
  const int start_ix, const int start_iy, const int start_iz,
  const int3 nnOffset,
-#if USE_TEXTURES
+#if PME_USE_TEXTURES
 #if USE_TEXOBJ
   cudaTextureObject_t nnTexture,
   cudaTextureObject_t fshTexture,
@@ -421,7 +419,7 @@ __global__ void pme_spline_kernel
         fractX[threadLocalId] = t - tInt;
         constIndex += tInt;
 
-#if USE_TEXTURES
+#if PME_USE_TEXTURES
 #if USE_TEXOBJ
         fractX[threadLocalId] += tex1Dfetch<real>(fshTexture, constIndex);
         idx[threadLocalId] = tex1Dfetch<int>(nnTexture, constIndex);
@@ -698,7 +696,7 @@ void pme_gpu_copy_calcspline_constants(gmx_pme_t *pme)
     cu_copy_H2D_async(nnArray + 5 * nx       , pme->nny, 5 * ny * sizeof(int), s);
     cu_copy_H2D_async(nnArray + 5 * (nx + ny), pme->nnz, 5 * nz * sizeof(int), s);
 
-#if USE_TEXTURES
+#if PME_USE_TEXTURES
 #if USE_TEXOBJ
     //if (use_texobj(dev_info))
     // should check device info here for CC >= 3.0
@@ -890,7 +888,7 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                                                                                                    (nXYZ,
                                                                                                     pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
                                                                                                     nnOffset,
-#if USE_TEXTURES
+#if PME_USE_TEXTURES
 #if USE_TEXOBJ
                                                                                                     nnTexture, fshTexture,
 #endif
@@ -945,7 +943,7 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
                                    pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
                                    pny, pnz,
                                    nnOffset,
-#if USE_TEXTURES
+#if PME_USE_TEXTURES
 #if USE_TEXOBJ
                                    nnTexture, fshTexture,
 #endif

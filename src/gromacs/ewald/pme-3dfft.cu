@@ -109,6 +109,7 @@ gmx_pme_t *pme)
         gmx_fatal(FARGS, "cufftPlanMany C2R error %d\n", result);
 
     cudaStream_t s = pme->gpu->pmeStream;
+    assert(s);
     result = cufftSetStream(setup->planR2C, s);
     if (result != CUFFT_SUCCESS)
         gmx_fatal(FARGS, "cufftSetStream R2C error %d\n", result);

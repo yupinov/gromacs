@@ -5,8 +5,9 @@
 
 #include "pme-timings.cuh"
 
-//yupinov dealloc
-//yupinov grid indices with tags?
+#include "gromacs/gpu_utils/cudautils.cuh"
+
+//yupinov grid indices
 
 // device constants
 // wrap/unwrap overlap zones
@@ -26,8 +27,10 @@
 // it requires a separate complex grid, seems to be virtually the same performance-wise
 
 #define PME_GPU_TIMINGS 1
-// comment this to disable PME timing function bodies
 // should replace this to respect other GPU timings' variables
+
+#define PME_USE_TEXTURES 1
+// using textures instead of global memory
 
 static const bool PME_SKIP_ZEROES = false;
 // broken
@@ -81,12 +84,15 @@ struct gmx_pme_cuda_t
     gmx_bool keepGPUDataBetweenSolveAndC2R;
     gmx_bool keepGPUDataBetweenC2RAndGather;
 
-    //keep those as params in the th storage
 #if !PME_EXTERN_CMEM
     // constant structures for arguments
     pme_gpu_recipbox_t recipbox;
     pme_gpu_overlap_t overlap;
 #endif
+
+
+    gmx_device_info_t *deviceInfo;
+    gmx_bool useTextureObjects; // if false, then use references
 
     pme_gpu_timing timingEvents[PME_GPU_STAGES];
 
