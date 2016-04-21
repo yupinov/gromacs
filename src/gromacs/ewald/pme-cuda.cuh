@@ -175,8 +175,10 @@ enum MemLocType
 
 // ML_HOST under-used
 
-void *PMEMemoryFetch(PMEDataID id, int unusedTag, size_t size, MemLocType location);
-void PMEMemoryFree(PMEDataID id, int unusedTag, MemLocType location);
+// allocate memory; size == 0 => just fetch the current pointer
+void *PMEMemoryFetch(PMEDataID id, size_t size, MemLocType location);
+// deallocate memory
+void PMEMemoryFree(PMEDataID id, MemLocType location);
 
 void PMECopyConstant(const void *dest, const void *src, size_t size, cudaStream_t s); //H2D only
 #endif

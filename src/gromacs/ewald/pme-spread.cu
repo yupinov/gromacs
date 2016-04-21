@@ -678,7 +678,6 @@ __global__ void pme_wrap_kernel
 
 void pme_gpu_copy_calcspline_constants(gmx_pme_t *pme)
 {
-    const int thread = 0;
     cudaStream_t s = pme->gpu->pmeStream;
 
     cudaError_t stat;
@@ -688,13 +687,13 @@ void pme_gpu_copy_calcspline_constants(gmx_pme_t *pme)
     const int nz = pme->nkz;
 
     const int fshSize = 5 * (nx + ny + nz) * sizeof(real);
-    real *fshArray = pme->gpu->fshArray = (real *)PMEMemoryFetch(PME_ID_FSH, thread, fshSize, ML_DEVICE);
+    real *fshArray = pme->gpu->fshArray = (real *)PMEMemoryFetch(PME_ID_FSH, fshSize, ML_DEVICE);
     cu_copy_H2D_async(fshArray                , pme->fshx, 5 * nx * sizeof(real), s);
     cu_copy_H2D_async(fshArray + 5 * nx       , pme->fshy, 5 * ny * sizeof(real), s);
     cu_copy_H2D_async(fshArray + 5 * (nx + ny), pme->fshz, 5 * nz * sizeof(real), s);
 
     const int nnSize = 5 * (nx + ny + nz) * sizeof(int);
-    int *nnArray = pme->gpu->nnArray = (int *)PMEMemoryFetch(PME_ID_NN, thread, nnSize, ML_DEVICE);
+    int *nnArray = pme->gpu->nnArray = (int *)PMEMemoryFetch(PME_ID_NN, nnSize, ML_DEVICE);
     cu_copy_H2D_async(nnArray                , pme->nnx, 5 * nx * sizeof(int), s);
     cu_copy_H2D_async(nnArray + 5 * nx       , pme->nny, 5 * ny * sizeof(int), s);
     cu_copy_H2D_async(nnArray + 5 * (nx + ny), pme->nnz, 5 * nz * sizeof(int), s);
@@ -753,8 +752,7 @@ void pme_gpu_alloc_grid(struct gmx_pme_t *pme, const int grid_index)
     const int pnz = pme->pmegrid_nz;
     const int gridSize = pnx * pny * pnz * sizeof(real);
 
-    const int tag = grid_index;
-    pme->gpu->grid = (real *)PMEMemoryFetch(PME_ID_REAL_GRID, tag, gridSize, ML_DEVICE);
+    pme->gpu->grid = (real *)PMEMemoryFetch(PME_ID_REAL_GRID, gridSize, ML_DEVICE);
 }
 
 void pme_gpu_clear_grid(struct gmx_pme_t *pme, const int grid_index)
@@ -791,12 +789,10 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     if (!bCalcSplines && !bSpread)
         gmx_fatal(FARGS, "No splining or spreading to be done?"); //yupinov use of gmx_fatal
 
-    const int tag = 0;
     //yupinov
     // bCalcSplines is always true - untested, unfinished
     // bDoSplines is always false - untested
     // bSpread is always true - untested, unfinished
-    // check bClearF as well
 
     cudaStream_t s = pme->gpu->pmeStream;
 
@@ -828,12 +824,12 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     int size_order = order * n * sizeof(real);
     int size_order_dim = size_order * DIM;
-    real *theta_d = (real *)PMEMemoryFetch(PME_ID_THETA, tag, size_order_dim, ML_DEVICE);
-    real *dtheta_d = (real *)PMEMemoryFetch(PME_ID_DTHETA, tag, size_order_dim, ML_DEVICE);
+    real *theta_d = (real *)PMEMemoryFetch(PME_ID_THETA, size_order_dim, ML_DEVICE);
+    real *dtheta_d = (real *)PMEMemoryFetch(PME_ID_DTHETA, size_order_dim, ML_DEVICE);
 
     // IDXPTR
     int idx_size = n * DIM * sizeof(int);
-    int *idx_d = (int *)PMEMemoryFetch(PME_ID_IDXPTR, tag, idx_size, ML_DEVICE);
+    int *idx_d = (int *)PMEMemoryFetch(PME_ID_IDXPTR, idx_size, ML_DEVICE);
 
     const float3 nXYZ = {(real)nx, (real)ny, (real)nz};
     const int3 nnOffset = {0, 5 * nx, 5 * (nx + ny)};
@@ -843,9 +839,9 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     {
          /*
         const size_t coordinatesSize = DIM * n_blocked * sizeof(real);
-        float3 *xptr_h = (float3 *)PMEMemoryFetch(PME_ID_XPTR, tag, coordinatesSize, ML_HOST);
+        float3 *xptr_h = (float3 *)PMEMemoryFetch(PME_ID_XPTR, coordinatesSize, ML_HOST);
         memcpy(xptr_h, atc->x, coordinatesSize);
-        xptr_d = (float3 *)PMEMemoryFetch(PME_ID_XPTR, tag, coordinatesSize, ML_DEVICE);
+        xptr_d = (float3 *)PMEMemoryFetch(PME_ID_XPTR, coordinatesSize, ML_DEVICE);
         cu_copy_H2D_async(xptr_d, xptr_h, coordinatesSize, ML_DEVICE, pme->gpu->pmeStream);
         */
     }
@@ -856,9 +852,9 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     /*
 
     const size_t coefficientSize = n * sizeof(real);
-    real *coefficient_h = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, tag, coefficientSize, ML_HOST);
+    real *coefficient_h = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, coefficientSize, ML_HOST);
     memcpy(coefficient_h, atc->coefficient, coefficientSize);
-    real *coefficient_d = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, tag, coefficientSize, ML_DEVICE);
+    real *coefficient_d = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, coefficientSize, ML_DEVICE);
     cu_copy_H2D_async(coefficient_d, coefficient_h, coefficientSize, s);
     */
 
@@ -1004,8 +1000,8 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
         for (int j = 0; j < DIM; ++j) //also breaking compacting in gather
         //and why not just check bGPUSingle here?
         {
-            cu_copy_D2H_async(atc->spline[tag].dtheta[j], dtheta_d + j * n * order, size_order, s);
-            cu_copy_D2H_async(atc->spline[tag].theta[j], theta_d + j * n * order, size_order, s);
+            cu_copy_D2H_async(atc->spline[0].dtheta[j], dtheta_d + j * n * order, size_order, s);
+            cu_copy_D2H_async(atc->spline[0].theta[j], theta_d + j * n * order, size_order, s);
         }
         //yupinov what about theta/dtheta/idx use in pme_realloc_atomcomm_things?
         cu_copy_D2H_async(atc->idx, idx_d, idx_size, s);

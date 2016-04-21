@@ -204,10 +204,9 @@ inline int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t gmx_unused *pme,
 }
 
 CUDA_FUNC_QUALIFIER void solve_pme_gpu
-(struct gmx_pme_t *pme, t_complex *grid,
+(gmx_pme_t *pme, t_complex *grid,
                   real ewaldcoeff, real vol,
-                  gmx_bool bEnerVir,
-                  int thread) CUDA_FUNC_TERM
+                  gmx_bool bEnerVir) CUDA_FUNC_TERM
 
 CUDA_FUNC_QUALIFIER int solve_pme_lj_yzx_gpu(int gmx_unused nx, int gmx_unused ny, int gmx_unused nz,
              ivec gmx_unused complex_order, ivec gmx_unused local_ndata, ivec gmx_unused local_offset, ivec gmx_unused local_size,

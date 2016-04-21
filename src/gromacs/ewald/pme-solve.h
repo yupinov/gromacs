@@ -125,7 +125,7 @@ inline int solve_pme_yzx_wrapper(struct gmx_pme_t *pme, t_complex *grid,
 {
     int res = 0;
     if (pme->bGPU)
-        solve_pme_gpu(pme, grid, ewaldcoeff, vol, bEnerVir, thread);
+        solve_pme_gpu(pme, grid, ewaldcoeff, vol, bEnerVir);
     else
         res = solve_pme_yzx(pme, grid, ewaldcoeff, vol, bEnerVir, nthread, thread);
     return res;

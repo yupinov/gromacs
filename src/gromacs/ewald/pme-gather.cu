@@ -16,11 +16,10 @@
 
 void pme_gpu_alloc_gather_forces(gmx_pme_t *pme)
 {
-    const int tag = 0;
     const int n = pme->atc[0].n; //?
     assert(n > 0);
     const int forcesSize = DIM * n * sizeof(real);
-    pme->gpu->forces = (real *)PMEMemoryFetch(PME_ID_FORCES, tag, forcesSize, ML_DEVICE);
+    pme->gpu->forces = (real *)PMEMemoryFetch(PME_ID_FORCES, forcesSize, ML_DEVICE);
 }
 
 void pme_gpu_get_forces(gmx_pme_t *pme)
@@ -29,20 +28,18 @@ void pme_gpu_get_forces(gmx_pme_t *pme)
     cudaError_t stat = cudaStreamWaitEvent(s, pme->gpu->syncForcesH2D, 0);
     CU_RET_ERR(stat, "error while waiting for PME forces");
 
-    const int tag = 0;
     const int n = pme->atc[0].n;
     const int forcesSize = DIM * n * sizeof(real);
-    real *forces = (real *)PMEMemoryFetch(PME_ID_FORCES, tag, forcesSize, ML_HOST);
+    real *forces = (real *)PMEMemoryFetch(PME_ID_FORCES, forcesSize, ML_HOST);
     memcpy(pme->atc[0].f, forces, forcesSize);
 
     /*
     if (PME_SKIP_ZEROES)
     {
-        const int thread = 0;
         const int size_forces = DIM * n * sizeof(real);
         const int size_indices = n * sizeof(int);
-        real *atc_f_h = (real *)PMEMemoryFetch(PME_ID_FORCES, thread, size_forces, ML_HOST);
-        int *atc_i_compacted_h = (int *)PMEMemoryFetch(PME_ID_NONZERO_INDICES, thread, size_indices, ML_HOST);
+        real *atc_f_h = (real *)PMEMemoryFetch(PME_ID_FORCES, size_forces, ML_HOST);
+        int *atc_i_compacted_h = (int *)PMEMemoryFetch(PME_ID_NONZERO_INDICES, size_indices, ML_HOST);
         for (int iCompacted = 0; iCompacted < n; iCompacted++)  // iterating over compacted particles
         {
             int i = atc_i_compacted_h[iCompacted]; //index of uncompacted particle
@@ -332,8 +329,6 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
     if (!n)
         return;
 
-    const int thread = 0;
-
     const gmx_bool bOverwriteForces = true;
     // false: we use some other GPU forces buffer for the final reduction, so we want to add to that
     // in that case, maybe we want to replace + with atomicAdd at the end of kernel?
@@ -412,7 +407,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
     int size_splines = order * n * sizeof(int);
     int size_coefficients = n * sizeof(real);
 
-    real *atc_f_h = (real *)PMEMemoryFetch(PME_ID_FORCES, thread, forcesSize, ML_HOST);
+    real *atc_f_h = (real *)PMEMemoryFetch(PME_ID_FORCES, forcesSize, ML_HOST);
     ivec *idx_h = NULL;
 
     real *coefficients_h = NULL;
@@ -422,9 +417,9 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
 
     /*
     int *i0_h = NULL, *j0_h = NULL, *k0_h = NULL;
-    i0_h = (int *)PMEFetch(PME_ID_I0, thread, size_indices, ML_HOST);
-    j0_h = (int *)PMEFetch(PME_ID_J0, thread, size_indices, ML_HOST);
-    k0_h = (int *)PMEFetch(PME_ID_K0, thread, size_indices, ML_HOST);
+    i0_h = (int *)PMEFetch(PME_ID_I0, size_indices, ML_HOST);
+    j0_h = (int *)PMEFetch(PME_ID_J0, size_indices, ML_HOST);
+    k0_h = (int *)PMEFetch(PME_ID_K0, size_indices, ML_HOST);
     */
 
     int *atc_i_compacted_h = NULL;
@@ -432,21 +427,21 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
     // compact data (might be broken)
     if (PME_SKIP_ZEROES)
     {
-        atc_i_compacted_h = (int *)PMEMemoryFetch(PME_ID_NONZERO_INDICES, thread, size_indices, ML_HOST);
+        atc_i_compacted_h = (int *)PMEMemoryFetch(PME_ID_NONZERO_INDICES, size_indices, ML_HOST);
 
         // thetas
-        theta_x_h = (real *)PMEMemoryFetch(PME_ID_THX, thread, size_splines, ML_HOST);
-        theta_y_h = (real *)PMEMemoryFetch(PME_ID_THY, thread, size_splines, ML_HOST);
-        theta_z_h = (real *)PMEMemoryFetch(PME_ID_THZ, thread, size_splines, ML_HOST);
-        dtheta_x_h = (real *)PMEMemoryFetch(PME_ID_DTHX, thread, size_splines, ML_HOST);
-        dtheta_y_h = (real *)PMEMemoryFetch(PME_ID_DTHY, thread, size_splines, ML_HOST);
-        dtheta_z_h = (real *)PMEMemoryFetch(PME_ID_DTHZ, thread, size_splines, ML_HOST);
+        theta_x_h = (real *)PMEMemoryFetch(PME_ID_THX, size_splines, ML_HOST);
+        theta_y_h = (real *)PMEMemoryFetch(PME_ID_THY, size_splines, ML_HOST);
+        theta_z_h = (real *)PMEMemoryFetch(PME_ID_THZ, size_splines, ML_HOST);
+        dtheta_x_h = (real *)PMEMemoryFetch(PME_ID_DTHX, size_splines, ML_HOST);
+        dtheta_y_h = (real *)PMEMemoryFetch(PME_ID_DTHY, size_splines, ML_HOST);
+        dtheta_z_h = (real *)PMEMemoryFetch(PME_ID_DTHZ, size_splines, ML_HOST);
 
         // indices
-        idx_h = (ivec *)(int *)PMEMemoryFetch(PME_ID_IDXPTR, thread, DIM * size_indices, ML_HOST);
+        idx_h = (ivec *)PMEMemoryFetch(PME_ID_IDXPTR, DIM * size_indices, ML_HOST);
 
         // coefficients
-        coefficients_h = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, thread, size_coefficients, ML_HOST);
+        coefficients_h = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, size_coefficients, ML_HOST);
 
         int iCompacted = 0;
         for (int ii = 0; ii < n; ii++)
@@ -525,29 +520,29 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
 
     // thetas
     /*
-    real *theta_x_d = (real *)PMEFetchAndCopy(PME_ID_THX, thread, theta_x_h, size_splines, s);
-    real *theta_y_d = (real *)PMEFetchAndCopy(PME_ID_THY, thread, theta_y_h, size_splines, s);
-    real *theta_z_d = (real *)PMEFetchAndCopy(PME_ID_THZ, thread, theta_z_h, size_splines, s);
-    real *dtheta_x_d = (real *)PMEFetchAndCopy(PME_ID_DTHX, thread, dtheta_x_h, size_splines, s);
-    real *dtheta_y_d = (real *)PMEFetchAndCopy(PME_ID_DTHY, thread, dtheta_y_h, size_splines, s);
-    real *dtheta_z_d = (real *)PMEFetchAndCopy(PME_ID_DTHZ, thread, dtheta_z_h, size_splines, s);
+    real *theta_x_d = (real *)PMEFetchAndCopy(PME_ID_THX, theta_x_h, size_splines, s);
+    real *theta_y_d = (real *)PMEFetchAndCopy(PME_ID_THY, theta_y_h, size_splines, s);
+    real *theta_z_d = (real *)PMEFetchAndCopy(PME_ID_THZ, theta_z_h, size_splines, s);
+    real *dtheta_x_d = (real *)PMEFetchAndCopy(PME_ID_DTHX, dtheta_x_h, size_splines, s);
+    real *dtheta_y_d = (real *)PMEFetchAndCopy(PME_ID_DTHY, dtheta_y_h, size_splines, s);
+    real *dtheta_z_d = (real *)PMEFetchAndCopy(PME_ID_DTHZ, dtheta_z_h, size_splines, s);
     */
-    real *theta_d = (real *)PMEMemoryFetch(PME_ID_THETA, thread, DIM * size_splines, ML_DEVICE);
+    real *theta_d = (real *)PMEMemoryFetch(PME_ID_THETA, DIM * size_splines, ML_DEVICE);
     real *theta_x_d = theta_d + 0 * order * n;
     real *theta_y_d = theta_d + 1 * order * n;
     real *theta_z_d = theta_d + 2 * order * n;
 
-    real *dtheta_d = (real *)PMEMemoryFetch(PME_ID_DTHETA, thread, DIM * size_splines, ML_DEVICE);
+    real *dtheta_d = (real *)PMEMemoryFetch(PME_ID_DTHETA, DIM * size_splines, ML_DEVICE);
     real *dtheta_x_d = dtheta_d + 0 * order * n;
     real *dtheta_y_d = dtheta_d + 1 * order * n;
     real *dtheta_z_d = dtheta_d + 2 * order * n;
 
     // coefficients
-    //real *coefficients_d = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, thread, size_coefficients, ML_DEVICE);
+    //real *coefficients_d = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, size_coefficients, ML_DEVICE);
     //yupinov
 
     // indices
-    int *idx_d = (int *)PMEMemoryFetch(PME_ID_IDXPTR, thread, DIM * size_indices, ML_DEVICE);
+    int *idx_d = (int *)PMEMemoryFetch(PME_ID_IDXPTR, DIM * size_indices, ML_DEVICE);
 
     if (!pme->gpu->keepGPUDataBetweenC2RAndGather) // compare with spread and compacting
     {

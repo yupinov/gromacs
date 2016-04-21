@@ -14,10 +14,8 @@
 #include "pme-cuda.cuh"
 #include "pme-gpu.h"
 
-#define MAXTAGS 1
-
-static std::vector<size_t> PMEStorageSizes(ML_END_INVALID * PME_ID_END_INVALID * MAXTAGS);
-static std::vector<void *> PMEStoragePointers(ML_END_INVALID * PME_ID_END_INVALID * MAXTAGS);
+static std::vector<size_t> PMEStorageSizes(ML_END_INVALID * PME_ID_END_INVALID);
+static std::vector<void *> PMEStoragePointers(ML_END_INVALID * PME_ID_END_INVALID);
 
 
 void pme_gpu_update_flags(
@@ -144,10 +142,9 @@ void pme_gpu_deinit(//gmx_pme_gpu_t **pmeGPU,
     // it's a temporary solution
     for (unsigned int id = 0; id < PME_ID_END_INVALID; id++)
         for (unsigned int location = 0; location < ML_END_INVALID; location++)
-            for (unsigned int tag = 0; tag < MAXTAGS; tag++)
-            {
-                PMEMemoryFree((PMEDataID)id, tag, (MemLocType)location);
-            }
+        {
+            PMEMemoryFree((PMEDataID)id, (MemLocType)location);
+        }
 
     // FFT
     for (int i = 0; i < (*pme)->ngrids; i++)
@@ -237,22 +234,21 @@ void pme_gpu_copy_recipbox(gmx_pme_t *pme)
 void pme_gpu_copy_coordinates(gmx_pme_t *pme)
 {
     const int n = pme->atc[0].n;
-    const int tag = 0;
 
     // coordinates
     const size_t coordinatesSize = DIM * n * sizeof(real);
-    float3 *coordinates_h = (float3 *)PMEMemoryFetch(PME_ID_XPTR, tag, coordinatesSize, ML_HOST);
+    float3 *coordinates_h = (float3 *)PMEMemoryFetch(PME_ID_XPTR, coordinatesSize, ML_HOST);
     memcpy(coordinates_h, pme->atc[0].x, coordinatesSize);
-    pme->gpu->coordinates = (float3 *)PMEMemoryFetch(PME_ID_XPTR, tag, coordinatesSize, ML_DEVICE);
+    pme->gpu->coordinates = (float3 *)PMEMemoryFetch(PME_ID_XPTR, coordinatesSize, ML_DEVICE);
     cu_copy_H2D_async(pme->gpu->coordinates, coordinates_h, coordinatesSize, pme->gpu->pmeStream);
     /*
-    float4 *xptr_h = (float4 *)(real *)PMEMemoryFetch(PME_ID_XPTR, thread, 4 * n_blocked * sizeof(real), ML_HOST);
+    float4 *xptr_h = (float4 *)PMEMemoryFetch(PME_ID_XPTR, 4 * n_blocked * sizeof(real), ML_HOST);
     memset(xptr_h, 0, 4 * n_blocked * sizeof(real));
     for (int i = 0; i < n; i++)
     {
        memcpy(xptr_h + i, atc->x + i, sizeof(rvec));
     }
-    xptr_d = (float4 *)(real *)PMEMemoryFetch(PME_ID_XPTR, thread, 4 * n_blocked * sizeof(real), ML_DEVICE);
+    xptr_d = (float4 *)PMEMemoryFetch(PME_ID_XPTR, 4 * n_blocked * sizeof(real), ML_DEVICE);
     PMECopy(pme->gpu->coordinates, xptr_h, 4 * n_blocked * sizeof(real), ML_DEVICE, pme->gpu->pmeStream);
     */
 }
@@ -260,12 +256,11 @@ void pme_gpu_copy_coordinates(gmx_pme_t *pme)
 void pme_gpu_copy_charges(gmx_pme_t *pme)
 {
     const int n = pme->atc[0].n;
-    const int tag = 0;
     // coefficients - can be different for PME/LJ?
     const size_t coefficientSize = n * sizeof(real);
-    real *coefficients_h = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, tag, coefficientSize, ML_HOST);
+    real *coefficients_h = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, coefficientSize, ML_HOST);
     memcpy(coefficients_h, pme->atc[0].coefficient, coefficientSize); // why not just register host memory?
-    pme->gpu->coefficients = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, tag, coefficientSize, ML_DEVICE);
+    pme->gpu->coefficients = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, coefficientSize, ML_DEVICE);
     cu_copy_H2D_async(pme->gpu->coefficients, coefficients_h, coefficientSize, pme->gpu->pmeStream);
 }
 
@@ -318,10 +313,10 @@ void pme_gpu_copy_wrap_zones(gmx_pme_t *pme)
 
 static gmx_bool debugMemoryPrint = false;
 
-void PMEMemoryFree(PMEDataID id, int unusedTag, MemLocType location)
+void PMEMemoryFree(PMEDataID id, MemLocType location)
 {
     cudaError_t stat;
-    int i = (location * PME_ID_END_INVALID + id) * MAXTAGS + unusedTag;
+    size_t i = location * PME_ID_END_INVALID + id;
     if (PMEStoragePointers[i])
     {
         if (debugMemoryPrint)
@@ -340,21 +335,21 @@ void PMEMemoryFree(PMEDataID id, int unusedTag, MemLocType location)
     }
 }
 
-void *PMEMemoryFetch(PMEDataID id, int unusedTag, size_t size, MemLocType location)
+void *PMEMemoryFetch(PMEDataID id, size_t size, MemLocType location)
 {
     // size == 0 => just return a current pointer
 
     //yupinov grid resize mistake!
     assert(unusedTag == 0);
     cudaError_t stat = cudaSuccess;
-    int i = (location * PME_ID_END_INVALID + id) * MAXTAGS + unusedTag;
+    size_t i = location * PME_ID_END_INVALID + id;
 
     if ((PMEStorageSizes[i] > 0) && (size > 0) && (size > PMEStorageSizes[i]))
         printf("asked to realloc %lu into %lu with ID %d\n", PMEStorageSizes[i], size, id);
 
     if (PMEStorageSizes[i] < size) // delete
     {
-        PMEMemoryFree(id, unusedTag, location);
+        PMEMemoryFree(id, location);
         if (size > 0)
         {
             if (debugMemoryPrint)

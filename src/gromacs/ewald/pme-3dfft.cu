@@ -78,7 +78,7 @@ gmx_pme_t *pme)
 
     setup->realGrid = (cufftReal *)pme->gpu->grid;
     assert(setup->realGrid);
-    setup->complexGrid = (cufftComplex *)PMEMemoryFetch(PME_ID_COMPLEX_GRID, 0, gridSizeComplex * sizeof(cufftComplex), ML_DEVICE);
+    setup->complexGrid = (cufftComplex *)PMEMemoryFetch(PME_ID_COMPLEX_GRID, gridSizeComplex * sizeof(cufftComplex), ML_DEVICE);
 
     /*
     result = cufftPlan3d(&setup->planR2C, setup->ndata_real[XX], setup->ndata_real[YY], setup->ndata_real[ZZ], CUFFT_R2C);
