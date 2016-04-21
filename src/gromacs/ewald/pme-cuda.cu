@@ -342,7 +342,6 @@ void *PMEMemoryFetch(PMEDataID id, size_t size, MemLocType location)
     // size == 0 => just return a current pointer
 
     //yupinov grid resize mistake!
-    assert(unusedTag == 0);
     cudaError_t stat = cudaSuccess;
     size_t i = location * PME_ID_END_INVALID + id;
 
