@@ -92,6 +92,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
     const int grid_index = 0;
     pme_gpu_copy_wrap_zones(pme);
     pme_gpu_copy_calcspline_constants(pme);
+    pme_gpu_copy_bspline_moduli(pme);
     pme_gpu_alloc_gather_forces(pme);
     pme_gpu_alloc_grid(pme, grid_index);
     pme_gpu_alloc_energy_virial(pme, grid_index);
@@ -145,7 +146,7 @@ void pme_gpu_deinit(//gmx_pme_gpu_t **pmeGPU,
         for (unsigned int location = 0; location < ML_END_INVALID; location++)
             for (unsigned int tag = 0; tag < MAXTAGS; tag++)
             {
-                PMEMemoryFetch((PMEDataID)id, tag, 0, (MemLocType)location); // dealloc
+                PMEMemoryFree((PMEDataID)id, tag, (MemLocType)location);
             }
 
     // FFT
@@ -315,10 +316,34 @@ void pme_gpu_copy_wrap_zones(gmx_pme_t *pme)
 #endif
 }
 
-static bool debugMemoryPrint = false;
+static gmx_bool debugMemoryPrint = false;
+
+void PMEMemoryFree(PMEDataID id, int unusedTag, MemLocType location)
+{
+    cudaError_t stat;
+    int i = (location * PME_ID_END_INVALID + id) * MAXTAGS + unusedTag;
+    if (PMEStoragePointers[i])
+    {
+        if (debugMemoryPrint)
+            printf("free! %p %d %d\n", PMEStoragePointers[i], id, location);
+        if (location == ML_DEVICE)
+        {
+            stat = cudaFree(PMEStoragePointers[i]);
+            CU_RET_ERR(stat, "PME cudaFree error");
+        }
+        else
+        {
+            stat = cudaFreeHost(PMEStoragePointers[i]);
+            CU_RET_ERR(stat, "PME cudaFreeHost error");
+        }
+        PMEStoragePointers[i] = NULL;
+    }
+}
 
 void *PMEMemoryFetch(PMEDataID id, int unusedTag, size_t size, MemLocType location)
 {
+    // size == 0 => just return a current pointer
+
     //yupinov grid resize mistake!
     assert(unusedTag == 0);
     cudaError_t stat = cudaSuccess;
@@ -327,24 +352,9 @@ void *PMEMemoryFetch(PMEDataID id, int unusedTag, size_t size, MemLocType locati
     if ((PMEStorageSizes[i] > 0) && (size > 0) && (size > PMEStorageSizes[i]))
         printf("asked to realloc %lu into %lu with ID %d\n", PMEStorageSizes[i], size, id);
 
-    if (PMEStorageSizes[i] < size || size == 0) //delete
+    if (PMEStorageSizes[i] < size) // delete
     {
-        if (PMEStoragePointers[i])
-        {
-            if (debugMemoryPrint)
-                printf("free! %p %d %d\n", PMEStoragePointers[i], id, location);
-            if (location == ML_DEVICE)
-            {
-                stat = cudaFree(PMEStoragePointers[i]);
-                CU_RET_ERR(stat, "PME cudaFree error");
-            }
-            else
-            {
-                stat = cudaFreeHost(PMEStoragePointers[i]);
-                CU_RET_ERR(stat, "PME cudaFreeHost error");
-            }
-            PMEStoragePointers[i] = NULL;
-        }
+        PMEMemoryFree(id, unusedTag, location);
         if (size > 0)
         {
             if (debugMemoryPrint)

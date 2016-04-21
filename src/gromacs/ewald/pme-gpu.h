@@ -38,6 +38,9 @@ CUDA_FUNC_QUALIFIER void pme_gpu_copy_wrap_zones(gmx_pme_t *CUDA_FUNC_ARGUMENT(p
 // copies the reciprocal box to the device (used in PME spread/solve/gather)
 CUDA_FUNC_QUALIFIER void pme_gpu_copy_recipbox(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
+// copies the bspline moduli to the device (used in PME solve)
+CUDA_FUNC_QUALIFIER void pme_gpu_copy_bspline_moduli(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+
 // copies the coordinates to the device (used in PME spread)
 CUDA_FUNC_QUALIFIER void pme_gpu_copy_coordinates(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 // copies the charges to the device (used in PME spread/gather)

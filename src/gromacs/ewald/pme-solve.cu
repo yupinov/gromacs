@@ -46,17 +46,51 @@ static const __constant__ real lb_scale_factor_symm_gpu[] = { 2.0/64, 12.0/64, 3
   tmp2 = sqrt_M_PI_d*mk*erfcf(mk);
   }*/
 
-void pme_gpu_alloc_energy_virial(struct gmx_pme_t *pme, const int grid_index)
+void pme_gpu_alloc_energy_virial(gmx_pme_t *pme, const int grid_index)
 {
     const int tag = 0;
     pme->gpu->energyAndVirialSize = 7 * sizeof(real); // 6 virial components + energy
     pme->gpu->energyAndVirial = (real *)PMEMemoryFetch(PME_ID_ENERGY_AND_VIRIAL, tag, pme->gpu->energyAndVirialSize, ML_DEVICE);
 }
 
-void pme_gpu_clear_energy_virial(struct gmx_pme_t *pme, const int grid_index)
+void pme_gpu_clear_energy_virial(gmx_pme_t *pme, const int grid_index)
 {
     cudaError_t stat = cudaMemsetAsync(pme->gpu->energyAndVirial, 0, pme->gpu->energyAndVirialSize, pme->gpu->pmeStream);
     CU_RET_ERR(stat, "PME solve energies/virial cudaMemsetAsync");
+}
+
+void pme_gpu_copy_bspline_moduli(gmx_pme_t *pme)
+{
+    //yupinov make it textures
+
+    for (int i = 0; i < DIM; i++)
+    {
+        int n;
+        PMEDataID id;
+        switch (i)
+        {
+            case XX:
+            n = pme->nkx;
+            id = PME_ID_BSP_MOD_XX;
+            break;
+
+            case YY:
+            n = pme->nky;
+            id = PME_ID_BSP_MOD_YY;
+            break;
+
+            case ZZ:
+            n = pme->nkz;
+            id = PME_ID_BSP_MOD_ZZ;
+            break;
+        }
+        int modSize = n * sizeof(real);
+        const int tag = 0;
+        real *bspMod_h = (real *)PMEMemoryFetch(id, tag, modSize, ML_HOST);
+        memcpy(bspMod_h, pme->bsp_mod[i], modSize);
+        real *bspMod_d = (real *)PMEMemoryFetch(id, tag, modSize, ML_DEVICE);
+        cu_copy_H2D_async(bspMod_d, bspMod_h, modSize, pme->gpu->pmeStream);
+    }
 }
 
 
@@ -335,6 +369,9 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     const int nMinor = !YZXOrdering ? pme->nkz : pme->nkx;
     const int nMajor = !YZXOrdering ? pme->nkx : pme->nky;
     const int nMiddle = !YZXOrdering ? pme->nky : pme->nkz;
+    const real *bspModMinor_d = (real *)PMEMemoryFetch(!YZXOrdering ? PME_ID_BSP_MOD_ZZ : PME_ID_BSP_MOD_XX, thread, 0, ML_DEVICE);
+    const real *bspModMiddle_d = (real *)PMEMemoryFetch(!YZXOrdering ? PME_ID_BSP_MOD_YY : PME_ID_BSP_MOD_ZZ, thread, 0, ML_DEVICE);
+    const real *bspModMajor_d = (real *)PMEMemoryFetch(!YZXOrdering ? PME_ID_BSP_MOD_XX : PME_ID_BSP_MOD_YY, thread, 0, ML_DEVICE);
 
     const real elfac = ONE_4PI_EPS0 / pme->epsilon_r; // make it a constant as well
 
@@ -343,26 +380,6 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     //const int n = local_ndata[majorDim] * local_ndata[middleDim] * local_ndata[minorDim];
     const int grid_n = local_size[majorDim] * local_size[middleDim] * local_size[minorDim];
     const int grid_size = grid_n * sizeof(float2);
-
-    int modSize;
-
-    modSize = nMinor * sizeof(real);
-    real *bspModMinor_h = (real *)PMEMemoryFetch(PME_ID_BSP_MOD_MINOR, thread, modSize, ML_HOST);
-    memcpy(bspModMinor_h, pme->bsp_mod[minorDim], modSize);
-    real *bspModMinor_d = (real *)PMEMemoryFetch(PME_ID_BSP_MOD_MINOR, thread, modSize, ML_DEVICE);
-    cu_copy_H2D_async(bspModMinor_d, bspModMinor_h, modSize, s);
-
-    modSize = nMajor * sizeof(real);
-    real *bspModMajor_h = (real *)PMEMemoryFetch(PME_ID_BSP_MOD_MAJOR, thread, modSize, ML_HOST);
-    memcpy(bspModMajor_h, pme->bsp_mod[majorDim], modSize);
-    real *bspModMajor_d = (real *)PMEMemoryFetch(PME_ID_BSP_MOD_MAJOR, thread, modSize, ML_DEVICE);
-    cu_copy_H2D_async(bspModMajor_d, bspModMajor_h, modSize, s);
-
-    modSize = nMiddle * sizeof(real);
-    real *bspModMiddle_h = (real *)PMEMemoryFetch(PME_ID_BSP_MOD_MIDDLE, thread, modSize, ML_HOST);
-    memcpy(bspModMiddle_h, pme->bsp_mod[middleDim], modSize);
-    real *bspModMiddle_d = (real *)PMEMemoryFetch(PME_ID_BSP_MOD_MIDDLE, thread, modSize, ML_DEVICE);
-    cu_copy_H2D_async(bspModMiddle_d, bspModMiddle_h, modSize, s);
 
     float2 *grid_d = (float2 *)PMEMemoryFetch(PME_ID_COMPLEX_GRID, thread, grid_size, ML_DEVICE); //yupinov no need for special function
     if (!pme->gpu->keepGPUDataBetweenR2CAndSolve)

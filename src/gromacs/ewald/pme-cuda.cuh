@@ -151,7 +151,7 @@ enum PMEDataID
 
     PME_ID_COEFFICIENT, //atc->coefficient
 
-    PME_ID_BSP_MOD_MINOR, PME_ID_BSP_MOD_MAJOR, PME_ID_BSP_MOD_MIDDLE,
+    PME_ID_BSP_MOD_XX, PME_ID_BSP_MOD_YY, PME_ID_BSP_MOD_ZZ,
 
     // solve_lj
     PME_ID_ENERGY,
@@ -176,6 +176,7 @@ enum MemLocType
 // ML_HOST under-used
 
 void *PMEMemoryFetch(PMEDataID id, int unusedTag, size_t size, MemLocType location);
+void PMEMemoryFree(PMEDataID id, int unusedTag, MemLocType location);
 
 void PMECopyConstant(const void *dest, const void *src, size_t size, cudaStream_t s); //H2D only
 #endif
