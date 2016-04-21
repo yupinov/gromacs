@@ -580,7 +580,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     // currently cuFFT is only used for a single rank
     //yupinov this variable doesn't actually work correctly :(
 
-    pme->nthread = (pme->bGPU) ? 1 : nthread;
+    pme->nthread = nthread;
 
     /* Check if any of the PME MPI ranks uses threads */
     use_threads = (pme->nthread > 1 ? 1 : 0);
