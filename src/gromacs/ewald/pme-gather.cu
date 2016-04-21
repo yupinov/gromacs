@@ -519,45 +519,11 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
     }
 
     // thetas
-    /*
-    real *theta_x_d = (real *)PMEFetchAndCopy(PME_ID_THX, theta_x_h, size_splines, s);
-    real *theta_y_d = (real *)PMEFetchAndCopy(PME_ID_THY, theta_y_h, size_splines, s);
-    real *theta_z_d = (real *)PMEFetchAndCopy(PME_ID_THZ, theta_z_h, size_splines, s);
-    real *dtheta_x_d = (real *)PMEFetchAndCopy(PME_ID_DTHX, dtheta_x_h, size_splines, s);
-    real *dtheta_y_d = (real *)PMEFetchAndCopy(PME_ID_DTHY, dtheta_y_h, size_splines, s);
-    real *dtheta_z_d = (real *)PMEFetchAndCopy(PME_ID_DTHZ, dtheta_z_h, size_splines, s);
-    */
     real *theta_d = (real *)PMEMemoryFetch(PME_ID_THETA, DIM * size_splines, ML_DEVICE);
-    real *theta_x_d = theta_d + 0 * order * n;
-    real *theta_y_d = theta_d + 1 * order * n;
-    real *theta_z_d = theta_d + 2 * order * n;
-
     real *dtheta_d = (real *)PMEMemoryFetch(PME_ID_DTHETA, DIM * size_splines, ML_DEVICE);
-    real *dtheta_x_d = dtheta_d + 0 * order * n;
-    real *dtheta_y_d = dtheta_d + 1 * order * n;
-    real *dtheta_z_d = dtheta_d + 2 * order * n;
-
-    // coefficients
-    //real *coefficients_d = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, size_coefficients, ML_DEVICE);
-    //yupinov
 
     // indices
     int *idx_d = (int *)PMEMemoryFetch(PME_ID_IDXPTR, DIM * size_indices, ML_DEVICE);
-
-    if (!pme->gpu->keepGPUDataBetweenC2RAndGather) // compare with spread and compacting
-    {
-        cu_copy_H2D_async(theta_x_d, theta_x_h, size_splines, s);
-        cu_copy_H2D_async(theta_y_d, theta_y_h, size_splines, s);
-        cu_copy_H2D_async(theta_z_d, theta_z_h, size_splines, s);
-
-        cu_copy_H2D_async(dtheta_x_d, dtheta_x_h, size_splines, s);
-        cu_copy_H2D_async(dtheta_y_d, dtheta_y_h, size_splines, s);
-        cu_copy_H2D_async(dtheta_z_d, dtheta_z_h, size_splines, s);
-
-        //yupinov cu_copy_H2D_async(pme->gpu->coefficients, coefficients_h, size_coefficients, s);
-
-        cu_copy_H2D_async(idx_d, idx_h, DIM * size_indices, s);
-    }
 
     const float3 nXYZ = {(real)nx, (real)ny, (real)nz};
 

@@ -993,6 +993,7 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
     {
+        //yupinov - (d)theta layout is broken; and what about idx?
         if (bSpread)
             cu_copy_D2H_async(pmegrid->grid, pme->gpu->grid, gridSize, s);
         for (int j = 0; j < DIM; ++j) //also breaking compacting in gather
@@ -1001,7 +1002,6 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
             cu_copy_D2H_async(atc->spline[0].dtheta[j], dtheta_d + j * n * order, size_order, s);
             cu_copy_D2H_async(atc->spline[0].theta[j], theta_d + j * n * order, size_order, s);
         }
-        //yupinov what about theta/dtheta/idx use in pme_realloc_atomcomm_things?
         cu_copy_D2H_async(atc->idx, idx_d, idx_size, s);
     }
     //yupinov check flags like bSpread etc. before copying...
