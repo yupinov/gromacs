@@ -243,10 +243,12 @@ int copy_pmegrid_to_fftgrid(struct gmx_pme_t *pme, real *pmegrid, real *fftgrid,
     /* Dimensions should be identical for A/B grid, so we just use A here */
     gmx_parallel_3dfft_real_limits_wrapper(pme, grid_index, local_fft_ndata, local_fft_offset, local_fft_size);
 
+    //printf("%d %d %d\n", local_fft_size[0], local_fft_size[1], local_fft_size[2]);
+
     local_pme_size[0] = pme->pmegrid_nx;
     local_pme_size[1] = pme->pmegrid_ny;
     local_pme_size[2] = pme->pmegrid_nz;
-
+    //printf("%d %d %d\n", local_pme_size[0], local_pme_size[1], local_pme_size[2]);
     /* The fftgrid is always 'justified' to the lower-left corner of the PME grid,
        the offset is identical, and the PME grid always has more data (due to overlap)
      */
@@ -909,9 +911,9 @@ void dump_local_fftgrid(struct gmx_pme_t *pme, const real *fftgrid, int grid_ind
               pme->pmegrid_start_ix,
               pme->pmegrid_start_iy,
               pme->pmegrid_start_iz,
-              range_x,
-              range_y,
-              range_z,
+              local_fft_ndata[XX],
+              local_fft_ndata[YY],
+              local_fft_ndata[ZZ],
               local_fft_size[YY],
               local_fft_size[ZZ],
               fftgrid);
