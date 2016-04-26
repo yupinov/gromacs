@@ -21,21 +21,6 @@
 
 #define SQRT_M_PI real(2.0f / M_2_SQRTPI)
 
-/*__device__ gmx_inline static void calc_exponentials_q_one(const real f, real &d, real &r, real &e)
-{
-  d = 1.0f/d;
-  r = expf(r);
-  e = f*r*d;
-  }*/
-
-/*__device__ gmx_inline static void calc_exponentials_lj_one(real &r, real &tmp2, real &d)
-{
-  d = 1.0f/d;
-  r = exp(r);
-  real mk = tmp2;
-  tmp2 = sqrt_M_PI_d*mk*erfcf(mk);
-  }*/
-
 void pme_gpu_alloc_energy_virial(gmx_pme_t *pme, const int gmx_unused grid_index)
 {
     pme->gpu->energyAndVirialSize = 7 * sizeof(real); // 6 virial components + energy
@@ -117,9 +102,7 @@ __global__ void pme_solve_kernel
     // then the grid is in YZX order, so X is a contihuous dimension
 
     //const int blockId = blockIdx.x + blockIdx.y * gridDim.x + gridDim.x * gridDim.y * blockIdx.z;
-    const int threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
-            + (threadIdx.y * blockDim.x)
-            + threadIdx.x;
+    const int threadLocalId = (threadIdx.y * blockDim.x) + threadIdx.x;
     //const int blockSize = (blockDim.x * blockDim.y * blockDim.z); // == cellsPerBlock
     const int blockSize = THREADS_PER_BLOCK;
     //const int threadId = blockId * blockSize + threadLocalId;
@@ -150,8 +133,6 @@ __global__ void pme_solve_kernel
         // check Y in XYZ
         if (!YZXOrdering)
             mMiddle = (kMiddle < maxkMiddle) ? kMiddle : (kMiddle - nMiddle);
-
-
 
         const real bMajorMiddle = real(M_PI) * volume * BSplineModuleMajor[kMajor] * BSplineModuleMiddle[kMiddle];
 
@@ -269,14 +250,16 @@ __global__ void pme_solve_kernel
             // 3.5k smem per block - a serious limiter!
 
             // 7-thread reduction in shared memory inspired by reduce_force_j_generic
-            virialAndEnergyShared[threadLocalId + 0 * blockSize] = virxx;
-            virialAndEnergyShared[threadLocalId + 1 * blockSize] = viryy;
-            virialAndEnergyShared[threadLocalId + 2 * blockSize] = virzz;
-            virialAndEnergyShared[threadLocalId + 3 * blockSize] = virxy;
-            virialAndEnergyShared[threadLocalId + 4 * blockSize] = virxz;
-            virialAndEnergyShared[threadLocalId + 5 * blockSize] = viryz;
-            virialAndEnergyShared[threadLocalId + 6 * blockSize] = energy;
-
+            if (threadLocalId < blockSize)
+            {
+                virialAndEnergyShared[threadLocalId + 0 * blockSize] = virxx;
+                virialAndEnergyShared[threadLocalId + 1 * blockSize] = viryy;
+                virialAndEnergyShared[threadLocalId + 2 * blockSize] = virzz;
+                virialAndEnergyShared[threadLocalId + 3 * blockSize] = virxy;
+                virialAndEnergyShared[threadLocalId + 4 * blockSize] = virxz;
+                virialAndEnergyShared[threadLocalId + 5 * blockSize] = viryz;
+                virialAndEnergyShared[threadLocalId + 6 * blockSize] = energy;
+            }
             __syncthreads();
 
             // reduce every component to fit into warp_size
@@ -285,15 +268,14 @@ __global__ void pme_solve_kernel
 #pragma unroll
                 for (int i = 0; i < sizing; i++)
                 {
-                    if (threadLocalId < s) //again, split per threads ?
+                    if (threadLocalId < s) //split per threads ?
                         virialAndEnergyShared[i * blockSize + threadLocalId] += virialAndEnergyShared[i * blockSize + threadLocalId + s];
                 }
                 __syncthreads();
             }
 
-            const int threadsPerComponent = warp_size / sizing; // this is also the stride
-            // there is be a problem here, but not the sole problem!
-            // I've seen wrong energy on 1st step withCPU FFT
+            const int threadsPerComponent = warp_size / sizing; // this is also the stride, will be 32 / 7 = 4
+            const int contributionsPerThread = warp_size / threadsPerComponent; // will be 32 / 4 = 8
             if (threadLocalId < sizing * threadsPerComponent)
             {
                 const int componentIndex = threadLocalId / threadsPerComponent;
@@ -301,23 +283,26 @@ __global__ void pme_solve_kernel
 
                 float sum = 0.0f;
 #pragma unroll
-                for (int j = 0; j < sizing; j++)
+                for (int j = 0; j < contributionsPerThread; j++)
                 {
                     sum += virialAndEnergyShared[componentIndex * blockSize + j * threadsPerComponent + threadComponentOffset];
                 }
                 // write to global memory
                 atomicAdd(virialAndEnergy + componentIndex, sum);
             }
+
             /*
             // a naive shared mem reduction
-            virialAndEnergyShared[sizing * threadLocalId + 0] = virxx;
-            virialAndEnergyShared[sizing * threadLocalId + 1] = viryy;
-            virialAndEnergyShared[sizing * threadLocalId + 2] = virzz;
-            virialAndEnergyShared[sizing * threadLocalId + 3] = virxy;
-            virialAndEnergyShared[sizing * threadLocalId + 4] = virxz;
-            virialAndEnergyShared[sizing * threadLocalId + 5] = viryz;
-            virialAndEnergyShared[sizing * threadLocalId + 6] = energy;
-
+            if (threadLocalId < blockSize)
+            {
+                virialAndEnergyShared[sizing * threadLocalId + 0] = virxx;
+                virialAndEnergyShared[sizing * threadLocalId + 1] = viryy;
+                virialAndEnergyShared[sizing * threadLocalId + 2] = virzz;
+                virialAndEnergyShared[sizing * threadLocalId + 3] = virxy;
+                virialAndEnergyShared[sizing * threadLocalId + 4] = virxz;
+                virialAndEnergyShared[sizing * threadLocalId + 5] = viryz;
+                virialAndEnergyShared[sizing * threadLocalId + 6] = energy;
+            }
             __syncthreads();
 #pragma unroll
             for (unsigned int stride = 1; stride < blockSize; stride <<= 1)
@@ -397,10 +382,11 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     const int gridLineSize = local_size[minorDim];
     const int gridLinesPerBlock = max(maxBlockSize / gridLineSize, 1);
     const int blocksPerGridLine = (gridLineSize + maxBlockSize - 1) / maxBlockSize; // rounded up
-    dim3 threads((blocksPerGridLine > 1) ? maxBlockSize : gridLineSize, gridLinesPerBlock);
-    GMX_RELEASE_ASSERT(threads.x * threads.y * threads.z <= maxBlockSize, "Too many threads per PME GPU solve block");
-    //const int blockSize = threads.x * threads.y * threads.z; // active threads per blocks
-    //this is stupid
+    dim3 threads((maxBlockSize + gridLinesPerBlock - 1) / gridLinesPerBlock, gridLinesPerBlock);
+    const int blockSize = threads.x * threads.y * threads.z;
+    GMX_RELEASE_ASSERT(blockSize >= maxBlockSize, "wrong PME GPU solve launch parameters");
+    // we do this because we want to have spare threads to zero all the shared memory which we use in CC2.0 shared mem reduction
+    // this is stupid though
 
     dim3 blocks(blocksPerGridLine,
                 (local_ndata[middleDim] + gridLinesPerBlock - 1) / gridLinesPerBlock, // rounded up middle dimension block number
@@ -508,8 +494,6 @@ void pme_gpu_get_energy_virial(gmx_pme_t *pme)
     energy += energyAndVirial_h[j++];
     for (j = 0; j < 7; j++)
         GMX_RELEASE_ASSERT(!isnan(energyAndVirial_h[j]), "PME GPU energy calculation is broken");
-    //printf("receviing %g\n", energy);
-
 
     work_vir_q[XX][XX] = 0.25 * virxx;
     work_vir_q[YY][YY] = 0.25 * viryy;
