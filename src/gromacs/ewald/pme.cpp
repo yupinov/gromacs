@@ -699,6 +699,11 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     // put a log line about our final CPU/GPU decision?
     // gmx_warning("PME will run on %s", pme->bGPU ? "GPU" : "CPU");
 
+    GMX_RELEASE_ASSERT(pme->bGPU== (bPMEGPU ? 1 : 0), "PME GPU does not support some of the input pparameters");
+
+
+
+
     pme->bGPUSingle = pme->bGPU && (pme->nnodes == 1);
     // a convenience variable
 
@@ -1140,6 +1145,20 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                 {
                     int loop_count;
 
+/*
+#pragma omp barrier
+if (thread == 0)
+   dump_local_fftgrid(pme, fftgrid, grid_index);
+#pragma omp barrier
+
+#pragma omp barrier
+if (thread == 0)
+    dump_local_fftgrid(pme, (const real *)cfftgrid, grid_index);
+#pragma omp barrier
+*/
+
+
+
                     /* do 3d-fft */
                     if (thread == 0)
                     {
@@ -1152,6 +1171,13 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                         wallcycle_stop(wcycle, ewcPME_FFT);
                     }
                     where();
+
+/*
+#pragma omp barrier
+if (thread == 0)
+    dump_local_fftgrid(pme, (const real *)cfftgrid, grid_index);
+#pragma omp barrier
+*/
 
                     /* solve in k-space for our local cells */
                     if (thread == 0)
@@ -1823,6 +1849,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                              keepGPUDataBetweenSolveAndC2R,
                              keepGPUDataBetweenC2RAndGather
                              );
+        //yupinov allocate enoguh space for copying the grid back
 
         if (flags & GMX_PME_SPREAD)
         {
@@ -1879,24 +1906,28 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
             {
                 int loop_count;
 
-                /*
+/*
                 #pragma omp barrier
                 if (thread == 0)
                     dump_local_fftgrid(pme, fftgrid, grid_index);
                 #pragma omp barrier
-                */
 
-                /* do 3d-fft */
-                gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_REAL_TO_COMPLEX,
-                                           thread, wcycle);
-                where();
-
-                /*
                 #pragma omp barrier
                 if (thread == 0)
                     dump_local_fftgrid(pme, (const real *)cfftgrid, grid_index);
                 #pragma omp barrier
-                */
+*/
+                /* do 3d-fft */
+                gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_REAL_TO_COMPLEX,
+                                            wcycle);
+                where();
+
+                    /*
+                #pragma omp barrier
+                if (thread == 0)
+                    dump_local_fftgrid(pme, (const real *)cfftgrid, grid_index);
+                #pragma omp barrier
+                    */
 
 
                 /* solve in k-space for our local cells */
@@ -1949,7 +1980,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                     where();
                 }
                 gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_COMPLEX_TO_REAL,
-                                          thread, wcycle);
+                                          wcycle);
                 /*
                 #pragma omp barrier
                 if (thread == 0)

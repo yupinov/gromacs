@@ -24,7 +24,7 @@
 #define SQRT_M_PI real(2.0f / M_2_SQRTPI)
 
 /* Pascal triangle coefficients used in solve_pme_lj_yzx, only need to do 4 calculations due to symmetry */
-static const __constant__ real lb_scale_factor_symm_gpu[] = { 2.0/64, 12.0/64, 30.0/64, 20.0/64 };
+// static const __constant__ real lb_scale_factor_symm_gpu[] = { 2.0/64, 12.0/64, 30.0/64, 20.0/64 };
 // copied from pme-internal
 // have to be rounded to floats
 
@@ -135,11 +135,9 @@ __global__ void pme_solve_kernel
     //const int threadId = blockId * blockSize + threadLocalId;
 
 
-    int maxkMinor = (nMinor + 1) / 2;
-    if (!YZXOrdering) //yupinov - don't really understand it
-        maxkMinor = (nMinor + 2) / 2; // {[0 25]; -26} fixed, no maxkx required at all
-    int maxkMajor = (nMajor + 1) / 2;
-    //int maxkz = nz / 2 + 1;
+    int maxkMajor = (nMajor + 1) / 2; //X or Y
+    int maxkMiddle = (nMiddle + 1) / 2; //Y OR Z => only check for !YZX
+    int maxkMinor = (nMinor + 1) / 2; //Z or X => only check for YZX
 
     const int sizing = 7;
 
@@ -153,13 +151,17 @@ __global__ void pme_solve_kernel
     if ((indexMajor < localCountMajor) && (indexMiddle < localCountMiddle) && (indexMinor < localCountMinor))
     {
         const int kMajor = indexMajor + localOffsetMajor;
+        // check X in XYZ or Y in YZX
         const real mMajor = (kMajor < maxkMajor) ? kMajor : (kMajor - nMajor);
 
         const int kMiddle = indexMiddle + localOffsetMiddle;
         real mMiddle = kMiddle;
 
+        // check Y in XYZ
         if (!YZXOrdering)
-            mMiddle = (kMiddle < (nMiddle + 1) / 2) ? kMiddle : (kMiddle - nMiddle);
+            mMiddle = (kMiddle < maxkMiddle) ? kMiddle : (kMiddle - nMiddle);
+
+
 
         const real bMajorMiddle = real(M_PI) * volume * BSplineModuleMajor[kMajor] * BSplineModuleMiddle[kMiddle];
 
@@ -171,13 +173,13 @@ __global__ void pme_solve_kernel
         /* We should skip the k-space point (0,0,0) */
         /* Note that since here x is the minor index, local_offset[XX]=0 */
 
-        //yupinov fix dimension terminology
-
-        int kMinor = localOffsetMinor + indexMinor;
+        const unsigned int kMinor = localOffsetMinor + indexMinor;
         const gmx_bool notZeroPoint = (kMinor > 0 || kMajor > 0 || kMiddle > 0);
-        real mMinor, mhxk, mhyk, mhzk, m2k;
+        real mMinor = kMinor, mhxk, mhyk, mhzk, m2k;
 
-        mMinor = kMinor < maxkMinor ? kMinor : (kMinor - nMinor);
+        // check X in YZX
+        if (YZXOrdering)
+            mMinor = (kMinor < maxkMinor) ? kMinor : (kMinor - nMinor);
         real mX, mY, mZ;
         if (YZXOrdering)
         {
@@ -192,18 +194,20 @@ __global__ void pme_solve_kernel
             mZ = mMinor;
         }
 
+        const gmx_bool debugPrint = false;//(mX== 7) && (mY == 7) && (mZ == 7);
+
         /* 0.5 correction for corner points of a Z dimension */
         real corner_fac = 1.0f;
         if (YZXOrdering)
         {
-            if (kMiddle == 0 || kMiddle == (nMiddle + 1) / 2)
+            if (kMiddle == 0 || kMiddle == maxkMiddle)
             {
                 corner_fac = 0.5f;
             }
         }
         else
         {
-            if (kMinor == 0 || kMinor == (nMinor + 1) / 2)
+            if (kMinor == 0 || kMinor == maxkMinor)
             {
                 corner_fac = 0.5f;
             }
@@ -225,9 +229,15 @@ __global__ void pme_solve_kernel
             real etermk = elfac * tmp1 * denom;
 
             float2 gridValue = *p0;
+            if (debugPrint)
+                printf("grid %g %g\n", gridValue.x, gridValue.y);
+
             gridValue.x *= etermk;
             gridValue.y *= etermk;
             *p0 = gridValue;
+
+            if (debugPrint)
+                printf("grid %g %g\n", gridValue.x, gridValue.y);
 
             if (bEnerVir)
             {
@@ -236,7 +246,8 @@ __global__ void pme_solve_kernel
                 real vfactor = (ewaldFactor + 1.0f / m2k) * 2.0f;
                 real ets2 = corner_fac * tmp1k;
                 energy = ets2;
-
+                if (debugPrint)
+                    printf("energy %g\n", energy);
                 real ets2vf  = ets2 * vfactor;
 
                 virxx   = ets2vf * mhxk * mhxk - ets2;
@@ -350,8 +361,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                                       local_ndata,
                                       local_offset,
                                       local_size);
-    //yupinov replace with gmx_parallel_3dfft_complex_limits_gpu
-
+    //here we have correct complex ndata and sizes for CPU/GPU FFT
 
 
     /* true: y major, z middle, x minor or continuous - the CPU FFT way */
@@ -361,9 +371,16 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     const int minorDim = !YZXOrdering ? ZZ : XX;
     const int middleDim = !YZXOrdering ? YY : ZZ;
     const int majorDim = !YZXOrdering ? XX : YY;
+
     const int nMinor = !YZXOrdering ? pme->nkz : pme->nkx;
     const int nMajor = !YZXOrdering ? pme->nkx : pme->nky;
     const int nMiddle = !YZXOrdering ? pme->nky : pme->nkz;
+
+    /*
+    const int nMinor =  local_ndata[minorDim]; //!YZXOrdering ? pme->nkz : pme->nkx;
+    const int nMajor = local_ndata[majorDim];
+    const int nMiddle = local_ndata[middleDim]; //these are basic sizes, so what
+    */
     const real *bspModMinor_d = (real *)PMEMemoryFetch(!YZXOrdering ? PME_ID_BSP_MOD_ZZ : PME_ID_BSP_MOD_XX, 0, ML_DEVICE);
     const real *bspModMiddle_d = (real *)PMEMemoryFetch(!YZXOrdering ? PME_ID_BSP_MOD_YY : PME_ID_BSP_MOD_ZZ, 0, ML_DEVICE);
     const real *bspModMajor_d = (real *)PMEMemoryFetch(!YZXOrdering ? PME_ID_BSP_MOD_XX : PME_ID_BSP_MOD_YY, 0, ML_DEVICE);
@@ -378,18 +395,17 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
 
     float2 *grid_d = (float2 *)PMEMemoryFetch(PME_ID_COMPLEX_GRID, grid_size, ML_DEVICE); //yupinov no need for special function
     if (!pme->gpu->keepGPUDataBetweenR2CAndSolve)
-        cu_copy_H2D_async(grid_d, grid, grid_size, s);
-
+    {
+        cu_copy_H2D_async(grid_d, grid, grid_size, s); //sync...
+    }
     const real ewaldFactor = (M_PI * M_PI) / (ewaldcoeff * ewaldcoeff);
 
     // Z-dimension is too small in CUDA limitations (64 on CC30?), so instead of major-middle-minor sizing we do minor-middle-major
     const int blockSize = THREADS_PER_BLOCK;
 
-    //yupinov check ALIGNMENT with CPU/GPU FFT grid sizes!
     const int gridLineSize = local_size[minorDim];
     const int gridLinesPerBlock = max(blockSize / gridLineSize, 1);
 
-    //yupinov check all block dimensions for rounding
     dim3 blocks((gridLineSize + blockSize - 1) / blockSize,  // rounded up blocks per grid line
                 (local_ndata[middleDim] + gridLinesPerBlock - 1) / gridLinesPerBlock, // rounded up middle dimension block number
                 local_ndata[majorDim]);

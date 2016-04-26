@@ -169,36 +169,36 @@ inline int gmx_parallel_3dfft_complex_limits_wrapper(struct gmx_pme_t *pme,
     return res;
 }
 
+#include "gromacs/utility/gmxomp.h"
+
 inline int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t gmx_unused *pme,
                            int grid_index,
                            enum gmx_fft_direction gmx_unused  dir,
-                           int           gmx_unused           thread,
                            gmx_wallcycle_t         wcycle)
 {
     int res = 0;
+    int thread;
     gmx_bool bGPUFFT = pme->bGPUFFT;
     int wcycle_id = ewcPME_FFT;
     int wsubcycle_id = (dir == GMX_FFT_REAL_TO_COMPLEX) ? ewcsPME_FFT_R2C : ewcsPME_FFT_C2R;  //yupinov - this is 1 thread!
 
-    if (thread == 0)
-    {
-        wallcycle_start(wcycle, wcycle_id);
-        wallcycle_sub_start(wcycle, wsubcycle_id);
-    }
+    wallcycle_start(wcycle, wcycle_id);
+    wallcycle_sub_start(wcycle, wsubcycle_id);
 
     if (bGPUFFT)
-    {
-        if (thread == 0)
-            gmx_parallel_3dfft_execute_gpu(pme->pfft_setup_gpu[grid_index], dir, pme);
-    }
+        gmx_parallel_3dfft_execute_gpu(pme->pfft_setup_gpu[grid_index], dir, pme);
     else
-        res = gmx_parallel_3dfft_execute(pme->pfft_setup[grid_index], dir, thread, wcycle);
-
-    if (thread == 0)
     {
-        wallcycle_stop(wcycle, wcycle_id);
-        wallcycle_sub_stop(wcycle, wsubcycle_id);
+#pragma omp parallel num_threads(pme->nthread) private(thread)
+        {
+            thread = gmx_omp_get_thread_num();
+
+            res = gmx_parallel_3dfft_execute(pme->pfft_setup[grid_index], dir, thread, wcycle);
+        }
     }
+
+    wallcycle_stop(wcycle, wcycle_id);
+    wallcycle_sub_stop(wcycle, wsubcycle_id);
 
     return res;
 }

@@ -995,7 +995,7 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     {
         //yupinov - (d)theta layout is broken; and what about idx?
         if (bSpread)
-            cu_copy_D2H_async(pmegrid->grid, pme->gpu->grid, gridSize, s);
+            cu_copy_D2H_async(pmegrid->grid, pme->gpu->grid, gridSize, s); //yupinov - should sync on CPU FFT
         for (int j = 0; j < DIM; ++j) //also breaking compacting in gather
         //and why not just check bGPUSingle here?
         {
@@ -1004,6 +1004,5 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
         }
         cu_copy_D2H_async(atc->idx, idx_d, idx_size, s);
     }
-    //yupinov check flags like bSpread etc. before copying...
 }
 
