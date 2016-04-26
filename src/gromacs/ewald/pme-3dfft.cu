@@ -9,16 +9,6 @@
 
 struct gmx_parallel_3dfft_gpu
 {
-    real *hostRealGrid;
-    t_complex *hostComplexGrid;
-
-    /* unused */
-    MPI_Comm                  comm[2];
-    gmx_bool                  bReproducible;
-
-    ivec                      complex_order;
-    ivec                      local_offset;
-
     ivec ndata_real;
     ivec size_real;
     ivec size_complex;
@@ -27,29 +17,16 @@ struct gmx_parallel_3dfft_gpu
     cufftHandle planC2R;
     cufftReal *realGrid;
     cufftComplex *complexGrid;
+
+    /* unused */
+    ivec                      complex_order;
+    ivec                      local_offset;
 };
 
-//yupinov warn against double precision
-
-void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup,
-                                   ivec                      ndata,
-                                   real **real_data,
-                                   t_complex **complex_data,
-                                   MPI_Comm                  comm[2],
-gmx_bool                  bReproducible,
-gmx_pme_t *pme)
+void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndata, gmx_pme_t *pme)
 {
     cufftResult_t result;
     gmx_parallel_3dfft_gpu_t setup = new gmx_parallel_3dfft_gpu;
-
-    //yupinov FIXME: this copies the already setup pointer, to check them after execute
-
-    setup->hostRealGrid = *real_data;
-    setup->hostComplexGrid = *complex_data;
-
-    setup->comm[0] = comm[0];
-    setup->comm[1] = comm[1];
-    setup->bReproducible = bReproducible;
 
     setup->ndata_real[0] = ndata[XX];
     setup->ndata_real[1] = ndata[YY];
@@ -71,7 +48,7 @@ gmx_pme_t *pme)
     memcpy(setup->size_complex, setup->size_real, sizeof(setup->size_real));
     GMX_RELEASE_ASSERT(setup->size_complex[ZZ] % 2 == 0, "odd inplace cuFFT dimension size");
     setup->size_complex[ZZ] /= 2;
-    //this is alright because Z includes overlap
+    // this is alright because Z includes overlap
 
     const int gridSizeComplex = setup->size_complex[XX] * setup->size_complex[YY] * setup->size_complex[ZZ];
     const int gridSizeReal = setup->size_real[XX] * setup->size_real[YY] * setup->size_real[ZZ];
@@ -158,21 +135,19 @@ void gmx_parallel_3dfft_complex_limits_gpu(gmx_parallel_3dfft_gpu_t      setup,
     setup->local_offset[2] = local_offset[2];
 }
 
-void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
+void gmx_parallel_3dfft_execute_gpu(const gmx_parallel_3dfft_gpu_t &setup,
                                    enum gmx_fft_direction  dir,
                                    gmx_pme_t *pme)
 {
-    cudaStream_t s = pme->gpu->pmeStream;
-
-    gmx_parallel_3dfft_gpu_t setup = pfft_setup;
-
+    /*
     const int gridSizeComplex = setup->size_complex[XX] * setup->size_complex[YY] * setup->size_complex[ZZ] * sizeof(cufftComplex);
     const int gridSizeReal = setup->size_real[XX] * setup->size_real[YY] * setup->size_real[ZZ] * sizeof(cufftReal);
-
+    */
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {      
-        if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
-            cu_copy_H2D_async(setup->realGrid, setup->hostRealGrid, gridSizeReal, s);
+        //if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
+        //    cu_copy_H2D(setup->realGrid, setup->hostRealGrid, gridSizeReal);
+        // CPU spread and GPU FFT? unlikely, only for debug
 
         pme_gpu_timing_start(pme, ewcsPME_FFT_R2C);
 
@@ -185,8 +160,9 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
     }
     else
     {
-        if (!pme->gpu->keepGPUDataBetweenSolveAndC2R)
-            cu_copy_H2D_async(setup->complexGrid, setup->hostComplexGrid, gridSizeComplex, s);
+        //if (!pme->gpu->keepGPUDataBetweenSolveAndC2R)
+        //    cu_copy_H2D(setup->complexGrid, setup->hostComplexGrid, gridSizeComplex);
+        // CPU solve and GPU FFT? unlikely, only for debug
 
         pme_gpu_timing_start(pme, ewcsPME_FFT_C2R);
 
@@ -197,18 +173,20 @@ void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t    pfft_setup,
         if (result)
             fprintf(stderr, "cufft C2R error %d\n", result);
     }
-
+    /*
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {
-        cudaDeviceSynchronize();
+        // GPU FFT and CPU solve - unlikely, only for debug
         if (!pme->gpu->keepGPUDataBetweenR2CAndSolve)
-            cu_copy_D2H/*_async*/(setup->hostComplexGrid, setup->complexGrid, gridSizeComplex);//, s);
+            cu_copy_D2H(setup->hostComplexGrid, setup->complexGrid, gridSizeComplex);
     }
     else
     {
+        //GPU FFT and CPU gather - unlikely, only for debug
         if (!pme->gpu->keepGPUDataBetweenC2RAndGather)
-            cu_copy_D2H_async(setup->hostRealGrid, setup->realGrid, gridSizeReal, s);
+            cu_copy_D2H(setup->hostRealGrid, setup->realGrid, gridSizeReal);
     }
+    */
 }
 
 void gmx_parallel_3dfft_destroy_gpu(const gmx_parallel_3dfft_gpu_t &pfft_setup)

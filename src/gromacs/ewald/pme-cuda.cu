@@ -105,24 +105,9 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         ndata[0]    = pme->nkx;
         ndata[1]    = pme->nky;
         ndata[2]    = pme->nkz;
-        const gmx_bool bReproducible = false;
         for (int i = 0; i < pme->ngrids; ++i)
         {
-            /*
-            if ((i <  DO_Q && EEL_PME(ir->coulombtype) && (i == 0 ||
-                                                           bFreeEnergy_q)) ||
-                (i >= DO_Q && EVDW_PME(ir->vdwtype) && (i == 2 ||
-                                                        bFreeEnergy_lj ||
-                                                        ir->ljpme_combination_rule == eljpmeLB)))
-            */
-            if (pme->pfft_setup[i])  //yupinov does not do proper separate init
-            {
-                 gmx_parallel_3dfft_init_gpu(&pme->pfft_setup_gpu[i], ndata,
-                                                 &pme->fftgrid[i], &pme->cfftgrid[i],
-                                                 pme->mpi_comm_d,
-                                                 bReproducible, pme);
-
-            }
+            gmx_parallel_3dfft_init_gpu(&pme->pfft_setup_gpu[i], ndata, pme);
         }
     }
 

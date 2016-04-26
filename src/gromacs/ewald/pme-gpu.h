@@ -61,13 +61,9 @@ CUDA_FUNC_QUALIFIER void pme_gpu_alloc_grid(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme), 
 CUDA_FUNC_QUALIFIER void pme_gpu_alloc_energy_virial(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme), const int CUDA_FUNC_ARGUMENT(grid_index)) CUDA_FUNC_TERM
 CUDA_FUNC_QUALIFIER void pme_gpu_alloc_gather_forces(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
-CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t gmx_unused *pfft_setup,
-                               ivec        gmx_unused              ndata,
-                               real gmx_unused **real_data,
-                               t_complex gmx_unused **complex_data,
-                               MPI_Comm  gmx_unused                comm[2],
-                               gmx_bool    gmx_unused              bReproducible,
-                                gmx_pme_t *pme)  CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *CUDA_FUNC_ARGUMENT(pfft_setup),
+                               ivec CUDA_FUNC_ARGUMENT(ndata),
+                               gmx_pme_t *CUDA_FUNC_ARGUMENT(pme))  CUDA_FUNC_TERM
 
 CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_real_limits_gpu(gmx_parallel_3dfft_gpu_t gmx_unused pfft_setup,
                                ivec          gmx_unused            local_ndata,
@@ -81,9 +77,9 @@ CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_complex_limits_gpu(gmx_parallel_3dff
                                   ivec       gmx_unused               local_offset,
                                   ivec       gmx_unused               local_size) CUDA_FUNC_TERM
 
-CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_execute_gpu(gmx_parallel_3dfft_gpu_t gmx_unused pfft_setup,
-                           enum gmx_fft_direction gmx_unused dir,
-                            gmx_pme_t *pme) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_execute_gpu(const gmx_parallel_3dfft_gpu_t &CUDA_FUNC_ARGUMENT(pfft_setup),
+                           enum gmx_fft_direction CUDA_FUNC_ARGUMENT(dir),
+                            gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 
 CUDA_FUNC_QUALIFIER void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
