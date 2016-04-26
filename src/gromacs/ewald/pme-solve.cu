@@ -512,7 +512,7 @@ void pme_gpu_get_energy_virial(gmx_pme_t *pme)
         virxz += energyAndVirial_h[j++];
         viryz += energyAndVirial_h[j++];
         energy += energyAndVirial_h[j++];
-        printf("receviing %g\n", energy);
+        //printf("receviing %g\n", energy);
     }
 
     work_vir_q[XX][XX] = 0.25 * virxx;
