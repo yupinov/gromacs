@@ -117,6 +117,56 @@
 #include "pme-spline-work.h"
 #include "pme-spread.h"
 
+int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t gmx_unused *pme,
+                           int grid_index,
+                           enum gmx_fft_direction gmx_unused  dir,
+                           gmx_wallcycle_t         wcycle)
+{
+    int res = 0;
+    int thread;
+
+    int wcycle_id = ewcPME_FFT;
+    int wsubcycle_id = (dir == GMX_FFT_REAL_TO_COMPLEX) ? ewcsPME_FFT_R2C : ewcsPME_FFT_C2R;  //yupinov - this is 1 thread!
+
+    wallcycle_start(wcycle, wcycle_id);
+    wallcycle_sub_start(wcycle, wsubcycle_id);
+
+    if (pme->bGPUFFT)
+        gmx_parallel_3dfft_execute_gpu(pme->pfft_setup_gpu[grid_index], dir, pme);
+    else
+    {
+#pragma omp parallel num_threads(pme->nthread) private(thread)
+        {
+            thread = gmx_omp_get_thread_num();
+            res = gmx_parallel_3dfft_execute(pme->pfft_setup[grid_index], dir, thread, wcycle);
+        }
+    }
+
+    wallcycle_stop(wcycle, wcycle_id);
+    wallcycle_sub_stop(wcycle, wsubcycle_id);
+
+    return res;
+}
+
+int solve_pme_yzx_wrapper(struct gmx_pme_t *pme, t_complex *grid,
+                  real ewaldcoeff, real vol,
+                  gmx_bool bEnerVir)
+{
+    int res = 0;
+    int thread;
+    if (pme->bGPU)
+        solve_pme_gpu(pme, grid, ewaldcoeff, vol, bEnerVir);
+    else
+    {
+#pragma omp parallel num_threads(pme->nthread) private(thread)
+        {
+            thread = gmx_omp_get_thread_num();
+            res = solve_pme_yzx(pme, grid, ewaldcoeff, vol, bEnerVir, pme->nthread, thread);
+        }
+    }
+    return res;
+}
+
 /*! \brief Number of bytes in a cache line.
  *
  * Must also be a multiple of the SIMD and SIMD4 register size, to
@@ -1941,8 +1991,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                     loop_count =
                         solve_pme_yzx_wrapper(pme, cfftgrid, ewaldcoeff_q,
                                       box[XX][XX]*box[YY][YY]*box[ZZ][ZZ],
-                                      bCalcEnerVir,
-                                      pme->nthread, thread);
+                                      bCalcEnerVir);
                      //if (pme->bGPU && bCalcEnerVir)
                      //   pme_gpu_get_energy_virial(pme);
                 }

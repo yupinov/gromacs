@@ -45,7 +45,6 @@ gmx_pme_t *pme)
     //yupinov FIXME: this copies the already setup pointer, to check them after execute
 
     setup->hostRealGrid = *real_data;
-
     setup->hostComplexGrid = *complex_data;
 
     setup->comm[0] = comm[0];

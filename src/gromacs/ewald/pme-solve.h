@@ -39,8 +39,6 @@
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
 
-#include "pme-gpu.h"
-
 struct pme_solve_work_t
 {
     /* work data for solve_pme */
@@ -115,19 +113,6 @@ inline int solve_pme_lj_yzx_wrapper(struct gmx_pme_t *pme, t_complex **grid, gmx
     else
     */
         res = solve_pme_lj_yzx(pme, grid, bLB,ewaldcoeff, vol, bEnerVir, nthread, thread);
-    return res;
-}
-
-inline int solve_pme_yzx_wrapper(struct gmx_pme_t *pme, t_complex *grid,
-                  real ewaldcoeff, real vol,
-                  gmx_bool bEnerVir,
-                  int nthread, int thread)
-{
-    int res = 0;
-    if (pme->bGPU)
-        solve_pme_gpu(pme, grid, ewaldcoeff, vol, bEnerVir);
-    else
-        res = solve_pme_yzx(pme, grid, ewaldcoeff, vol, bEnerVir, nthread, thread);
     return res;
 }
 

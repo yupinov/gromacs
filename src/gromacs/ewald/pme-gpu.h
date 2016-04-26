@@ -4,6 +4,7 @@
 #include "pme-internal.h"
 #include "gromacs/gpu_utils/gpu_macros.h"
 
+
 //yupinov also lots of unused parameters warnings!
 
 /*
@@ -171,37 +172,14 @@ inline int gmx_parallel_3dfft_complex_limits_wrapper(struct gmx_pme_t *pme,
 
 #include "gromacs/utility/gmxomp.h"
 
-inline int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t gmx_unused *pme,
+int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t gmx_unused *pme,
                            int grid_index,
                            enum gmx_fft_direction gmx_unused  dir,
-                           gmx_wallcycle_t         wcycle)
-{
-    int res = 0;
-    int thread;
-    gmx_bool bGPUFFT = pme->bGPUFFT;
-    int wcycle_id = ewcPME_FFT;
-    int wsubcycle_id = (dir == GMX_FFT_REAL_TO_COMPLEX) ? ewcsPME_FFT_R2C : ewcsPME_FFT_C2R;  //yupinov - this is 1 thread!
+                           gmx_wallcycle_t         wcycle);
 
-    wallcycle_start(wcycle, wcycle_id);
-    wallcycle_sub_start(wcycle, wsubcycle_id);
-
-    if (bGPUFFT)
-        gmx_parallel_3dfft_execute_gpu(pme->pfft_setup_gpu[grid_index], dir, pme);
-    else
-    {
-#pragma omp parallel num_threads(pme->nthread) private(thread)
-        {
-            thread = gmx_omp_get_thread_num();
-
-            res = gmx_parallel_3dfft_execute(pme->pfft_setup[grid_index], dir, thread, wcycle);
-        }
-    }
-
-    wallcycle_stop(wcycle, wcycle_id);
-    wallcycle_sub_stop(wcycle, wsubcycle_id);
-
-    return res;
-}
+int solve_pme_yzx_wrapper(struct gmx_pme_t *pme, t_complex *grid,
+                  real ewaldcoeff, real vol,
+                  gmx_bool bEnerVir);
 
 CUDA_FUNC_QUALIFIER void solve_pme_gpu
 (gmx_pme_t *pme, t_complex *grid,
