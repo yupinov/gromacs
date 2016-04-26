@@ -246,7 +246,7 @@ __global__ void pme_solve_kernel
                 real vfactor = (ewaldFactor + 1.0f / m2k) * 2.0f;
                 real ets2 = corner_fac * tmp1k;
                 energy = ets2;
-                if (debugPrint);// ||isnan(energy))
+                if (debugPrint)// ||isnan(energy))
                     printf("energy %g %g %g %g\n", energy, mX, mY, mZ);
                 real ets2vf  = ets2 * vfactor;
 
@@ -503,17 +503,17 @@ void pme_gpu_get_energy_virial(gmx_pme_t *pme)
     real *energyAndVirial_h = (real *)PMEMemoryFetch(PME_ID_ENERGY_AND_VIRIAL, pme->gpu->energyAndVirialSize, ML_HOST);
     real energy = 0.0;
     real virxx = 0.0, virxy = 0.0, virxz = 0.0, viryy = 0.0, viryz = 0.0, virzz = 0.0;
-    for (int i = 0, j = 0; i < 1; ++i)
-    {
-        virxx += energyAndVirial_h[j++];
-        viryy += energyAndVirial_h[j++];
-        virzz += energyAndVirial_h[j++];
-        virxy += energyAndVirial_h[j++];
-        virxz += energyAndVirial_h[j++];
-        viryz += energyAndVirial_h[j++];
-        energy += energyAndVirial_h[j++];
-        //printf("receviing %g\n", energy);
-    }
+
+    int j = 0;
+    virxx += energyAndVirial_h[j++];
+    viryy += energyAndVirial_h[j++];
+    virzz += energyAndVirial_h[j++];
+    virxy += energyAndVirial_h[j++];
+    virxz += energyAndVirial_h[j++];
+    viryz += energyAndVirial_h[j++];
+    energy += energyAndVirial_h[j++];
+    //printf("receviing %g\n", energy);
+
 
     work_vir_q[XX][XX] = 0.25 * virxx;
     work_vir_q[YY][YY] = 0.25 * viryy;
