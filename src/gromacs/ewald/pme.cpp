@@ -1954,8 +1954,6 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
         {
             if (flags & GMX_PME_SOLVE)
             {
-                int loop_count;
-
 /*
                 #pragma omp barrier
                 if (thread == 0)
@@ -1988,8 +1986,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                 }
                 if (grid_index < DO_Q)
                 {
-                    loop_count =
-                        solve_pme_yzx_wrapper(pme, cfftgrid, ewaldcoeff_q,
+                    solve_pme_yzx_wrapper(pme, cfftgrid, ewaldcoeff_q,
                                       box[XX][XX]*box[YY][YY]*box[ZZ][ZZ],
                                       bCalcEnerVir);
                      //if (pme->bGPU && bCalcEnerVir)
@@ -2055,11 +2052,14 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                     wallcycle_start(wcycle, ewcPME_SPREADGATHER);
                 }
                 if (!keepGPUDataBetweenC2RAndGather)
+#pragma omp parallel for num_threads(pme->nthread) schedule(static)
+                for (thread = 0; thread < pme->nthread; thread++)
+                {
                     copy_fftgrid_to_pmegrid(pme, fftgrid, grid, grid_index, pme->nthread, thread);
+                }
             }
         } GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
-        /* End of thread parallel section.
-         * With MPI we have to synchronize here before gmx_sum_qgrid_dd.
+        /* With MPI we have to synchronize here before gmx_sum_qgrid_dd.
          */
 
         if (bBackFFT)

@@ -173,7 +173,7 @@ __global__ void pme_solve_kernel
         /* We should skip the k-space point (0,0,0) */
         /* Note that since here x is the minor index, local_offset[XX]=0 */
 
-        const unsigned int kMinor = localOffsetMinor + indexMinor;
+        const int kMinor = localOffsetMinor + indexMinor;
         const gmx_bool notZeroPoint = (kMinor > 0 || kMajor > 0 || kMiddle > 0);
         real mMinor = kMinor, mhxk, mhyk, mhzk, m2k;
 
@@ -246,8 +246,8 @@ __global__ void pme_solve_kernel
                 real vfactor = (ewaldFactor + 1.0f / m2k) * 2.0f;
                 real ets2 = corner_fac * tmp1k;
                 energy = ets2;
-                if (debugPrint)
-                    printf("energy %g\n", energy);
+                if (debugPrint);// ||isnan(energy))
+                    printf("energy %g %g %g %g\n", energy, mX, mY, mZ);
                 real ets2vf  = ets2 * vfactor;
 
                 virxx   = ets2vf * mhxk * mhxk - ets2;
@@ -512,6 +512,7 @@ void pme_gpu_get_energy_virial(gmx_pme_t *pme)
         virxz += energyAndVirial_h[j++];
         viryz += energyAndVirial_h[j++];
         energy += energyAndVirial_h[j++];
+        printf("receviing %g\n", energy);
     }
 
     work_vir_q[XX][XX] = 0.25 * virxx;
