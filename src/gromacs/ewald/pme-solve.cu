@@ -1,13 +1,10 @@
 #include "pme.h"
 
 #include "gromacs/utility/basedefinitions.h"
-#include "gromacs/utility/real.h"
 
 #include "gromacs/utility/gmxassert.h"
-#include "gromacs/math/units.h"
-#include "gromacs/math/utilities.h"
 
-#include "gromacs/gpu_utils/cudautils.cuh"
+#include "gromacs/math/units.h"
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 
 #include <cuda.h>
@@ -24,20 +21,12 @@
 
 #define SQRT_M_PI real(2.0f / M_2_SQRTPI)
 
-/* Pascal triangle coefficients used in solve_pme_lj_yzx, only need to do 4 calculations due to symmetry */
-// static const __constant__ real lb_scale_factor_symm_gpu[] = { 2.0/64, 12.0/64, 30.0/64, 20.0/64 };
-// copied from pme-internal
-// have to be rounded to floats
-
 /*__device__ gmx_inline static void calc_exponentials_q_one(const real f, real &d, real &r, real &e)
 {
   d = 1.0f/d;
   r = expf(r);
   e = f*r*d;
   }*/
-
-//static const real sqrt_M_PI = sqrt(M_PI);
-//static __constant__ real sqrt_M_PI_d;
 
 /*__device__ gmx_inline static void calc_exponentials_lj_one(real &r, real &tmp2, real &d)
 {
@@ -47,13 +36,13 @@
   tmp2 = sqrt_M_PI_d*mk*erfcf(mk);
   }*/
 
-void pme_gpu_alloc_energy_virial(gmx_pme_t *pme, const int grid_index)
+void pme_gpu_alloc_energy_virial(gmx_pme_t *pme, const int gmx_unused grid_index)
 {
     pme->gpu->energyAndVirialSize = 7 * sizeof(real); // 6 virial components + energy
     pme->gpu->energyAndVirial = (real *)PMEMemoryFetch(PME_ID_ENERGY_AND_VIRIAL, pme->gpu->energyAndVirialSize, ML_DEVICE);
 }
 
-void pme_gpu_clear_energy_virial(gmx_pme_t *pme, const int grid_index)
+void pme_gpu_clear_energy_virial(gmx_pme_t *pme, const int gmx_unused grid_index)
 {
     cudaError_t stat = cudaMemsetAsync(pme->gpu->energyAndVirial, 0, pme->gpu->energyAndVirialSize, pme->gpu->pmeStream);
     CU_RET_ERR(stat, "PME solve energies/virial cudaMemsetAsync");
@@ -110,7 +99,7 @@ __global__ void pme_solve_kernel
  const real * __restrict__ BSplineModuleMinor,
  const real * __restrict__ BSplineModuleMajor,
  const real * __restrict__ BSplineModuleMiddle,
- float2 * __restrict__ grid,
+ float2 * __restrict__ globalGrid,
  const real volume,
  #if !PME_EXTERN_CMEM
   const struct pme_gpu_recipbox_t RECIPBOX,
@@ -168,7 +157,7 @@ __global__ void pme_solve_kernel
 
         // global complex grid pointer
         // the offset should be equal to threadId
-        float2 *p0 = grid + (indexMajor * localSizeMiddle + indexMiddle) * localSizeMinor + indexMinor;
+        float2 *p0 = globalGrid + (indexMajor * localSizeMiddle + indexMiddle) * localSizeMinor + indexMinor;
 
 
         /* We should skip the k-space point (0,0,0) */
@@ -303,6 +292,8 @@ __global__ void pme_solve_kernel
             }
 
             const int threadsPerComponent = warp_size / sizing; // this is also the stride
+            // there is be a problem here, but not the sole problem!
+            // I've seen wrong energy on 1st step withCPU FFT
             if (threadLocalId < sizing * threadsPerComponent)
             {
                 const int componentIndex = threadLocalId / threadsPerComponent;
@@ -402,16 +393,18 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     const real ewaldFactor = (M_PI * M_PI) / (ewaldcoeff * ewaldcoeff);
 
     // Z-dimension is too small in CUDA limitations (64 on CC30?), so instead of major-middle-minor sizing we do minor-middle-major
-    const int blockSize = THREADS_PER_BLOCK;
-
+    const int maxBlockSize = THREADS_PER_BLOCK;
     const int gridLineSize = local_size[minorDim];
-    const int gridLinesPerBlock = max(blockSize / gridLineSize, 1);
+    const int gridLinesPerBlock = max(maxBlockSize / gridLineSize, 1);
+    const int blocksPerGridLine = (gridLineSize + maxBlockSize - 1) / maxBlockSize; // rounded up
+    dim3 threads((blocksPerGridLine > 1) ? maxBlockSize : gridLineSize, gridLinesPerBlock);
+    GMX_RELEASE_ASSERT(threads.x * threads.y * threads.z <= maxBlockSize, "Too many threads per PME GPU solve block");
+    //const int blockSize = threads.x * threads.y * threads.z; // active threads per blocks
+    //this is stupid
 
-    dim3 blocks((gridLineSize + blockSize - 1) / blockSize,  // rounded up blocks per grid line
+    dim3 blocks(blocksPerGridLine,
                 (local_ndata[middleDim] + gridLinesPerBlock - 1) / gridLinesPerBlock, // rounded up middle dimension block number
                 local_ndata[majorDim]);
-    // integer number of blocks is working on integer number of gridlines
-    dim3 threads(gridLineSize, gridLinesPerBlock, 1);
 
     pme_gpu_timing_start(pme, ewcsPME_SOLVE);
 
