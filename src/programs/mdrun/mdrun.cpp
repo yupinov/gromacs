@@ -527,6 +527,9 @@ int gmx_mdrun(int argc, char *argv[])
     Flags = Flags | (bIMDterm      ? MD_IMDTERM      : 0);
     Flags = Flags | (bIMDpull      ? MD_IMDPULL      : 0);
 
+    if (bTunePME && bPMEGPU)
+        gmx_fatal(FARGS, "Kindly do not tune the PME GPU");
+
     /* We postpone opening the log file if we are appending, so we can
        first truncate the old log file and append to the correct position
        there instead.  */
