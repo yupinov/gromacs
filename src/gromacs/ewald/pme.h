@@ -201,4 +201,7 @@ void gmx_pme_receive_f(struct t_commrec *cr,
                        real *dvdlambda_q, real *dvdlambda_lj,
                        float *pme_cycles);
 
+/*! \brief Find out if PME is ran on GPU */
+gmx_bool pme_gpu_enabled(const gmx_pme_t *pme);
+
 #endif

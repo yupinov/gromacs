@@ -10,6 +10,7 @@
 #include "gromacs/gpu_utils/gpu_utils.h"
 #include "gromacs/utility/cstringutil.h"
 #include "gromacs/hardware/hw_info.h"
+#include "gromacs/utility/logger.h"
 
 #include "pme-cuda.cuh"
 #include "pme-gpu.h"
@@ -40,7 +41,8 @@ void pme_gpu_step_reinit(gmx_pme_t *pme)
     pme_gpu_clear_energy_virial(pme, grid_index);
 }
 
-void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_opt_t *gpu_opt)
+void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *hwinfo,
+                  const gmx_gpu_opt_t *gpu_opt)
 {
     // this is ran in the beginning/on DD
     if (!pme->bGPU) //yupinov fix this
@@ -57,15 +59,16 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
 
         // crude GPU selection copied from non-bondeds
         const int PMEGPURank = 0; // a fixed MPI rank
-        FILE *fp = NULL;
+
         char gpu_err_str[STRLEN];
         assert(hwinfo->gpu_info.gpu_dev);
         assert(gpu_opt->dev_use);
         (*pmeGPU)->deviceInfo = &hwinfo->gpu_info.gpu_dev[gpu_opt->dev_use[PMEGPURank]];
-        if (!init_gpu(fp, PMEGPURank, gpu_err_str, &hwinfo->gpu_info, gpu_opt))
-            gmx_fatal(FARGS, "could not select GPU %d for PME rank %d\n", (*pmeGPU)->deviceInfo->id, PMEGPURank);
+        const gmx::MDLogger temp;
+        if (!init_gpu(temp, PMEGPURank, gpu_err_str, &hwinfo->gpu_info, gpu_opt))
+            gmx_fatal(FARGS, "Could not select GPU %d for PME rank %d\n", (*pmeGPU)->deviceInfo->id, PMEGPURank);
         // fallback instead?
-        //first init and either of the hw structures NULL => also fall back to CPU
+        // first init and either of the hw structures NULL => also fall back to CPU
 
         (*pmeGPU)->useTextureObjects = ((*pmeGPU)->deviceInfo->prop.major >= 3);
 
@@ -130,6 +133,8 @@ void pme_gpu_deinit(//gmx_pme_gpu_t **pmeGPU,
 
     if (!(*pme)->bGPU) // we're assuming this boolean doesn't change during the run
         return;
+
+    stopGpuProfiler();
 
     cudaError_t stat;
 

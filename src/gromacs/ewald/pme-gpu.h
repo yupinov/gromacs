@@ -5,31 +5,14 @@
 #include "gromacs/gpu_utils/gpu_macros.h"
 
 
-//yupinov also lots of unused parameters warnings!
-
-/*
-#if GMX_GPU == GMX_GPU_OPENCL
-struct gmx_nbnxn_ocl_t;
-typedef struct gmx_nbnxn_ocl_t gmx_nbnxn_gpu_t;
-#endif
-
-#if GMX_GPU == GMX_GPU_CUDA
-struct gmx_nbnxn_cuda_t;
-typedef struct gmx_nbnxn_cuda_t gmx_nbnxn_gpu_t;
-#endif
-
-#if GMX_GPU == GMX_GPU_NONE
-typedef int gmx_nbnxn_gpu_t;
-#endif
-*/
-
 //yupinov add pmegpu detection warning!
 //yupinov add author info everywhere
-//yupinov CUDA_FUNC_QUALIFIER everywhere? as weel as parameters
+//yupinov CUDA_FUNC_QUALIFIER everywhere? as well as parameters
 // gmx_unused
 
 
-
+/*! \brief Resets PME GPU timings. */
+CUDA_FUNC_QUALIFIER void pme_gpu_reset_timings(struct gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 // internal data handling
 
@@ -104,8 +87,6 @@ struct gmx_gpu_opt_t;
 
 
 // nice external functions
-
-
 
 CUDA_FUNC_QUALIFIER void pme_gpu_init(gmx_pme_gpu_t **CUDA_FUNC_ARGUMENT(pmeGPU),
                                       gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),

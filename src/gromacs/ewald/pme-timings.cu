@@ -92,3 +92,18 @@ void pme_gpu_timing_calculate(gmx_pme_t *pme)
         gmx_wallclock_gpu_pme.pme_time[i].c = pme->gpu->timingEvents[i].get_call_count();
     }
 }
+
+
+void pme_gpu_reset_timings(gmx_pme_t *pme)
+{
+#if PME_GPU_TIMINGS
+    if (pme && pme->bGPU)
+    {
+        for (int i = 0; i < PME_GPU_STAGES; i++)
+        {
+            gmx_wallclock_gpu_pme.pme_time[i].t = 0.0;
+            gmx_wallclock_gpu_pme.pme_time[i].c = 0;
+        }
+    }
+#endif
+}

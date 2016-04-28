@@ -117,6 +117,11 @@
 #include "pme-spline-work.h"
 #include "pme-spread.h"
 
+gmx_bool pme_gpu_enabled(const gmx_pme_t *pme)
+{
+    return pme != NULL && pme->bGPU;
+}
+
 int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t gmx_unused *pme,
                            int grid_index,
                            enum gmx_fft_direction gmx_unused  dir,
