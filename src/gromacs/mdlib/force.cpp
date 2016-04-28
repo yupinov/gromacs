@@ -154,56 +154,16 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
         box_size[i] = box[i][i];
     }
 
-    //yupinov - copypasted from do_force_lowlevel, partially commented with #if UNUSED_COPYPASTED_CODE_MARKER
-    /* PME preparation (common for GPU/CPU codes) */
-    if (EEL_FULL(fr->eeltype) || EVDW_PME(fr->vdwtype))
-    {
-        bSB = (ir->nwall == 2);
-        if (bSB)
-        {
-            copy_mat(box, boxs);
-            svmul(ir->wall_ewald_zfac, boxs[ZZ], boxs[ZZ]);
-            box_size[ZZ] *= ir->wall_ewald_zfac;
-        }
-        if ((EEL_PME(fr->eeltype) || EVDW_PME(fr->vdwtype)) && (cr->duty & DUTY_PME))
-        {
-            /* set PME flags */
-            assert(fr->n_tpi >= 0);
-            if (fr->n_tpi == 0 || (flags & GMX_FORCE_STATECHANGED))
-            {
-                pme_flags = GMX_PME_SPREAD | GMX_PME_SOLVE;
-                if (EEL_PME(fr->eeltype))
-                {
-                    pme_flags |= GMX_PME_DO_COULOMB;
-                }
-                if (EVDW_PME(fr->vdwtype))
-                {
-                    pme_flags |= GMX_PME_DO_LJ;
-                }
-                if (flags & GMX_FORCE_FORCES)
-                {
-                    pme_flags |= GMX_PME_CALC_F;
-                }
-                if (flags & GMX_FORCE_VIRIAL)
-                {
-                    pme_flags |= GMX_PME_CALC_ENER_VIR;
-                }
-                if (fr->n_tpi > 0)
-                {
-                    /* We don't calculate f, but we do want the potential */
-                    pme_flags |= GMX_PME_CALC_POT;
-                }
-            }
-        }
-    }
-
+    // copypasted from do_force_lowlevel, partially commented with #if UNUSED_COPYPASTED_CODE_MARKER
 #define UNUSED_COPYPASTED_CODE_MARKER 0
+
     if (EEL_FULL(fr->eeltype) || EVDW_PME(fr->vdwtype))
     {
         int  status            = 0;
 #if UNUSED_COPYPASTED_CODE_MARKER
         real Vlr_q             = 0, Vlr_lj = 0, Vcorr_q = 0, Vcorr_lj = 0;
         real dvdl_long_range_q = 0, dvdl_long_range_lj = 0;
+#endif
 
         bSB = (ir->nwall == 2);
         if (bSB)
@@ -212,7 +172,7 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
             svmul(ir->wall_ewald_zfac, boxs[ZZ], boxs[ZZ]);
             box_size[ZZ] *= ir->wall_ewald_zfac;
         }
-#endif
+
         if (EEL_PME_EWALD(fr->eeltype) || EVDW_PME(fr->vdwtype))
         {
 #if UNUSED_COPYPASTED_CODE_MARKER
@@ -323,7 +283,6 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
                 assert(fr->n_tpi >= 0);
                 if (fr->n_tpi == 0 || (flags & GMX_FORCE_STATECHANGED))
                 {
-#if UNUSED_COPYPASTED_CODE_MARKER
                     pme_flags = GMX_PME_SPREAD | GMX_PME_SOLVE;
                     if (EEL_PME(fr->eeltype))
                     {
@@ -346,7 +305,6 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
                         /* We don't calculate f, but we do want the potential */
                         pme_flags |= GMX_PME_CALC_POT;
                     }
-#endif
                     wallcycle_start(wcycle, ewcPMEMESH);
                     status = gmx_pme_gpu_launch(fr->pmedata,
                                         0, md->homenr - fr->n_tpi,
@@ -414,7 +372,6 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
         }
 #endif
     }
-    //yupinov end copypaste
 }
 
 void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
@@ -469,49 +426,6 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
     if (fr->bQMMM)
     {
         enerd->term[F_EQM] = calculate_QMMM(cr, x, f, fr);
-    }
-
-    //yupinov - copypasted from below for a GPU PME call, partially commented with #if UNUSED_COPYPASTED_CODE_MARKER
-    /* PME preparation (common for GPU/CPU codes) */
-    if (EEL_FULL(fr->eeltype) || EVDW_PME(fr->vdwtype))
-    {
-        bSB = (ir->nwall == 2);
-        if (bSB)
-        {
-            copy_mat(box, boxs);
-            svmul(ir->wall_ewald_zfac, boxs[ZZ], boxs[ZZ]);
-            box_size[ZZ] *= ir->wall_ewald_zfac;
-        }
-        if ((EEL_PME(fr->eeltype) || EVDW_PME(fr->vdwtype)) && (cr->duty & DUTY_PME))
-        {
-            /* set PME flags */
-            assert(fr->n_tpi >= 0);
-            if (fr->n_tpi == 0 || (flags & GMX_FORCE_STATECHANGED))
-            {
-                pme_flags = GMX_PME_SPREAD | GMX_PME_SOLVE;
-                if (EEL_PME(fr->eeltype))
-                {
-                    pme_flags |= GMX_PME_DO_COULOMB;
-                }
-                if (EVDW_PME(fr->vdwtype))
-                {
-                    pme_flags |= GMX_PME_DO_LJ;
-                }
-                if (flags & GMX_FORCE_FORCES)
-                {
-                    pme_flags |= GMX_PME_CALC_F;
-                }
-                if (flags & GMX_FORCE_VIRIAL)
-                {
-                    pme_flags |= GMX_PME_CALC_ENER_VIR;
-                }
-                if (fr->n_tpi > 0)
-                {
-                    /* We don't calculate f, but we do want the potential */
-                    pme_flags |= GMX_PME_CALC_POT;
-                }
-            }
-        }
     }
 
     /* Call the short range functions all in one go. */
@@ -712,7 +626,7 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
         int  status            = 0;
         real Vlr_q             = 0, Vlr_lj = 0, Vcorr_q = 0, Vcorr_lj = 0;
         real dvdl_long_range_q = 0, dvdl_long_range_lj = 0;
-#if UNUSED_COPYPASTED_CODE_MARKER
+
         bSB = (ir->nwall == 2);
         if (bSB)
         {
@@ -720,7 +634,6 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
             svmul(ir->wall_ewald_zfac, boxs[ZZ], boxs[ZZ]);
             box_size[ZZ] *= ir->wall_ewald_zfac;
         }
-#endif
 
         if (EEL_PME_EWALD(fr->eeltype) || EVDW_PME(fr->vdwtype))
         {
@@ -830,7 +743,6 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                 assert(fr->n_tpi >= 0);
                 if (fr->n_tpi == 0 || (flags & GMX_FORCE_STATECHANGED))
                 {
-#if UNUSED_COPYPASTED_CODE_MARKER
                     pme_flags = GMX_PME_SPREAD | GMX_PME_SOLVE;
                     if (EEL_PME(fr->eeltype))
                     {
@@ -853,7 +765,7 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                         /* We don't calculate f, but we do want the potential */
                         pme_flags |= GMX_PME_CALC_POT;
                     }
-#endif
+
                     wallcycle_start(wcycle, ewcPMEMESH);
                     status = gmx_pme_do(fr->pmedata,
                                         0, md->homenr - fr->n_tpi,

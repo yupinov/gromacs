@@ -32,7 +32,13 @@ void pme_gpu_update_flags(
     pmeGPU->keepGPUDataBetweenC2RAndGather = keepGPUDataBetweenC2RAndGather;
 }
 
-void pme_gpu_step_reinit(gmx_pme_t *pme);
+void pme_gpu_step_reinit(gmx_pme_t *pme)
+{
+    // this is ran at the end of MD step + at the DD init
+    const int grid_index = 0; //!
+    pme_gpu_clear_grid(pme, grid_index);
+    pme_gpu_clear_energy_virial(pme, grid_index);
+}
 
 void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_opt_t *gpu_opt)
 {
@@ -50,8 +56,8 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         PMEStoragePointers.assign(PMEStoragePointers.size(), NULL);
 
         // crude GPU selection copied from non-bondeds
-        const int PMEGPURank = 0; //yupinov !
-        FILE *fp = NULL; //yupinov pass this
+        const int PMEGPURank = 0; // a fixed MPI rank
+        FILE *fp = NULL;
         char gpu_err_str[STRLEN];
         assert(hwinfo->gpu_info.gpu_dev);
         assert(gpu_opt->dev_use);
@@ -122,13 +128,13 @@ void pme_gpu_deinit(//gmx_pme_gpu_t **pmeGPU,
 {
     // this is ran at the end of run
 
-    if (!(*pme)->bGPU) //yupinov - could this boolean change during the run?
+    if (!(*pme)->bGPU) // we're assuming this boolean doesn't change during the run
         return;
 
     cudaError_t stat;
 
     // these are all the GPU/host pointers allocated through PMEMemoryFetch - grids included
-    // it's a temporary solution
+    // it's a temporary cleanup solution
     for (unsigned int id = 0; id < PME_ID_END_INVALID; id++)
         for (unsigned int location = 0; location < ML_END_INVALID; location++)
         {
@@ -186,15 +192,6 @@ void pme_gpu_step_end(gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCal
 
     pme_gpu_step_reinit(pme);
 }
-
-void pme_gpu_step_reinit(gmx_pme_t *pme)
-{
-    // this is ran at the end of MD step + at the DD init
-    const int grid_index = 0; //!
-    pme_gpu_clear_grid(pme, grid_index);
-    pme_gpu_clear_energy_virial(pme, grid_index);
-}
-
 
 #if PME_EXTERN_CMEM
 __constant__ __device__ int2 OVERLAP_SIZES[OVERLAP_ZONES];
