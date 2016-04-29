@@ -225,8 +225,8 @@ static t_commrec *mdrunner_start_threads(gmx_hw_opt_t *hw_opt,
                                          real rdd, real rconstr,
                                          const char *dddlb_opt, real dlb_scale,
                                          const char *ddcsx, const char *ddcsy, const char *ddcsz,
-                                         const char *nbpu_opt, int nstlist_cmdline,
-                                         gmx_int64_t nsteps_cmdline,
+                                         const char *nbpu_opt, const char *pme_opt,
+                                         int nstlist_cmdline, gmx_int64_t nsteps_cmdline,
                                          int nstepout, int resetstep,
                                          int nmultisim, int repl_ex_nst, int repl_ex_nex, int repl_ex_seed,
                                          real pforce, real cpt_period, real max_hours,
@@ -270,6 +270,7 @@ static t_commrec *mdrunner_start_threads(gmx_hw_opt_t *hw_opt,
     mda->ddcsy           = ddcsy;
     mda->ddcsz           = ddcsz;
     mda->nbpu_opt        = nbpu_opt;
+    mda->pme_opt         = pme_opt;
     mda->nstlist_cmdline = nstlist_cmdline;
     mda->nsteps_cmdline  = nsteps_cmdline;
     mda->nstepout        = nstepout;
@@ -870,7 +871,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
                                         oenv, bVerbose, nstglobalcomm,
                                         ddxyz, dd_rank_order, npme, rdd, rconstr,
                                         dddlb_opt, dlb_scale, ddcsx, ddcsy, ddcsz,
-                                        nbpu_opt, nstlist_cmdline,
+                                        nbpu_opt, pme_opt, nstlist_cmdline,
                                         nsteps_cmdline, nstepout, resetstep, nmultisim,
                                         repl_ex_nst, repl_ex_nex, repl_ex_seed, pforce,
                                         cpt_period, max_hours,

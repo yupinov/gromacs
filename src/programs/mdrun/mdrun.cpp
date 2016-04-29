@@ -515,7 +515,7 @@ int gmx_mdrun(int argc, char *argv[])
 
     if (bPMEGPU)
         pme_opt[0] = pme_opt[3];
-    if (bTunePME && !strcmp(pme_opt[0], pme_opt[3]))
+    if (bTunePME && strncmp(pme_opt[0], pme_opt[2], 3))
         gmx_fatal(FARGS, "Kindly do not tune the PME GPU");
 
     Flags = opt2bSet("-rerun", NFILE, fnm) ? MD_RERUN : 0;
