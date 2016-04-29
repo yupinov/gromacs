@@ -298,6 +298,8 @@ int gmx_mdrun(int argc, char *argv[])
     { NULL, "auto", "on", "off", NULL };
     const char       *nbpu_opt[] =
     { NULL, "auto", "cpu", "gpu", "gpu_cpu", NULL };
+    const char       *pme_opt[] = //yupinov - now auto for either of NB and PME options should mean much more than before (just for NB); load balancing?
+    { NULL, "auto", "cpu", "gpu", NULL };
     real              rdd                   = 0.0, rconstr = 0.0, dlb_scale = 0.8, pforce = -1;
     char             *ddcsx                 = NULL, *ddcsy = NULL, *ddcsz = NULL;
     real              cpt_period            = 15.0, max_hours = -1;
@@ -373,7 +375,9 @@ int gmx_mdrun(int argc, char *argv[])
         { "-tunepme", FALSE, etBOOL, {&bTunePME},
           "Optimize PME load between PP/PME ranks or GPU/CPU" },
         { "-pmegpu", FALSE, etBOOL, {&bPMEGPU},
-          "Use GPU for PME" },
+          "HIDDENUse GPU for PME (deprecated parameter; use -pme)" },
+        { "-pme",      FALSE, etENUM, {&pme_opt},
+          "Perform PME calculations on" },
         { "-v",       FALSE, etBOOL, {&bVerbose},
           "Be loud and noisy" },
         { "-pforce",  FALSE, etREAL, {&pforce},
@@ -509,11 +513,15 @@ int gmx_mdrun(int argc, char *argv[])
 
     handleRestart(cr, bTryToAppendFiles, NFILE, fnm, &bDoAppendFiles, &bStartFromCpt);
 
+    if (bPMEGPU)
+        pme_opt[0] = pme_opt[3];
+    if (bTunePME && !strcmp(pme_opt[0], pme_opt[3]))
+        gmx_fatal(FARGS, "Kindly do not tune the PME GPU");
+
     Flags = opt2bSet("-rerun", NFILE, fnm) ? MD_RERUN : 0;
     Flags = Flags | (bDDBondCheck  ? MD_DDBONDCHECK  : 0);
     Flags = Flags | (bDDBondComm   ? MD_DDBONDCOMM   : 0);
     Flags = Flags | (bTunePME      ? MD_TUNEPME      : 0);
-    Flags = Flags | (bPMEGPU       ? MD_PMEGPU       : 0);
     Flags = Flags | (bConfout      ? MD_CONFOUT      : 0);
     Flags = Flags | (bRerunVSite   ? MD_RERUN_VSITE  : 0);
     Flags = Flags | (bReproducible ? MD_REPRODUCIBLE : 0);
@@ -526,9 +534,6 @@ int gmx_mdrun(int argc, char *argv[])
     Flags = Flags | (bIMDwait      ? MD_IMDWAIT      : 0);
     Flags = Flags | (bIMDterm      ? MD_IMDTERM      : 0);
     Flags = Flags | (bIMDpull      ? MD_IMDPULL      : 0);
-
-    if (bTunePME && bPMEGPU)
-        gmx_fatal(FARGS, "Kindly do not tune the PME GPU");
 
     /* We postpone opening the log file if we are appending, so we can
        first truncate the old log file and append to the correct position
@@ -550,7 +555,7 @@ int gmx_mdrun(int argc, char *argv[])
     rc = gmx::mdrunner(&hw_opt, fplog, cr, NFILE, fnm, oenv, bVerbose,
                        nstglobalcomm, ddxyz, dd_rank_order, npme, rdd, rconstr,
                        dddlb_opt[0], dlb_scale, ddcsx, ddcsy, ddcsz,
-                       nbpu_opt[0], nstlist,
+                       nbpu_opt[0], pme_opt[0], nstlist,
                        nsteps, nstepout, resetstep,
                        nmultisim, repl_ex_nst, repl_ex_nex, repl_ex_seed,
                        pforce, cpt_period, max_hours, imdport, Flags);

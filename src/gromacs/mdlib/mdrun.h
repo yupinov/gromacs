@@ -74,7 +74,6 @@ struct t_state;
 #define MD_IMDWAIT        (1<<23)
 #define MD_IMDTERM        (1<<24)
 #define MD_IMDPULL        (1<<25)
-#define MD_PMEGPU        (1<<26)
 
 /* The options for the domain decomposition MPI task ordering */
 enum {

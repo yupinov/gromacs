@@ -754,7 +754,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     // put a log line about our final CPU/GPU decision?
     // gmx_warning("PME will run on %s", pme->bGPU ? "GPU" : "CPU");
 
-    GMX_RELEASE_ASSERT(pme->bGPU== (bPMEGPU ? 1 : 0), "PME GPU does not support some of the input pparameters");
+    GMX_RELEASE_ASSERT(pme->bGPU == (bPMEGPU ? 1 : 0), "PME GPU does not support some of the input pparameters");
 
 
 

@@ -58,8 +58,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         PMEStoragePointers.assign(PMEStoragePointers.size(), NULL);
 
         // crude GPU selection copied from non-bondeds
-        const int PMEGPURank = 0; // a fixed MPI rank
-
+        const int PMEGPURank = pme->nodeid;
         char gpu_err_str[STRLEN];
         assert(hwinfo->gpu_info.gpu_dev);
         assert(gpu_opt->dev_use);
