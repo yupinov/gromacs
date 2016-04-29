@@ -25,9 +25,10 @@
 #define PME_CUFFT_INPLACE 1
 // comment this to enable out-of-place cuFFT
 // it requires a separate complex grid, seems to be virtually the same performance-wise
+// it should be better though
 
 #define PME_GPU_TIMINGS 1
-// should replace this to respect other GPU timings' variables
+// should replace this with boolean to respect other GPU timings' variables
 
 #define PME_USE_TEXTURES 1
 // using textures instead of global memory
@@ -67,6 +68,12 @@ struct pme_gpu_overlap_t
 #endif
 
 struct pme_gpu_timing;
+
+struct pme_gpu_const_parameters
+{
+    // sizes
+    rvec nXYZ;
+};
 
 struct gmx_pme_cuda_t
 {
@@ -117,9 +124,11 @@ struct gmx_pme_cuda_t
     real *forces;
 
 
-    //forces and coordinates should be shared with nonbondeds!
+    // forces and coordinates should be shared with nonbondeds!
     float3 *coordinates;
     real *coefficients;
+
+    pme_gpu_const_parameters constants;
 };
 
 

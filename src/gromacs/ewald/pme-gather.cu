@@ -61,7 +61,7 @@ template <
 __launch_bounds__(4 * warp_size, 16)
 __global__ void pme_gather_kernel
 (const real * __restrict__ gridGlobal, const int n,
- const float3 nXYZ, const int pnx, const int pny, const int pnz,
+ const pme_gpu_const_parameters constants, const int pnx, const int pny, const int pnz,
  const real * __restrict__ thetaGlobal,
  const real * __restrict__ dthetaGlobal,
  real * __restrict__ forcesGlobal, const real * __restrict__ coefficientGlobal,
@@ -190,9 +190,8 @@ __global__ void pme_gather_kernel
             fx += __shfl_down(fx, delta, width);
         }
 
-        // a single operation for all 3 components!
         if (splineIndex < 3)
-            *((real *)(&fSumArray[localIndex]) + splineIndex) = fx * ((real *)&nXYZ)[splineIndex];
+            *((real *)(&fSumArray[localIndex]) + splineIndex) = fx * constants.nXYZ[splineIndex];
     }
     else
 #endif
@@ -210,7 +209,7 @@ __global__ void pme_gather_kernel
             {
                 f += fSharedArray[blockSize * splineIndex + j];
             }
-            *((real *)(&fSumArray[localIndex]) + splineIndex) = f * ((real *)&nXYZ)[splineIndex];
+            *((real *)(&fSumArray[localIndex]) + splineIndex) = f * constants.nXYZ[splineIndex];
         }
     }
     __syncthreads();
@@ -526,6 +525,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
     int *idx_d = (int *)PMEMemoryFetch(PME_ID_IDXPTR, DIM * size_indices, ML_DEVICE);
 
     const float3 nXYZ = {(real)nx, (real)ny, (real)nz};
+    memcpy(pme->gpu->constants.nXYZ, &nXYZ, sizeof(nXYZ));
 
 
     const int blockSize = 4 * warp_size;
@@ -540,7 +540,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
             pme_gather_kernel<4, blockSize / 4 / 4, TRUE> <<<nBlocks, dimBlock, 0, s>>>
               (pme->gpu->grid,
                n,
-               nXYZ, pnx, pny, pnz,
+               pme->gpu->constants, pnx, pny, pnz,
                theta_d, dtheta_d,
                pme->gpu->forces, pme->gpu->coefficients,
 #if !PME_EXTERN_CMEM
@@ -551,7 +551,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
             pme_gather_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocks, dimBlock, 0, s>>>
               (pme->gpu->grid,
                n,
-               nXYZ, pnx, pny, pnz,
+               pme->gpu->constants, pnx, pny, pnz,
                theta_d, dtheta_d,
                pme->gpu->forces, pme->gpu->coefficients,
 #if !PME_EXTERN_CMEM
