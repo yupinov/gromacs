@@ -50,18 +50,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         *pmeGPU = new gmx_pme_gpu_t;
         cudaError_t stat;
 
-        // permanent settings
-        (*pmeGPU)->doOutOfPlaceFFT = true;
-        // this should give us better performance, according to the cuFFT documentation
-        // performance seems to be the same though
-        // perhaps the limiting factor is using paddings/overlaps in our grid, which is also frowned upon
-        // we should also pick nice grid sizes (with factors of 2, 3, 5, 7)
-
-        size_t pointerStorageSize = ML_END_INVALID * PME_ID_END_INVALID;
-        (*pmeGPU)->StorageSizes.assign(pointerStorageSize, 0);
-        (*pmeGPU)->StoragePointers.assign(pointerStorageSize, NULL);
-
-        // crude GPU selection copied from non-bondeds
+        // GPU selection copied from non-bondeds
         const int PMEGPURank = pme->nodeid;
         char gpu_err_str[STRLEN];
         assert(hwinfo->gpu_info.gpu_dev);
@@ -73,8 +62,26 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         // fallback instead?
         // first init and either of the hw structures NULL => should also fall back to CPU
 
-        (*pmeGPU)->useTextureObjects = ((*pmeGPU)->deviceInfo->prop.major >= 3);
+        // permanent settings
 
+        (*pmeGPU)->doOutOfPlaceFFT = true;
+        // this should give better performance, according to the cuFFT documentation
+        // performance seems to be the same though
+        // perhaps the limiting factor is using paddings/overlaps in the grid, which is also frowned upon
+        // PME should also try to pick up nice grid sizes (with factors of 2, 3, 5, 7)
+
+        (*pmeGPU)->doTime = (getenv("GMX_DISABLE_CUDA_TIMING") == NULL);
+        // this should check for PP GPU being launched
+        // just like NB should check for PME GPU
+        printf("!!! %d\n", (*pmeGPU)->doTime);
+
+        (*pmeGPU)->useTextureObjects = ((*pmeGPU)->deviceInfo->prop.major >= 3);
+        // if false, texture references are used instead
+
+        // internal storage
+        size_t pointerStorageSize = ML_END_INVALID * PME_ID_END_INVALID;
+        (*pmeGPU)->StorageSizes.assign(pointerStorageSize, 0);
+        (*pmeGPU)->StoragePointers.assign(pointerStorageSize, NULL);
 
         // creating a PME stream
 #if GMX_CUDA_VERSION >= 5050
@@ -92,12 +99,14 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         stat = cudaStreamCreate(&(*pmeGPU)->pmeStream);
         CU_RET_ERR(stat, "PME cudaStreamCreate error");
 #endif
-
         // creating synchronization events
         stat = cudaEventCreateWithFlags(&(*pmeGPU)->syncEnerVirH2D, cudaEventDisableTiming);
         CU_RET_ERR(stat, "cudaEventCreate on syncEnerVirH2D failed");
         stat = cudaEventCreateWithFlags(&(*pmeGPU)->syncForcesH2D, cudaEventDisableTiming);
         CU_RET_ERR(stat, "cudaEventCreate on syncForcesH2D failed");
+
+        if ((pme->gpu)->doTime)
+            pme_gpu_init_timings(pme);
 
         pme_gpu_update_flags(*pmeGPU, false, false, false, false);
     }
@@ -196,9 +205,9 @@ void pme_gpu_step_end(gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCal
     if (bCalcEnerVir)
         pme_gpu_get_energy_virial(pme);
 
-    pme_gpu_update_timing(pme);
+    pme_gpu_update_timings(pme);
 
-    pme_gpu_get_timing(pme); // no need to call every step
+    pme_gpu_get_timings(pme); // no need to call every step
 
     pme_gpu_step_reinit(pme);
 }

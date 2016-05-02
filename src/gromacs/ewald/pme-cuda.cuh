@@ -11,9 +11,6 @@
 
 //yupinov grid indices
 
-#define PME_GPU_TIMINGS 1
-// should replace this with boolean to respect other GPU timings' variables
-
 #define PME_USE_TEXTURES 1
 // using textures instead of global memory
 
@@ -136,6 +133,8 @@ struct gmx_pme_cuda_t
     // some other permanent settings set on init
 
     gmx_bool doOutOfPlaceFFT; // if true, then an additional grid of the same size is used for R2C/solve/C2R
+
+    gmx_bool doTime; // enable timing using CUDA events
 
     gmx_bool useTextureObjects; // if false, then use references
 

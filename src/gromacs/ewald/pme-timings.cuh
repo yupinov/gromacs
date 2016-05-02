@@ -10,7 +10,6 @@ class pme_gpu_timing
     unsigned int call_count;
     real total_milliseconds;
 
-    void check_init();
 public:
     pme_gpu_timing();
     ~pme_gpu_timing();
@@ -21,13 +20,17 @@ public:
     void update();
     void reset();
 
+
+    void enable();
+
     real get_total_time_milliseconds();
     unsigned int get_call_count();
 };
 
 void pme_gpu_timing_start(gmx_pme_t *pme, int ewcsn);
 void pme_gpu_timing_stop(gmx_pme_t *pme, int ewcsn);
-void pme_gpu_update_timing(gmx_pme_t *pme); //internal!
-void pme_gpu_get_timing(gmx_pme_t *pme);
+void pme_gpu_update_timings(gmx_pme_t *pme); //internal!
+void pme_gpu_get_timings(gmx_pme_t *pme);
+void pme_gpu_init_timings(gmx_pme_t *pme);
 
 #endif
