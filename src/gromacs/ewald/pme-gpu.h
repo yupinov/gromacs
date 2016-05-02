@@ -4,8 +4,6 @@
 #include "pme-internal.h"
 #include "gromacs/gpu_utils/gpu_macros.h"
 
-
-//yupinov add pmegpu detection warning!
 //yupinov add author info everywhere
 //yupinov CUDA_FUNC_QUALIFIER everywhere? as well as parameters
 // gmx_unused

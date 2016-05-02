@@ -298,8 +298,9 @@ int gmx_mdrun(int argc, char *argv[])
     { NULL, "auto", "on", "off", NULL };
     const char       *nbpu_opt[] =
     { NULL, "auto", "cpu", "gpu", "gpu_cpu", NULL };
-    const char       *pme_opt[] = //yupinov - now auto for either of NB and PME options should mean much more than before (just for NB); load balancing?
+    const char       *pme_opt[] =
     { NULL, "auto", "cpu", "gpu", NULL };
+    // now auto for either of NB and PME options should mean much more than before (which was just for NB); load balancing?
     real              rdd                   = 0.0, rconstr = 0.0, dlb_scale = 0.8, pforce = -1;
     char             *ddcsx                 = NULL, *ddcsy = NULL, *ddcsz = NULL;
     real              cpt_period            = 15.0, max_hours = -1;

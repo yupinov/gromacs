@@ -279,8 +279,3 @@ void make_bsplines_gpu(splinevec theta, splinevec dtheta, int order,
     free(coefficient_h);
     */
 }
-
-void free_bsplines_gpu(int thread)
-{ //yupinov unused
-  make_bsplines_gpu(NULL, NULL, 0, NULL, 0, NULL, NULL, false, thread);
-}
