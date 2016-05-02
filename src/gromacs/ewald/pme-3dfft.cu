@@ -19,7 +19,6 @@ struct gmx_parallel_3dfft_gpu
     cufftComplex *complexGrid;
 
     /* unused */
-    ivec                      complex_order;
     ivec                      local_offset;
 };
 
@@ -52,6 +51,8 @@ void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndat
 
     const int gridSizeComplex = setup->size_complex[XX] * setup->size_complex[YY] * setup->size_complex[ZZ];
     const int gridSizeReal = setup->size_real[XX] * setup->size_real[YY] * setup->size_real[ZZ];
+
+    memset(setup->local_offset, 0, sizeof(setup->local_offset)); //!
 
     setup->realGrid = (cufftReal *)pme->gpu->grid;
     assert(setup->realGrid);
@@ -105,15 +106,11 @@ void gmx_parallel_3dfft_real_limits_gpu(gmx_parallel_3dfft_gpu_t      setup,
         memcpy(local_ndata, setup->ndata_real, sizeof(setup->ndata_real));
     if (local_size)
         memcpy(local_size, setup->size_real, sizeof(setup->size_real));
-
-    //yupinov
-    setup->local_offset[0] = local_offset[0];
-    setup->local_offset[1] = local_offset[1];
-    setup->local_offset[2] = local_offset[2];
+    if (local_offset)
+        memcpy(local_offset, setup->local_offset, sizeof(setup->local_offset));
 }
 
 void gmx_parallel_3dfft_complex_limits_gpu(gmx_parallel_3dfft_gpu_t      setup,
-                                          ivec                      complex_order,
                                           ivec                      local_ndata,
                                           ivec                      local_offset,
                                           ivec                      local_size)
@@ -125,24 +122,20 @@ void gmx_parallel_3dfft_complex_limits_gpu(gmx_parallel_3dfft_gpu_t      setup,
     }
     if (local_size)
         memcpy(local_size, setup->size_complex, sizeof(setup->size_complex));
-
-    //yupinov why are they here
-    setup->complex_order[0] = complex_order[0];
-    setup->complex_order[1] = complex_order[1];
-    setup->complex_order[2] = complex_order[2];
-    setup->local_offset[0] = local_offset[0];
-    setup->local_offset[1] = local_offset[1];
-    setup->local_offset[2] = local_offset[2];
+    if (local_offset)
+        memcpy(local_offset, setup->local_offset, sizeof(setup->local_offset));
 }
 
-void gmx_parallel_3dfft_execute_gpu(const gmx_parallel_3dfft_gpu_t &setup,
-                                   enum gmx_fft_direction  dir,
-                                   gmx_pme_t *pme)
+void gmx_parallel_3dfft_execute_gpu(gmx_pme_t *pme,
+                                   gmx_fft_direction dir,
+                                   const int grid_index)
 {
     /*
     const int gridSizeComplex = setup->size_complex[XX] * setup->size_complex[YY] * setup->size_complex[ZZ] * sizeof(cufftComplex);
     const int gridSizeReal = setup->size_real[XX] * setup->size_real[YY] * setup->size_real[ZZ] * sizeof(cufftReal);
     */
+    gmx_parallel_3dfft_gpu_t setup = pme->gpu->pfft_setup_gpu[grid_index];
+
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {      
         //if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)

@@ -54,15 +54,14 @@ CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_real_limits_gpu(gmx_parallel_3dfft_g
                                ivec         gmx_unused             local_size) CUDA_FUNC_TERM
 
 
-CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_complex_limits_gpu(gmx_parallel_3dfft_gpu_t gmx_unused pfft_setup,
-                                  ivec     gmx_unused                 complex_order,
-                                  ivec       gmx_unused               local_ndata,
-                                  ivec       gmx_unused               local_offset,
-                                  ivec       gmx_unused               local_size) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_complex_limits_gpu(gmx_parallel_3dfft_gpu_t CUDA_FUNC_ARGUMENT(pfft_setup),
+                                  ivec CUDA_FUNC_ARGUMENT(local_ndata),
+                                  ivec CUDA_FUNC_ARGUMENT(local_offset),
+                                  ivec CUDA_FUNC_ARGUMENT(local_size)) CUDA_FUNC_TERM
 
-CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_execute_gpu(const gmx_parallel_3dfft_gpu_t &CUDA_FUNC_ARGUMENT(pfft_setup),
+CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_execute_gpu(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
                            enum gmx_fft_direction CUDA_FUNC_ARGUMENT(dir),
-                            gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+                           const int CUDA_FUNC_ARGUMENT(grid_index)) CUDA_FUNC_TERM
 
 
 CUDA_FUNC_QUALIFIER void spread_on_grid_gpu(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme), pme_atomcomm_t *CUDA_FUNC_ARGUMENT(atc),
@@ -116,37 +115,6 @@ CUDA_FUNC_QUALIFIER void pme_gpu_update_flags(
 
 
 CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_destroy_gpu(const gmx_parallel_3dfft_gpu_t &CUDA_FUNC_ARGUMENT(pfft_setup)) CUDA_FUNC_TERM
-
-inline int gmx_parallel_3dfft_real_limits_wrapper(struct gmx_pme_t *pme,
-                               int                       grid_index,
-                               ivec                      local_ndata,
-                               ivec                      local_offset,
-                               ivec                      local_size)
-{
-    int res = 0;
-    res = gmx_parallel_3dfft_real_limits(pme->pfft_setup[grid_index], local_ndata, local_offset, local_size);
-    if (pme->bGPUFFT)
-        gmx_parallel_3dfft_real_limits_gpu(pme->pfft_setup_gpu[grid_index], local_ndata, local_offset, local_size);
-    return res;
-}
-
-inline int gmx_parallel_3dfft_complex_limits_wrapper(struct gmx_pme_t *pme,
-                               int                       grid_index,
-                               ivec                      complex_order,
-                               ivec                      local_ndata,
-                               ivec                      local_offset,
-                               ivec                      local_size)
-{
-    //yupinov - so both FFT limits functiosn are broken for now? as well as constructr
-    int res = 0;
-    res = gmx_parallel_3dfft_complex_limits(pme->pfft_setup[grid_index], complex_order, local_ndata, local_offset, local_size);
-    if (pme->bGPUFFT)
-        gmx_parallel_3dfft_complex_limits_gpu(pme->pfft_setup_gpu[grid_index], complex_order, local_ndata, local_offset, local_size);
-
-    return res;
-}
-
-#include "gromacs/utility/gmxomp.h"
 
 int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t gmx_unused *pme,
                            int grid_index,

@@ -347,7 +347,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
 
     const int order = pme->pme_order;
     /*
-    gmx_parallel_3dfft_real_limits_wrapper(pme, grid_index, local_ndata, local_offset, local_size);
+    gmx_parallel_3dfft_real_limits_gpu(pme, grid_index, local_ndata, local_offset, local_size);
     const int pnx = local_size[XX];
     const int pny = local_size[YY];
     const int pnz = local_size[ZZ];

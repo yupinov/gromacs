@@ -149,6 +149,9 @@ struct gmx_pme_cuda_t
 
     pme_gpu_timing timingEvents[PME_GPU_STAGES];
 
+    gmx_parallel_3dfft_gpu_t *pfft_setup_gpu;
+
+
     // internal host/device pointers storage
     std::vector<size_t> StorageSizes;
     std::vector<void *> StoragePointers;

@@ -331,13 +331,12 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
 
     cudaStream_t s = pme->gpu->pmeStream;
 
-    ivec complex_order, local_ndata, local_offset, local_size;
+    ivec local_ndata, local_offset, local_size, complex_order;
     /* Dimensions should be identical for A/B grid, so we just use A here */
-    gmx_parallel_3dfft_complex_limits_wrapper(pme, PME_GRID_QA,//pme->pfft_setup_gpu[PME_GRID_QA],
-                                      complex_order,
-                                      local_ndata,
-                                      local_offset,
-                                      local_size);
+    if (pme->bGPUFFT)
+        gmx_parallel_3dfft_complex_limits_gpu(pme->gpu->pfft_setup_gpu[PME_GRID_QA], local_ndata, local_offset, local_size);
+    else
+        gmx_parallel_3dfft_complex_limits(pme->pfft_setup[PME_GRID_QA], complex_order, local_ndata, local_offset, local_size);
     //here we have correct complex ndata and sizes for CPU/GPU FFT
 
 

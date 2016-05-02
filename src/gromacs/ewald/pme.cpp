@@ -137,7 +137,7 @@ int gmx_parallel_3dfft_execute_wrapper(struct gmx_pme_t gmx_unused *pme,
     wallcycle_sub_start(wcycle, wsubcycle_id);
 
     if (pme->bGPUFFT)
-        gmx_parallel_3dfft_execute_gpu(pme->pfft_setup_gpu[grid_index], dir, pme);
+        gmx_parallel_3dfft_execute_gpu(pme, dir, grid_index);
     else
     {
 #pragma omp parallel num_threads(pme->nthread) private(thread)
@@ -821,8 +821,6 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     snew(pme->fftgrid, pme->ngrids);
     snew(pme->cfftgrid, pme->ngrids);
     snew(pme->pfft_setup, pme->ngrids);
-    if (pme->bGPU)
-        snew(pme->pfft_setup_gpu, pme->ngrids); //yupinov destroy!
 
     for (i = 0; i < pme->ngrids; ++i)
     {

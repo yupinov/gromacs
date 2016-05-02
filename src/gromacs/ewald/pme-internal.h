@@ -302,7 +302,6 @@ typedef struct gmx_pme_t {
     int                       cfftgrid_nx, cfftgrid_ny, cfftgrid_nz;
 
     gmx_parallel_3dfft_t     *pfft_setup;
-    gmx_parallel_3dfft_gpu_t  *pfft_setup_gpu; //yupinov move to gpu
 
     int                      *nnx, *nny, *nnz;
     real                     *fshx, *fshy, *fshz;

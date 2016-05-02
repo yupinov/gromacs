@@ -806,7 +806,7 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     /*
     ivec local_ndata, local_size, local_offset;
-    gmx_parallel_3dfft_real_limits_wrapper(pme, grid_index, local_ndata, local_offset, local_size);
+    gmx_parallel_3dfft_real_limits_gpu(pme, grid_index, local_ndata, local_offset, local_size);
     const int pnx = local_size[XX];
     const int pny = local_size[YY];
     const int pnz = local_size[ZZ];

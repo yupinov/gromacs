@@ -73,7 +73,6 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         (*pmeGPU)->doTime = (getenv("GMX_DISABLE_CUDA_TIMING") == NULL);
         // this should check for PP GPU being launched
         // just like NB should check for PME GPU
-        printf("!!! %d\n", (*pmeGPU)->doTime);
 
         (*pmeGPU)->useTextureObjects = ((*pmeGPU)->deviceInfo->prop.major >= 3);
         // if false, texture references are used instead
@@ -126,9 +125,10 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         ndata[0]    = pme->nkx;
         ndata[1]    = pme->nky;
         ndata[2]    = pme->nkz;
+        snew((*pmeGPU)->pfft_setup_gpu, pme->ngrids);
         for (int i = 0; i < pme->ngrids; ++i)
         {
-            gmx_parallel_3dfft_init_gpu(&pme->pfft_setup_gpu[i], ndata, pme);
+            gmx_parallel_3dfft_init_gpu(&(*pmeGPU)->pfft_setup_gpu[i], ndata, pme);
         }
     }
 
@@ -160,8 +160,8 @@ void pme_gpu_deinit(//gmx_pme_gpu_t **pmeGPU,
 
     // FFT
     for (int i = 0; i < (*pme)->ngrids; i++)
-        gmx_parallel_3dfft_destroy_gpu((*pme)->pfft_setup_gpu[i]);
-    sfree((*pme)->pfft_setup_gpu);
+        gmx_parallel_3dfft_destroy_gpu((*pme)->gpu->pfft_setup_gpu[i]);
+    sfree((*pme)->gpu->pfft_setup_gpu);
 
     // destroy synchronization events
     stat = cudaEventDestroy((*pme)->gpu->syncEnerVirH2D);
