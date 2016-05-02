@@ -123,21 +123,11 @@ int solve_pme_yzx_wrapper(struct gmx_pme_t *pme, t_complex *grid,
                   real ewaldcoeff, real vol,
                   gmx_bool bEnerVir);
 
-CUDA_FUNC_QUALIFIER void solve_pme_gpu
-(gmx_pme_t *pme, t_complex *grid,
-                  real ewaldcoeff, real vol,
-                  gmx_bool bEnerVir) CUDA_FUNC_TERM
-
-CUDA_FUNC_QUALIFIER int solve_pme_lj_yzx_gpu(int gmx_unused nx, int gmx_unused ny, int gmx_unused nz,
-             ivec gmx_unused complex_order, ivec gmx_unused local_ndata, ivec gmx_unused local_offset, ivec gmx_unused local_size,
-             real gmx_unused rxx, real gmx_unused ryx, gmx_unused real ryy, real gmx_unused rzx, real gmx_unused rzy, real gmx_unused rzz,
-             //real *mhx, real *mhy, real *mhz, real *m2, real *denom, real *tmp1, real *tmp2,
-             splinevec gmx_unused pme_bsp_mod,
-             matrix gmx_unused work_vir_lj, real gmx_unused *work_energy_lj,
-             t_complex gmx_unused **grid, gmx_bool gmx_unused bLB,
-             real gmx_unused ewaldcoeff, real gmx_unused vol,
-             gmx_bool gmx_unused bEnerVir, gmx_pme_t *pme,
-                                              int gmx_unused nthread, int gmx_unused thread) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void solve_pme_gpu(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
+                  t_complex *CUDA_FUNC_ARGUMENT(grid),
+                  const real CUDA_FUNC_ARGUMENT(ewaldcoeff),
+                  const real CUDA_FUNC_ARGUMENT(vol),
+                  const gmx_bool CUDA_FUNC_ARGUMENT(bEnerVir)) CUDA_FUNC_TERM
 
 CUDA_FUNC_QUALIFIER void pme_gpu_get_forces(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 CUDA_FUNC_QUALIFIER void pme_gpu_get_energy_virial(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
