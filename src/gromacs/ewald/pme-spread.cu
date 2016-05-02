@@ -743,7 +743,7 @@ void pme_gpu_copy_calcspline_constants(gmx_pme_t *pme)
 #endif
 }
 
-void pme_gpu_alloc_grid(struct gmx_pme_t *pme, const int grid_index)
+void pme_gpu_alloc_grids(gmx_pme_t *pme, const int grid_index)
 {
     const int pnx = pme->pmegrid_nx;
     const int pny = pme->pmegrid_ny;
@@ -751,9 +751,13 @@ void pme_gpu_alloc_grid(struct gmx_pme_t *pme, const int grid_index)
     const int gridSize = pnx * pny * pnz * sizeof(real);
 
     pme->gpu->grid = (real *)PMEMemoryFetch(pme, PME_ID_REAL_GRID, gridSize, ML_DEVICE);
+    if (pme->gpu->doOutOfPlaceFFT)
+        pme->gpu->fourierGrid = (t_complex *)PMEMemoryFetch(pme, PME_ID_COMPLEX_GRID, gridSize, ML_DEVICE);
+    else
+        pme->gpu->fourierGrid = (t_complex *)pme->gpu->grid;
 }
 
-void pme_gpu_clear_grid(struct gmx_pme_t *pme, const int grid_index)
+void pme_gpu_clear_grid(gmx_pme_t *pme, const int grid_index)
 {
     /*
     pmegrid_t *pmegrid = &(pme->pmegrid[grid_index].grid); //yupinov most PME GPU functions ignore grid indices anyway
@@ -773,7 +777,7 @@ void pme_gpu_clear_grid(struct gmx_pme_t *pme, const int grid_index)
     CU_RET_ERR(stat, "cudaMemsetAsync spread error");
 }
 
-void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
+void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
          int grid_index,
          pmegrid_t *pmegrid,
          const gmx_bool bCalcSplines,
@@ -988,14 +992,14 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
             break;
 
         default:
-            gmx_fatal(FARGS, "the code for pme_order != 4 was not tested!"); //yupinov
+            gmx_fatal(FARGS, "the code for pme_order != 4 was not tested!");
     }
 
     if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
     {
         //yupinov - (d)theta layout is broken; and what about idx?
         if (bSpread)
-            cu_copy_D2H_async(pmegrid->grid, pme->gpu->grid, gridSize, s); //yupinov - should sync on CPU FFT
+            cu_copy_D2H_async(pmegrid->grid, pme->gpu->grid, gridSize, s); //yupinov - should sync on CPU FFT?
         for (int j = 0; j < DIM; ++j) //also breaking compacting in gather
         //and why not just check bGPUSingle here?
         {

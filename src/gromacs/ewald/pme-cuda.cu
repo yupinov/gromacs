@@ -50,6 +50,13 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         *pmeGPU = new gmx_pme_gpu_t;
         cudaError_t stat;
 
+        // permanent settings
+        (*pmeGPU)->doOutOfPlaceFFT = true;
+        // this should give us better performance, according to the cuFFT documentation
+        // performance seems to be the same though
+        // perhaps the limiting factor is using paddings/overlaps in our grid, which is also frowned upon
+        // we should also pick nice grid sizes (with factors of 2, 3, 5, 7)
+
         size_t pointerStorageSize = ML_END_INVALID * PME_ID_END_INVALID;
         (*pmeGPU)->StorageSizes.assign(pointerStorageSize, 0);
         (*pmeGPU)->StoragePointers.assign(pointerStorageSize, NULL);
@@ -64,7 +71,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         if (!init_gpu(temp, PMEGPURank, gpu_err_str, &hwinfo->gpu_info, gpu_opt))
             gmx_fatal(FARGS, "Could not select GPU %d for PME rank %d\n", (*pmeGPU)->deviceInfo->id, PMEGPURank);
         // fallback instead?
-        // first init and either of the hw structures NULL => also fall back to CPU
+        // first init and either of the hw structures NULL => should also fall back to CPU
 
         (*pmeGPU)->useTextureObjects = ((*pmeGPU)->deviceInfo->prop.major >= 3);
 
@@ -101,7 +108,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
     pme_gpu_copy_calcspline_constants(pme);
     pme_gpu_copy_bspline_moduli(pme);
     pme_gpu_alloc_gather_forces(pme);
-    pme_gpu_alloc_grid(pme, grid_index);
+    pme_gpu_alloc_grids(pme, grid_index);
     pme_gpu_alloc_energy_virial(pme, grid_index);
 
     if (pme->bGPUFFT) //copied from gmx_pme_init

@@ -368,13 +368,12 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     //yupinov align minor dimension with cachelines!
 
     //const int n = local_ndata[majorDim] * local_ndata[middleDim] * local_ndata[minorDim];
-    const int grid_n = local_size[majorDim] * local_size[middleDim] * local_size[minorDim];
-    const int grid_size = grid_n * sizeof(float2);
+    const int gridSize = local_size[XX] * local_size[YY] * local_size[ZZ] * sizeof(float2);
 
-    float2 *grid_d = (float2 *)PMEMemoryFetch(pme, PME_ID_COMPLEX_GRID, grid_size, ML_DEVICE); //yupinov no need for special function
+    float2 *grid_d = (float2 *)pme->gpu->fourierGrid;
     if (!pme->gpu->keepGPUDataBetweenR2CAndSolve)
     {
-        cu_copy_H2D_async(grid_d, grid, grid_size, s); //sync...
+        cu_copy_H2D_async(grid_d, grid, gridSize, s); //sync...
     }
     const real ewaldFactor = (M_PI * M_PI) / (ewaldcoeff * ewaldcoeff);
 
@@ -459,7 +458,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
 
     if (!pme->gpu->keepGPUDataBetweenSolveAndC2R)
     {
-        cu_copy_D2H_async(grid, grid_d, grid_size, s);
+        cu_copy_D2H_async(grid, grid_d, gridSize, s);
     }
 
     if (bEnerVir)

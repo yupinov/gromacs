@@ -11,11 +11,6 @@
 
 //yupinov grid indices
 
-#define PME_CUFFT_INPLACE 1
-// comment this to enable out-of-place cuFFT
-// it requires a separate complex grid, seems to be virtually the same performance-wise
-// it should be better though
-
 #define PME_GPU_TIMINGS 1
 // should replace this with boolean to respect other GPU timings' variables
 
@@ -49,10 +44,9 @@ enum PMEDataID
     PME_ID_THETA = 0,
     PME_ID_DTHETA,
 
-    PME_ID_REAL_GRID, //this is pme_grid and it has overlap
-#if !PME_CUFFT_INPLACE
-    PME_ID_COMPLEX_GRID, //this is cfftgrid
-#endif
+    // grids
+    PME_ID_REAL_GRID, // functions as pme_grid with overlap and as fftgrid
+    PME_ID_COMPLEX_GRID, // used only for out-of-place cuFFT, functions as cfftgrid
 
     // only used on host in gather now
     PME_ID_THX, PME_ID_THY, PME_ID_THZ,
@@ -89,10 +83,6 @@ enum PMEDataID
     // end
     PME_ID_END_INVALID
 };
-
-#if PME_CUFFT_INPLACE
-#define PME_ID_COMPLEX_GRID PME_ID_REAL_GRID
-#endif
 
 enum MemLocType
 {
@@ -143,6 +133,12 @@ struct gmx_pme_cuda_t
     gmx_bool keepGPUDataBetweenSolveAndC2R;
     gmx_bool keepGPUDataBetweenC2RAndGather;
 
+    // some other permanent settings set on init
+
+    gmx_bool doOutOfPlaceFFT; // if true, then an additional grid of the same size is used for R2C/solve/C2R
+
+    gmx_bool useTextureObjects; // if false, then use references
+
 #if !PME_EXTERN_CMEM
     // constant structures for arguments
     pme_gpu_recipbox_t recipbox;
@@ -151,7 +147,6 @@ struct gmx_pme_cuda_t
 
 
     gmx_device_info_t *deviceInfo;
-    gmx_bool useTextureObjects; // if false, then use references
 
     pme_gpu_timing timingEvents[PME_GPU_STAGES];
 
@@ -168,8 +163,11 @@ struct gmx_pme_cuda_t
     // indices (pme->nn*)
     int *nnArray;
 
-    // grid - used everywhere
+    // real grid - used everywhere
     real *grid;
+    // complex grid - used in R2C/solve/C2R
+    // if we're using inplace cuFFT, then it's the same pointer as grid!
+    t_complex *fourierGrid;
 
     // solve
     // 6 virial components, energy => 7 elements
