@@ -209,28 +209,28 @@ static void setup_coordinate_communication(pme_atomcomm_t *atc)
 
 int gmx_pme_destroy(struct gmx_pme_t **pmedata)
 {
-    int i;
-
-    sfree((*pmedata)->nnx);
-    sfree((*pmedata)->nny);
-    sfree((*pmedata)->nnz);
-
-    for (i = 0; i < (*pmedata)->ngrids; ++i)
+    if (*pmedata)
     {
-        pmegrids_destroy(&(*pmedata)->pmegrid[i]);
-        gmx_parallel_3dfft_destroy((*pmedata)->pfft_setup[i]);
+        sfree((*pmedata)->nnx);
+        sfree((*pmedata)->nny);
+        sfree((*pmedata)->nnz);
+
+        for (int i = 0; i < (*pmedata)->ngrids; ++i)
+        {
+            pmegrids_destroy(&(*pmedata)->pmegrid[i]);
+            gmx_parallel_3dfft_destroy((*pmedata)->pfft_setup[i]);
+        }
+
+        sfree((*pmedata)->lb_buf1);
+        sfree((*pmedata)->lb_buf2);
+
+        pme_free_all_work(&(*pmedata)->solve_work, (*pmedata)->nthread);
+
+        pme_gpu_deinit(&(*pmedata));
+
+        sfree(*pmedata);
+        *pmedata = NULL;
     }
-
-    sfree((*pmedata)->lb_buf1);
-    sfree((*pmedata)->lb_buf2);
-
-    pme_free_all_work(&(*pmedata)->solve_work, (*pmedata)->nthread);
-
-    pme_gpu_deinit(&(*pmedata));
-
-    sfree(*pmedata);
-    *pmedata = NULL;
-
     return 0;
 }
 
