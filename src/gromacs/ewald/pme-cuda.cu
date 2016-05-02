@@ -15,10 +15,6 @@
 #include "pme-cuda.cuh"
 #include "pme-gpu.h"
 
-static std::vector<size_t> PMEStorageSizes(ML_END_INVALID * PME_ID_END_INVALID);
-static std::vector<void *> PMEStoragePointers(ML_END_INVALID * PME_ID_END_INVALID);
-
-
 void pme_gpu_update_flags(
         gmx_pme_gpu_t *pmeGPU,
         gmx_bool keepGPUDataBetweenSpreadAndR2C,
@@ -54,8 +50,9 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         *pmeGPU = new gmx_pme_gpu_t;
         cudaError_t stat;
 
-        PMEStorageSizes.assign(PMEStorageSizes.size(), 0);
-        PMEStoragePointers.assign(PMEStoragePointers.size(), NULL);
+        size_t pointerStorageSize = ML_END_INVALID * PME_ID_END_INVALID;
+        (*pmeGPU)->StorageSizes.assign(pointerStorageSize, 0);
+        (*pmeGPU)->StoragePointers.assign(pointerStorageSize, NULL);
 
         // crude GPU selection copied from non-bondeds
         const int PMEGPURank = pme->nodeid;
@@ -142,7 +139,7 @@ void pme_gpu_deinit(//gmx_pme_gpu_t **pmeGPU,
     for (unsigned int id = 0; id < PME_ID_END_INVALID; id++)
         for (unsigned int location = 0; location < ML_END_INVALID; location++)
         {
-            PMEMemoryFree((PMEDataID)id, (MemLocType)location);
+            PMEMemoryFree(*pme, (PMEDataID)id, (MemLocType)location);
         }
 
     // FFT
@@ -227,18 +224,18 @@ void pme_gpu_copy_coordinates(gmx_pme_t *pme)
 
     // coordinates
     const size_t coordinatesSize = DIM * n * sizeof(real);
-    float3 *coordinates_h = (float3 *)PMEMemoryFetch(PME_ID_XPTR, coordinatesSize, ML_HOST);
+    float3 *coordinates_h = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_HOST);
     memcpy(coordinates_h, pme->atc[0].x, coordinatesSize);
-    pme->gpu->coordinates = (float3 *)PMEMemoryFetch(PME_ID_XPTR, coordinatesSize, ML_DEVICE);
+    pme->gpu->coordinates = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_DEVICE);
     cu_copy_H2D_async(pme->gpu->coordinates, coordinates_h, coordinatesSize, pme->gpu->pmeStream);
     /*
-    float4 *xptr_h = (float4 *)PMEMemoryFetch(PME_ID_XPTR, 4 * n_blocked * sizeof(real), ML_HOST);
+    float4 *xptr_h = (float4 *)PMEMemoryFetch(pme, PME_ID_XPTR, 4 * n_blocked * sizeof(real), ML_HOST);
     memset(xptr_h, 0, 4 * n_blocked * sizeof(real));
     for (int i = 0; i < n; i++)
     {
        memcpy(xptr_h + i, atc->x + i, sizeof(rvec));
     }
-    xptr_d = (float4 *)PMEMemoryFetch(PME_ID_XPTR, 4 * n_blocked * sizeof(real), ML_DEVICE);
+    xptr_d = (float4 *)PMEMemoryFetch(pme, PME_ID_XPTR, 4 * n_blocked * sizeof(real), ML_DEVICE);
     PMECopy(pme->gpu->coordinates, xptr_h, 4 * n_blocked * sizeof(real), ML_DEVICE, pme->gpu->pmeStream);
     */
 }
@@ -248,9 +245,9 @@ void pme_gpu_copy_charges(gmx_pme_t *pme)
     const int n = pme->atc[0].n;
     // coefficients - can be different for PME/LJ?
     const size_t coefficientSize = n * sizeof(real);
-    real *coefficients_h = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, coefficientSize, ML_HOST);
+    real *coefficients_h = (real *)PMEMemoryFetch(pme, PME_ID_COEFFICIENT, coefficientSize, ML_HOST);
     memcpy(coefficients_h, pme->atc[0].coefficient, coefficientSize); // why not just register host memory?
-    pme->gpu->coefficients = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, coefficientSize, ML_DEVICE);
+    pme->gpu->coefficients = (real *)PMEMemoryFetch(pme, PME_ID_COEFFICIENT, coefficientSize, ML_DEVICE);
     cu_copy_H2D_async(pme->gpu->coefficients, coefficients_h, coefficientSize, pme->gpu->pmeStream);
 }
 
@@ -303,42 +300,42 @@ void pme_gpu_copy_wrap_zones(gmx_pme_t *pme)
 
 static gmx_bool debugMemoryPrint = false;
 
-void PMEMemoryFree(PMEDataID id, MemLocType location)
+void PMEMemoryFree(gmx_pme_t *pme, PMEDataID id, MemLocType location)
 {
     cudaError_t stat;
     size_t i = location * PME_ID_END_INVALID + id;
-    if (PMEStoragePointers[i])
+    if (pme->gpu->StoragePointers[i])
     {
         if (debugMemoryPrint)
-            printf("free! %p %d %d\n", PMEStoragePointers[i], id, location);
+            printf("free! %p %d %d\n", pme->gpu->StoragePointers[i], id, location);
         if (location == ML_DEVICE)
         {
-            stat = cudaFree(PMEStoragePointers[i]);
+            stat = cudaFree(pme->gpu->StoragePointers[i]);
             CU_RET_ERR(stat, "PME cudaFree error");
         }
         else
         {
-            stat = cudaFreeHost(PMEStoragePointers[i]);
+            stat = cudaFreeHost(pme->gpu->StoragePointers[i]);
             CU_RET_ERR(stat, "PME cudaFreeHost error");
         }
-        PMEStoragePointers[i] = NULL;
+        pme->gpu->StoragePointers[i] = NULL;
     }
 }
 
-void *PMEMemoryFetch(PMEDataID id, size_t size, MemLocType location)
+void *PMEMemoryFetch(gmx_pme_t *pme, PMEDataID id, size_t size, MemLocType location)
 {
     // size == 0 => just return a current pointer
 
-    //yupinov grid resize mistake!
+    assert(pme->gpu);
     cudaError_t stat = cudaSuccess;
     size_t i = location * PME_ID_END_INVALID + id;
 
-    if ((PMEStorageSizes[i] > 0) && (size > 0) && (size > PMEStorageSizes[i]))
-        printf("asked to realloc %lu into %lu with ID %d\n", PMEStorageSizes[i], size, id);
+    if ((pme->gpu->StorageSizes[i] > 0) && (size > 0) && (size > pme->gpu->StorageSizes[i]))
+        printf("asked to realloc %lu into %lu with ID %d\n", pme->gpu->StorageSizes[i], size, id);
 
-    if (PMEStorageSizes[i] < size) // delete
+    if (pme->gpu->StorageSizes[i] < size) // delete
     {
-        PMEMemoryFree(id, location);
+        PMEMemoryFree(pme, id, location);
         if (size > 0)
         {
             if (debugMemoryPrint)
@@ -348,7 +345,7 @@ void *PMEMemoryFetch(PMEDataID id, size_t size, MemLocType location)
                 printf(", actually allocating %lu\n", size);
             if (location == ML_DEVICE)
             {
-                stat = cudaMalloc((void **)&PMEStoragePointers[i], size);
+                stat = cudaMalloc((void **)&pme->gpu->StoragePointers[i], size);
                 CU_RET_ERR(stat, "PME cudaMalloc error");
             }
             else
@@ -357,13 +354,13 @@ void *PMEMemoryFetch(PMEDataID id, size_t size, MemLocType location)
                 //allocFlags |= cudaHostAllocWriteCombined;
                 //yupinov try cudaHostAllocWriteCombined for almost-constant global memory? do I even have that?
                 // yes, I do: coordinates/coefficients and thetas/dthetas. should be helpful for spread being overwhelmed by L2 cache!
-                stat = cudaHostAlloc((void **)&PMEStoragePointers[i], size, allocFlags);
+                stat = cudaHostAlloc((void **)&pme->gpu->StoragePointers[i], size, allocFlags);
                 CU_RET_ERR(stat, "PME cudaHostAlloc error");
             }
-            PMEStorageSizes[i] = size;
+            pme->gpu->StorageSizes[i] = size;
         }
     }
-    return PMEStoragePointers[i];
+    return pme->gpu->StoragePointers[i];
 }
 
 void PMECopyConstant(const void *dest, void const *src, size_t size, cudaStream_t s)

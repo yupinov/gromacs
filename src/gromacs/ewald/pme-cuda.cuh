@@ -7,20 +7,9 @@
 
 #include "gromacs/gpu_utils/cudautils.cuh"
 
+#include <vector>
+
 //yupinov grid indices
-
-// device constants
-// wrap/unwrap overlap zones
-
-
-// spread/solve/gather pme inverted box
-
-// CAREFUL: the box is transposed as compared to the original pme->recipbox
-// basically, spread uses matrix columns (while solve and gather use rows)
-// that's the reason why I transposed the box initially
-// maybe swap it the otehr way around?
-//yupinov - check on triclinic!
-//yupinov - load them once in GPU init! check if loaded
 
 #define PME_CUFFT_INPLACE 1
 // comment this to enable out-of-place cuFFT
@@ -52,85 +41,7 @@ extern __constant__ __device__ float3 RECIPBOX[3];
 #define OVERLAP_ZONES 7
 extern __constant__ __device__ int2 OVERLAP_SIZES[OVERLAP_ZONES];
 extern __constant__ __device__ int OVERLAP_CELLS_COUNTS[OVERLAP_ZONES];
-#else
-
-struct pme_gpu_recipbox_t
-{
-    float3 box[DIM];
-};
-
-struct pme_gpu_overlap_t
-{
-#define OVERLAP_ZONES 7
-    int2 overlapSizes[OVERLAP_ZONES];
-    int overlapCellCounts[OVERLAP_ZONES];
-};
 #endif
-
-struct pme_gpu_timing;
-
-struct pme_gpu_const_parameters
-{
-    // sizes
-    rvec nXYZ;
-};
-
-struct gmx_pme_cuda_t
-{
-    // a stream where everything should happen
-    cudaStream_t pmeStream;
-
-    // synchronization events
-    cudaEvent_t syncEnerVirH2D; // energy and virial have already been calculated in pme-solve, and have been copied to host
-    cudaEvent_t syncForcesH2D;  // forces have already been calculated in pme-gather, and have been copied to host
-
-    // crude data-keeping flags
-    gmx_bool keepGPUDataBetweenSpreadAndR2C; //yupinov BetweenSplineAndSpread?
-    //yupinov should be same as keepGPUDataBetweenC2RAndGather ? or what do I do wit hdthetas?
-    gmx_bool keepGPUDataBetweenR2CAndSolve;
-    gmx_bool keepGPUDataBetweenSolveAndC2R;
-    gmx_bool keepGPUDataBetweenC2RAndGather;
-
-#if !PME_EXTERN_CMEM
-    // constant structures for arguments
-    pme_gpu_recipbox_t recipbox;
-    pme_gpu_overlap_t overlap;
-#endif
-
-
-    gmx_device_info_t *deviceInfo;
-    gmx_bool useTextureObjects; // if false, then use references
-
-    pme_gpu_timing timingEvents[PME_GPU_STAGES];
-
-    // device pointers/objects below
-
-    // spline calculation
-    // fractional shifts (pme->fsh*)
-    real *fshArray;
-    // indices (pme->nn*)
-    int *nnArray;
-
-    // grid - used everywhere
-    real *grid;
-
-    // solve
-    // 6 virial components, energy => 7 elements
-    real *energyAndVirial;
-    size_t energyAndVirialSize; //bytes
-
-    // gather
-    // forces
-    real *forces;
-
-
-    // forces and coordinates should be shared with nonbondeds!
-    float3 *coordinates;
-    real *coefficients;
-
-    pme_gpu_const_parameters constants;
-};
-
 
 // identifiers for PME data stored on GPU
 enum PMEDataID
@@ -188,12 +99,99 @@ enum MemLocType
     ML_HOST = 0, ML_DEVICE, ML_END_INVALID
 };
 
-// ML_HOST under-used
+// PME GPU structures
+
+// spread/solve/gather pme inverted box
+
+// CAREFUL: the box is transposed as compared to the original pme->recipbox
+// basically, spread uses matrix columns (while solve and gather use rows)
+// that's the reason why I transposed the box initially
+// maybe swap it the other way around?
+//yupinov - check on triclinic!
+
+struct pme_gpu_recipbox_t
+{
+    float3 box[DIM];
+};
+
+// wrap/unwrap overlap zones
+struct pme_gpu_overlap_t
+{
+#define OVERLAP_ZONES 7
+    int2 overlapSizes[OVERLAP_ZONES];
+    int overlapCellCounts[OVERLAP_ZONES];
+};
+
+struct pme_gpu_const_parameters
+{
+    // sizes
+    rvec nXYZ;
+};
+
+struct gmx_pme_cuda_t
+{
+    cudaStream_t pmeStream;
+
+    // synchronization events
+    cudaEvent_t syncEnerVirH2D; // energy and virial have already been calculated in pme-solve, and have been copied to host
+    cudaEvent_t syncForcesH2D;  // forces have already been calculated in pme-gather, and have been copied to host
+
+    // crude data-keeping flags
+    gmx_bool keepGPUDataBetweenSpreadAndR2C; //yupinov BetweenSplineAndSpread?
+    //yupinov should be same as keepGPUDataBetweenC2RAndGather ? or what do I do wit hdthetas?
+    gmx_bool keepGPUDataBetweenR2CAndSolve;
+    gmx_bool keepGPUDataBetweenSolveAndC2R;
+    gmx_bool keepGPUDataBetweenC2RAndGather;
+
+#if !PME_EXTERN_CMEM
+    // constant structures for arguments
+    pme_gpu_recipbox_t recipbox;
+    pme_gpu_overlap_t overlap;
+#endif
+
+
+    gmx_device_info_t *deviceInfo;
+    gmx_bool useTextureObjects; // if false, then use references
+
+    pme_gpu_timing timingEvents[PME_GPU_STAGES];
+
+    // internal host/device pointers storage
+    std::vector<size_t> StorageSizes;
+    std::vector<void *> StoragePointers;
+
+
+    // some device pointers/objects below - they are assigned from the PMEStoragePointers!
+
+    // spline calculation
+    // fractional shifts (pme->fsh*)
+    real *fshArray;
+    // indices (pme->nn*)
+    int *nnArray;
+
+    // grid - used everywhere
+    real *grid;
+
+    // solve
+    // 6 virial components, energy => 7 elements
+    real *energyAndVirial;
+    size_t energyAndVirialSize; //bytes
+
+    // gather
+    // forces
+    real *forces;
+
+
+    // forces and coordinates should be shared with nonbondeds!
+    float3 *coordinates;
+    real *coefficients;
+
+    pme_gpu_const_parameters constants;
+};
 
 // allocate memory; size == 0 => just fetch the current pointer
-void *PMEMemoryFetch(PMEDataID id, size_t size, MemLocType location);
+void *PMEMemoryFetch(gmx_pme_t *pme, PMEDataID id, size_t size, MemLocType location);
 // deallocate memory
-void PMEMemoryFree(PMEDataID id, MemLocType location);
+void PMEMemoryFree(gmx_pme_t *pme, PMEDataID id, MemLocType location);
 
 void PMECopyConstant(const void *dest, const void *src, size_t size, cudaStream_t s); //H2D only
 #endif

@@ -24,7 +24,7 @@
 void pme_gpu_alloc_energy_virial(gmx_pme_t *pme, const int gmx_unused grid_index)
 {
     pme->gpu->energyAndVirialSize = 7 * sizeof(real); // 6 virial components + energy
-    pme->gpu->energyAndVirial = (real *)PMEMemoryFetch(PME_ID_ENERGY_AND_VIRIAL, pme->gpu->energyAndVirialSize, ML_DEVICE);
+    pme->gpu->energyAndVirial = (real *)PMEMemoryFetch(pme, PME_ID_ENERGY_AND_VIRIAL, pme->gpu->energyAndVirialSize, ML_DEVICE);
 }
 
 void pme_gpu_clear_energy_virial(gmx_pme_t *pme, const int gmx_unused grid_index)
@@ -59,9 +59,9 @@ void pme_gpu_copy_bspline_moduli(gmx_pme_t *pme)
             break;
         }
         int modSize = n * sizeof(real);
-        real *bspMod_h = (real *)PMEMemoryFetch(id, modSize, ML_HOST);
+        real *bspMod_h = (real *)PMEMemoryFetch(pme, id, modSize, ML_HOST);
         memcpy(bspMod_h, pme->bsp_mod[i], modSize);
-        real *bspMod_d = (real *)PMEMemoryFetch(id, modSize, ML_DEVICE);
+        real *bspMod_d = (real *)PMEMemoryFetch(pme, id, modSize, ML_DEVICE);
         cu_copy_H2D_async(bspMod_d, bspMod_h, modSize, pme->gpu->pmeStream);
     }
 }
@@ -359,9 +359,9 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     const int nMajor = local_ndata[majorDim];
     const int nMiddle = local_ndata[middleDim]; //these are basic sizes, so what
     */
-    const real *bspModMinor_d = (real *)PMEMemoryFetch(!YZXOrdering ? PME_ID_BSP_MOD_ZZ : PME_ID_BSP_MOD_XX, 0, ML_DEVICE);
-    const real *bspModMiddle_d = (real *)PMEMemoryFetch(!YZXOrdering ? PME_ID_BSP_MOD_YY : PME_ID_BSP_MOD_ZZ, 0, ML_DEVICE);
-    const real *bspModMajor_d = (real *)PMEMemoryFetch(!YZXOrdering ? PME_ID_BSP_MOD_XX : PME_ID_BSP_MOD_YY, 0, ML_DEVICE);
+    const real *bspModMinor_d = (real *)PMEMemoryFetch(pme, !YZXOrdering ? PME_ID_BSP_MOD_ZZ : PME_ID_BSP_MOD_XX, 0, ML_DEVICE);
+    const real *bspModMiddle_d = (real *)PMEMemoryFetch(pme, !YZXOrdering ? PME_ID_BSP_MOD_YY : PME_ID_BSP_MOD_ZZ, 0, ML_DEVICE);
+    const real *bspModMajor_d = (real *)PMEMemoryFetch(pme, !YZXOrdering ? PME_ID_BSP_MOD_XX : PME_ID_BSP_MOD_YY, 0, ML_DEVICE);
 
     const real elfac = ONE_4PI_EPS0 / pme->epsilon_r; // make it a constant as well
 
@@ -371,7 +371,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     const int grid_n = local_size[majorDim] * local_size[middleDim] * local_size[minorDim];
     const int grid_size = grid_n * sizeof(float2);
 
-    float2 *grid_d = (float2 *)PMEMemoryFetch(PME_ID_COMPLEX_GRID, grid_size, ML_DEVICE); //yupinov no need for special function
+    float2 *grid_d = (float2 *)PMEMemoryFetch(pme, PME_ID_COMPLEX_GRID, grid_size, ML_DEVICE); //yupinov no need for special function
     if (!pme->gpu->keepGPUDataBetweenR2CAndSolve)
     {
         cu_copy_H2D_async(grid_d, grid, grid_size, s); //sync...
@@ -464,7 +464,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
 
     if (bEnerVir)
     {
-        real *energyAndVirial_h = (real *)PMEMemoryFetch(PME_ID_ENERGY_AND_VIRIAL, pme->gpu->energyAndVirialSize, ML_HOST);
+        real *energyAndVirial_h = (real *)PMEMemoryFetch(pme, PME_ID_ENERGY_AND_VIRIAL, pme->gpu->energyAndVirialSize, ML_HOST);
         cu_copy_D2H_async(energyAndVirial_h, pme->gpu->energyAndVirial, pme->gpu->energyAndVirialSize, s);
         cudaError_t stat = cudaEventRecord(pme->gpu->syncEnerVirH2D, s);
         CU_RET_ERR(stat, "PME solve energy/virial sync fail");
@@ -481,7 +481,7 @@ void pme_gpu_get_energy_virial(gmx_pme_t *pme)
 
     cudaError_t stat = cudaStreamWaitEvent(s, pme->gpu->syncEnerVirH2D, 0);
     CU_RET_ERR(stat, "error while waiting for PME solve");
-    real *energyAndVirial_h = (real *)PMEMemoryFetch(PME_ID_ENERGY_AND_VIRIAL, pme->gpu->energyAndVirialSize, ML_HOST);
+    real *energyAndVirial_h = (real *)PMEMemoryFetch(pme, PME_ID_ENERGY_AND_VIRIAL, pme->gpu->energyAndVirialSize, ML_HOST);
     real energy = 0.0;
     real virxx = 0.0, virxy = 0.0, virxz = 0.0, viryy = 0.0, viryz = 0.0, virzz = 0.0;
 

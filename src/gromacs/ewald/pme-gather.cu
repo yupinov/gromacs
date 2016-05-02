@@ -19,7 +19,7 @@ void pme_gpu_alloc_gather_forces(gmx_pme_t *pme)
     const int n = pme->atc[0].n; //?
     assert(n > 0);
     const int forcesSize = DIM * n * sizeof(real);
-    pme->gpu->forces = (real *)PMEMemoryFetch(PME_ID_FORCES, forcesSize, ML_DEVICE);
+    pme->gpu->forces = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_DEVICE);
 }
 
 void pme_gpu_get_forces(gmx_pme_t *pme)
@@ -30,7 +30,7 @@ void pme_gpu_get_forces(gmx_pme_t *pme)
 
     const int n = pme->atc[0].n;
     const int forcesSize = DIM * n * sizeof(real);
-    real *forces = (real *)PMEMemoryFetch(PME_ID_FORCES, forcesSize, ML_HOST);
+    real *forces = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
     memcpy(pme->atc[0].f, forces, forcesSize);
 
     /*
@@ -38,8 +38,8 @@ void pme_gpu_get_forces(gmx_pme_t *pme)
     {
         const int size_forces = DIM * n * sizeof(real);
         const int size_indices = n * sizeof(int);
-        real *atc_f_h = (real *)PMEMemoryFetch(PME_ID_FORCES, size_forces, ML_HOST);
-        int *atc_i_compacted_h = (int *)PMEMemoryFetch(PME_ID_NONZERO_INDICES, size_indices, ML_HOST);
+        real *atc_f_h = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, size_forces, ML_HOST);
+        int *atc_i_compacted_h = (int *)PMEMemoryFetch(pme, PME_ID_NONZERO_INDICES, size_indices, ML_HOST);
         for (int iCompacted = 0; iCompacted < n; iCompacted++)  // iterating over compacted particles
         {
             int i = atc_i_compacted_h[iCompacted]; //index of uncompacted particle
@@ -406,7 +406,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
     int size_splines = order * n * sizeof(int);
     int size_coefficients = n * sizeof(real);
 
-    real *atc_f_h = (real *)PMEMemoryFetch(PME_ID_FORCES, forcesSize, ML_HOST);
+    real *atc_f_h = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
     ivec *idx_h = NULL;
 
     real *coefficients_h = NULL;
@@ -426,21 +426,21 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
     // compact data (might be broken)
     if (PME_SKIP_ZEROES)
     {
-        atc_i_compacted_h = (int *)PMEMemoryFetch(PME_ID_NONZERO_INDICES, size_indices, ML_HOST);
+        atc_i_compacted_h = (int *)PMEMemoryFetch(pme, PME_ID_NONZERO_INDICES, size_indices, ML_HOST);
 
         // thetas
-        theta_x_h = (real *)PMEMemoryFetch(PME_ID_THX, size_splines, ML_HOST);
-        theta_y_h = (real *)PMEMemoryFetch(PME_ID_THY, size_splines, ML_HOST);
-        theta_z_h = (real *)PMEMemoryFetch(PME_ID_THZ, size_splines, ML_HOST);
-        dtheta_x_h = (real *)PMEMemoryFetch(PME_ID_DTHX, size_splines, ML_HOST);
-        dtheta_y_h = (real *)PMEMemoryFetch(PME_ID_DTHY, size_splines, ML_HOST);
-        dtheta_z_h = (real *)PMEMemoryFetch(PME_ID_DTHZ, size_splines, ML_HOST);
+        theta_x_h = (real *)PMEMemoryFetch(pme, PME_ID_THX, size_splines, ML_HOST);
+        theta_y_h = (real *)PMEMemoryFetch(pme, PME_ID_THY, size_splines, ML_HOST);
+        theta_z_h = (real *)PMEMemoryFetch(pme, PME_ID_THZ, size_splines, ML_HOST);
+        dtheta_x_h = (real *)PMEMemoryFetch(pme, PME_ID_DTHX, size_splines, ML_HOST);
+        dtheta_y_h = (real *)PMEMemoryFetch(pme, PME_ID_DTHY, size_splines, ML_HOST);
+        dtheta_z_h = (real *)PMEMemoryFetch(pme, PME_ID_DTHZ, size_splines, ML_HOST);
 
         // indices
-        idx_h = (ivec *)PMEMemoryFetch(PME_ID_IDXPTR, DIM * size_indices, ML_HOST);
+        idx_h = (ivec *)PMEMemoryFetch(pme, PME_ID_IDXPTR, DIM * size_indices, ML_HOST);
 
         // coefficients
-        coefficients_h = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, size_coefficients, ML_HOST);
+        coefficients_h = (real *)PMEMemoryFetch(pme, PME_ID_COEFFICIENT, size_coefficients, ML_HOST);
 
         int iCompacted = 0;
         for (int ii = 0; ii < n; ii++)
@@ -518,11 +518,11 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
     }
 
     // thetas
-    real *theta_d = (real *)PMEMemoryFetch(PME_ID_THETA, DIM * size_splines, ML_DEVICE);
-    real *dtheta_d = (real *)PMEMemoryFetch(PME_ID_DTHETA, DIM * size_splines, ML_DEVICE);
+    real *theta_d = (real *)PMEMemoryFetch(pme, PME_ID_THETA, DIM * size_splines, ML_DEVICE);
+    real *dtheta_d = (real *)PMEMemoryFetch(pme, PME_ID_DTHETA, DIM * size_splines, ML_DEVICE);
 
     // indices
-    int *idx_d = (int *)PMEMemoryFetch(PME_ID_IDXPTR, DIM * size_indices, ML_DEVICE);
+    int *idx_d = (int *)PMEMemoryFetch(pme, PME_ID_IDXPTR, DIM * size_indices, ML_DEVICE);
 
     const float3 nXYZ = {(real)nx, (real)ny, (real)nz};
     memcpy(pme->gpu->constants.nXYZ, &nXYZ, sizeof(nXYZ));

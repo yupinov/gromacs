@@ -685,13 +685,13 @@ void pme_gpu_copy_calcspline_constants(gmx_pme_t *pme)
     const int nz = pme->nkz;
 
     const int fshSize = 5 * (nx + ny + nz) * sizeof(real);
-    real *fshArray = pme->gpu->fshArray = (real *)PMEMemoryFetch(PME_ID_FSH, fshSize, ML_DEVICE);
+    real *fshArray = pme->gpu->fshArray = (real *)PMEMemoryFetch(pme, PME_ID_FSH, fshSize, ML_DEVICE);
     cu_copy_H2D_async(fshArray                , pme->fshx, 5 * nx * sizeof(real), s);
     cu_copy_H2D_async(fshArray + 5 * nx       , pme->fshy, 5 * ny * sizeof(real), s);
     cu_copy_H2D_async(fshArray + 5 * (nx + ny), pme->fshz, 5 * nz * sizeof(real), s);
 
     const int nnSize = 5 * (nx + ny + nz) * sizeof(int);
-    int *nnArray = pme->gpu->nnArray = (int *)PMEMemoryFetch(PME_ID_NN, nnSize, ML_DEVICE);
+    int *nnArray = pme->gpu->nnArray = (int *)PMEMemoryFetch(pme, PME_ID_NN, nnSize, ML_DEVICE);
     cu_copy_H2D_async(nnArray                , pme->nnx, 5 * nx * sizeof(int), s);
     cu_copy_H2D_async(nnArray + 5 * nx       , pme->nny, 5 * ny * sizeof(int), s);
     cu_copy_H2D_async(nnArray + 5 * (nx + ny), pme->nnz, 5 * nz * sizeof(int), s);
@@ -750,7 +750,7 @@ void pme_gpu_alloc_grid(struct gmx_pme_t *pme, const int grid_index)
     const int pnz = pme->pmegrid_nz;
     const int gridSize = pnx * pny * pnz * sizeof(real);
 
-    pme->gpu->grid = (real *)PMEMemoryFetch(PME_ID_REAL_GRID, gridSize, ML_DEVICE);
+    pme->gpu->grid = (real *)PMEMemoryFetch(pme, PME_ID_REAL_GRID, gridSize, ML_DEVICE);
 }
 
 void pme_gpu_clear_grid(struct gmx_pme_t *pme, const int grid_index)
@@ -822,12 +822,12 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     int size_order = order * n * sizeof(real);
     int size_order_dim = size_order * DIM;
-    real *theta_d = (real *)PMEMemoryFetch(PME_ID_THETA, size_order_dim, ML_DEVICE);
-    real *dtheta_d = (real *)PMEMemoryFetch(PME_ID_DTHETA, size_order_dim, ML_DEVICE);
+    real *theta_d = (real *)PMEMemoryFetch(pme, PME_ID_THETA, size_order_dim, ML_DEVICE);
+    real *dtheta_d = (real *)PMEMemoryFetch(pme, PME_ID_DTHETA, size_order_dim, ML_DEVICE);
 
     // IDXPTR
     int idx_size = n * DIM * sizeof(int);
-    int *idx_d = (int *)PMEMemoryFetch(PME_ID_IDXPTR, idx_size, ML_DEVICE);
+    int *idx_d = (int *)PMEMemoryFetch(pme, PME_ID_IDXPTR, idx_size, ML_DEVICE);
 
     const float3 nXYZ = {(real)nx, (real)ny, (real)nz};
     const int3 nnOffset = {0, 5 * nx, 5 * (nx + ny)};
@@ -837,9 +837,9 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     {
          /*
         const size_t coordinatesSize = DIM * n_blocked * sizeof(real);
-        float3 *xptr_h = (float3 *)PMEMemoryFetch(PME_ID_XPTR, coordinatesSize, ML_HOST);
+        float3 *xptr_h = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_HOST);
         memcpy(xptr_h, atc->x, coordinatesSize);
-        xptr_d = (float3 *)PMEMemoryFetch(PME_ID_XPTR, coordinatesSize, ML_DEVICE);
+        xptr_d = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_DEVICE);
         cu_copy_H2D_async(xptr_d, xptr_h, coordinatesSize, ML_DEVICE, pme->gpu->pmeStream);
         */
     }
@@ -850,9 +850,9 @@ void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     /*
 
     const size_t coefficientSize = n * sizeof(real);
-    real *coefficient_h = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, coefficientSize, ML_HOST);
+    real *coefficient_h = (real *)PMEMemoryFetch(pme, PME_ID_COEFFICIENT, coefficientSize, ML_HOST);
     memcpy(coefficient_h, atc->coefficient, coefficientSize);
-    real *coefficient_d = (real *)PMEMemoryFetch(PME_ID_COEFFICIENT, coefficientSize, ML_DEVICE);
+    real *coefficient_d = (real *)PMEMemoryFetch(pme, PME_ID_COEFFICIENT, coefficientSize, ML_DEVICE);
     cu_copy_H2D_async(coefficient_d, coefficient_h, coefficientSize, s);
     */
 
