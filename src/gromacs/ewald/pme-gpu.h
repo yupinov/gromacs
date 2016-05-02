@@ -65,12 +65,12 @@ CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_execute_gpu(const gmx_parallel_3dfft
                             gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 
-CUDA_FUNC_QUALIFIER void spread_on_grid_gpu(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
-        int grid_index,
-        pmegrid_t *pmegrid,
-        const gmx_bool bCalcSplines,
-        const gmx_bool bSpread,
-        const gmx_bool bDoSplines
+CUDA_FUNC_QUALIFIER void spread_on_grid_gpu(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme), pme_atomcomm_t *CUDA_FUNC_ARGUMENT(atc),
+        const int CUDA_FUNC_ARGUMENT(grid_index),
+        pmegrid_t *CUDA_FUNC_ARGUMENT(pmegrid),
+        const gmx_bool CUDA_FUNC_ARGUMENT(bCalcSplines),
+        const gmx_bool CUDA_FUNC_ARGUMENT(bSpread),
+        const gmx_bool CUDA_FUNC_ARGUMENT(bDoSplines)
 ) CUDA_FUNC_TERM
 
 CUDA_FUNC_QUALIFIER void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
@@ -95,8 +95,8 @@ CUDA_FUNC_QUALIFIER void pme_gpu_init(gmx_pme_gpu_t **CUDA_FUNC_ARGUMENT(pmeGPU)
 CUDA_FUNC_QUALIFIER void pme_gpu_deinit(//gmx_pme_gpu_t **CUDA_FUNC_ARGUMENT(pmeGPU),
                                       gmx_pme_t **CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
-
 CUDA_FUNC_QUALIFIER void pme_gpu_step_init(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+
 CUDA_FUNC_QUALIFIER void pme_gpu_step_end(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
                                           const gmx_bool CUDA_FUNC_ARGUMENT(bCalcF),
                                           const gmx_bool CUDA_FUNC_ARGUMENT(bCalcEnerVir)) CUDA_FUNC_TERM
@@ -113,7 +113,6 @@ CUDA_FUNC_QUALIFIER void pme_gpu_update_flags(
         gmx_bool keepGPUDataBetweenSolveAndC2R,
         gmx_bool keepGPUDataBetweenC2RAndGather
         ) CUDA_FUNC_TERM //?
-//yupinov - this isn't just about grids though
 
 
 CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_destroy_gpu(const gmx_parallel_3dfft_gpu_t &CUDA_FUNC_ARGUMENT(pfft_setup)) CUDA_FUNC_TERM

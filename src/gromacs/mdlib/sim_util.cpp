@@ -1062,8 +1062,9 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
     }
     // copypaste end
 
-    do_pme_gpu_launch(fr, inputrec,
-                      cr, nrnb, wcycle, mdatoms,
+    do_pme_gpu_launch(fr, inputrec, cr,
+                      //nrnb,
+                      wcycle, mdatoms,
                       x, box,
                       lambda,
                       flags,

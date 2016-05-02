@@ -743,7 +743,7 @@ void pme_gpu_copy_calcspline_constants(gmx_pme_t *pme)
 #endif
 }
 
-void pme_gpu_alloc_grids(gmx_pme_t *pme, const int grid_index)
+void pme_gpu_alloc_grids(gmx_pme_t *pme, const int gmx_unused grid_index)
 {
     const int pnx = pme->pmegrid_nx;
     const int pny = pme->pmegrid_ny;
@@ -757,7 +757,7 @@ void pme_gpu_alloc_grids(gmx_pme_t *pme, const int grid_index)
         pme->gpu->fourierGrid = (t_complex *)pme->gpu->grid;
 }
 
-void pme_gpu_clear_grid(gmx_pme_t *pme, const int grid_index)
+void pme_gpu_clear_grid(gmx_pme_t *pme, const int gmx_unused grid_index)
 {
     /*
     pmegrid_t *pmegrid = &(pme->pmegrid[grid_index].grid); //yupinov most PME GPU functions ignore grid indices anyway
@@ -778,7 +778,7 @@ void pme_gpu_clear_grid(gmx_pme_t *pme, const int grid_index)
 }
 
 void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
-         int grid_index,
+         const int gmx_unused grid_index,
          pmegrid_t *pmegrid,
          const gmx_bool bCalcSplines,
          const gmx_bool bSpread,

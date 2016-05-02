@@ -1736,33 +1736,38 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                rvec x[],        rvec f[],
                real chargeA[],  real chargeB[],
                real c6A[],      real c6B[],
-               real sigmaA[],   real sigmaB[],
+               //real sigmaA[],   real sigmaB[],
                matrix box,      t_commrec *cr,
-               int  maxshift_x, int maxshift_y,
-               t_nrnb *nrnb,    gmx_wallcycle_t wcycle,
-               matrix vir_q,    real ewaldcoeff_q,
-               matrix vir_lj,   real ewaldcoeff_lj,
+               //int  maxshift_x, int maxshift_y,
+               //t_nrnb *nrnb,
+               gmx_wallcycle_t wcycle,
+               real ewaldcoeff_q,
+               //real ewaldcoeff_lj,
                real lambda_q,   real lambda_lj,
                int flags)
 {
     if (!pme->bGPU)
         return 0;
-    int                  d, i, j, npme, grid_index, max_grid_index;
-    int                  n_d;
+
     pme_atomcomm_t      *atc        = NULL;
     pmegrids_t          *pmegrid    = NULL;
     real                *grid       = NULL;
-    rvec                *f_d;
     real                *coefficient = NULL;
-    real                 scale, lambda;
+#if UNUSED_CPU_CODE_MARKER
+    int                  d, i, j, npme, grid_index;
+    int                  n_d;
+    rvec                *f_d;
+    real                 scale;
+    int                  fep_state;
+    int                  fep_states_lj           = pme->bFEP_lj ? 2 : 1;
+#endif
+    unsigned int grid_index;
+    real lambda;
     gmx_bool             bClearF;
-    //gmx_parallel_3dfft_t pfft_setup;
-    real              *  fftgrid;
+    real               * fftgrid;
     t_complex          * cfftgrid;
     int                  thread = 0;
     gmx_bool             bFirst, bDoSplines;
-    int                  fep_state;
-    int                  fep_states_lj           = pme->bFEP_lj ? 2 : 1;
     const gmx_bool       bCalcEnerVir            = flags & GMX_PME_CALC_ENER_VIR;
     const gmx_bool       bBackFFT                = flags & (GMX_PME_CALC_F | GMX_PME_CALC_POT);
     const gmx_bool       bCalcF                  = flags & GMX_PME_CALC_F;
@@ -1824,10 +1829,8 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
      */
 
     /* If we are doing LJ-PME with LB, we only do Q here */
-    max_grid_index = (pme->ljpme_combination_rule == eljpmeLB) ? DO_Q : DO_Q_AND_LJ;
+    unsigned int max_grid_index = (pme->ljpme_combination_rule == eljpmeLB) ? DO_Q : DO_Q_AND_LJ;
 
-    GMX_RELEASE_ASSERT(!(flags & GMX_PME_DO_LJ) && !pme->bFEP, "PME GPU has only been tried for a single grid. Shouldn't be difficult to extend though.\n");
-    GMX_RELEASE_ASSERT(sizeof(real) == sizeof(float), "PME GPU was not been designed with double precision in mind.\nIt might be possible too implement, but would require meticulous code proofreading.\n");
     for (grid_index = 0; grid_index < max_grid_index; ++grid_index)
     {
         /* Check if we should do calculations at this grid_index
