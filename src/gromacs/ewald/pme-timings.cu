@@ -6,6 +6,12 @@
 #include "gromacs/timing/wallcycle.h"
 #include "gromacs/gpu_utils/cudautils.cuh"
 
+pme_gpu_timing::pme_gpu_timing()
+{
+    initialized = false;
+    reset();
+}
+
 pme_gpu_timing::~pme_gpu_timing()
 {
 #if PME_GPU_TIMINGS
@@ -54,17 +60,28 @@ void pme_gpu_timing::stop_recording(cudaStream_t s)
 #endif
 }
 
-real pme_gpu_timing::get_time_milliseconds()
+void pme_gpu_timing::reset()
 {
-    real milliseconds = 0.0;
+    total_milliseconds = 0.0;
+    call_count = 0;
+}
+
+void pme_gpu_timing::update()
+{
 #if PME_GPU_TIMINGS
+    real milliseconds = 0.0;
     if (initialized)
     {
         cudaError_t stat = cudaEventElapsedTime(&milliseconds, event_start, event_stop);
         CU_RET_ERR(stat, "PME timing cudaEventElapsedTime fail");
     }
+    total_milliseconds += milliseconds;
 #endif
-    return milliseconds;
+}
+
+real pme_gpu_timing::get_total_time_milliseconds()
+{
+    return total_milliseconds;
 }
 
 unsigned int pme_gpu_timing::get_call_count()
@@ -84,26 +101,32 @@ void pme_gpu_timing_stop(gmx_pme_t *pme, int ewcsn)
     pme->gpu->timingEvents[i].stop_recording(pme->gpu->pmeStream);
 }
 
-void pme_gpu_timing_calculate(gmx_pme_t *pme)
+void pme_gpu_get_timing(gmx_pme_t *pme)
 {
-    for (int i = 0; i < PME_GPU_STAGES; i++)
-    {
-        gmx_wallclock_gpu_pme.pme_time[i].t += pme->gpu->timingEvents[i].get_time_milliseconds();
-        gmx_wallclock_gpu_pme.pme_time[i].c = pme->gpu->timingEvents[i].get_call_count();
-    }
-}
-
-
-void pme_gpu_reset_timings(gmx_pme_t *pme)
-{
-#if PME_GPU_TIMINGS
     if (pme && pme->bGPU)
     {
         for (int i = 0; i < PME_GPU_STAGES; i++)
         {
-            gmx_wallclock_gpu_pme.pme_time[i].t = 0.0;
-            gmx_wallclock_gpu_pme.pme_time[i].c = 0;
+            gmx_wallclock_gpu_pme.pme_time[i].t = pme->gpu->timingEvents[i].get_total_time_milliseconds();
+            gmx_wallclock_gpu_pme.pme_time[i].c = pme->gpu->timingEvents[i].get_call_count();
         }
     }
-#endif
+}
+
+void pme_gpu_update_timing(gmx_pme_t *pme)
+{
+    if (pme && pme->bGPU)
+    {
+        for (int i = 0; i < PME_GPU_STAGES; i++)
+            pme->gpu->timingEvents[i].update();
+    }
+}
+
+void pme_gpu_reset_timings(gmx_pme_t *pme)
+{
+    if (pme && pme->bGPU)
+    {
+        for (int i = 0; i < PME_GPU_STAGES; i++)
+            pme->gpu->timingEvents[i].reset();
+    }
 }

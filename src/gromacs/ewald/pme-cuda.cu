@@ -188,7 +188,7 @@ void pme_gpu_step_end(gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCal
     if (!pme->bGPU)
         return;
 
-    cudaError_t stat = cudaStreamSynchronize(pme->gpu->pmeStream); //neede for timings and for copy back events
+    cudaError_t stat = cudaStreamSynchronize(pme->gpu->pmeStream); // needed for timings and for copy back events
     CU_RET_ERR(stat, "failed to synchronize the PME GPU stream!");
 
     if (bCalcF)
@@ -196,7 +196,9 @@ void pme_gpu_step_end(gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCal
     if (bCalcEnerVir)
         pme_gpu_get_energy_virial(pme);
 
-    pme_gpu_timing_calculate(pme);
+    pme_gpu_update_timing(pme);
+
+    pme_gpu_get_timing(pme); // no need to call every step
 
     pme_gpu_step_reinit(pme);
 }
