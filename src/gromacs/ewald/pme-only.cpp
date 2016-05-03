@@ -248,7 +248,7 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
                    lambda_q, lambda_lj,
                    pme_flags | GMX_PME_DO_ALL_F | (bEnerVir ? GMX_PME_CALC_ENER_VIR : 0));
 
-        gmx_pme_gpu_get_results(pme, f_pp,
+        gmx_pme_gpu_get_results(pme,
                    cr, wcycle,
                    vir_q, vir_lj,
                    &energy_q, &energy_lj, lambda_q, lambda_lj, &dvdlambda_q, &dvdlambda_lj,

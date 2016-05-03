@@ -146,8 +146,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                int flags);
 
 int gmx_pme_gpu_get_results(struct gmx_pme_t *pme,
-               rvec f[],
-               t_commrec *cr,
+               t_commrec gmx_unused *cr,
                gmx_wallcycle_t wcycle,
                matrix vir_q,
                matrix vir_lj,

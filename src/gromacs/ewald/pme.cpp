@@ -1959,29 +1959,10 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
         {
             if (flags & GMX_PME_SOLVE)
             {
-/*
-                #pragma omp barrier
-                if (thread == 0)
-                    dump_local_fftgrid(pme, fftgrid, grid_index);
-                #pragma omp barrier
-
-                #pragma omp barrier
-                if (thread == 0)
-                    dump_local_fftgrid(pme, (const real *)cfftgrid, grid_index);
-                #pragma omp barrier
-*/
                 /* do 3d-fft */
                 gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_REAL_TO_COMPLEX,
                                             wcycle);
                 where();
-
-                    /*
-                #pragma omp barrier
-                if (thread == 0)
-                    dump_local_fftgrid(pme, (const real *)cfftgrid, grid_index);
-                #pragma omp barrier
-                    */
-
 
                 /* solve in k-space for our local cells */
                 if (thread == 0)
@@ -2005,12 +1986,6 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                                          pme->nthread, thread);
                 }
 #endif
-                /*
-                #pragma omp barrier
-                if (thread == 0)
-                    dump_local_fftgrid(pme, (const real *)cfftgrid, grid_index);
-                #pragma omp barrier
-                */
                 if (thread == 0)
                 {
                     wallcycle_stop(wcycle, (grid_index < DO_Q ? ewcPME_SOLVE : ewcLJPME));
@@ -2030,12 +2005,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                 }
                 gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_COMPLEX_TO_REAL,
                                           wcycle);
-                /*
-                #pragma omp barrier
-                if (thread == 0)
-                    dump_local_fftgrid(pme,(const real *)fftgrid, grid_index);
-                #pragma omp barrier
-                */
+
                 if (thread == 0)
                 {
 #if UNUSED_CPU_CODE_MARKER
@@ -2406,8 +2376,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
 // this function should just fetch results
 
 int gmx_pme_gpu_get_results(struct gmx_pme_t *pme,
-               rvec f[],
-               t_commrec *cr,
+               t_commrec gmx_unused *cr,
                gmx_wallcycle_t wcycle,
                matrix vir_q,
                matrix vir_lj,
