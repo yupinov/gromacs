@@ -2429,8 +2429,9 @@ int gmx_pme_gpu_get_results(struct gmx_pme_t *pme,
     real                 energy_AB[4];
     matrix               vir_AB[4];
 
-
+    wallcycle_start(wcycle, ewcPME_WAITGPU);
     pme_gpu_step_end(pme, bCalcF, bCalcEnerVir);
+    wallcycle_stop(wcycle, ewcPME_WAITGPU);
 
     // copied from up there in the loop...
     assert(grid_index == 0);
