@@ -1816,6 +1816,8 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
      * that don't yet have them.
      */
 
+    // for GPU this value currently will be false, possibly increasing the divergence in pme_spline_and_spread
+
     bDoSplines = pme->bFEP || ((flags & GMX_PME_DO_COULOMB) && (flags & GMX_PME_DO_LJ));
 
     /* We need a maximum of four separate PME calculations:
@@ -1891,22 +1893,18 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
             fprintf(debug, "Rank= %6d, pme local particles=%6d\n",
                     cr->nodeid, atc->n);
         }
-        gmx_bool keepGPUDataBetweenSpreadAndR2C = FALSE;
-        gmx_bool keepGPUDataBetweenC2RAndGather = FALSE; //yupinov inconvenient
-        //yupinov - these are not checked anywhere yet
+        //yupinov - these should use sync copies!
         //check for spread and solve flags here as well!
-        // bGPUSingle
-        keepGPUDataBetweenSpreadAndR2C = pme->bGPUSingle && pme->bGPUFFT; //yupinov -> no wrap kernels! different grids!
+        gmx_bool keepGPUDataBetweenSpreadAndR2C = pme->bGPUSingle && pme->bGPUFFT; //yupinov -> no wrap kernels! different grids!
         gmx_bool keepGPUDataBetweenR2CAndSolve = pme->bGPUSingle && pme->bGPUFFT && (grid_index < DO_Q); // no LJ support
-        gmx_bool keepGPUDataBetweenSolveAndC2R = pme->bGPUSingle && keepGPUDataBetweenR2CAndSolve && bBackFFT;
-        keepGPUDataBetweenC2RAndGather = pme->bGPUSingle && pme->bGPUFFT; // bCalcF!
+        gmx_bool keepGPUDataBetweenSolveAndC2R = keepGPUDataBetweenR2CAndSolve && bBackFFT;
+        gmx_bool keepGPUDataBetweenC2RAndGather = pme->bGPUSingle && pme->bGPUFFT && bCalcF;
         pme_gpu_update_flags(pme->gpu,
                              keepGPUDataBetweenSpreadAndR2C,
                              keepGPUDataBetweenR2CAndSolve,
                              keepGPUDataBetweenSolveAndC2R,
                              keepGPUDataBetweenC2RAndGather
                              );
-        //yupinov allocate enoguh space for copying the grid back
 
         if (flags & GMX_PME_SPREAD)
         {
