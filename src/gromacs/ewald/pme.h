@@ -59,6 +59,8 @@
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
 
+#include "pme-gpu.h"
+
 struct t_commrec;
 struct t_inputrec;
 
@@ -75,7 +77,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata, struct t_commrec *cr,
                  t_inputrec *ir, int homenr,
                  gmx_bool bFreeEnergy_q, gmx_bool bFreeEnergy_lj,
                  gmx_bool bReproducible, int nthread,
-                 gmx_bool bPMEGPU, const gmx_hw_info_t *hwinfo = NULL, const gmx_gpu_opt_t *gpu_opt = NULL);
+                 gmx_bool bPMEGPU, gmx_pme_gpu_t *pmeGPU, const gmx_hw_info_t *hwinfo = NULL, const gmx_gpu_opt_t *gpu_opt = NULL);
 
 /*! \brief Destroy the PME data structures respectively.
  *

@@ -45,7 +45,6 @@
 
 #include "pme-timings.cuh"
 #include "pme-cuda.cuh"
-#include "pme-gpu.h"
 
 #include <assert.h>
 

@@ -1,13 +1,16 @@
 #ifndef PMEGPU_H
 #define PMEGPU_H
 
-#include "pme-internal.h"
 #include "gromacs/gpu_utils/gpu_macros.h"
+#include "gromacs/math/vectypes.h"
+#include "gromacs/math/gmxcomplex.h"
+#include "gromacs/utility/basedefinitions.h"
 
 //yupinov add author info everywhere
 //yupinov CUDA_FUNC_QUALIFIER everywhere? as well as parameters
 // gmx_unused
 
+#include "pme-internal.h"
 
 /*! \brief Resets PME GPU timings. */
 CUDA_FUNC_QUALIFIER void pme_gpu_reset_timings(struct gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM

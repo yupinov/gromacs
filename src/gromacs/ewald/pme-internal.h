@@ -63,18 +63,17 @@
 #include "gromacs/timing/walltime_accounting.h"
 #include "gromacs/utility/gmxmpi.h"
 
+struct t_commrec;
+struct t_inputrec;
+
 #if GMX_GPU == GMX_GPU_CUDA
 struct gmx_pme_cuda_t;
 typedef struct gmx_pme_cuda_t gmx_pme_gpu_t;
+
+typedef struct gmx_parallel_3dfft_gpu *gmx_parallel_3dfft_gpu_t;
 #else
 typedef int gmx_pme_gpu_t;
 #endif
-
-
-typedef struct gmx_parallel_3dfft_gpu *gmx_parallel_3dfft_gpu_t;
-
-struct t_commrec;
-struct t_inputrec;
 
 //@{
 //! Grid indices for A state for charge and Lennard-Jones C6

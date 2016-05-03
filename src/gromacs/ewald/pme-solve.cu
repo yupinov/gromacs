@@ -15,7 +15,6 @@
 
 
 #include "pme-cuda.cuh"
-#include "pme-gpu.h"
 #include "pme-internal.h"
 #include "pme-solve.h"
 

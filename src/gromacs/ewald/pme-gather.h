@@ -38,7 +38,6 @@
 #include "gromacs/utility/real.h"
 
 #include "pme-gpu.h"
-#include "pme-internal.h"
 
 void
 gather_f_bsplines(struct gmx_pme_t *pme, real *grid,

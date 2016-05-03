@@ -37,7 +37,6 @@
 /* TODO find out what this file should be called */
 #include "gmxpre.h"
 
-#include "pme-gpu.h"
 #include "pme-grid.h"
 
 #include "config.h"

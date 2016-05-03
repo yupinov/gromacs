@@ -109,7 +109,6 @@
 
 #include "calculate-spline-moduli.h"
 #include "pme-gather.h"
-#include "pme-gpu.h"
 #include "pme-grid.h"
 #include "pme-internal.h"
 #include "pme-redistribute.h"
@@ -523,6 +522,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
                  gmx_bool           bReproducible,
                  int                nthread,
                  gmx_bool           bPMEGPU,
+                 gmx_pme_gpu_t      *pmeGPU,
                  const gmx_hw_info_t *hwinfo,
                  const gmx_gpu_opt_t *gpu_opt)
 {
@@ -738,6 +738,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     snew(pme->bsp_mod[YY], pme->nky);
     snew(pme->bsp_mod[ZZ], pme->nkz);
 
+    pme->gpu = pmeGPU; // carrying over same structure
     pme->bGPU = bPMEGPU;
     // here we have some safeguards for enabling PME GPU
     pme->bGPU = pme->bGPU && (pme->nodeid == 0);
@@ -909,7 +910,7 @@ int gmx_pme_reinit(struct gmx_pme_t **pmedata,
     }
 
     ret = gmx_pme_init(pmedata, cr, pme_src->nnodes_major, pme_src->nnodes_minor,
-                       &irc, homenr, pme_src->bFEP_q, pme_src->bFEP_lj, FALSE, pme_src->nthread, pme_src->bGPU);
+                       &irc, homenr, pme_src->bFEP_q, pme_src->bFEP_lj, FALSE, pme_src->nthread, pme_src->bGPU, pme_src->gpu);
 
     if (ret == 0)
     {
