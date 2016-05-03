@@ -116,8 +116,8 @@
 #include "pme-spline-work.h"
 #include "pme-spread.h"
 
-void gmx_parallel_3dfft_execute_wrapper(gmx_pme_t *pme,
-                           int grid_index,
+void gmx_parallel_3dfft_execute_gpu_wrapper(gmx_pme_t *pme,
+                           const int grid_index,
                            enum gmx_fft_direction dir,
                            gmx_wallcycle_t         wcycle)
 {
@@ -130,8 +130,11 @@ void gmx_parallel_3dfft_execute_wrapper(gmx_pme_t *pme,
     wallcycle_sub_start(wcycle, wsubcycle_id);
     // is this alright, to start and stop wallcycles aroudn the OpenMP region?
 
-    gmx_parallel_3dfft_execute_gpu(pme, dir, grid_index);
-    if (!pme->bGPUFFT)
+    if (pme->bGPUFFT)
+    {
+        gmx_parallel_3dfft_execute_gpu(pme, dir, grid_index);
+    }
+    else
     {
 #pragma omp parallel num_threads(pme->nthread) private(thread)
         {
@@ -716,35 +719,35 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     snew(pme->bsp_mod[YY], pme->nky);
     snew(pme->bsp_mod[ZZ], pme->nkz);
 
-    pme->gpu = pmeGPU; // carrying over same structure
-    pme->bGPU = bPMEGPU;
-    // here we have some safeguards for enabling PME GPU
-    pme->bGPU = pme->bGPU && (pme->nodeid == 0);
-    // only a single rank should do PME GPU for now.
-    // currently PME GPU mdrun with MPI crashes anyway :(
-    pme->bGPU = pme->bGPU && (!pme->bFEP);
-    // PME GPU has only been tried for a single grid; shouldn't be difficult to extend though
-    pme->bGPU = pme->bGPU && (!EVDW_PME(ir->vdwtype));
-    // also, the LJ solve kernel isn't implemented; again, not a big effort to implement that
-    pme->bGPU = pme->bGPU && (sizeof(real) == sizeof(float));
-    // most likely current FFT/solve wouldn't work on double precision
-    pme->bGPU = pme->bGPU && (pme->pme_order == 4);
-    // only been tried for order of 4. what other orders would make sense anyway? 8 would require a small spread/gather rewrite.
-    // put a log line about our final CPU/GPU decision?
-    // gmx_warning("PME will run on %s", pme->bGPU ? "GPU" : "CPU");
+    pme->gpu = pmeGPU; // carrying over the same GPU structure
 
-    GMX_RELEASE_ASSERT(pme->bGPU == (bPMEGPU ? 1 : 0), "PME GPU does not support some of the input pparameters");
+    pme->bGPU = bPMEGPU && (pme->nodeid == 0);
+    // only the first rank should do PME GPU for now.
+    // currently PME GPU mdrun with MPI crashes anyway;
+    // also, the PP/PME GPU selection logic is silly: currently PME always runs on the same GPU as PP runs/would run on
 
-
-
+    if (pme->bGPU) // safeguards
+    {
+        GMX_RELEASE_ASSERT(!pme->bFEP, "PME GPU is only implemented for a single grid");
+        // shouldn't be difficult to extend though
+        GMX_RELEASE_ASSERT(!EVDW_PME(ir->vdwtype), "PME LJ is not implemented on a GPU");
+        // a matter of implementing multiple girds + the PME LJ solve kernel
+        GMX_RELEASE_ASSERT(sizeof(real) == sizeof(float), "No double precision support for PME GPU");
+        // most likely current FFT/solve wouldn't work on double precision
+        GMX_RELEASE_ASSERT(pme->pme_order == 4, "PME GPU is only implemented for the PME order of 4");
+        // what other orders would make sense anyway? 8 would require only a small spread/gather rewrite
+#if GMX_GPU != GMX_GPU_CUDA
+        GMX_RELEASE_ASSERT(false, "PME GPU is only implemented for CUDA");
+#endif
+        // put a log line about our final CPU/GPU decision?
+        // gmx_warning("PME will run on %s", pme->bGPU ? "GPU" : "CPU");
+    }
 
     pme->bGPUSingle = pme->bGPU && (pme->nnodes == 1);
     // a convenience variable
 
     pme->bGPUFFT = pme->bGPUSingle && !getenv("GMX_PME_GPU_FFTW");
     // currently cuFFT is only used for a single rank
-    //yupinov this variable doesn't actually work correctly :(
-
 
     /* The required size of the interpolation grid, including overlap.
      * The allocated size (pmegrid_n?) might be slightly larger.
@@ -1938,7 +1941,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
             if (flags & GMX_PME_SOLVE)
             {
                 /* do 3d-fft */
-                gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_REAL_TO_COMPLEX,
+                gmx_parallel_3dfft_execute_gpu_wrapper(pme, grid_index, GMX_FFT_REAL_TO_COMPLEX,
                                             wcycle);
                 where();
 
@@ -1979,7 +1982,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                 {
                     where();
                 }
-                gmx_parallel_3dfft_execute_wrapper(pme, grid_index, GMX_FFT_COMPLEX_TO_REAL,
+                gmx_parallel_3dfft_execute_gpu_wrapper(pme, grid_index, GMX_FFT_COMPLEX_TO_REAL,
                                           wcycle);
 
                 if (thread == 0)
