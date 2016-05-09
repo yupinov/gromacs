@@ -31,26 +31,30 @@ void pme_gpu_get_forces(gmx_pme_t *pme)
     const int n = pme->atc[0].n;
     const int forcesSize = DIM * n * sizeof(real);
     real *forces = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
-    memcpy(pme->atc[0].f, forces, forcesSize);
-
-    /*
-    if (PME_SKIP_ZEROES)
-    {
-        const int size_forces = DIM * n * sizeof(real);
-        const int size_indices = n * sizeof(int);
-        real *atc_f_h = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, size_forces, ML_HOST);
-        int *atc_i_compacted_h = (int *)PMEMemoryFetch(pme, PME_ID_NONZERO_INDICES, size_indices, ML_HOST);
-        for (int iCompacted = 0; iCompacted < n; iCompacted++)  // iterating over compacted particles
-        {
-            int i = atc_i_compacted_h[iCompacted]; //index of uncompacted particle
-            forces[i][XX] = atc_f_h[iCompacted * DIM + XX];
-            forces[i][YY] = atc_f_h[iCompacted * DIM + YY];
-            forces[i][ZZ] = atc_f_h[iCompacted * DIM + ZZ];
-        }
-    }
-    */
+    //memcpy(pme->atc[0].f, forces, forcesSize);
+    //yupinov temporary sloppy reduction, shoudl be reworked
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < DIM; j++)
+            pme->atc[0].f[i][j] += forces[i * DIM + j];
 }
+/*
+void pme_gpu_copy_forces(gmx_pme_t *pme)
+{
+    //yupinov - here we want to make sure that the atc forces are already calculated!
+    // but how should we do that?
+    // overall, a very crappy last-minute solution, should be dealt with somehow
+    // forces don't really need to be copied from the host to be reduced.
+    // or do they?
 
+    const int n = pme->atc[0].n;
+    assert(n);
+    const int forcesSize = DIM * n * sizeof(real);
+    real *forces = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
+    memcpy(forces, pme->atc[0].f, forcesSize);
+    printf("hello %g\n", forces[1]);
+    cu_copy_H2D_async(pme->gpu->forces, forces, forcesSize, pme->gpu->pmeStream);
+}
+*/
 
 //yupinov - texture memory?
 template <
@@ -329,10 +333,10 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
         return;
 
     const gmx_bool bOverwriteForces = true;
+
     // false: we use some other GPU forces buffer for the final reduction, so we want to add to that
     // in that case, maybe we want to replace + with atomicAdd at the end of kernel?
     // true: we have our own buffer, so just write directly into that
-
 
     const int *spline_ind = spline->ind;
     const splinevec *spline_theta = &spline->theta;
