@@ -201,7 +201,7 @@ __global__ void pme_solve_kernel
             float2 gridValue = *p0;
             if (debugPrint)
                 printf("grid %g %g\n", gridValue.x, gridValue.y);
-
+            float2 oldGridValue = gridValue;
             gridValue.x *= etermk;
             gridValue.y *= etermk;
             *p0 = gridValue;
@@ -211,7 +211,7 @@ __global__ void pme_solve_kernel
 
             if (bEnerVir)
             {
-                real tmp1k = 2.0f * (gridValue.x * gridValue.x + gridValue.y * gridValue.y) / etermk;
+                real tmp1k = 2.0f * (gridValue.x * oldGridValue.x + gridValue.y * oldGridValue.y);
 
                 real vfactor = (ewaldFactor + 1.0f / m2k) * 2.0f;
                 real ets2 = corner_fac * tmp1k;
