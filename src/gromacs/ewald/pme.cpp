@@ -149,7 +149,17 @@ void gmx_parallel_3dfft_execute_gpu_wrapper(gmx_pme_t *pme,
 
 gmx_bool pme_gpu_enabled(const gmx_pme_t *pme)
 {
-    return pme != NULL && pme->bGPU;
+    return (pme != NULL) && pme->bGPU;
+}
+
+void pme_gpu_sloppy_force_reduction(const gmx_pme_t *pme, const real *forcesGPU)
+{
+#pragma omp parallel for num_threads(pme->nthread)
+    for (int i = 0; i < pme->atc[0].n; i++)
+    {
+        for (int j = 0; j < DIM; j++)
+            pme->atc[0].f[i][j] += forcesGPU[i * DIM + j];
+    }
 }
 
 /*! \brief Number of bytes in a cache line.

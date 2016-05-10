@@ -75,6 +75,7 @@ typedef int gmx_pme_gpu_t;
 
 typedef struct gmx_parallel_3dfft_gpu *gmx_parallel_3dfft_gpu_t;
 
+
 //@{
 //! Grid indices for A state for charge and Lennard-Jones C6
 #define PME_GRID_QA    0
@@ -392,5 +393,8 @@ void gmx_pme_send_force_vir_ener(struct gmx_pme_pp *pme_pp,
                                  matrix vir_lj, real energy_lj,
                                  real dvdlambda_q, real dvdlambda_lj,
                                  float cycles);
+
+// a temporary hack
+void pme_gpu_sloppy_force_reduction(const gmx_pme_t *pme, const real *forcesGPU);
 
 #endif

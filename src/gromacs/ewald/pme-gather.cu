@@ -33,9 +33,7 @@ void pme_gpu_get_forces(gmx_pme_t *pme)
     real *forces = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
     //memcpy(pme->atc[0].f, forces, forcesSize);
     //yupinov temporary sloppy reduction, shoudl be reworked
-    for (int i = 0; i < n; i++)
-        for (int j = 0; j < DIM; j++)
-            pme->atc[0].f[i][j] += forces[i * DIM + j];
+    pme_gpu_sloppy_force_reduction(pme, forces);
 }
 /*
 void pme_gpu_copy_forces(gmx_pme_t *pme)
