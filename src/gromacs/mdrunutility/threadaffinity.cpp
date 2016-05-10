@@ -445,7 +445,6 @@ gmx_set_thread_affinity(FILE                        *fplog,
                 "NOTE: Thread affinity setting failed. This can cause performance degradation.\n"
                 "      If you think your settings are correct, ask on the gmx-users list.");
     }
-    return;
 }
 
 /* Check the process affinity mask and if it is found to be non-zero,
