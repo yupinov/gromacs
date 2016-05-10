@@ -118,7 +118,6 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
     const bool gridSizeChanged = true;
     const bool localParticleNumberChanged = firstInit; // should be checked for DD
 
-    printf("HELLO reinit\n");
     if (gridSizeChanged)
     {
         pme_gpu_copy_wrap_zones(pme);
