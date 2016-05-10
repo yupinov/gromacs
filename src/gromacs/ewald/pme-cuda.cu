@@ -44,6 +44,8 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
     if (!pme->bGPU) //yupinov fix this
         return;
 
+    const int grid_index = 0;
+
     gmx_bool firstInit = !*pmeGPU;
     if (firstInit) // the very first init
     {
@@ -108,35 +110,39 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         if ((pme->gpu)->doTime)
             pme_gpu_init_timings(pme);
 
+        pme_gpu_alloc_energy_virial(pme, grid_index);
+
         pme_gpu_update_flags(*pmeGPU, false, false, false, false);
     }
 
-    // all these functions should only be called when the grid size changes (e.g. DD)
-    const int grid_index = 0;
-    pme_gpu_copy_wrap_zones(pme);
-    pme_gpu_copy_calcspline_constants(pme);
-    pme_gpu_copy_bspline_moduli(pme);
-    pme_gpu_alloc_gather_forces(pme);
-    pme_gpu_alloc_grids(pme, grid_index);
-    pme_gpu_alloc_energy_virial(pme, grid_index);
+    const bool gridSizeChanged = true;
+    const bool localParticleNumberChanged = firstInit; // should be checked for DD
 
-    if (pme->bGPUFFT) //copied from gmx_pme_init
+    printf("HELLO reinit\n");
+    if (gridSizeChanged)
     {
-        ivec ndata;
-        ndata[0]    = pme->nkx;
-        ndata[1]    = pme->nky;
-        ndata[2]    = pme->nkz;
-        snew((*pmeGPU)->pfft_setup_gpu, pme->ngrids);
-        for (int i = 0; i < pme->ngrids; ++i)
+        pme_gpu_copy_wrap_zones(pme);
+        pme_gpu_copy_calcspline_constants(pme);
+        pme_gpu_copy_bspline_moduli(pme);
+        pme_gpu_alloc_grids(pme, grid_index);
+
+        if (pme->bGPUFFT)
         {
-            gmx_parallel_3dfft_init_gpu(&(*pmeGPU)->pfft_setup_gpu[i], ndata, pme);
+            ivec ndata;
+            ndata[0] = pme->nkx;
+            ndata[1] = pme->nky;
+            ndata[2] = pme->nkz;
+            snew((*pmeGPU)->pfft_setup_gpu, pme->ngrids);
+            for (int i = 0; i < pme->ngrids; ++i)
+            {
+                gmx_parallel_3dfft_init_gpu(&(*pmeGPU)->pfft_setup_gpu[i], ndata, pme);
+            }
         }
     }
+    if (localParticleNumberChanged)
+        pme_gpu_alloc_gather_forces(pme);
 
     pme_gpu_step_reinit(pme);
-
-    if (debug)
-        fprintf(debug, "PME GPU %s\n", firstInit ? "init" : "reinit");
 }
 
 void pme_gpu_deinit(//gmx_pme_gpu_t **pmeGPU,
