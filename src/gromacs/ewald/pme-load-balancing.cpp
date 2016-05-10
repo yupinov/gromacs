@@ -815,7 +815,14 @@ pme_load_balance(pme_load_balancing_t      *pme_lb,
 
     if (!pme_lb->bSepPMERanks)
     {
-        if (pme_lb->setup[pme_lb->cur].pmedata == NULL)
+        //yupinov FIXME
+        // CPU PME keeps a list of allocated pmedata's, that's why pme_lb->setup[pme_lb->cur].pmedata is not always NULL
+        // GPU PME however currently needs the gmx_pme_reinit always called on load balancing
+        // (pme_gpu_init might be not sufficicently decoupled from gmx_pme_init)
+        // that is the reason for the bGPU conditional
+        // this can lead to a lot of reallocations on PME GPU
+        // would be much nicer if the allocated pmedata list was hidden within the pmedata structure
+        if ((pme_lb->setup[pme_lb->cur].pmedata == NULL) || pme_lb->setup[pme_lb->cur].pmedata->bGPU)
         {
             /* Generate a new PME data structure,
              * copying part of the old pointers.
