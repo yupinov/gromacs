@@ -1736,6 +1736,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
     pmegrids_t          *pmegrid    = NULL;
     real                *grid       = NULL;
     real                *coefficient = NULL;
+    int loop_count;
 #if UNUSED_CPU_CODE_MARKER
     int                  d, i, j, npme, grid_index;
     int                  n_d;
@@ -1947,7 +1948,21 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                 }
                 if (grid_index < DO_Q)
                 {
-                    solve_pme_gpu(pme, cfftgrid, ewaldcoeff_q, box[XX][XX]*box[YY][YY]*box[ZZ][ZZ], bCalcEnerVir);
+                    if (pme_gpu_performs_solve(pme))
+                    {
+                        solve_pme_gpu(pme, cfftgrid, ewaldcoeff_q,
+                                      box[XX][XX]*box[YY][YY]*box[ZZ][ZZ], bCalcEnerVir);
+                    }
+                    else
+#pragma omp parallel num_threads(pme->nthread) private(thread)
+                    {
+                        thread = gmx_omp_get_thread_num();
+                        loop_count = solve_pme_yzx(pme, cfftgrid, ewaldcoeff_q,
+                                          box[XX][XX]*box[YY][YY]*box[ZZ][ZZ],
+                                          bCalcEnerVir,
+                                          pme->nthread, thread);
+                    }
+
                 }
 #if UNUSED_CPU_CODE_MARKER
                 else

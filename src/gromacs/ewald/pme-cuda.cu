@@ -59,8 +59,9 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         (*pmeGPU)->bGPUFFT = (*pmeGPU)->bGPUSingle && !getenv("GMX_PME_GPU_FFTW");
         // currently cuFFT is only used for a single rank
 
-        (*pmeGPU)->bGPUSolve = (*pmeGPU)->bGPUFFT;
+        (*pmeGPU)->bGPUSolve = true;//(*pmeGPU)->bGPUFFT;
         // solve is done between the 2 FFTs - not worth it to copy
+        //yupinov CPU solve with the CPU FFTW is definitely broken at the moment - 20150511
 
         (*pmeGPU)->bGPUGather = true;
         // ???
@@ -334,6 +335,11 @@ gmx_bool pme_gpu_performs_FFT(gmx_pme_t *pme)
 gmx_bool pme_gpu_performs_wrapping(gmx_pme_t *pme)
 {
     return pme && pme->bGPU && pme->gpu->bGPUSingle; // this could change!
+}
+
+gmx_bool pme_gpu_performs_solve(gmx_pme_t *pme)
+{
+    return pme && pme->bGPU && pme->gpu->bGPUSolve;
 }
 
 // some memory operation wrappers below
