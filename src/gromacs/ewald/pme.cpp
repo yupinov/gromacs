@@ -2360,11 +2360,11 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
     return 0;
 }
 
-// this will only copy the forces buffer (with results from listed calculations, etc.) to the GPU,
+// this will only copy the forces buffer (with results from listed calculations, etc.) to the GPU (for bClearF == false),
 // launch the gather kernel, copy the result back
 void gmx_pme_gpu_launch_gather(gmx_pme_t *pme,
                gmx_wallcycle_t wcycle,
-              real lambda_q, real lambda_lj)
+              real lambda_q, real lambda_lj, gmx_bool bClearF)
 {
     if (!pme || !pme->bGPU) // what the hell, why would pme be NULL
         return;
@@ -2372,14 +2372,11 @@ void gmx_pme_gpu_launch_gather(gmx_pme_t *pme,
     //const gmx_bool bFirst = (grid_index == 0);
 
     real lambda  = grid_index < DO_Q ? lambda_q : lambda_lj;
-    gmx_bool bClearF = false;
-    //(bFirst && PAR(cr)); //yupinov! we need bFirst on GPU if we're doing several grids!
     const int thread = 0;
     pme_atomcomm_t *atc = pme->atc;
     pmegrids_t *pmegrid = &pme->pmegrid[grid_index];
     real *grid = pmegrid->grid.grid;
 
-    // OpenMP killed
     gather_f_bsplines_wrapper(pme, grid, bClearF, atc,
                               &atc->spline[thread],
                               pme->bFEP ? (grid_index % 2 == 0 ? (1.0 - lambda) : lambda) : 1.0, wcycle, thread);

@@ -249,7 +249,7 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
                    pme_flags | GMX_PME_DO_ALL_F | (bEnerVir ? GMX_PME_CALC_ENER_VIR : 0));
 
         //yupinov just pass a clear instead
-        gmx_pme_gpu_launch_gather(pme, wcycle, lambda_q, lambda_lj);
+        gmx_pme_gpu_launch_gather(pme, wcycle, lambda_q, lambda_lj, true);
 
         gmx_pme_gpu_get_results(pme,
                    cr, wcycle,

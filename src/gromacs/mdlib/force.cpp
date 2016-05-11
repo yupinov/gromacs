@@ -736,7 +736,7 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                                                    fr->vir_el_recip);
             }
 
-            gmx_pme_gpu_launch_gather(fr->pmedata, wcycle, lambda[efptCOUL], lambda[efptVDW]);
+            gmx_pme_gpu_launch_gather(fr->pmedata, wcycle, lambda[efptCOUL], lambda[efptVDW], false);
 
             enerd->dvdl_lin[efptCOUL] += dvdl_long_range_correction_q;
             enerd->dvdl_lin[efptVDW]  += dvdl_long_range_correction_lj;

@@ -130,6 +130,8 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                int flags);
 
 
+// launches first part of PME GPU - from spread up to and including FFT C2R
+// and copying energy/virial back
 int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                int start,       int homenr,
                rvec x[],        rvec f[],
@@ -145,9 +147,13 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                real lambda_q,   real lambda_lj,
                int flags);
 
+// launches the rest of the PME GPU:
+// copying calculated forces (e.g. listed) onto GPU (only for bClearF == false), gather, copying forces back
+// for separate PME ranks there is no precalculated forces, so bClearF has to be true
+// so there is no reason not to put this call directly back into gmx_pme_gpu_launch for bClearF == true
 void gmx_pme_gpu_launch_gather(gmx_pme_t *pme,
                gmx_wallcycle_t wcycle,
-              real lambda_q, real lambda_lj);
+              real lambda_q, real lambda_lj, gmx_bool bClearF);
 
 int gmx_pme_gpu_get_results(struct gmx_pme_t *pme,
                t_commrec gmx_unused *cr,
