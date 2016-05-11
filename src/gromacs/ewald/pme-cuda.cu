@@ -44,10 +44,24 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         assert(hwinfo);
         assert(hwinfo->gpu_info.gpu_dev);
         assert(gpu_opt->dev_use);
-        (*pmeGPU)->deviceInfo = &hwinfo->gpu_info.gpu_dev[gpu_opt->dev_use[PMEGPURank]];
-        const gmx::MDLogger temp;
-        if (!init_gpu(temp, PMEGPURank, gpu_err_str, &hwinfo->gpu_info, gpu_opt))
-            gmx_fatal(FARGS, "Could not select GPU %d for PME rank %d\n", (*pmeGPU)->deviceInfo->id, PMEGPURank);
+
+        int forcedGpuId = -1;
+        char *forcedGpuIdHack = getenv("GMX_PME_GPU_ID");
+        if (forcedGpuIdHack)
+        {
+            forcedGpuId = atoi(forcedGpuIdHack);
+            printf("PME rank %d trying to use GPU %d\n", PMEGPURank, forcedGpuId);
+            stat = cudaSetDevice(forcedGpuId);
+            CU_RET_ERR(stat, "hello ");
+        }
+        else
+        {
+            (*pmeGPU)->deviceInfo = &hwinfo->gpu_info.gpu_dev[gpu_opt->dev_use[PMEGPURank]];
+            const gmx::MDLogger temp;
+            if (!init_gpu(temp, PMEGPURank, gpu_err_str, &hwinfo->gpu_info, gpu_opt))
+                gmx_fatal(FARGS, "Could not select GPU %d for PME rank %d\n", (*pmeGPU)->deviceInfo->id, PMEGPURank);
+        }
+
         // fallback instead?
         // first init and either of the hw structures NULL => should also fall back to CPU
 
@@ -76,7 +90,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         // this should check for PP GPU being launched
         // just like NB should check for PME GPU
 
-        (*pmeGPU)->useTextureObjects = ((*pmeGPU)->deviceInfo->prop.major >= 3);
+        (*pmeGPU)->useTextureObjects = forcedGpuIdHack ? false : ((*pmeGPU)->deviceInfo->prop.major >= 3);
         // if false, texture references are used instead
 
         // internal storage
