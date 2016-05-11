@@ -369,9 +369,9 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     const int gridSize = local_size[XX] * local_size[YY] * local_size[ZZ] * sizeof(float2);
 
     float2 *grid_d = (float2 *)pme->gpu->fourierGrid;
-    if (!pme->gpu->keepGPUDataBetweenR2CAndSolve)
+    if (!pme->bGPUFFT)
     {
-        cu_copy_H2D_async(grid_d, grid, gridSize, s); //sync...
+        cu_copy_H2D_async(grid_d, grid, gridSize, s);
     }
     const real ewaldFactor = (M_PI * M_PI) / (ewaldcoeff * ewaldcoeff);
 
@@ -454,17 +454,18 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
 
     pme_gpu_timing_stop(pme, ewcsPME_SOLVE);
 
-    if (!pme->gpu->keepGPUDataBetweenSolveAndC2R)
-    {
-        cu_copy_D2H_async(grid, grid_d, gridSize, s);
-    }
-
     if (bEnerVir)
     {
         real *energyAndVirial_h = (real *)PMEMemoryFetch(pme, PME_ID_ENERGY_AND_VIRIAL, pme->gpu->energyAndVirialSize, ML_HOST);
         cu_copy_D2H_async(energyAndVirial_h, pme->gpu->energyAndVirial, pme->gpu->energyAndVirialSize, s);
         cudaError_t stat = cudaEventRecord(pme->gpu->syncEnerVirH2D, s);
         CU_RET_ERR(stat, "PME solve energy/virial sync fail");
+    }
+
+    if (!pme->bGPUFFT)
+    {
+        cu_copy_D2H(grid, grid_d, gridSize);
+        // synchronous copy!
     }
 }
 

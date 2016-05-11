@@ -116,16 +116,6 @@ CUDA_FUNC_QUALIFIER void pme_gpu_step_end(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
                                           const gmx_bool CUDA_FUNC_ARGUMENT(bCalcF),
                                           const gmx_bool CUDA_FUNC_ARGUMENT(bCalcEnerVir)) CUDA_FUNC_TERM
 
-
-CUDA_FUNC_QUALIFIER void pme_gpu_update_flags(
-        gmx_pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU),
-        gmx_bool CUDA_FUNC_ARGUMENT(keepGPUDataBetweenSpreadAndR2C),
-        gmx_bool CUDA_FUNC_ARGUMENT(keepGPUDataBetweenR2CAndSolve),
-        gmx_bool CUDA_FUNC_ARGUMENT(keepGPUDataBetweenSolveAndC2R),
-        gmx_bool CUDA_FUNC_ARGUMENT(keepGPUDataBetweenC2RAndGather)
-        ) CUDA_FUNC_TERM
-
-
 CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_destroy_gpu(const gmx_parallel_3dfft_gpu_t &CUDA_FUNC_ARGUMENT(pfft_setup)) CUDA_FUNC_TERM
 
 

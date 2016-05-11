@@ -15,20 +15,6 @@
 #include "pme-cuda.cuh"
 #include "pme-gpu.h"
 
-void pme_gpu_update_flags(
-        gmx_pme_gpu_t *pmeGPU,
-        gmx_bool keepGPUDataBetweenSpreadAndR2C,
-        gmx_bool keepGPUDataBetweenR2CAndSolve,
-        gmx_bool keepGPUDataBetweenSolveAndC2R,
-        gmx_bool keepGPUDataBetweenC2RAndGather
-        )
-{
-    pmeGPU->keepGPUDataBetweenSpreadAndR2C = keepGPUDataBetweenSpreadAndR2C;
-    pmeGPU->keepGPUDataBetweenR2CAndSolve = keepGPUDataBetweenR2CAndSolve;
-    pmeGPU->keepGPUDataBetweenSolveAndC2R = keepGPUDataBetweenSolveAndC2R;
-    pmeGPU->keepGPUDataBetweenC2RAndGather = keepGPUDataBetweenC2RAndGather;
-}
-
 void pme_gpu_step_reinit(gmx_pme_t *pme)
 {
     // this is ran at the end of MD step + at the DD init
@@ -80,6 +66,11 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         (*pmeGPU)->useTextureObjects = ((*pmeGPU)->deviceInfo->prop.major >= 3);
         // if false, texture references are used instead
 
+        // solve is done between the 2 FFTs - not worth it to copy
+        (*pmeGPU)->bGPUSolve = pme->bGPUFFT;
+        // ???
+        (*pmeGPU)->bGPUGather = true;
+
         // internal storage
         size_t pointerStorageSize = ML_END_INVALID * PME_ID_END_INVALID;
         (*pmeGPU)->StorageSizes.assign(pointerStorageSize, 0);
@@ -111,8 +102,6 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
             pme_gpu_init_timings(pme);
 
         pme_gpu_alloc_energy_virial(pme, grid_index);
-
-        pme_gpu_update_flags(*pmeGPU, false, false, false, false);
     }
 
     const bool gridSizeChanged = true;

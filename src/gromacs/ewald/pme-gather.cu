@@ -373,7 +373,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
 
     const int ndatatot = pnx * pny * pnz;
     const int gridSize = ndatatot * sizeof(real);
-    if (!pme->gpu->keepGPUDataBetweenC2RAndGather)
+    if (!pme->bGPUFFT)
         cu_copy_H2D_async(pme->gpu->grid, grid, gridSize, s);
 
     if (pme->bGPUSingle)

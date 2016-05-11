@@ -1884,18 +1884,9 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
             fprintf(debug, "Rank= %6d, pme local particles=%6d\n",
                     cr->nodeid, atc->n);
         }
-        //yupinov - these should use sync copies!
-        //check for spread and solve flags here as well!
-        gmx_bool keepGPUDataBetweenSpreadAndR2C = pme->bGPUSingle && pme->bGPUFFT; //yupinov -> no wrap kernels! different grids!
-        gmx_bool keepGPUDataBetweenR2CAndSolve = pme->bGPUSingle && pme->bGPUFFT && (grid_index < DO_Q); // no LJ support
-        gmx_bool keepGPUDataBetweenSolveAndC2R = keepGPUDataBetweenR2CAndSolve && bBackFFT;
-        gmx_bool keepGPUDataBetweenC2RAndGather = pme->bGPUSingle && pme->bGPUFFT && bCalcF;
-        pme_gpu_update_flags(pme->gpu,
-                             keepGPUDataBetweenSpreadAndR2C,
-                             keepGPUDataBetweenR2CAndSolve,
-                             keepGPUDataBetweenSolveAndC2R,
-                             keepGPUDataBetweenC2RAndGather
-                             );
+        // pme->bGPUSingle && pme->bGPUFFT should be checked here in teh future
+        // pme->gpu->bGPUSolve &&= (grid_index < DO_Q);  // no LJ support
+        // no bBackFFT, no bCalcF checks
 
         if (flags & GMX_PME_SPREAD)
         {
@@ -1928,7 +1919,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                     where();
                 }
 #endif
-                if (!keepGPUDataBetweenSpreadAndR2C) // only copy CPU PME grid to CPU FFT grid if we don't keep the data on GPU
+                if (!pme->bGPUFFT)
                     copy_pmegrid_to_fftgrid(pme, grid, fftgrid, grid_index);
             }
 
@@ -2013,11 +2004,13 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                        refactoring code here. */
                     wallcycle_start(wcycle, ewcPME_SPREADGATHER);
                 }
-                if (!keepGPUDataBetweenC2RAndGather)
-#pragma omp parallel for num_threads(pme->nthread) schedule(static)
-                for (thread = 0; thread < pme->nthread; thread++)
+                if (!pme->bGPUFFT)//|| !pme->gpu->bGather)
                 {
-                    copy_fftgrid_to_pmegrid(pme, fftgrid, grid, grid_index, pme->nthread, thread);
+#pragma omp parallel for num_threads(pme->nthread) schedule(static)
+                    for (thread = 0; thread < pme->nthread; thread++)
+                    {
+                        copy_fftgrid_to_pmegrid(pme, fftgrid, grid, grid_index, pme->nthread, thread);
+                    }
                 }
             }
         } GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;

@@ -123,14 +123,17 @@ struct gmx_pme_cuda_t
     cudaEvent_t syncEnerVirH2D; // energy and virial have already been calculated in pme-solve, and have been copied to host
     cudaEvent_t syncForcesH2D;  // forces have already been calculated in pme-gather, and have been copied to host
 
-    // crude data-keeping flags
-    gmx_bool keepGPUDataBetweenSpreadAndR2C; //yupinov BetweenSplineAndSpread?
-    //yupinov should be same as keepGPUDataBetweenC2RAndGather ? or what do I do wit hdthetas?
-    gmx_bool keepGPUDataBetweenR2CAndSolve;
-    gmx_bool keepGPUDataBetweenSolveAndC2R;
-    gmx_bool keepGPUDataBetweenC2RAndGather;
 
     // some other permanent settings set on init
+
+    // gmx_bool bGPUSpread;
+    // spread being on a GPU is a given - it's the main effort
+
+    gmx_bool bGPUSolve;
+
+    gmx_bool bGPUGather;
+
+    // bGPUFFT is in main pme structure, have to refactor
 
     gmx_bool doOutOfPlaceFFT; // if true, then an additional grid of the same size is used for R2C/solve/C2R
 

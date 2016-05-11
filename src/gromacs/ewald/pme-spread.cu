@@ -994,13 +994,16 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
             gmx_fatal(FARGS, "the code for pme_order != 4 was not tested!");
     }
 
-    if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
+    if (!pme->bGPUFFT)
     {
-        //yupinov - (d)theta layout is broken; and what about idx?
         if (bSpread)
             cu_copy_D2H_async(pmegrid->grid, pme->gpu->grid, gridSize, s); //yupinov - should sync on CPU FFT?
-        for (int j = 0; j < DIM; ++j) //also breaking compacting in gather
-        //and why not just check bGPUSingle here?
+    }
+    if (!pme->gpu->bGPUGather)
+    {
+        //yupinov - (d)theta layout is broken
+        // and no accounting for PME communication (bGPUSingle check?)
+        for (int j = 0; j < DIM; ++j)
         {
             cu_copy_D2H_async(atc->spline[0].dtheta[j], dtheta_d + j * n * order, size_order, s);
             cu_copy_D2H_async(atc->spline[0].theta[j], theta_d + j * n * order, size_order, s);
