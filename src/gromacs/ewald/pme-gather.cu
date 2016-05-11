@@ -25,7 +25,7 @@ void pme_gpu_alloc_gather_forces(gmx_pme_t *pme)
 void pme_gpu_get_forces(gmx_pme_t *pme)
 {
     cudaStream_t s = pme->gpu->pmeStream;
-    cudaError_t stat = cudaStreamWaitEvent(s, pme->gpu->syncForcesH2D, 0);
+    cudaError_t stat = cudaStreamWaitEvent(s, pme->gpu->syncForcesD2H, 0);
     CU_RET_ERR(stat, "error while waiting for PME forces");
 
     const int n = pme->atc[0].n;
@@ -567,7 +567,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
     pme_gpu_timing_stop(pme, ewcsPME_GATHER);
 
     cu_copy_D2H_async(atc_f_h, pme->gpu->forces, forcesSize, s);
-    cudaError_t stat = cudaEventRecord(pme->gpu->syncForcesH2D, s);
+    cudaError_t stat = cudaEventRecord(pme->gpu->syncForcesD2H, s);
     CU_RET_ERR(stat, "PME gather forces sync fail");
 }
 

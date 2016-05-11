@@ -101,10 +101,15 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         CU_RET_ERR(stat, "PME cudaStreamCreate error");
 #endif
         // creating synchronization events
-        stat = cudaEventCreateWithFlags(&(*pmeGPU)->syncEnerVirH2D, cudaEventDisableTiming);
+        stat = cudaEventCreateWithFlags(&(*pmeGPU)->syncEnerVirD2H, cudaEventDisableTiming);
         CU_RET_ERR(stat, "cudaEventCreate on syncEnerVirH2D failed");
-        stat = cudaEventCreateWithFlags(&(*pmeGPU)->syncForcesH2D, cudaEventDisableTiming);
+        stat = cudaEventCreateWithFlags(&(*pmeGPU)->syncForcesD2H, cudaEventDisableTiming);
         CU_RET_ERR(stat, "cudaEventCreate on syncForcesH2D failed");
+        stat = cudaEventCreateWithFlags(&(*pmeGPU)->syncSpreadGridD2H, cudaEventDisableTiming);
+        CU_RET_ERR(stat, "cudaEventCreate on syncSpreadGridH2D failed");
+        stat = cudaEventCreateWithFlags(&(*pmeGPU)->syncSolveGridD2H, cudaEventDisableTiming);
+        CU_RET_ERR(stat, "cudaEventCreate on syncSolveGridH2D failed");
+
 
         if ((pme->gpu)->doTime)
             pme_gpu_init_timings(pme);
@@ -167,10 +172,14 @@ void pme_gpu_deinit(//gmx_pme_gpu_t **pmeGPU,
     sfree((*pme)->gpu->pfft_setup_gpu);
 
     // destroy synchronization events
-    stat = cudaEventDestroy((*pme)->gpu->syncEnerVirH2D);
+    stat = cudaEventDestroy((*pme)->gpu->syncEnerVirD2H);
     CU_RET_ERR(stat, "cudaEventDestroy failed on syncEnerVirH2D");
-    stat = cudaEventDestroy((*pme)->gpu->syncForcesH2D);
+    stat = cudaEventDestroy((*pme)->gpu->syncForcesD2H);
     CU_RET_ERR(stat, "cudaEventDestroy failed on syncForcesH2D");
+    stat = cudaEventDestroy((*pme)->gpu->syncSpreadGridD2H);
+    CU_RET_ERR(stat, "cudaEventDestroy failed on syncpreadGridH2D");
+    stat = cudaEventDestroy((*pme)->gpu->syncSolveGridD2H);
+    CU_RET_ERR(stat, "cudaEventDestroy failed on syncSolveGridH2D");
 
     // destroy the stream
     stat = cudaStreamDestroy((*pme)->gpu->pmeStream);
@@ -180,7 +189,6 @@ void pme_gpu_deinit(//gmx_pme_gpu_t **pmeGPU,
     delete ((*pme)->gpu);
     (*pme)->gpu = NULL;
 }
-
 
 void pme_gpu_step_init(gmx_pme_t *pme)
 {
@@ -270,6 +278,17 @@ void pme_gpu_copy_charges(gmx_pme_t *pme)
     memcpy(coefficients_h, pme->atc[0].coefficient, coefficientSize); // why not just register host memory?
     pme->gpu->coefficients = (real *)PMEMemoryFetch(pme, PME_ID_COEFFICIENT, coefficientSize, ML_DEVICE);
     cu_copy_H2D_async(pme->gpu->coefficients, coefficients_h, coefficientSize, pme->gpu->pmeStream);
+}
+
+void pme_gpu_sync_grid(gmx_pme_t *pme, gmx_fft_direction dir)
+{
+    gmx_bool syncGPUGrid = pme->bGPU && ((dir == GMX_FFT_REAL_TO_COMPLEX) ? true: pme->gpu->bGPUSolve);
+    if (syncGPUGrid)
+    {
+        cudaError_t stat = cudaStreamWaitEvent(pme->gpu->pmeStream,
+            (dir == GMX_FFT_REAL_TO_COMPLEX) ? pme->gpu->syncSpreadGridD2H : pme->gpu->syncSolveGridD2H, 0);
+        CU_RET_ERR(stat, "error while waiting for the GPU grid");
+    }
 }
 
 void pme_gpu_copy_wrap_zones(gmx_pme_t *pme)

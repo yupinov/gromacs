@@ -458,14 +458,15 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     {
         real *energyAndVirial_h = (real *)PMEMemoryFetch(pme, PME_ID_ENERGY_AND_VIRIAL, pme->gpu->energyAndVirialSize, ML_HOST);
         cu_copy_D2H_async(energyAndVirial_h, pme->gpu->energyAndVirial, pme->gpu->energyAndVirialSize, s);
-        cudaError_t stat = cudaEventRecord(pme->gpu->syncEnerVirH2D, s);
+        cudaError_t stat = cudaEventRecord(pme->gpu->syncEnerVirD2H, s);
         CU_RET_ERR(stat, "PME solve energy/virial sync fail");
     }
 
     if (!pme->gpu->bGPUFFT)
     {
-        cu_copy_D2H(grid, grid_d, gridSize);
-        // synchronous copy!
+        cu_copy_D2H_async(grid, grid_d, gridSize, s);
+        cudaError_t stat = cudaEventRecord(pme->gpu->syncSolveGridD2H, s);
+        CU_RET_ERR(stat, "PME solve grid sync fail");
     }
 }
 
@@ -477,7 +478,7 @@ void pme_gpu_get_energy_virial(gmx_pme_t *pme)
     real *work_energy_q = &(work->energy_q);
     matrix &work_vir_q = work->vir_q;
 
-    cudaError_t stat = cudaStreamWaitEvent(s, pme->gpu->syncEnerVirH2D, 0);
+    cudaError_t stat = cudaStreamWaitEvent(s, pme->gpu->syncEnerVirD2H, 0);
     CU_RET_ERR(stat, "error while waiting for PME solve");
     real *energyAndVirial_h = (real *)PMEMemoryFetch(pme, PME_ID_ENERGY_AND_VIRIAL, pme->gpu->energyAndVirialSize, ML_HOST);
     real energy = 0.0;

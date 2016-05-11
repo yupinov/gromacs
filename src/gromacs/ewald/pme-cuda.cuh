@@ -120,9 +120,10 @@ struct gmx_pme_cuda_t
     cudaStream_t pmeStream;
 
     // synchronization events
-    cudaEvent_t syncEnerVirH2D; // energy and virial have already been calculated in pme-solve, and have been copied to host
-    cudaEvent_t syncForcesH2D;  // forces have already been calculated in pme-gather, and have been copied to host
-
+    cudaEvent_t syncEnerVirD2H; // energy and virial have already been calculated in pme-solve, and have been copied to host
+    cudaEvent_t syncForcesD2H;  // forces have already been calculated in pme-gather, and have been copied to host
+    cudaEvent_t syncSpreadGridD2H; // the grid has been copied to the host after the spreading for CPU FFT
+    cudaEvent_t syncSolveGridD2H; // the grid has been copied to the host after the solve for CPU FFT
 
     // some other permanent settings set on init
 

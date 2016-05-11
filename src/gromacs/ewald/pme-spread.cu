@@ -994,10 +994,11 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
             gmx_fatal(FARGS, "the code for pme_order != 4 was not tested!");
     }
 
-    if (!pme->gpu->bGPUFFT)
+    if (!pme->gpu->bGPUFFT && bSpread)
     {
-        if (bSpread)
-            cu_copy_D2H_async(pmegrid->grid, pme->gpu->grid, gridSize, s); //yupinov - should sync on CPU FFT?
+        cu_copy_D2H_async(pmegrid->grid, pme->gpu->grid, gridSize, s);
+        cudaError_t stat = cudaEventRecord(pme->gpu->syncSpreadGridD2H, s);
+        CU_RET_ERR(stat, "PME spread grid sync fail");
     }
     if (!pme->gpu->bGPUGather)
     {

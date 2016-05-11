@@ -97,6 +97,7 @@ CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_gather(gmx_pme_t *CUDA_FUNC_ARGUME
 CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_FFT(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_wrapping(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_solve(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_sync_grid(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme), enum gmx_fft_direction CUDA_FUNC_ARGUMENT(dir)) CUDA_FUNC_TERM
 
 // nice external functions
 
