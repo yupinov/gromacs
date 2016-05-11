@@ -59,7 +59,7 @@ inline void gather_f_bsplines_wrapper(struct gmx_pme_t *pme, real *grid,
     if (pme->bGPU)
     {
         if (thread == 0)
-            gather_f_bsplines_gpu(pme, grid, atc, spline, scale);
+            gather_f_bsplines_gpu(pme, grid, atc, spline, scale, bClearF);
     }
     else
         gather_f_bsplines(pme, grid, bClearF, atc, spline, scale);

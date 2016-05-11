@@ -145,6 +145,10 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                real lambda_q,   real lambda_lj,
                int flags);
 
+void gmx_pme_gpu_launch_gather(gmx_pme_t *pme,
+               gmx_wallcycle_t wcycle,
+              real lambda_q, real lambda_lj);
+
 int gmx_pme_gpu_get_results(struct gmx_pme_t *pme,
                t_commrec gmx_unused *cr,
                gmx_wallcycle_t wcycle,

@@ -31,28 +31,25 @@ void pme_gpu_get_forces(gmx_pme_t *pme)
     const int n = pme->atc[0].n;
     const int forcesSize = DIM * n * sizeof(real);
     real *forces = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
-    //memcpy(pme->atc[0].f, forces, forcesSize);
-    //yupinov temporary sloppy reduction, shoudl be reworked
-    pme_gpu_sloppy_force_reduction(pme, forces);
+    memcpy(pme->atc[0].f, forces, forcesSize);
+    //there is no point in such memcpy usage, even...
+    //yupinov - not registering the memory?
+
+    //temporary sloppy reduction, should be reworked
+    //pme_gpu_sloppy_force_reduction(pme, forces);
 }
-/*
+
 void pme_gpu_copy_forces(gmx_pme_t *pme)
 {
-    //yupinov - here we want to make sure that the atc forces are already calculated!
-    // but how should we do that?
-    // overall, a very crappy last-minute solution, should be dealt with somehow
-    // forces don't really need to be copied from the host to be reduced.
-    // or do they?
+    // here we have to make sure that the atc forces are already calculated!
 
     const int n = pme->atc[0].n;
     assert(n);
     const int forcesSize = DIM * n * sizeof(real);
     real *forces = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
     memcpy(forces, pme->atc[0].f, forcesSize);
-    printf("hello %g\n", forces[1]);
     cu_copy_H2D_async(pme->gpu->forces, forces, forcesSize, pme->gpu->pmeStream);
 }
-*/
 
 //yupinov - texture memory?
 template <
@@ -323,14 +320,16 @@ __global__ void pme_unwrap_kernel
 void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
                    pme_atomcomm_t *atc,
                    splinedata_t *spline,
-                   real scale)
+                   real scale,
+                   const gmx_bool bOverwriteForces)
 {
     //yupinov bClearf!
     int n = spline->n;
     if (!n)
         return;
 
-    const gmx_bool bOverwriteForces = true;
+    if (!bOverwriteForces)
+        pme_gpu_copy_forces(pme);
 
     // false: we use some other GPU forces buffer for the final reduction, so we want to add to that
     // in that case, maybe we want to replace + with atomicAdd at the end of kernel?

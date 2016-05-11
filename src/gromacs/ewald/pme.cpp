@@ -66,7 +66,6 @@
  * It might seem an overkill, but better safe than sorry.
  * /Erik 001109
  */
-//yupinov ^
 
 #include "gmxpre.h"
 
@@ -764,10 +763,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     set_grid_alignment(&pme->pmegrid_nz, pme->pme_order);
     if (pme->bGPU)
     {
-        const int alignment = 32; //warp_size;
-        //yupinov : if Z is not aligned by warp_size, results are wrong in PME GPU
-        // where did I make this assumption?
-        // so now I use same grid for all the steps on GPU (with inplace cuFFT)
+        const int alignment = 2; // for complex grid of the same size - would only be useful for inplace, actually
         pme->pmegrid_nz = (pme->pmegrid_nz + alignment - 1) / alignment * alignment;
     }
     pme->pmegrid_start_ix = pme->overlap[0].s2g0[pme->nodeid_major];
@@ -1726,7 +1722,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                gmx_wallcycle_t wcycle,
                real ewaldcoeff_q,
                //real ewaldcoeff_lj,
-               real lambda_q,   real lambda_lj,
+               real gmx_unused lambda_q,   real gmx_unused lambda_lj,
                int flags)
 {
     if (!pme->bGPU)
@@ -1744,10 +1740,10 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
     real                 scale;
     int                  fep_state;
     int                  fep_states_lj           = pme->bFEP_lj ? 2 : 1;
-#endif
-    unsigned int grid_index;
     real lambda;
     gmx_bool             bClearF;
+#endif
+    unsigned int grid_index;
     real               * fftgrid;
     t_complex          * cfftgrid;
     int                  thread = 0;
@@ -2049,6 +2045,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
              * atc->f is the actual force array, not a buffer,
              * therefore we should not clear it.
              */
+            /*
             lambda  = grid_index < DO_Q ? lambda_q : lambda_lj;
             bClearF = (bFirst && PAR(cr)); //yupinov! we need bFirst on GPU if we're doing several grids!
 #pragma omp parallel for num_threads(pme->nthread) schedule(static)
@@ -2062,6 +2059,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                 }
                 GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
             }
+            */
             /*
             #pragma omp barrier
             dump_local_fftgrid(pme, (const real *)grid, grid_index);
@@ -2359,8 +2357,32 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
     }             /* if ((flags & GMX_PME_DO_LJ) && pme->ljpme_combination_rule == eljpmeLB) */
 #endif
 
-
     return 0;
+}
+
+// this will only copy the forces buffer (with results from listed calculations, etc.) to the GPU,
+// launch the gather kernel, copy the result back
+void gmx_pme_gpu_launch_gather(gmx_pme_t *pme,
+               gmx_wallcycle_t wcycle,
+              real lambda_q, real lambda_lj)
+{
+    if (!pme->bGPU)
+        return;
+    const int grid_index = 0;
+    //const gmx_bool bFirst = (grid_index == 0);
+
+    real lambda  = grid_index < DO_Q ? lambda_q : lambda_lj;
+    gmx_bool bClearF = false;
+    //(bFirst && PAR(cr)); //yupinov! we need bFirst on GPU if we're doing several grids!
+    const int thread = 0;
+    pme_atomcomm_t *atc = pme->atc;
+    pmegrids_t *pmegrid = &pme->pmegrid[grid_index];
+    real *grid = pmegrid->grid.grid;
+
+    // OpenMP killed
+    gather_f_bsplines_wrapper(pme, grid, bClearF, atc,
+                              &atc->spline[thread],
+                              pme->bFEP ? (grid_index % 2 == 0 ? (1.0 - lambda) : lambda) : 1.0, wcycle, thread);
 }
 
 // this function should just fetch results
