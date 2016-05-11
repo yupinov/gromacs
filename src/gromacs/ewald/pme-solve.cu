@@ -325,14 +325,14 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                        real ewaldcoeff, real vol,
                        gmx_bool bEnerVir)
 {
-    const gmx_bool YZXOrdering = !pme->bGPUFFT;
+    const gmx_bool YZXOrdering = !pme->gpu->bGPUFFT;
     /* do recip sum over local cells in grid */
 
     cudaStream_t s = pme->gpu->pmeStream;
 
     ivec local_ndata, local_offset, local_size, complex_order;
     /* Dimensions should be identical for A/B grid, so we just use A here */
-    if (pme->bGPUFFT)
+    if (pme->gpu->bGPUFFT)
         gmx_parallel_3dfft_complex_limits_gpu(pme->gpu->pfft_setup_gpu[PME_GRID_QA], local_ndata, local_offset, local_size);
     else
         gmx_parallel_3dfft_complex_limits(pme->pfft_setup[PME_GRID_QA], complex_order, local_ndata, local_offset, local_size);
@@ -369,7 +369,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     const int gridSize = local_size[XX] * local_size[YY] * local_size[ZZ] * sizeof(float2);
 
     float2 *grid_d = (float2 *)pme->gpu->fourierGrid;
-    if (!pme->bGPUFFT)
+    if (!pme->gpu->bGPUFFT)
     {
         cu_copy_H2D_async(grid_d, grid, gridSize, s);
     }
@@ -462,7 +462,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
         CU_RET_ERR(stat, "PME solve energy/virial sync fail");
     }
 
-    if (!pme->bGPUFFT)
+    if (!pme->gpu->bGPUFFT)
     {
         cu_copy_D2H(grid, grid_d, gridSize);
         // synchronous copy!

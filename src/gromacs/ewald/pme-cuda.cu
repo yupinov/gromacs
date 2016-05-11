@@ -53,6 +53,18 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
 
         // permanent settings
 
+        (*pmeGPU)->bGPUSingle = pme->bGPU && (pme->nnodes == 1);
+        // a convenience variable
+
+        (*pmeGPU)->bGPUFFT = (*pmeGPU)->bGPUSingle && !getenv("GMX_PME_GPU_FFTW");
+        // currently cuFFT is only used for a single rank
+
+        (*pmeGPU)->bGPUSolve = (*pmeGPU)->bGPUFFT;
+        // solve is done between the 2 FFTs - not worth it to copy
+
+        (*pmeGPU)->bGPUGather = true;
+        // ???
+
         (*pmeGPU)->doOutOfPlaceFFT = true;
         // this should give better performance, according to the cuFFT documentation
         // performance seems to be the same though
@@ -65,11 +77,6 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
 
         (*pmeGPU)->useTextureObjects = ((*pmeGPU)->deviceInfo->prop.major >= 3);
         // if false, texture references are used instead
-
-        // solve is done between the 2 FFTs - not worth it to copy
-        (*pmeGPU)->bGPUSolve = pme->bGPUFFT;
-        // ???
-        (*pmeGPU)->bGPUGather = true;
 
         // internal storage
         size_t pointerStorageSize = ML_END_INVALID * PME_ID_END_INVALID;
@@ -114,7 +121,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         pme_gpu_copy_bspline_moduli(pme);
         pme_gpu_alloc_grids(pme, grid_index);
 
-        if (pme->bGPUFFT)
+        if ((*pmeGPU)->bGPUFFT)
         {
             ivec ndata;
             ndata[0] = pme->nkx;
@@ -310,6 +317,26 @@ void pme_gpu_copy_wrap_zones(gmx_pme_t *pme)
     memcpy(pme->gpu->overlap.overlapCellCounts, cellsAccumCount_h, sizeof(cellsAccumCount_h));
 #endif
 }
+
+// wrappers just for the pme.cpp host calls - a PME GPU code that should ideally be in this file as well
+// C++11 not supported in CUDA host code by default => the code stays there for now
+
+gmx_bool pme_gpu_performs_gather(gmx_pme_t *pme)
+{
+    return pme && pme->bGPU && pme->gpu->bGPUGather;
+}
+
+gmx_bool pme_gpu_performs_FFT(gmx_pme_t *pme)
+{
+    return pme && pme->bGPU && pme->gpu->bGPUFFT;
+}
+
+gmx_bool pme_gpu_performs_wrapping(gmx_pme_t *pme)
+{
+    return pme && pme->bGPU && pme->gpu->bGPUSingle; // this could change!
+}
+
+// some memory operation wrappers below
 
 static gmx_bool debugMemoryPrint = false;
 

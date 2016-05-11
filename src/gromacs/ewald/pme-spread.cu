@@ -969,7 +969,7 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
 
                 pme_gpu_timing_stop(pme, ewcsPME_SPLINEANDSPREAD);
             }
-            if (bSpread && pme->bGPUSingle)
+            if (bSpread && pme->gpu->bGPUSingle)
             {
                 // wrap on GPU as a separate small kernel - we need a complete grid first!
                 const int blockSize = 4 * warp_size; //yupinov this is everywhere! and arichitecture-specific
@@ -994,7 +994,7 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
             gmx_fatal(FARGS, "the code for pme_order != 4 was not tested!");
     }
 
-    if (!pme->bGPUFFT)
+    if (!pme->gpu->bGPUFFT)
     {
         if (bSpread)
             cu_copy_D2H_async(pmegrid->grid, pme->gpu->grid, gridSize, s); //yupinov - should sync on CPU FFT?

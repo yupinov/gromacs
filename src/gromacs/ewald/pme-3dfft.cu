@@ -33,7 +33,7 @@ void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndat
 
     *pfft_setup = setup;
 
-    if (pme->bGPUSingle)
+    if (pme->gpu->bGPUSingle)
     {
         ndata[XX] = pme->pmegrid_nx;
         ndata[YY] = pme->pmegrid_ny;

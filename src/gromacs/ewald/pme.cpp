@@ -130,7 +130,7 @@ void gmx_parallel_3dfft_execute_gpu_wrapper(gmx_pme_t *pme,
     wallcycle_sub_start(wcycle, wsubcycle_id);
     // is this alright, to start and stop wallcycles aroudn the OpenMP region?
 
-    if (pme->bGPUFFT)
+    if (pme_gpu_performs_FFT(pme))
     {
         gmx_parallel_3dfft_execute_gpu(pme, dir, grid_index);
     }
@@ -733,8 +733,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
 
     pme->bGPU = bPMEGPU && (pme->nodeid == 0);
     // only the first rank should do PME GPU for now.
-    // currently PME GPU mdrun with MPI crashes anyway;
-    // also, the PP/PME GPU selection logic is silly: currently PME always runs on the same GPU as PP runs/would run on
+    // unrelated: the PP/PME GPU selection logic is silly: currently PME always runs on the same GPU as PP runs/would run on
 
     if (pme->bGPU) // safeguards
     {
@@ -752,12 +751,6 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
         // put a log line about our final CPU/GPU decision?
         // gmx_warning("PME will run on %s", pme->bGPU ? "GPU" : "CPU");
     }
-
-    pme->bGPUSingle = pme->bGPU && (pme->nnodes == 1);
-    // a convenience variable
-
-    pme->bGPUFFT = pme->bGPUSingle && !getenv("GMX_PME_GPU_FFTW");
-    // currently cuFFT is only used for a single rank
 
     /* The required size of the interpolation grid, including overlap.
      * The allocated size (pmegrid_n?) might be slightly larger.
@@ -1884,7 +1877,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
             fprintf(debug, "Rank= %6d, pme local particles=%6d\n",
                     cr->nodeid, atc->n);
         }
-        // pme->bGPUSingle && pme->bGPUFFT should be checked here in teh future
+        // pme->gpu->bGPUSingle && pme->gpu->bGPUFFT should be checked somewhere around here for multi-process
         // pme->gpu->bGPUSolve &&= (grid_index < DO_Q);  // no LJ support
         // no bBackFFT, no bCalcF checks
 
@@ -1908,8 +1901,8 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
 
             //if (!pme->bUseThreads)
             {
-                if (!pme->bGPUSingle) // only wrap CPU PME grid if we haven't done it on GPU in a single GPU mode
-                    wrap_periodic_pmegrid(pme, grid); //yupinov - unwrap as well
+                if (!pme_gpu_performs_wrapping(pme))
+                    wrap_periodic_pmegrid(pme, grid);
 
                 /* sum contributions to local grid from other nodes */
 #if GMX_MPI
@@ -1919,7 +1912,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                     where();
                 }
 #endif
-                if (!pme->bGPUFFT)
+                if (!pme_gpu_performs_FFT(pme))
                     copy_pmegrid_to_fftgrid(pme, grid, fftgrid, grid_index);
             }
 
@@ -2004,7 +1997,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                        refactoring code here. */
                     wallcycle_start(wcycle, ewcPME_SPREADGATHER);
                 }
-                if (!pme->bGPUFFT)//|| !pme->gpu->bGather)
+                if (!pme_gpu_performs_FFT(pme) || !pme_gpu_performs_gather(pme))
                 {
 #pragma omp parallel for num_threads(pme->nthread) schedule(static)
                     for (thread = 0; thread < pme->nthread; thread++)
@@ -2027,7 +2020,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
             }
 #endif
             where();
-            if (!pme->bGPUSingle) //yupinov check GPUFFT instead?
+            if (!pme_gpu_performs_wrapping(pme))
                 unwrap_periodic_pmegrid(pme, grid);
         }
 

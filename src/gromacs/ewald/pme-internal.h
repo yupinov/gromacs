@@ -263,9 +263,6 @@ typedef struct gmx_pme_t {
     real       epsilon_r;
 
     gmx_bool   bGPU; /* Are we using the GPU acceleration for PME purposes? */
-    gmx_bool   bGPUFFT; /* Are we using cuFFT as well? Currently only for a single rank */
-    gmx_bool   bGPUSingle; /* Are we using the single GPU rank? A convenience variable */
-
     gmx_pme_gpu_t *gpu;         /* pointer to GPU data     */
 
     int        ljpme_combination_rule;  /* Type of combination rule in LJ-PME */

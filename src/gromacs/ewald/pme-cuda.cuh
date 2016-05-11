@@ -129,17 +129,19 @@ struct gmx_pme_cuda_t
     // gmx_bool bGPUSpread;
     // spread being on a GPU is a given - it's the main effort
 
-    gmx_bool bGPUSolve;
+    gmx_bool bGPUSolve; /* Are we doing the solve stage on the GPU? */
 
-    gmx_bool bGPUGather;
+    gmx_bool bGPUGather; /* Are we doing the gather stage on the GPU? */
 
-    // bGPUFFT is in main pme structure, have to refactor
+    gmx_bool bGPUFFT; /* Are we using cuFFT as well? Currently only for a single rank */
 
-    gmx_bool doOutOfPlaceFFT; // if true, then an additional grid of the same size is used for R2C/solve/C2R
+    gmx_bool bGPUSingle; /* Are we using the single GPU rank? A convenience variable */
 
-    gmx_bool doTime; // enable timing using CUDA events
+    gmx_bool doOutOfPlaceFFT; /* if true, then an additional grid of the same size is used for R2C/solve/C2R */
 
-    gmx_bool useTextureObjects; // if false, then use references
+    gmx_bool doTime; /* enable timing using CUDA events */
+
+    gmx_bool useTextureObjects; /* if false, then use references */
 
 #if !PME_EXTERN_CMEM
     // constant structures for arguments
