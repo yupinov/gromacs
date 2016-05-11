@@ -2366,7 +2366,7 @@ void gmx_pme_gpu_launch_gather(gmx_pme_t *pme,
                gmx_wallcycle_t wcycle,
               real lambda_q, real lambda_lj)
 {
-    if (!pme->bGPU)
+    if (!pme || !pme->bGPU) // what the hell, why would pme be NULL
         return;
     const int grid_index = 0;
     //const gmx_bool bFirst = (grid_index == 0);
