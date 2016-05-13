@@ -35,7 +35,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
     gmx_bool firstInit = !*pmeGPU;
     if (firstInit) // the very first init
     {
-        *pmeGPU = new gmx_pme_gpu_t;
+        snew(*pmeGPU, 1);
         cudaError_t stat;
 
         // GPU selection copied from non-bondeds
@@ -181,9 +181,12 @@ void pme_gpu_deinit(//gmx_pme_gpu_t **pmeGPU,
         }
 
     // FFT
-    for (int i = 0; i < (*pme)->ngrids; i++)
-        gmx_parallel_3dfft_destroy_gpu((*pme)->gpu->pfft_setup_gpu[i]);
-    sfree((*pme)->gpu->pfft_setup_gpu);
+    if ((*pme)->gpu->pfft_setup_gpu)
+    {
+        for (int i = 0; i < (*pme)->ngrids; i++)
+            gmx_parallel_3dfft_destroy_gpu((*pme)->gpu->pfft_setup_gpu[i]);
+        sfree((*pme)->gpu->pfft_setup_gpu);
+    }
 
     // destroy synchronization events
     stat = cudaEventDestroy((*pme)->gpu->syncEnerVirD2H);
@@ -200,7 +203,7 @@ void pme_gpu_deinit(//gmx_pme_gpu_t **pmeGPU,
     CU_RET_ERR(stat, "PME cudaStreamDestroy error");
 
     // delete the structure itself
-    delete ((*pme)->gpu);
+    sfree((*pme)->gpu);
     (*pme)->gpu = NULL;
 }
 
@@ -412,7 +415,7 @@ void *PMEMemoryFetch(gmx_pme_t *pme, PMEDataID id, size_t size, MemLocType locat
     if ((pme->gpu->StorageSizes[i] > 0) && (size > 0) && (size > pme->gpu->StorageSizes[i]))
         printf("asked to realloc %lu into %lu with ID %d\n", pme->gpu->StorageSizes[i], size, id);
 
-    if (pme->gpu->StorageSizes[i] < size) // delete
+    if (pme->gpu->StorageSizes[i] < size) // dealloc
     {
         PMEMemoryFree(pme, id, location);
         if (size > 0)
