@@ -4,6 +4,7 @@
 #include "pme-cuda.cuh"
 
 #include "gromacs/utility/gmxassert.h"
+#include "gromacs/utility/smalloc.h"
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 
@@ -25,7 +26,8 @@ struct gmx_parallel_3dfft_gpu
 void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndata, gmx_pme_t *pme)
 {
     cufftResult_t result;
-    gmx_parallel_3dfft_gpu_t setup = new gmx_parallel_3dfft_gpu;
+    gmx_parallel_3dfft_gpu_t setup;
+    snew(setup, 1);
 
     setup->ndata_real[0] = ndata[XX];
     setup->ndata_real[1] = ndata[YY];
@@ -195,6 +197,6 @@ void gmx_parallel_3dfft_destroy_gpu(const gmx_parallel_3dfft_gpu_t &pfft_setup)
         if (result != CUFFT_SUCCESS)
             gmx_fatal(FARGS, "cufftDestroy C2R error %d\n", result);
 
-        delete pfft_setup;
+        sfree(pfft_setup);
     }
 }
