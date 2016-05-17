@@ -1413,7 +1413,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
 
     if (pmedata)
     {
-        gmx_pme_destroy(pmedata);
+        //gmx_pme_destroy(pmedata);
         pmedata = NULL;
     }
 
