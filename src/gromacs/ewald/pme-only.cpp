@@ -121,8 +121,12 @@ static void gmx_pmeonly_switch(int *npmedata, struct gmx_pme_t ***pmedata,
             pme->nky == grid_size[YY] &&
             pme->nkz == grid_size[ZZ])
         {
+            if (pme_gpu_enabled(pme))
+            {
+                //yupinov fixme gmx_pme_reinit abuse for GPU purposes
+                gmx_pme_reinit(&((*pmedata)[ind]), cr, pme, ir, grid_size);
+            }
             *pme_ret = pme;
-
             return;
         }
 
