@@ -48,9 +48,6 @@
 
 #include <assert.h>
 
-//yupinov optimizing unused parameters away?
-//have to debug all boolean params
-
 #define THREADS_PER_BLOCK   (4 * warp_size)
 #define MIN_BLOCKS_PER_MP   (16)
 
@@ -848,7 +845,6 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
     }
 
 
-    //yupinov blocked approach everywhere or nowhere
     //filtering?
     /*
 

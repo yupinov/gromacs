@@ -2047,7 +2047,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
              */
             /*
             lambda  = grid_index < DO_Q ? lambda_q : lambda_lj;
-            bClearF = (bFirst && PAR(cr)); //yupinov! we need bFirst on GPU if we're doing several grids!
+            bClearF = (bFirst && PAR(cr));
 #pragma omp parallel for num_threads(pme->nthread) schedule(static)
             for (thread = 0; thread < pme->nthread; thread++)
             {
@@ -2059,11 +2059,6 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                 }
                 GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
             }
-            */
-            /*
-            #pragma omp barrier
-            dump_local_fftgrid(pme, (const real *)grid, grid_index);
-            #pragma omp barrier
             */
 #if UNUSED_CPU_CODE_MARKER
             where();
@@ -2345,8 +2340,6 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                         inc_nrnb(nrnb, eNR_GATHERFBSP,
                                  pme->pme_order*pme->pme_order*pme->pme_order*pme->atc[0].n);
                     }
-                    //if (pme->bGPU)
-                    //    gpu_forces_copyback(pme, atc->n, atc->f); //yupinov fix compacted particle count
 
                     wallcycle_stop(wcycle, ewcPME_SPREADGATHER);
 
