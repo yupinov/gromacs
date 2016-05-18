@@ -94,7 +94,7 @@ gpu_events gpu_events_calcspline;
             #pragma unroll  \
             for (int k = 1; k < order; k++)               \
             {                                      \
-                dtheta[j*order*nr + i*order + k] = data[k-1] - data[k]; /* //yupinov sequiential ptr?*/\
+                dtheta[j*order*nr + i*order + k] = data[k-1] - data[k]; \
                 /*dim organisation?*/\
                 /* ddata[k] = data[k-1] - data[k];*/    \
             }                                      \
@@ -150,7 +150,7 @@ __global__ void make_bsplines_kernel_n(int order,
 }
 
 /* ######## 12 reg no cmem or lmem, vs 15 reg, 4 cmem, 16 lmem */
-//yupinov unused
+//yupinov interesting
 __global__ void make_bsplines_kernel_42(real *theta, real *dtheta,
                                         real *fractx, int nr, real *coefficient,
                                         bool bDoSplines) {
@@ -204,7 +204,7 @@ void make_bsplines_gpu(splinevec theta, splinevec dtheta, int order,
                gmx_bool bDoSplines, int thread)
 {
     if (!nr)
-        return; //yupinov
+        return;
     int size = nr * sizeof(real);
     int size_dim = DIM * size;
     int size_order = order * size;
@@ -238,12 +238,12 @@ void make_bsplines_gpu(splinevec theta, splinevec dtheta, int order,
     }
     stat = cudaMemcpy(coefficient_d, coefficient_h, size, cudaMemcpyHostToDevice);
     CU_RET_ERR(stat, "cudaMemcpy splines error");
-    int block_size = 32; //yupinov
+    int block_size = 32;
     int n_blocks = (nr + block_size - 1) / block_size;
 #ifdef DEBUG_PME_TIMINGS_GPU
     events_record_start(gpu_events_calcspline);
 #endif
-    assert(order >= 4 && order <= PME_ORDER_MAX); //yupinov just in case
+    assert(order >= 4 && order <= PME_ORDER_MAX);
     switch (order)
     {
         case 4: make_bsplines_kernel_4<<<n_blocks, block_size>>>
