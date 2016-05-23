@@ -1,25 +1,14 @@
 #ifndef PME_CUDA_H
 #define PME_CUDA_H
 
-#include "pme-internal.h"
-
-#include "pme-timings.cuh"
-
 #include "gromacs/gpu_utils/cudautils.cuh"
+#include "pme-internal.h"
+#include "pme-timings.cuh"
 
 #include <vector>
 
-//yupinov grid indices
-
 #define PME_USE_TEXTURES 1
 // using textures instead of global memory
-
-static const bool PME_SKIP_ZEROES = false;
-// broken
-// skipping particles with zero charges on a CPU side
-// for now only done in gather, should be done in spread and memorized
-// seems like a total waste of time! but what if we do it once at each NS?
-
 
 #define PME_EXTERN_CMEM 0
 // constants as extern instead of arguments -> needs CUDA_SEPARABLE_COMPILATION which is off by default
@@ -35,7 +24,7 @@ extern __constant__ __device__ int2 OVERLAP_SIZES[OVERLAP_ZONES];
 extern __constant__ __device__ int OVERLAP_CELLS_COUNTS[OVERLAP_ZONES];
 #endif
 
-// identifiers for PME data stored on GPU
+// internal identifiers for PME data stored on GPU and host
 enum PMEDataID
 {
     PME_ID_THETA = 0,
@@ -45,30 +34,19 @@ enum PMEDataID
     PME_ID_REAL_GRID, // functions as pme_grid with overlap and as fftgrid
     PME_ID_COMPLEX_GRID, // used only for out-of-place cuFFT, functions as cfftgrid
 
-    // only used on host in gather now
-    PME_ID_THX, PME_ID_THY, PME_ID_THZ,
-    PME_ID_DTHX, PME_ID_DTHY, PME_ID_DTHZ,
-
-    // interpol/spline
+    // spread (spline)
     PME_ID_FSH,
     PME_ID_NN,
 
     // spread
     PME_ID_XPTR,
+    PME_ID_COEFFICIENT, // atc->coefficient
 
     // gather
     PME_ID_FORCES,
-    PME_ID_NXYZ,
-    PME_ID_NONZERO_INDICES, // compacted data indices
 
     // spread and gather
-
     PME_ID_IDXPTR, // grid indices as in atc->idx
-    //PME_ID_I0, PME_ID_J0, PME_ID_K0, // same, but sorted (spearate XX, YY, ZZ arrays)
-
-    PME_ID_COEFFICIENT, //atc->coefficient
-
-    PME_ID_BSP_MOD_XX, PME_ID_BSP_MOD_YY, PME_ID_BSP_MOD_ZZ,
 
     // solve_lj
     PME_ID_ENERGY,
@@ -76,6 +54,7 @@ enum PMEDataID
 
     // solve
     PME_ID_ENERGY_AND_VIRIAL,
+    PME_ID_BSP_MOD_XX, PME_ID_BSP_MOD_YY, PME_ID_BSP_MOD_ZZ, // B-spline moduli
 
     // end
     PME_ID_END_INVALID
@@ -92,9 +71,7 @@ enum MemLocType
 
 // CAREFUL: the box is transposed as compared to the original pme->recipbox
 // basically, spread uses matrix columns (while solve and gather use rows)
-// that's the reason why I transposed the box initially
 // maybe swap it the other way around?
-//yupinov - check on triclinic!
 
 struct pme_gpu_recipbox_t
 {
@@ -111,7 +88,7 @@ struct pme_gpu_overlap_t
 
 struct pme_gpu_const_parameters
 {
-    // sizes
+    // grid sizes
     rvec nXYZ;
 };
 

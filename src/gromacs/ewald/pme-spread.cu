@@ -779,9 +779,6 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
          const gmx_bool bCalcSplines,
          const gmx_bool bSpread,
          const gmx_bool bDoSplines)
-//yupinov templating!
-//real *fftgrid
-//added:, gmx_wallcycle_t wcycle)
 {
     const gmx_bool separateKernels = false;  // significantly slower if true
     if (!bCalcSplines && !bSpread)
@@ -794,7 +791,8 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     cudaStream_t s = pme->gpu->pmeStream;
 
-    atc->spline[0].n = atc->n; //yupinov - without it, the conserved energy went down by 0.5%! used in gather or sometwhere else?
+    atc->spline[0].n = atc->n;
+    // used in gather
 
     //int nx = pmegrid->s[XX], ny = pmegrid->s[YY], nz = pmegrid->s[ZZ];
     const int order = pmegrid->order;
@@ -847,7 +845,6 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     //filtering?
     /*
-
     const size_t coefficientSize = n * sizeof(real);
     real *coefficient_h = (real *)PMEMemoryFetch(pme, PME_ID_COEFFICIENT, coefficientSize, ML_HOST);
     memcpy(coefficient_h, atc->coefficient, coefficientSize);
@@ -960,7 +957,7 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
                     }
                 }
                 else
-                    gmx_fatal(FARGS, "the code for bCalcSplines==false was not tested!"); //yupinov
+                    gmx_fatal(FARGS, "the code for bCalcSplines==false was not tested!");
                 CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
 
                 pme_gpu_timing_stop(pme, ewcsPME_SPLINEANDSPREAD);
@@ -968,7 +965,7 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
             if (bSpread && pme->gpu->bGPUSingle)
             {
                 // wrap on GPU as a separate small kernel - we need a complete grid first!
-                const int blockSize = 4 * warp_size; //yupinov this is everywhere! and arichitecture-specific
+                const int blockSize = 4 * warp_size; //yupinov this is everywhere! and architecture-specific
                 const int overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
                 const int nBlocks = (overlappedCells + blockSize - 1) / blockSize;
 
@@ -998,7 +995,7 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
     }
     if (!pme->gpu->bGPUGather)
     {
-        //yupinov - (d)theta layout is broken
+        //yupinov - (d)theta layout is not straightforward on GPU, would fail with CPU gather
         // and no accounting for PME communication (bGPUSingle check?)
         for (int j = 0; j < DIM; ++j)
         {

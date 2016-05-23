@@ -32,16 +32,16 @@ void pme_gpu_get_forces(gmx_pme_t *pme)
     const int forcesSize = DIM * n * sizeof(real);
     real *forces = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
     memcpy(pme->atc[0].f, forces, forcesSize);
-    //there is no point in such memcpy usage, even...
-    //yupinov - not registering the memory?
+    // did not succeed in using cudaHostRegister instead of memcpy
 
-    //temporary sloppy reduction, should be reworked
     //pme_gpu_sloppy_force_reduction(pme, forces);
+    // done on the GPU instead by passing bOverwriteForces = FALSE to the gather functions
 }
 
 void pme_gpu_copy_forces(gmx_pme_t *pme)
 {
-    // here we have to make sure that the atc forces are already calculated!
+    // host-to-device copy of the forces to be reduces with the gather results
+    // we have to be sure that the atc forces (listed and such) are already calculated
 
     const int n = pme->atc[0].n;
     assert(n);
@@ -51,7 +51,6 @@ void pme_gpu_copy_forces(gmx_pme_t *pme)
     cu_copy_H2D_async(pme->gpu->forces, forces, forcesSize, pme->gpu->pmeStream);
 }
 
-//yupinov - texture memory?
 template <
         const int order,
         const int particlesPerBlock,
@@ -125,7 +124,6 @@ __global__ void pme_gather_kernel
         const real tz = theta[thetaOffsetZ];
         const real dy = dtheta[thetaOffsetY];
         const real dz = dtheta[thetaOffsetZ];
-        //yupinov need to reorder theta when transferring thetas to and from CPU!
         for (int ithx = 0; (ithx < order); ithx++)
         {
             const int index_x = (idx[localIndex * DIM + XX] + ithx) * pny * pnz;
@@ -146,7 +144,7 @@ __global__ void pme_gather_kernel
             */
         }
     }
-    __syncthreads(); // breaking globalIndex condition?
+    __syncthreads();
 
     // now particlesPerBlock particles have to reduce order^2 contributions each
 
@@ -225,7 +223,6 @@ __global__ void pme_gather_kernel
         const real coefficient = coefficientGlobal[globalIndexFinal];
 
         real contrib;
-        // by columns!
         switch (dimIndex)
         {
             case XX:
@@ -323,7 +320,6 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
                    real scale,
                    const gmx_bool bOverwriteForces)
 {
-    //yupinov bClearf!
     int n = spline->n;
     if (!n)
         return;
@@ -333,29 +329,14 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
 
     // false: we use some other GPU forces buffer for the final reduction, so we want to add to that
     // in that case, maybe we want to replace + with atomicAdd at the end of kernel?
-    // true: we have our own buffer, so just write directly into that
-
-    const int *spline_ind = spline->ind;
-    const splinevec *spline_theta = &spline->theta;
-    const splinevec *spline_dtheta = &spline->dtheta;
+    // true: we have our dedicated buffer, so just overwrite directly
 
     cudaStream_t s = pme->gpu->pmeStream;
 
     //pme_atomcomm_t atc = pme->atc[0];
     real *atc_coefficient = atc->coefficient;
-    ivec *atc_idx = atc->idx;
-
 
     const int order = pme->pme_order;
-    /*
-    gmx_parallel_3dfft_real_limits_gpu(pme, grid_index, local_ndata, local_offset, local_size);
-    const int pnx = local_size[XX];
-    const int pny = local_size[YY];
-    const int pnz = local_size[ZZ];
-    const int nx = local_ndata[XX];
-    const int ny = local_ndata[YY];
-    const int nz = local_ndata[ZZ];
-    */
 
     /*
     const int pnx = pmegrid->n[XX];
@@ -368,7 +349,6 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
     const int nx = pme->nkx;
     const int ny = pme->nky;
     const int nz = pme->nkz;
-
 
     const int ndatatot = pnx * pny * pnz;
     const int gridSize = ndatatot * sizeof(real);
@@ -405,117 +385,13 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
     int forcesSize = DIM * n * sizeof(real);
     int size_indices = n * sizeof(int);
     int size_splines = order * n * sizeof(int);
-    int size_coefficients = n * sizeof(real);
 
     real *atc_f_h = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
-    ivec *idx_h = NULL;
 
-    real *coefficients_h = NULL;
-
-    real *theta_x_h = NULL, *theta_y_h = NULL, *theta_z_h = NULL;
-    real *dtheta_x_h = NULL, *dtheta_y_h = NULL, *dtheta_z_h = NULL;
-
-    /*
-    int *i0_h = NULL, *j0_h = NULL, *k0_h = NULL;
-    i0_h = (int *)PMEFetch(PME_ID_I0, size_indices, ML_HOST);
-    j0_h = (int *)PMEFetch(PME_ID_J0, size_indices, ML_HOST);
-    k0_h = (int *)PMEFetch(PME_ID_K0, size_indices, ML_HOST);
-    */
-
-    int *atc_i_compacted_h = NULL;
-
-    // compact data (might be broken)
-    if (PME_SKIP_ZEROES)
+    for (int i = 0; i < n; i++)
     {
-        atc_i_compacted_h = (int *)PMEMemoryFetch(pme, PME_ID_NONZERO_INDICES, size_indices, ML_HOST);
-
-        // thetas
-        theta_x_h = (real *)PMEMemoryFetch(pme, PME_ID_THX, size_splines, ML_HOST);
-        theta_y_h = (real *)PMEMemoryFetch(pme, PME_ID_THY, size_splines, ML_HOST);
-        theta_z_h = (real *)PMEMemoryFetch(pme, PME_ID_THZ, size_splines, ML_HOST);
-        dtheta_x_h = (real *)PMEMemoryFetch(pme, PME_ID_DTHX, size_splines, ML_HOST);
-        dtheta_y_h = (real *)PMEMemoryFetch(pme, PME_ID_DTHY, size_splines, ML_HOST);
-        dtheta_z_h = (real *)PMEMemoryFetch(pme, PME_ID_DTHZ, size_splines, ML_HOST);
-
-        // indices
-        idx_h = (ivec *)PMEMemoryFetch(pme, PME_ID_IDXPTR, DIM * size_indices, ML_HOST);
-
         // coefficients
-        coefficients_h = (real *)PMEMemoryFetch(pme, PME_ID_COEFFICIENT, size_coefficients, ML_HOST);
-
-        int iCompacted = 0;
-        for (int ii = 0; ii < n; ii++)
-        {
-            int iOriginal = spline_ind[ii]; //should be just 1 : 1
-
-            // coefficients
-            real coefficient_i = scale * atc_coefficient[iOriginal]; //yupinov mutiply coefficients on device!
-
-            if (coefficient_i != 0.0f)
-            {
-                coefficients_h[iCompacted] = coefficient_i;
-
-                //indices
-                /*
-                int *idxptr = atc_idx[iOriginal];
-                i0_h[iCompacted] = idxptr[XX];
-                j0_h[iCompacted] = idxptr[YY];
-                k0_h[iCompacted] = idxptr[ZZ];
-                */
-                memcpy(idx_h + iCompacted, atc_idx + iOriginal, sizeof(ivec));
-
-                // thetas
-                int iiorder = ii * order;
-                int ooorder = iCompacted * order;
-                for (int o = 0; o < order; ++o)
-                {
-                    theta_x_h[ooorder + o] = (*spline_theta)[XX][iiorder + o];
-                    theta_y_h[ooorder + o] = (*spline_theta)[YY][iiorder + o];
-                    theta_z_h[ooorder + o] = (*spline_theta)[ZZ][iiorder + o];
-                    dtheta_x_h[ooorder + o] = (*spline_dtheta)[XX][iiorder + o];
-                    dtheta_y_h[ooorder + o] = (*spline_dtheta)[YY][iiorder + o];
-                    dtheta_z_h[ooorder + o] = (*spline_dtheta)[ZZ][iiorder + o];
-                }
-
-                // indices of uncompacted particles stored in a compacted array
-                atc_i_compacted_h[iCompacted] = iOriginal;
-
-                iCompacted++;
-            }
-        }
-        // adjust sizes for device allocation
-        n = iCompacted;
-        size_coefficients = n * sizeof(real);
-        size_splines = order * n * sizeof(int);
-        size_indices = n * sizeof(int);
-        forcesSize = DIM * n * sizeof(real);
-    }
-    else
-    {
-        for (int i = 0; i < n; i++)
-        {
-            // indices
-            /*
-            i0_h[i] = atc_idx[i][XX];
-            j0_h[i] = atc_idx[i][YY];
-            k0_h[i] = atc_idx[i][ZZ];
-            */
-
-            // coefficients
-            atc_coefficient[i] *= scale;
-        }
-
-        // indices
-        idx_h = atc_idx;
-        // coefficients
-        coefficients_h = atc_coefficient;
-        // thetas
-        theta_x_h = (*spline_theta)[XX];
-        theta_y_h = (*spline_theta)[YY];
-        theta_z_h = (*spline_theta)[ZZ];
-        dtheta_x_h = (*spline_dtheta)[XX];
-        dtheta_y_h = (*spline_dtheta)[YY];
-        dtheta_z_h = (*spline_dtheta)[ZZ];
+        atc_coefficient[i] *= scale;
     }
 
     // thetas
@@ -531,12 +407,12 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
 
     const int blockSize = 4 * warp_size;
     const int particlesPerBlock = blockSize / order / order;
-    dim3 nBlocks((n + blockSize - 1) / blockSize * order * order); //yupinov what does this mean?
+    dim3 nBlocks((n + blockSize - 1) / blockSize * order * order);
     dim3 dimBlock(order, order, particlesPerBlock);
 
     pme_gpu_timing_start(pme, ewcsPME_GATHER);
 
-    if (order == 4) //yupinov
+    if (order == 4)
         if (bOverwriteForces)
             pme_gather_kernel<4, blockSize / 4 / 4, TRUE> <<<nBlocks, dimBlock, 0, s>>>
               (pme->gpu->grid,
