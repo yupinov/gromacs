@@ -109,10 +109,10 @@ As of a few years GPUs are becoming increasingly for running molecular simulatio
 
 The scope of this project is to implement PME on GPU in C++/CUDA C within GROMACS code base.
 There are 2 important limitations here:
-\begin{enumerate}
+\begin{itemize}
 \item The method is only to be implemented using NVIDIA CUDA toolkit (only for NVIDIA hardware). The reasons for choosing CUDA over OpenCL, a viable alternative standard, are practical - NVIDIA is currently the main GPU hardware producer; the NVIDIA CUDA library generally gives better performance than NVIDIA OpenCL implementation; and above all that, once the prototype is complete, it is not difficult to reimplement the same algorithms in OpenCL, as the core OpenCL C/CUDA C language concepts are similar. Simply put, GROMACS users would much more benefit from the CUDA PME implementation.
 \item The method is only to be implemented for a single simulation process working with a single NVIDIA GPU. GROMACS employs various parallelization techniques for better scaling, including domain decomposition algorithms, where parts of the domain are treated by different processes within the same simulation (read more about it in the section \ref{chapter:DD}). The existing CPU PME implementation supports multi-process computation as well. However, the focus of this project is not on the communication part, as that would be a logical next step after implementing a single-process algorithm. 
-\end{enumerate}
+\end{itemize}
 \iffalse
 
 In molecular simulations most of the time in the computation is spent on calculating electrostatic interactions between pairs of atoms. The Coulomb interactions between charges decay as $\frac{1}{\lvert r \rvert}$ (where $r$ is the distance between particles). This decay is very slow and means that one can not simply neglect interactions beyond a certain distance.
@@ -365,11 +365,11 @@ searching is performed}.
 When different processes have a different computational load (load imbalance), all processes will have to
 wait for the one that takes the most time. One would like to avoid such a situation. Load imbalance
 can occur due to three reasons:
-\begin{enumerate}
+\begin{itemize}
 \item inhomogeneous particle distribution
 \item inhomogeneous interaction cost distribution (e.g. charged/uncharged)
 \item statistical fluctuation (only with small particle numbers)
-\end{enumerate}
+\end{itemize}
 That is why there exists a dynamic load balancing algorithm where the volume of each domain decomposition
 cell can be adjusted independently.
 \fi
@@ -490,11 +490,11 @@ Implementation of the particular stages of the PME GPU are discussed below.
 In the beginning of each MD simulation step the particle charges and coordinates are being copied to the CUDA device.
 
 Additional input data that is being copied to the GPU only occasionally (on any step during which the domain decomposition or configuration can possibly change) includes
-\begin{enumerate}
+\begin{itemize}
 \item B-spline moduli for all 3 dimensions;
 \item Local grid line indices size of 5 times the grid size to allow for particles (to be out of the triclinic unit-cell by up to 2 box lengths in each direction, which might be required for a very skewed unit-cell)
 \item Reciprocal box vectors
-\end{enumerate}
+\end{itemize}
 All of this data is computed on a CPU. It has a low computational effort and parallelization possibility. The grid line indices are just lookup tables for a modulo operation results with some corrections for the rounding issues - and modulo is a rather costly operation on a GPU.
 
 The copying of coordinates and charges constitutes the majority of each step's initial data transfers, because of their regularity (each step) and size (in total 16 bytes per particle with a single precision) as well.
@@ -513,13 +513,13 @@ The question of the optimal layout for the spline parameters is interesting. Pic
 \end{figure}
 \FloatBarrier
 The reasoning is as follows:
-\begin{enumerate}
+\begin{itemize}
 \item The data layout has to be clearly separable into batches for fixed number of particles, for the workload to have a future-proof possibility of batching if needed.
 \item A single particle's data for all 3 dimensions has to be kept together for optimizing cache access - the spreading and gathering individual threads are always going to access spline parameters for all 3 dimensions to some extent. 
 %\draft{as of now, for order of 4 all the block data makes up 1 (2?) cache line.} 
 \item Reads and writes have to be as coalesced as possible.
 \item The possibility of the \draft{global load optimizations} is also open for a single-dimension data.
-\end{enumerate}
+\end{itemize}
 
 \section{Spreading the particle charges over the grid}
 In this next algorithm part for each particle $l^3$ charge contributions to the discrete real-space grid are computed, using the charges as well as the splines data from the previous section.
@@ -592,7 +592,7 @@ The GPUs used for the analysis are build on NVIDIA architectures Kepler and Maxw
 The correctness of the GPU PME implementation has been verified by comparing the results with the results of the CPU PME running with the same input data as the reference.
 %\draft{ with a fixed step size of 2 femtoseconds}
 The CPU and GPU PME comparisons were as follows:
-\begin{enumerate}
+\begin{itemize}
 \item All of the PME's immediate results such as reciprocal energy, virial and forces have been compared after a single MD step. The relative difference of the reciprocal energy has been no more than $10^{-5}$. 
 %This is comparable to the single precision floating point machine epsilon $1.19\times10^{-7}$ being reduced over $10^5$ --- $10^6$ complex grid cells.
 
@@ -600,7 +600,7 @@ The CPU and GPU PME comparisons were as follows:
 
 \item All the simulations have been run for 1000 time steps, and the resulting total conserved energy of the system has been compared. It differed by a relative difference on the order of $10^{-4}$, which is within the acceptable fluctuation bounds during the simulation.
  %\draft{(source?)}.
-\end{enumerate} 
+\end{itemize} 
 
 \section{Performance factors}
 %\draft{There is a clear division in the PME stages computational effort: computational effort of spreading and gathering (the first and last stages) is dependent on the number of particles $N$ as well as the interpolation order $l$ : $O(N\cdot l^3)$. The effort for the rest of the stages (forward FFT, convolution, backward FFT) is entirely dependent only on the dimensions of the discrete Fourier grid in the single process case. - wtf, its actually NlogN}
@@ -824,10 +824,10 @@ Continuing this line of thought, interpolation order of 8 might be interesting t
 
 As it has been shown in section \ref{overlapped}, scheduling both short- and long-range work on the same GPU\draft{within a single process} with the ultimate goal of minimizing the critical path runtime is already a problematic task.
 There are a few plausible long-term solutions: 
-\begin{enumerate}
+\begin{itemize}
 \item Persistent kernels running in the background and polling the host memory for work;
 \item Reworking the structure of the program to get away from the strict "one command stream = one part of the algorithm" decomposition logic. Adoption of the more flexible approach: constantly resorting all the PME and NB work chunks into high and low priority streams, using the actual runtime estimates.
-\end{enumerate}
+\end{itemize}
 With the multiprocess and domain decomposition GROMACS is already using the high priority stream to schedule the calculation of the so called "non-local" non-bonded interactions, and scheduling the rest in the low priority stream. Non-local particles are the ones in the buffer zones close to the other parts of the decomposed domain, therefore affecting them; the results of their computation have to be communicated among processes as soon as possible for better performance.
 Therefore, in the hypothetical case of the multi-process PME running on GPUs, GROMACS would have to schedule 3 logical GPU streams, and maybe perform the load-balancing for the scheduling order as well.  
 %achieved by running the simulation with PME:PP balance auto-tuning.
