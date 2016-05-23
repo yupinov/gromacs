@@ -70,9 +70,10 @@ void pme_gpu_copy_bspline_moduli(gmx_pme_t *pme)
 
 template<
         const gmx_bool bEnerVir,
+        // should the energy/virial be computed
         const gmx_bool YZXOrdering
-        //yupinov - now GPU solve works in a XYZ mode, while original solve worked in YZX order;
-        // should be set to true when we do multi-rank GPU PME
+        // false - GPU solve works in a XYZ ordering (after a single-rank cuFFT)
+        // true - GPU solve works in a YZX ordering, like the CPU one (after FFTW)
         >
 __global__ void pme_solve_kernel
 (const int localCountMajor, const int localCountMiddle, const int localCountMinor,
@@ -92,26 +93,19 @@ __global__ void pme_solve_kernel
 {
     // this is a PME solve kernel
     // each thread works on one cell of the Fourier space complex 3D grid (float2 * __restrict__ grid)
-    // each block handles THREADS_PER_BLOCK cells - depending on the grid contiguous dimension size, that can range from a part of a single gridline to several complete gridlines
-    // if we do cuFFT, the contiguous dimension (Z) gridlines are aligned by warp_size (but with respect to float, not float2, possibly?!)
-    // also, the grid is in XYZ order as it was initially - single GPU only, no MPI decomposition, no transpose...
-    // it should be possible to have multi-rank cuFFT - cuFFT should even be able to be linked instead of FFTW, and mimic its API
-    // but it's outside the scope of my project ;-)
-    // if we do FFTW, I forgot what happens with the size, probably, nothing and not very aligned
-    // then the grid is in YZX order, so X is a contihuous dimension
-
-    //const int blockId = blockIdx.x + blockIdx.y * gridDim.x + gridDim.x * gridDim.y * blockIdx.z;
+    // each block handles THREADS_PER_BLOCK cells - depending on the grid contiguous dimension size,
+    // that can range from a part of a single gridline to several complete gridlines
+    // the minor dimension index is (YZXOrdering ? XX : ZZ)
     const int threadLocalId = (threadIdx.y * blockDim.x) + threadIdx.x;
     //const int blockSize = (blockDim.x * blockDim.y * blockDim.z); // == cellsPerBlock
     const int blockSize = THREADS_PER_BLOCK;
     //const int threadId = blockId * blockSize + threadLocalId;
 
-
     int maxkMajor = (nMajor + 1) / 2; //X or Y
     int maxkMiddle = (nMiddle + 1) / 2; //Y OR Z => only check for !YZX
     int maxkMinor = (nMinor + 1) / 2; //Z or X => only check for YZX
 
-    const int sizing = 7;
+    const int enerVirSize = 7;
 
     real energy = 0.0f;
     real virxx = 0.0f, virxy = 0.0f, virxz = 0.0f, viryy = 0.0f, viryz = 0.0f, virzz = 0.0f;
@@ -139,9 +133,7 @@ __global__ void pme_solve_kernel
         // the offset should be equal to threadId
         float2 *p0 = globalGrid + (indexMajor * localSizeMiddle + indexMiddle) * localSizeMinor + indexMinor;
 
-
         /* We should skip the k-space point (0,0,0) */
-        /* Note that since here x is the minor index, local_offset[XX]=0 */
 
         const int kMinor = localOffsetMinor + indexMinor;
         const gmx_bool notZeroPoint = (kMinor > 0 || kMajor > 0 || kMiddle > 0);
@@ -166,7 +158,7 @@ __global__ void pme_solve_kernel
 
         const gmx_bool debugPrint = false;//(mX== 7) && (mY == 7) && (mZ == 7);
 
-        /* 0.5 correction for corner points of a Z dimension */
+        /* 0.5 correction for corner points of a minor dimension */
         real corner_fac = 1.0f;
         if (YZXOrdering)
         {
@@ -183,7 +175,7 @@ __global__ void pme_solve_kernel
             }
         }
 
-        if (notZeroPoint) // this skips just one starting point in the whole grid on the rank 0
+        if (notZeroPoint)
         {     
             mhxk      = mX * RECIPBOX.box[XX].x;
             mhyk      = mX * RECIPBOX.box[XX].y + mY * RECIPBOX.box[YY].y;
@@ -193,14 +185,15 @@ __global__ void pme_solve_kernel
             real denom = m2k * bMajorMiddle * BSplineModuleMinor[kMinor];
             real tmp1  = -ewaldFactor * m2k;
 
-            //calc_exponentials_q_one(elfac, denom, tmp1, eterm);
             denom = 1.0f / denom;
             tmp1 = expf(tmp1);
             real etermk = elfac * tmp1 * denom;
 
             float2 gridValue = *p0;
+
             if (debugPrint)
                 printf("grid %g %g\n", gridValue.x, gridValue.y);
+
             float2 oldGridValue = gridValue;
             gridValue.x *= etermk;
             gridValue.y *= etermk;
@@ -216,8 +209,10 @@ __global__ void pme_solve_kernel
                 real vfactor = (ewaldFactor + 1.0f / m2k) * 2.0f;
                 real ets2 = corner_fac * tmp1k;
                 energy = ets2;
+
                 if (debugPrint)// ||isnan(energy))
                     printf("energy %g %g %g %g\n", energy, mX, mY, mZ);
+
                 real ets2vf  = ets2 * vfactor;
 
                 virxx   = ets2vf * mhxk * mhxk - ets2;
@@ -232,7 +227,7 @@ __global__ void pme_solve_kernel
 
     if (bEnerVir)
     {
-        // reduction goes here
+        // reduction
 
 #if (GMX_PTX_ARCH >= 300)
         // there should be a shuffle reduction here
@@ -245,7 +240,7 @@ __global__ void pme_solve_kernel
         */
 #endif
         {
-            __shared__ real virialAndEnergyShared[sizing * blockSize];
+            __shared__ real virialAndEnergyShared[enerVirSize * blockSize];
             // 3.5k smem per block - a serious limiter!
 
             // 7-thread reduction in shared memory inspired by reduce_force_j_generic
@@ -265,17 +260,17 @@ __global__ void pme_solve_kernel
             for (int s = blockSize >> 1; s >= warp_size; s >>= 1)
             {
 #pragma unroll
-                for (int i = 0; i < sizing; i++)
+                for (int i = 0; i < enerVirSize; i++)
                 {
-                    if (threadLocalId < s) //split per threads ?
+                    if (threadLocalId < s) // split per threads?
                         virialAndEnergyShared[i * blockSize + threadLocalId] += virialAndEnergyShared[i * blockSize + threadLocalId + s];
                 }
                 __syncthreads();
             }
 
-            const int threadsPerComponent = warp_size / sizing; // this is also the stride, will be 32 / 7 = 4
+            const int threadsPerComponent = warp_size / enerVirSize; // this is also the stride, will be 32 / 7 = 4
             const int contributionsPerThread = warp_size / threadsPerComponent; // will be 32 / 4 = 8
-            if (threadLocalId < sizing * threadsPerComponent)
+            if (threadLocalId < enerVirSize * threadsPerComponent)
             {
                 const int componentIndex = threadLocalId / threadsPerComponent;
                 const int threadComponentOffset = threadLocalId - componentIndex * threadsPerComponent;
@@ -325,24 +320,22 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                        real ewaldcoeff, real vol,
                        gmx_bool bEnerVir)
 {
-    const gmx_bool YZXOrdering = !pme->gpu->bGPUFFT;
     /* do recip sum over local cells in grid */
+
+    const gmx_bool YZXOrdering = !pme->gpu->bGPUFFT;
+    /* true: y major, z middle, x minor or continuous - the CPU FFTW way */
+    /* false: x major, y middle, z minor - the single rank GPU cuFFT way */
 
     cudaStream_t s = pme->gpu->pmeStream;
 
     ivec local_ndata, local_offset, local_size, complex_order;
     /* Dimensions should be identical for A/B grid, so we just use A here */
+
     if (pme->gpu->bGPUFFT)
         gmx_parallel_3dfft_complex_limits_gpu(pme->gpu->pfft_setup_gpu[PME_GRID_QA], local_ndata, local_offset, local_size);
     else
         gmx_parallel_3dfft_complex_limits(pme->pfft_setup[PME_GRID_QA], complex_order, local_ndata, local_offset, local_size);
-    //here we have correct complex ndata and sizes for CPU/GPU FFT
 
-
-    /* true: y major, z middle, x minor or continuous - the CPU FFT way */
-    /* false: x major, y middle, z minor - the single rank GPU cuFFT way */
-
-    //yupinov fix YZXOrdering pecularities in solve
     const int minorDim = !YZXOrdering ? ZZ : XX;
     const int middleDim = !YZXOrdering ? YY : ZZ;
     const int majorDim = !YZXOrdering ? XX : YY;
@@ -363,9 +356,6 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
 
     const real elfac = ONE_4PI_EPS0 / pme->epsilon_r; // make it a constant as well
 
-    //yupinov align minor dimension with cachelines!
-
-    //const int n = local_ndata[majorDim] * local_ndata[middleDim] * local_ndata[minorDim];
     const int gridSize = local_size[XX] * local_size[YY] * local_size[ZZ] * sizeof(float2);
 
     float2 *grid_d = (float2 *)pme->gpu->fourierGrid;
@@ -383,8 +373,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     dim3 threads((maxBlockSize + gridLinesPerBlock - 1) / gridLinesPerBlock, gridLinesPerBlock);
     const int blockSize = threads.x * threads.y * threads.z;
     GMX_RELEASE_ASSERT(blockSize >= maxBlockSize, "wrong PME GPU solve launch parameters");
-    // we do this because we want to have spare threads to zero all the shared memory which we use in CC2.0 shared mem reduction
-    // this is stupid though
+    // we want to have spare threads to zero all the shared memory which we use in CC2.0 shared mem reduction
 
     dim3 blocks(blocksPerGridLine,
                 (local_ndata[middleDim] + gridLinesPerBlock - 1) / gridLinesPerBlock, // rounded up middle dimension block number
@@ -493,7 +482,7 @@ void pme_gpu_get_energy_virial(gmx_pme_t *pme)
     viryz += energyAndVirial_h[j++];
     energy += energyAndVirial_h[j++];
     for (j = 0; j < 7; j++)
-        GMX_RELEASE_ASSERT(!isnan(energyAndVirial_h[j]), "PME GPU energy calculation is broken");
+        GMX_RELEASE_ASSERT(!isnan(energyAndVirial_h[j]), "PME GPU is broken - NaN reduction result");
 
     work_vir_q[XX][XX] = 0.25 * virxx;
     work_vir_q[YY][YY] = 0.25 * viryy;

@@ -27,7 +27,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
                   const gmx_gpu_opt_t *gpu_opt)
 {
     // this is ran in the beginning/on DD
-    if (!pme->bGPU) //yupinov fix this
+    if (!pme->bGPU)
         return;
 
     const int grid_index = 0;
@@ -52,7 +52,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
             forcedGpuId = atoi(forcedGpuIdHack);
             printf("PME rank %d trying to use GPU %d\n", PMEGPURank, forcedGpuId);
             stat = cudaSetDevice(forcedGpuId);
-            CU_RET_ERR(stat, "hello ");
+            CU_RET_ERR(stat, "PME failed to set the GPU device ");
         }
         else
         {
@@ -75,23 +75,24 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
 
         (*pmeGPU)->bGPUSolve = true;//(*pmeGPU)->bGPUFFT;
         // solve is done between the 2 FFTs - not worth it to copy
-        //yupinov CPU solve with the CPU FFTW is definitely broken at the moment - 20150511
+        // CPU solve with the CPU FFTW is definitely broken at the moment - 20150511
 
         (*pmeGPU)->bGPUGather = true;
-        // ???
+        // CPU gather has got to be broken - at least fix the spline parameters layout at the end of spread_on_grid_gpu
 
-        (*pmeGPU)->doOutOfPlaceFFT = true;
+        (*pmeGPU)->bOutOfPlaceFFT = true;
         // this should give better performance, according to the cuFFT documentation
         // performance seems to be the same though
         // perhaps the limiting factor is using paddings/overlaps in the grid, which is also frowned upon
         // PME should also try to pick up nice grid sizes (with factors of 2, 3, 5, 7)
 
-        (*pmeGPU)->doTime = (getenv("GMX_DISABLE_CUDA_TIMING") == NULL);
-        // this should check for PP GPU being launched
+        (*pmeGPU)->bTiming = (getenv("GMX_DISABLE_CUDA_TIMING") == NULL);
+        // this should also check for PP GPU being launched
         // just like NB should check for PME GPU
 
         (*pmeGPU)->useTextureObjects = forcedGpuIdHack ? false : ((*pmeGPU)->deviceInfo->prop.major >= 3);
         // if false, texture references are used instead
+        //yupinov - have to fix this GPU id selection for good
 
         // internal storage
         size_t pointerStorageSize = ML_END_INVALID * PME_ID_END_INVALID;
@@ -125,14 +126,14 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         CU_RET_ERR(stat, "cudaEventCreate on syncSolveGridH2D failed");
 
 
-        if ((pme->gpu)->doTime)
+        if ((pme->gpu)->bTiming)
             pme_gpu_init_timings(pme);
 
         pme_gpu_alloc_energy_virial(pme, grid_index);
     }
 
     const bool gridSizeChanged = true;
-    const bool localParticleNumberChanged = firstInit; // should be checked for DD
+    const bool localParticleNumberChanged = firstInit; // should be checked for PME DD as well
 
     if (gridSizeChanged)
     {
@@ -154,6 +155,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
             }
         }
     }
+
     if (localParticleNumberChanged)
         pme_gpu_alloc_gather_forces(pme);
 
@@ -180,7 +182,7 @@ void pme_gpu_deinit(//gmx_pme_gpu_t **pmeGPU,
             PMEMemoryFree(*pme, (PMEDataID)id, (MemLocType)location);
         }
 
-    // FFT
+    // FFT cleanup
     if ((*pme)->gpu->pfft_setup_gpu)
     {
         for (int i = 0; i < (*pme)->ngrids; i++)
@@ -214,7 +216,7 @@ void pme_gpu_step_init(gmx_pme_t *pme)
     if (!pme->bGPU)
         return;
 
-    pme_gpu_copy_recipbox(pme); //yupinov test changing box
+    pme_gpu_copy_recipbox(pme); // could use some boolean checks, like pressure coupling?
 
     pme_gpu_copy_coordinates(pme);
 }
@@ -225,7 +227,8 @@ void pme_gpu_step_end(gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCal
     if (!pme->bGPU)
         return;
 
-    cudaError_t stat = cudaStreamSynchronize(pme->gpu->pmeStream); // needed for timings and for copy back events
+    cudaError_t stat = cudaStreamSynchronize(pme->gpu->pmeStream);
+    // needed for timings and for copy back events
     CU_RET_ERR(stat, "failed to synchronize the PME GPU stream!");
 
     if (bCalcF)
@@ -245,8 +248,6 @@ __constant__ __device__ int2 OVERLAP_SIZES[OVERLAP_ZONES];
 __constant__ __device__ int OVERLAP_CELLS_COUNTS[OVERLAP_ZONES];
 __constant__ __device__ float3 RECIPBOX[3];
 #endif
-
-//yupinov stuff more data into constants, like ewaldcoef, etc?
 
 void pme_gpu_copy_recipbox(gmx_pme_t *pme)
 {
@@ -370,7 +371,7 @@ gmx_bool pme_gpu_performs_FFT(gmx_pme_t *pme)
 
 gmx_bool pme_gpu_performs_wrapping(gmx_pme_t *pme)
 {
-    return pme && pme->bGPU && pme->gpu->bGPUSingle; // this could change!
+    return pme && pme->bGPU && pme->gpu->bGPUSingle;
 }
 
 gmx_bool pme_gpu_performs_solve(gmx_pme_t *pme)
@@ -378,7 +379,7 @@ gmx_bool pme_gpu_performs_solve(gmx_pme_t *pme)
     return pme && pme->bGPU && pme->gpu->bGPUSolve;
 }
 
-// some memory operation wrappers below
+// some memory routine wrappers below
 
 static gmx_bool debugMemoryPrint = false;
 
@@ -434,8 +435,9 @@ void *PMEMemoryFetch(gmx_pme_t *pme, PMEDataID id, size_t size, MemLocType locat
             {
                 unsigned int allocFlags = cudaHostAllocDefault;
                 //allocFlags |= cudaHostAllocWriteCombined;
-                //yupinov try cudaHostAllocWriteCombined for almost-constant global memory? do I even have that?
-                // yes, I do: coordinates/coefficients and thetas/dthetas. should be helpful for spread being overwhelmed by L2 cache!
+                // try cudaHostAllocWriteCombined for almost-constant global memory?
+                // (like coordinates/coefficients and thetas/dthetas)
+                // could be helpful for spread being bottlenecked by the memory throughput on Kepler
                 stat = cudaHostAlloc((void **)&pme->gpu->StoragePointers[i], size, allocFlags);
                 CU_RET_ERR(stat, "PME cudaHostAlloc error");
             }

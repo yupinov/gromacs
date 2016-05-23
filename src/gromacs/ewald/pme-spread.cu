@@ -109,7 +109,8 @@ __global__ void pme_spline_and_spread_kernel
 
 */
 
-    const int offx = 0, offy = 0, offz = 0; //yupinov fix me!
+    const int offx = 0, offy = 0, offz = 0;
+    // unused for now
 
     const int thetaStride = particlesPerBlock * DIM;
 
@@ -747,7 +748,7 @@ void pme_gpu_alloc_grids(gmx_pme_t *pme, const int gmx_unused grid_index)
     const int gridSize = pnx * pny * pnz * sizeof(real);
 
     pme->gpu->grid = (real *)PMEMemoryFetch(pme, PME_ID_REAL_GRID, gridSize, ML_DEVICE);
-    if (pme->gpu->doOutOfPlaceFFT)
+    if (pme->gpu->bOutOfPlaceFFT)
         pme->gpu->fourierGrid = (t_complex *)PMEMemoryFetch(pme, PME_ID_COMPLEX_GRID, gridSize, ML_DEVICE);
     else
         pme->gpu->fourierGrid = (t_complex *)pme->gpu->grid;
@@ -842,20 +843,9 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
         */
     }
 
-
-    //filtering?
-    /*
-    const size_t coefficientSize = n * sizeof(real);
-    real *coefficient_h = (real *)PMEMemoryFetch(pme, PME_ID_COEFFICIENT, coefficientSize, ML_HOST);
-    memcpy(coefficient_h, atc->coefficient, coefficientSize);
-    real *coefficient_d = (real *)PMEMemoryFetch(pme, PME_ID_COEFFICIENT, coefficientSize, ML_DEVICE);
-    cu_copy_H2D_async(coefficient_d, coefficient_h, coefficientSize, s);
-    */
-
     // in spread-unified each kernel thread works on one particle: calculates its splines, spreads it to [order^3] gridpoints
     // here each kernel thread works on [order] contiguous x grid points, so we multiply the total number of threads by [order^2]
     // so only [1/order^2] of all kernel threads works on particle splines -> does it make sense to split it like this
-
 
     //const int particlesPerBlock = warp_size;
     const int blockSize = THREADS_PER_BLOCK;

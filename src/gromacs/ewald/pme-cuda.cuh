@@ -115,9 +115,9 @@ struct gmx_pme_cuda_t
 
     gmx_bool bGPUSingle; /* Are we using the single GPU rank? A convenience variable */
 
-    gmx_bool doOutOfPlaceFFT; /* if true, then an additional grid of the same size is used for R2C/solve/C2R */
+    gmx_bool bOutOfPlaceFFT; /* if true, then an additional grid of the same size is used for R2C/solve/C2R */
 
-    gmx_bool doTime; /* enable timing using CUDA events */
+    gmx_bool bTiming; /* enable timing using CUDA events */
 
     gmx_bool useTextureObjects; /* if false, then use references */
 

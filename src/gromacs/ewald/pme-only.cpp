@@ -123,7 +123,6 @@ static void gmx_pmeonly_switch(int *npmedata, struct gmx_pme_t ***pmedata,
         {
             if (pme_gpu_enabled(pme))
             {
-                //yupinov fixme gmx_pme_reinit abuse for GPU purposes
                 gmx_pme_reinit(&((*pmedata)[ind]), cr, pme, ir, grid_size);
             }
             *pme_ret = pme;
@@ -252,7 +251,6 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
                    lambda_q, lambda_lj,
                    pme_flags | GMX_PME_DO_ALL_F | (bEnerVir ? GMX_PME_CALC_ENER_VIR : 0));
 
-        //yupinov just pass a clear instead
         gmx_pme_gpu_launch_gather(pme, wcycle, lambda_q, lambda_lj, true);
 
         gmx_pme_gpu_get_results(pme,
