@@ -25,6 +25,15 @@
 \author{Aleksei Iupinov}
 \title{Particle Mesh Ewald on a GPU}
 
+\iffalse
+Todo by priority
+GPU vs CPU
+Introduction
+Abstract
+Editing
+
+\fi
+
 
 
 
@@ -316,7 +325,7 @@ The inter-process parallelization is also employed by all parts of the MD step, 
 
 \section{MD step}
 \FloatBarrier
-The core timeline of a GROMACS MD step is presented on a figure \ref{fig:step-orig}. In a typical use case, as the process has to calculate all the forces and energies, it first launches the more exhausting non-bonded work on a GPU, and only then performs the CPU calculations of the bonded and reciprocal forces. 
+The core timeline of a GROMACS MD step is presented on a figure \ref{fig:step-orig}. In a typical use case, as the process has to calculate all the forces and energies, it first launches the non-bonded work on a GPU to ensure the CPU/GPU overlapping, and only then performs the CPU calculations of the bonded and reciprocal forces. 
 \begin{figure}
     \centering
     \includegraphics[width=1\textwidth]{pics/mdstep-orig.png}
@@ -333,7 +342,7 @@ Some steps, such as NB work being split into 2 "local" and "non-local" GPU strea
 \section{PME and NB balance} \label{PMEtuning}
 Changing the electrostatic interaction length cut-off, as described in section \ref{sec_ewald}, influences the amount of computation performed in long- and short-range parts of the MD step. GROMACS uses this fact to try and do the empiric load balancing at the beginning of the simulation run. Every certain number of MD steps the Coulomb cut-off, as well as the Fourier grid spacing, are scaled; the runtime statistics are being collected. Eventually, the parameter set with the closest \draft{PP} and PME runtime is chosen as the optimal. This currently allows to push both CPU and GPU to their limit - both in single- and multi-process scenarios on a single compute node.
 
-\section{Domain decompositions} \label{chapter:DD}
+\section{Domain decomposition} \label{chapter:DD}
 Since most interactions in molecular simulations are local, domain decomposition is a natural way to decompose the system for the multi-node, multi-process simulations. In domain decomposition, a spatial domain is assigned to each process,
 which will then integrate the equations of motion for the particles that currently reside in its local
 domain.
@@ -405,7 +414,7 @@ Stream - sequence (possibly one out of several) of kernels and/or functions bein
 
 Streaming multiprocessor (SM) - a processing unit handling up to hundreds of threads. A single GPU can have up to dozens of SMs.
 
-Warp - the largest group of threads still executed in parallel by a single SM. Warp size is currently always 32. Individual threads composing a warp start together at the same program address, but they have their own instruction address counter and register state and are therefore free to branch and execute independently (increasing the runtime). The term warp originates from weaving, the first parallel thread technology. 
+Warp - the smallest group of threads executed in parallel by a single SM. Warp size is currently always 32. Individual threads composing a warp start together at the same program address, but they have their own instruction address counter and register state and are therefore free to branch and execute independently (increasing the runtime). The term warp originates from weaving, the first parallel thread technology. 
 
 Block - a group of threads of a constant size. Usually the size is chosen by a programmer as multiple of the warp size. A block is assigned by CUDA runtime to be executed in its entirety by a single SM. For developers convenience, threads within a block can be accessed by 1D, 2D or 3D indices.
 
@@ -508,8 +517,8 @@ The reasoning is as follows:
 \item The data layout has to be clearly separable into batches for fixed number of particles, for the workload to have a future-proof possibility of batching if needed.
 \item A single particle's data for all 3 dimensions has to be kept together for optimizing cache access - the spreading and gathering individual threads are always going to access spline parameters for all 3 dimensions to some extent. 
 %\draft{as of now, for order of 4 all the block data makes up 1 (2?) cache line.} 
-\item Reads and writes have to be as coalesced as possible, obviously.
-\item The possibility of the \draft{global load optimizations} is also available for a single-dimension data.
+\item Reads and writes have to be as coalesced as possible.
+\item The possibility of the \draft{global load optimizations} is also open for a single-dimension data.
 \end{enumerate}
 
 \section{Spreading the particle charges over the grid}
