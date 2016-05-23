@@ -87,12 +87,6 @@ static void calc_interpolation_idx(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
     g2ty = pme->pmegrid[grid_index].g2t[YY];
     g2tz = pme->pmegrid[grid_index].g2t[ZZ];
 
-    real *fshx = pme->fshx;
-    real *fshy = pme->fshy;
-    int *nnx = pme->nnx;
-    int *nny = pme->nny;
-    int *nnz = pme->nnz;
-
     bThreads = (atc->nthread > 1);
     if (bThreads)
     {
@@ -124,29 +118,30 @@ static void calc_interpolation_idx(struct gmx_pme_t *pme, pme_atomcomm_t *atc,
         /* Because decomposition only occurs in x and y,
          * we never have a fraction correction in z.
          */
-        fptr[XX] = tx - tix + fshx[tix];
-        fptr[YY] = ty - tiy + fshy[tiy];
+        fptr[XX] = tx - tix + pme->fshx[tix];
+        fptr[YY] = ty - tiy + pme->fshy[tiy];
         fptr[ZZ] = tz - tiz;
 
-        idxptr[XX] = nnx[tix];
-        idxptr[YY] = nny[tiy];
-        idxptr[ZZ] = nnz[tiz];
+        idxptr[XX] = pme->nnx[tix];
+        idxptr[YY] = pme->nny[tiy];
+        idxptr[ZZ] = pme->nnz[tiz];
+
+#ifdef DEBUG
+        range_check(idxptr[XX], 0, pme->pmegrid_nx);
+        range_check(idxptr[YY], 0, pme->pmegrid_ny);
+        range_check(idxptr[ZZ], 0, pme->pmegrid_nz);
+#endif
+
+        if (bThreads)
+        {
+            thread_i      = g2tx[idxptr[XX]] + g2ty[idxptr[YY]] + g2tz[idxptr[ZZ]];
+            thread_idx[i] = thread_i;
+            tpl_n[thread_i]++;
         }
+    }
 
     if (bThreads)
     {
-        for (i = start; i < end; i++)
-        {
-            idxptr = atc->idx[i];
-#ifdef DEBUG
-            range_check(idxptr[XX], 0, pme->pmegrid_nx);
-            range_check(idxptr[YY], 0, pme->pmegrid_ny);
-            range_check(idxptr[ZZ], 0, pme->pmegrid_nz);
-#endif
-            thread_i      = g2tx[idxptr[XX]] + g2ty[idxptr[YY]] + g2tz[idxptr[ZZ]];
-            thread_idx[i] = thread_i;
-            tpl_n[thread_i]++;    
-        }   
         /* Make a list of particle indices sorted on thread */
 
         /* Get the cumulative count */
@@ -217,7 +212,7 @@ static void make_thread_local_ind(pme_atomcomm_t *atc,
             real dr, div;                          \
             real data[PME_ORDER_MAX];              \
                                                    \
-            dr = xptr[j];                         \
+            dr  = xptr[j];                         \
                                                \
             /* dr is relative offset from lower cell limit */ \
             data[order-1] = 0;                     \
@@ -407,7 +402,10 @@ static void copy_local_grid(struct gmx_pme_t *pme, pmegrids_t *pmegrids,
     pmegrid_t *pmegrid;
     real *grid_th;
 
-    gmx_parallel_3dfft_real_limits(pme->pfft_setup[grid_index], local_fft_ndata, local_fft_offset, local_fft_size);
+    gmx_parallel_3dfft_real_limits(pme->pfft_setup[grid_index],
+                                   local_fft_ndata,
+                                   local_fft_offset,
+                                   local_fft_size);
     fft_my = local_fft_size[YY];
     fft_mz = local_fft_size[ZZ];
 
@@ -466,7 +464,10 @@ reduce_threadgrid_overlap(struct gmx_pme_t *pme,
     const real *grid_th;
     real *commbuf = NULL;
 
-    gmx_parallel_3dfft_real_limits(pme->pfft_setup[grid_index], local_fft_ndata, local_fft_offset, local_fft_size);
+    gmx_parallel_3dfft_real_limits(pme->pfft_setup[grid_index],
+                                   local_fft_ndata,
+                                   local_fft_offset,
+                                   local_fft_size);
     fft_nx = local_fft_ndata[XX];
     fft_ny = local_fft_ndata[YY];
     fft_nz = local_fft_ndata[ZZ];
@@ -713,7 +714,10 @@ static void sum_fftgrid_dd(struct gmx_pme_t *pme, real *fftgrid, int grid_index)
      * communication setup.
      */
 
-    gmx_parallel_3dfft_real_limits(pme->pfft_setup[grid_index], local_fft_ndata, local_fft_offset, local_fft_size);
+    gmx_parallel_3dfft_real_limits(pme->pfft_setup[grid_index],
+                                   local_fft_ndata,
+                                   local_fft_offset,
+                                   local_fft_size);
 
     if (pme->nnodes_minor > 1)
     {
@@ -877,13 +881,10 @@ void spread_on_grid(struct gmx_pme_t *pme,
                 start = atc->n* thread   /nthread;
                 end   = atc->n*(thread+1)/nthread;
 
-
                 /* Compute fftgrid index for all atoms,
                  * with help of some extra variables.
                  */
-
                 calc_interpolation_idx(pme, atc, start, grid_index, end, thread);
-
             }
             GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
         }
@@ -896,7 +897,6 @@ void spread_on_grid(struct gmx_pme_t *pme,
 #ifdef PME_TIME_THREADS
     c2 = omp_cyc_start();
 #endif
-
 #pragma omp parallel for num_threads(nthread) schedule(static)
     for (thread = 0; thread < nthread; thread++)
     {
@@ -948,6 +948,7 @@ void spread_on_grid(struct gmx_pme_t *pme,
                 ct1a = omp_cyc_start();
 #endif
                 spread_coefficients_bsplines_thread(grid, atc, spline, pme->spline_work);
+
                 if (pme->bUseThreads)
                 {
                     copy_local_grid(pme, grids, grid_index, thread, fftgrid);
@@ -960,7 +961,6 @@ void spread_on_grid(struct gmx_pme_t *pme,
         }
         GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
     }
-
 #ifdef PME_TIME_THREADS
     c2   = omp_cyc_end(c2);
     cs2 += (double)c2;
