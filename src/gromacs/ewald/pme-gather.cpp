@@ -42,7 +42,6 @@
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/smalloc.h"
 
-#include "pme-gpu.h"
 #include "pme-internal.h"
 #include "pme-simd.h"
 #include "pme-spline-work.h"
@@ -192,6 +191,7 @@ void gather_f_bsplines(struct gmx_pme_t *pme, real *grid,
      * in parallel. Don't know how important it is?  EL 990726
      */
 }
+
 
 real gather_energy_bsplines(struct gmx_pme_t *pme, real *grid,
                             pme_atomcomm_t *atc)
