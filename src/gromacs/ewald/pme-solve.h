@@ -98,22 +98,4 @@ int solve_pme_lj_yzx(struct gmx_pme_t *pme, t_complex **grid, gmx_bool bLB,
                      real ewaldcoeff, real vol,
                      gmx_bool bEnerVir, int nthread, int thread);
 
-#include "pme-internal.h"
-//yupinov lj solve
-//yupinov move GPU stuff?
-
-inline int solve_pme_lj_yzx_wrapper(struct gmx_pme_t *pme, t_complex **grid, gmx_bool bLB,
-                     real ewaldcoeff, real vol,
-                     gmx_bool bEnerVir, int nthread, int thread)
-{
-    int res = -1;
-    /*
-     * if (pme->bGPU)
-        ;//yupinov
-    else
-    */
-        res = solve_pme_lj_yzx(pme, grid, bLB,ewaldcoeff, vol, bEnerVir, nthread, thread);
-    return res;
-}
-
 #endif

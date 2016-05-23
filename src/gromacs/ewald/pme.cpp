@@ -1732,7 +1732,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
     pmegrids_t          *pmegrid    = NULL;
     real                *grid       = NULL;
     real                *coefficient = NULL;
-    int loop_count;
+    int gmx_unused loop_count;
 #if UNUSED_CPU_CODE_MARKER
     int                  d, i, j, npme, grid_index;
     int                  n_d;
@@ -1964,7 +1964,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                 else
                 {
                     loop_count =
-                        solve_pme_lj_yzx_wrapper(pme, &cfftgrid, FALSE, ewaldcoeff_lj,
+                        solve_pme_lj_yzx(pme, &cfftgrid, FALSE, ewaldcoeff_lj,
                                          box[XX][XX]*box[YY][YY]*box[ZZ][ZZ],
                                          bCalcEnerVir,
                                          pme->nthread, thread);
