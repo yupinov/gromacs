@@ -1489,7 +1489,7 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
             /* now clear the GPU outputs while we finish the step on the CPU */
             wallcycle_start_nocount(wcycle, ewcLAUNCH_GPU_NB);
             nbnxn_gpu_clear_outputs(nbv->gpu_nbv, flags);
-            //yupinov have cleargrid here
+            // GPU PME after-step clearing could be moved here as well
             wallcycle_stop(wcycle, ewcLAUNCH_GPU_NB);
         }
         else

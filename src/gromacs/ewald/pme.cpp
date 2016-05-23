@@ -1867,7 +1867,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
             wallcycle_stop(wcycle, ewcPME_REDISTXF);
         }
 
-        pme_gpu_copy_charges(pme); //yupinov
+        pme_gpu_copy_charges(pme); //yupinov why is it here
 
         if (debug)
         {

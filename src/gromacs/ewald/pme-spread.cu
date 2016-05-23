@@ -190,16 +190,16 @@ __global__ void pme_spline_and_spread_kernel
 #endif
             // staging for both parts
 
-            idxGlobal[globalIndexCalc * DIM + dimIndex] = idx[threadLocalId]; //yupinov fix indexing
+            idxGlobal[globalIndexCalc * DIM + dimIndex] = idx[threadLocalId];
             if (threadLocalId < particlesPerBlock)
                 coefficient[threadLocalId] = coefficientGlobal[globalParticleIndexBase + threadLocalId];
         }
         __syncthreads();
 
         // MAKE BSPLINES
-        if ((globalIndexCalc < n) && (localIndexCalc < particlesPerBlock) && (dimIndex < DIM)) // just for sync?
+        if ((globalIndexCalc < n) && (localIndexCalc < particlesPerBlock) && (dimIndex < DIM))
         {
-            if (bDoSplines || (coefficient[localIndex] != 0.0f)) //yupinov how bad is this conditional?
+            if (bDoSplines || (coefficient[localIndex] != 0.0f))
             {
                 real dr, div;
                 real data[order];
@@ -248,7 +248,7 @@ __global__ void pme_spline_and_spread_kernel
                     theta[thetaOffsetBase + k * thetaStride] = data[k];
                 }
 
-                //yupinov store to global
+                // store to global
                 const int thetaGlobalOffsetBase = globalParticleIndexBase * DIM * order;
 #pragma unroll
                 for (int k = 0; k < order; k++)
@@ -260,13 +260,13 @@ __global__ void pme_spline_and_spread_kernel
                 }
             }
         }
-        __syncthreads(); //yupinov do we need it?
+        __syncthreads();
     }
     else if (bSpread) // staging for spread
     {
         if ((globalIndexCalc < n) && (dimIndex < DIM) && (localIndexCalc < particlesPerBlock))
         {
-            idx[localIndexCalc * DIM + dimIndex] = idxGlobal[globalIndexCalc * DIM + dimIndex]; //yupinov check instructions
+            idx[localIndexCalc * DIM + dimIndex] = idxGlobal[globalIndexCalc * DIM + dimIndex];
 
             const int thetaOffsetBase = localIndexCalc * DIM + dimIndex;
             const int thetaGlobalOffsetBase = globalParticleIndexBase * DIM * order;
@@ -291,7 +291,7 @@ __global__ void pme_spline_and_spread_kernel
 
     if (bSpread)
     {
-        if ((globalIndex < n) && (coefficient[localIndex] != 0.0f)) //yupinov store checks
+        if ((globalIndex < n) && (coefficient[localIndex] != 0.0f))
         {
             const int ix = idx[localIndex * DIM + XX] - offx;
             const int iy = idx[localIndex * DIM + YY] - offy;
@@ -378,7 +378,6 @@ __global__ void pme_spline_kernel
 
     // INTERPOLATION INDICES
     if ((globalIndexCalc < n) && (localIndexCalc < particlesPerBlock) && (dimIndex < DIM))
-    //yupinov - this is a single particle work!
     {
         int constIndex, tInt;
         real n, t;
@@ -407,8 +406,6 @@ __global__ void pme_spline_kernel
             break;
         }
         // parts of multiplication are commented because these components are actually 0
-        // thus, excessive constant memory
-        // should refactor if settling for this approach...
 
         // Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes
         t = (t + 2.0f) * n;
@@ -440,7 +437,7 @@ __global__ void pme_spline_kernel
     // MAKE BSPLINES
     if ((globalIndexCalc < n) && (localIndexCalc < particlesPerBlock) && (dimIndex < DIM)) // just for sync?
     {
-        if (bDoSplines || (coefficient[localIndex] != 0.0f)) //yupinov how bad is this conditional?
+        if (bDoSplines || (coefficient[localIndex] != 0.0f))
         {
             real dr, div;
             real data[order];
@@ -457,7 +454,7 @@ __global__ void pme_spline_kernel
             {
                 div         = 1.0f / (k - 1.0f);
                 data[k - 1] = div * dr * data[k - 2];
-                #pragma unroll
+#pragma unroll
                 for (int l = 1; l < (k - 1); l++)
                 {
                     data[k - l - 1] = div * ((dr + l) * data[k - l - 2] + (k - l - dr) * data[k - l - 1]);
@@ -489,7 +486,7 @@ __global__ void pme_spline_kernel
                 theta[thetaOffsetBase + k * thetaStride] = data[k];
             }
 
-            //yupinov store to global
+            // store to global
             const int thetaGlobalOffsetBase = globalParticleIndexBase * DIM * order;
 #pragma unroll
             for (int k = 0; k < order; k++)
@@ -506,7 +503,7 @@ __global__ void pme_spline_kernel
 
 template <const int order, const int particlesPerBlock>
 __global__ void pme_spread_kernel
-(int start_ix, int start_iy, int start_iz,
+( //int start_ix, int start_iy, int start_iz,
   const int pny, const int pnz,
  const real * __restrict__ coefficientGlobal,
  real * __restrict__ gridGlobal, real * __restrict__ thetaGlobal, const int * __restrict__ idxGlobal,
@@ -525,7 +522,7 @@ __global__ void pme_spread_kernel
 */
     const int thetaStride = particlesPerBlock * DIM;
 
-    const int offx = 0, offy = 0, offz = 0;//yupinov fix me!
+    const int offx = 0, offy = 0, offz = 0; //unused
 
     __shared__ int idx[thetaStride];
     __shared__ real coefficient[particlesPerBlock];
@@ -570,7 +567,7 @@ __global__ void pme_spread_kernel
     ithy = threadIdx.y;
     ithz = threadIdx.z;
 
-    if ((globalIndex < n) && (coefficient[localIndex] != 0.0f)) //yupinov store checks
+    if ((globalIndex < n) && (coefficient[localIndex] != 0.0f))
     {
         const int ix = idx[localIndex * DIM + XX] - offx;
         const int iy = idx[localIndex * DIM + YY] - offy;
@@ -901,7 +898,7 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
                     pme_gpu_timing_start(pme, ewcsPME_SPREAD);
 
                     pme_spread_kernel<4, blockSize / 4 / 4> <<<nBlocks, dimBlock, 0, s>>>
-                                                                            (pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
+                                                                            (/*pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,*/
                                                                              pny, pnz,
                                                                              pme->gpu->coefficients,
                                                                              pme->gpu->grid, theta_d, idx_d,
