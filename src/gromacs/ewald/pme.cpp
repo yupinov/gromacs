@@ -1179,20 +1179,6 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                 {
                     int loop_count;
 
-/*
-#pragma omp barrier
-if (thread == 0)
-   dump_local_fftgrid(pme, fftgrid, grid_index);
-#pragma omp barrier
-
-#pragma omp barrier
-if (thread == 0)
-    dump_local_fftgrid(pme, (const real *)cfftgrid, grid_index);
-#pragma omp barrier
-*/
-
-
-
                     /* do 3d-fft */
                     if (thread == 0)
                     {
@@ -1205,13 +1191,6 @@ if (thread == 0)
                         wallcycle_stop(wcycle, ewcPME_FFT);
                     }
                     where();
-
-/*
-#pragma omp barrier
-if (thread == 0)
-    dump_local_fftgrid(pme, (const real *)cfftgrid, grid_index);
-#pragma omp barrier
-*/
 
                     /* solve in k-space for our local cells */
                     if (thread == 0)
@@ -1914,17 +1893,6 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
             }
 
             wallcycle_stop(wcycle, ewcPME_SPREADGATHER);
-
-            /* TODO If the OpenMP and single-threaded implementations
-               converge, then spread_on_grid() and
-               copy_pmegrid_to_fftgrid() will perhaps live in the same
-               source file and the following debugging function can live
-               there too. */
-
-             /*
-               dump_local_fftgrid(pme,fftgrid);
-               exit(0);
-             */
         }
 
         try

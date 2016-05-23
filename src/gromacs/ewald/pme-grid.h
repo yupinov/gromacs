@@ -96,6 +96,6 @@ reuse_pmegrids(const pmegrids_t *oldgrid, pmegrids_t *newgrid);
 /* This function is called from gmx_pme_do() only from debugging code
    that is commented out. */
 void
-dump_local_fftgrid(struct gmx_pme_t *pme, const real *fftgrid, int grid_index = PME_GRID_QA);
+dump_local_fftgrid(struct gmx_pme_t *pme, const real *fftgrid);
 
 #endif

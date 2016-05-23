@@ -248,7 +248,7 @@ int copy_pmegrid_to_fftgrid(struct gmx_pme_t *pme, real *pmegrid, real *fftgrid,
     local_pme_size[0] = pme->pmegrid_nx;
     local_pme_size[1] = pme->pmegrid_ny;
     local_pme_size[2] = pme->pmegrid_nz;
-    //printf("%d %d %d\n", local_pme_size[0], local_pme_size[1], local_pme_size[2]);
+
     /* The fftgrid is always 'justified' to the lower-left corner of the PME grid,
        the offset is identical, and the PME grid always has more data (due to overlap)
      */
@@ -895,8 +895,9 @@ static void dump_grid(FILE *fp,
 
 /* This function is called from gmx_pme_do() only from debugging code
    that is commented out. */
-void dump_local_fftgrid(struct gmx_pme_t *pme, const real *fftgrid, int grid_index)
+void dump_local_fftgrid(struct gmx_pme_t *pme, const real *fftgrid)
 {
+    int grid_index = 0;
     ivec local_fft_ndata, local_fft_offset, local_fft_size;
     if (fftgrid == pme->fftgrid[grid_index])
     {
