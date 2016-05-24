@@ -527,22 +527,22 @@ In this next algorithm part for each particle $l^3$ charge contributions to the 
 That could expose $l^3$ parallel threads per particle. However, I choose to have $l^2$ threads per particles so that each thread works on line of $l$ contributions. We choose these lines to be not in continuous(minor) dimension so that we keep having slightly coalesced access within warps. 
 %(\draft{Why did I not try $l$}?)
 
-The choice is for some reason to have both the spline calculation and spreading stages in a single kernel, so that 3 threads per particle compute spline values at first, the whole block is synchronized and then $l^2$ threads per particle calculate the charge contributions and atomically add them onto the global grid. 
+The choice is for some reason to have both the spline calculation and spreading stages in a single kernel, so that 3 threads per particle compute spline values at first, the whole block is synchronized and then $l^2$ threads per particle calculate the charge contributions and atomically accumulate on the global grid. 
 
 %Spread is a very performance-heavy kernel (it takes about \draft{half of total PME GPU run-time}) which is limited by the performance of global memory and its L2 cache because of the atomic operations \draft{on Kepler}.  
 
 \section{Wrapping the grid}
 As the method is dealing with a periodic system, the particle spline contributions that go over the grid boundary are supposed to be wrapped over into the other side.
-However, integer division and modulus are highly computationally taxing operations in CUDA. 
-That is why it was chosen to have a grid allocated with additional $(l-1)$ overlap in all 3 dimensions. Instead of having modulus operations for grid indices in the spreading, 
+However, integer division and modulo are highly computationally expensive operations in CUDA. 
+That is why it was chosen to have a grid allocated with additional $(l-1)$ overlap in all 3 dimensions. Instead of having modulo operations for grid indices in the spreading, 
 a separate wrapping kernel is scheduled afterwards. It only has to add each overlapped grid cell's value to its wrapped address once. 
 
-%Funny, but now the wrapping kernel has excessive modulus operations because I am an idiot.\\
+%Funny, but now the wrapping kernel has excessive modulo operations because I am an idiot.\\
 
 %Each thread works on one overlapped cell, so the number of threads to $(K_1 + l) \cdot (ny + l) \cdot (nz + l) - nx \cdot ny \cdot nz = l \cdot (nx \cdot ny + ny \cdot nz + nx \cdot nz + nx + ny + nz + 1)$ threads. 
 %As the kernel runtime is relatively short, it could probably benefit from further optimization using
 %The 4-value global load could be definitely exploited...\\
-Note that if one was to adapt this GPU implementation to the multi-process GROMACS, the wrapping kernel would have to be modified. Only the wrapping in the continuous dimension  would be needed; the overlap zones in the decomposed dimensions would have to be communicated between the PME processes, just like it is done in the CPU PME implementation. 
+Note that when this GPU implementation will be adapted for the multi-process GROMACS, the wrapping kernel will have to be modified. Only the wrapping in the continuous dimension will be needed; the overlap zones in the decomposed dimensions will have to be communicated between the PME processes, just like it is done in the CPU PME implementation. 
 
 \section{FFT}
 %\draft{Write about cuFFT vs FFTW.}
@@ -565,7 +565,7 @@ If one was to implement PME on GPU for multiple processes, a question of inter-p
 
 %reference
 
-The algorithm needs to modify each value of the Fourier space complex grid, as well as compute the reciprocal energy and the virial contribution. This kernel only needs about \draft{1\%} of the total run-time, and on top of that is embarrassingly parallel. The only common data is the B-spline moduli for all 3 dimensions, read through the texture memory, and the resulting global memory energy and $3 \times 3$ pressure virial (represented by 6 values because it is symmetric). The energy and the pressure virial are reduced block-wise in the shared memory, and then the result is atomically added to the global memory.
+The algorithm needs to modify each value of the Fourier space complex grid, as well as compute the reciprocal energy and the virial contribution. This kernel only takes about \draft{1\%} of the total run-time, and additionally is embarrassingly parallel. The only common data is the B-spline moduli for all 3 dimensions, read through the texture memory, and the resulting global memory energy and $3 \times 3$ pressure virial (represented by 6 values because it is symmetric). The energy and the pressure virial are reduced block-wise in the shared memory, and then the result is atomically added to the global memory.
 % \draft{This kernel is compute-bound or smem bpound?}
 
 \section{Unwrapping the grid}
