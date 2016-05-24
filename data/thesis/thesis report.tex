@@ -751,12 +751,21 @@ Kernel concurrency slowdown, \% & -25.8 &-23.88 & -19.28& -4.07 & 14.41 & 13.63 
 \fi
 
 Overall, this result is somewhat disappointing, and that is even before the kernel launch overhead and memory transfer overhead are taken into account.
- 
-\iffalse
+
 
 \section {CPU and GPU performance comparison}
 
-
+\draft{ADH 134201 atoms, 1 to 8 threads, NB on the main GT Titan X GPU, PME either on the CPU (?) or on the second GPu Quadro m6000}. 
+\iffalse
+\FloatBarrier
+\begin{figure} [h!]
+    \centering
+    \includegraphics[width=1\textwidth]{pics/GPU_CPU_ADH.png}
+    \caption{Simulation performance with a separate PME CPU/GPU process}
+    \label{fig:sepGPU}
+\end{figure}
+\FloatBarrier
+\fi
 \draft{A comparison of the CPU and GPU PME ns/day, maybe a third option with NB CPU as well?} 
 
 %\draft{The certain NVIDIA hardware also exposes 2 levels of priorities for CUDA streams. For example, GROMACS running with multiple processes and domain decomposition uses the high priority stream to schedule the calculation of the so called "non-local" non-bonded interactions, and schedule the rest in the low priority stream. Non-local particles are the ones in the buffer zones close to the other parts of the decomposed domain, therefore affecting them; the results of their computation have to be communicated among processes as soon as possible for better performance (FIGURE).}
@@ -764,6 +773,8 @@ Overall, this result is somewhat disappointing, and that is even before the kern
 % Performance of all the GPU work suffers by ...\% on average.
  As long as the total step time is less than the step time with a GPU non-bonded and a CPU PME calculation, it is desirable to have PME on a GPU.  Still, the overall benefit is not that great. Therefore, using dedicated PME-only processes might be preferable.   
 \fi
+\iffalse
+
 \section{Separate PME process performance}
 
 A separate PME process with a dedicated GPU as part of a multi-process simulation is tried in this section.
@@ -785,7 +796,7 @@ In the first case, 3 processes are ran: 1 PP process per GPU, and 1 PME process 
 \FloatBarrier
 
 As in the PME GPU case only the listed forces are computed on the CPU (which is a small computational effort), it means that the existence of the PME GPU option now allows for the majority of the simulation workload to be shifted from the CPU to the GPU with non-critical loss in performance. This can potentially mean better GPU performance of GROMACS on the clusters with abundant high-performance GPU hardware, where the bottleneck before would be a CPU PME computation.
-
+\fi
 
 %\draft{Tesla?}
 
