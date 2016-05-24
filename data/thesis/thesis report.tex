@@ -187,7 +187,7 @@ E_{dir} = \frac{1}{2}\sum\limits_{\bold{n\in \mathbb{Z}}}^*\sum\limits_{i=1}^N\s
 E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus \mathbb{0}\}}\frac{\exp(-\frac{\pi^2\bold{m}^2}{\beta^2})}{\bold{m}^2}S(\bold{m})S(\bold{-m})
 \end{equation}
 \[E_{corr} = -\frac{1}{2}\sum\limits_{(i,j)\in M}\frac{q_i q_j \erf(\beta\lvert\bold{r}_i - \bold{r}_j\rvert)}{\lvert\bold{r}_i - \bold{r}_j\rvert} - \frac{\beta}{\sqrt{\pi}}\sum\limits_{i=1}^N q_i^2\]
-Almost like before, the asterisk in \eqref{eq:Edir} means that terms with $\bold{n} = \mathbb{0}$ and $i = j$, or $(i,j)\in M$, are skipped.
+Similarly to \eqref{eq:ewald}, the asterisk in \eqref{eq:Edir} means that terms with $\bold{n} = \mathbb{0}$ and $i = j$, or $(i,j)\in M$, are skipped.
 $V = a_1 \cdot a_2 \times a_3$ is a unit cell volume.
 
 The Coulombic force on atom $j$ can be obtained by differentiating the sum $E(\bold{r}_1, \dotsc, \bold{r}_N) = E_{dir} + E_{rec} + E_{corr}$ with respect to $\bold{r}_j$. 
@@ -672,7 +672,7 @@ Finally, it shows that the biggest part of computational time is spent in the sp
 
 GROMACS uses GPU for the computation of short-range non-bonded electrostatic interactions. One of the project's goals was to study the possibility of calculating both short-range and long-range interactions on the same GPU at the same time, with so called overlapping. CUDA architectures allow for several command streams to execute concurrently, and newer architectures expose 2 possible values of stream priorities.
 
-The modified MD step in this implementation is launching the largest chunk of the PME work on a GPU before the NB work is launched (figure \ref{fig:step-gpu}). The PME stream is also set to high priority, using the CUDA runtime API, while the NB stream has lower priority. 
+The modified MD step in this implementation launches the largest chunk of the PME work on a GPU before the NB work is launched (figure \ref{fig:step-gpu}). The PME stream is set to a high priority, using the CUDA runtime API, while the NB stream has lower priority. 
 The idea was to have the PME launched in advance and be computed in background, while the NB kernel with its irregular occupancy performs the main computational workload.
 
 Pictured on the figure \ref{fig:overlap} is a typical GPU PME and NB overlap timeline produced in the NVIDIA Visual Profiler with the concurrent kernel execution enabled.
@@ -818,7 +818,7 @@ The question of the efficient communication of the grid data is important for th
 \section{PME interpolation order}
 The only supported B-spline interpolation order in the current PME GPU implementation is 4. While the commonly used values for the PME interpolation order are 4 and 5, as suggested in \cite{spme}, the value of 4 allows for exactly $32/4^2 = 2$ particles processed by a single warp within spread and gather parts of the algorithm with neither idle threads nor divergence. As 32 is not divisible by 5, with PME interpolation order of 5 those issues will certainly come up.
 
-Continuing this line of thought, interpolation order of 8 might be interesting to try out, as it will eliminate idle threads and divergence as well. The implementation would require only a relatively small effort to adapt to orders other than 4. It would most likely prove useful in a multiprocess case, since increasing the Fourier grid spacing and the interpolation order is a way to decrease the communication bandwidth.
+Continuing this line of thought, interpolation order of 8 might be interesting to try out, as it will eliminate idle threads and divergence as well. The implementation would require only a relatively small effort to adapt to orders other than 4. It would most likely prove useful in a multiprocess case, since increasing the Fourier grid spacing and the interpolation order is a way to decrease the FFT communication requirements.
 
 \section{Multi-process scheduling}
 
