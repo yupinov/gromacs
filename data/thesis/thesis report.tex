@@ -562,23 +562,23 @@ If one was to implement PME on GPU for multiple processes, a question of inter-p
 
 \section{Reciprocal convolution, energy calculation}
 
-The algorithm needs to perturb each cell of the Fourier space complex grid, as well as compute the reciprocal energy and the virial contribution. This kernel only needs about \draft{1\%} of the total run-time, and on top of that is embarrassingly parallel. The only common data is the B-spline moduli for all 3 dimensions, stored in a texture memory, and the resulting global memory energy and $3 \times 3$ pressure virial (represented by 6 values because it is symmetric). The energy and the pressure virial are reduced block-wise in the shared memory, and then the result is atomically added to the global memory.
+The algorithm needs to perturb each cell of the Fourier space complex grid, as well as compute the reciprocal energy and the virial contribution. This kernel only needs about \draft{1\%} of the total run-time, and on top of that is embarrassingly parallel. The only common data is the B-spline moduli for all 3 dimensions, read through the texture memory, and the resulting global memory energy and $3 \times 3$ pressure virial (represented by 6 values because it is symmetric). The energy and the pressure virial are reduced block-wise in the shared memory, and then the result is atomically added to the global memory.
 % \draft{This kernel is compute-bound or smem bpound?}
 
 \section{Unwrapping the grid}
 After the grid is perturbed, and complex-to-real FFT is performed, the long-range force contributions are calculated.
 
-Just like the Cartesian space grid was being wrapped around after the spreading, it gets unwrapped before the force gathering. This does not require atomic operations, it is just a memory copying.
+Just like the Cartesian space grid is wrapped around after the spreading, it gets unwrapped before the force gathering. This does not require atomic operations, as it is only a memory copy operation.
 
 \section{Force calculation}
-Force contribution gathering is a logical counterpart to the charge spreading. The values of the same grid cells that were affected by charge spreading are now being summed up to get the long-range force contribution for the corresponding particles.
+Force contribution gathering is a logical counterpart to the charge spreading. The values of the same grid cells affected by charge spreading are now summed up to get the long-range force contribution for the corresponding particles.
 The same data layout is used for the spline parameters and indices as well.
 
 %In this kernel, the shuffle reduction was used for compute capability >= 3.0
 %\draft{texture objects}
 
 \section{Receiving the results from the GPU}
-The computed forces and energy are being copied back asynchronously after the respective kernels are done. This means that at the time when the results are needed in the host CPU code, it is enough just to put the synchronisation call which waits for the completion of the asynchronous memory transfers from device to host.
+The computed forces and energy are asynchronously copied back after the respective kernels are done. This means that at the time when the results are needed in the host CPU code, it is enough just to put the synchronisation call which waits for the completion of the asynchronous memory transfers from device to host.
 
 \newpage
 \chapter{Results}
