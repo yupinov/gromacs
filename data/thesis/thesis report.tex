@@ -126,7 +126,7 @@ The long-range component is obtained by spreading charged to a grid, determining
 
 The input data for PME is particle coordinates within unit cell, and their charges.  The output data is forces acting on each particles, the reciprocal energy and the virial of the system.
 
-The first step of PME, as described in the next section, is splitting all the particle-to-particle interactions into direct and non-direct. Usually this is done using an empirical cut-off of 9Å (?). Direct category is then calculated just like before, in the "naive" way, while non-direct is transformed into complex Fourier space, perturbed, transformed back (details in the next session).
+The first step of PME, as described in the next section, is splitting all the particle-to-particle interactions into direct and non-direct. Usually this is done using an empirical cut-off of 9Å (?). Direct category is then calculated just like before, in the "naive" way, while non-direct is transformed into complex Fourier space, DERPed, transformed back (details in the next session).
 In the current version of Gromacs (5.1) there is support different architecture-depended ILP (AVX, SIMD,... ), TLP (OpenMP) as well as CUDA, OpenCL. As the direct particle-to particle interaction is so significant for MD simulation performance, this part has all these SImd implementations in GROMACS, and is the only part that has the GPU codepathwaythingie.
 There is also a balance of changing the value of the PME cut-off, as the performance of the direct computation goes to square, etc. And there is an existing balance of PP to PME as 3 to 1. All of these things have nothing to do with each other.
 So anyway, because GROMACS is such a multi-process thing (that has MPI as well), it would be nice for it to utilize GPUs more. If PME was done on the GPU as well, that would allow some processes of the simulation work mostly on GPUs. It could even be extremely beneficial for weird Multi-GPU clusters.
@@ -284,7 +284,7 @@ The PME algorithm part for computing the reciprocal energy and forces can be sum
 \item Calculate the B-spline interpolation values for all particles (equation \eqref{BSpline}).
 \item Spread the particle charges on a discrete 3D grid (using the spline values), calculating the array $Q$ (equation \eqref{Qspread}).
 \item Perform three-dimensional real-to-complex FFT of the grid.
-\item Perturb the grid, calculate the reciprocal energy contribution (equation \eqref{Erecfull}).
+\item Calculate the reciprocal energy contribution(equation \eqref{Erecfull}), transform the grid.
 \item Perform three-dimensional complex-to-real FFT of the convoluted grid.
 \item Gather the particle forces from the grid (using the spline values) (equation \eqref{Fgather}).
 \end{enumerate}
@@ -562,13 +562,15 @@ If one was to implement PME on GPU for multiple processes, a question of inter-p
 
 \section{Reciprocal convolution, energy calculation}
 
-The algorithm needs to perturb each cell of the Fourier space complex grid, as well as compute the reciprocal energy and the virial contribution. This kernel only needs about \draft{1\%} of the total run-time, and on top of that is embarrassingly parallel. The only common data is the B-spline moduli for all 3 dimensions, read through the texture memory, and the resulting global memory energy and $3 \times 3$ pressure virial (represented by 6 values because it is symmetric). The energy and the pressure virial are reduced block-wise in the shared memory, and then the result is atomically added to the global memory.
+%reference
+
+The algorithm needs to modify each value of the Fourier space complex grid, as well as compute the reciprocal energy and the virial contribution. This kernel only needs about \draft{1\%} of the total run-time, and on top of that is embarrassingly parallel. The only common data is the B-spline moduli for all 3 dimensions, read through the texture memory, and the resulting global memory energy and $3 \times 3$ pressure virial (represented by 6 values because it is symmetric). The energy and the pressure virial are reduced block-wise in the shared memory, and then the result is atomically added to the global memory.
 % \draft{This kernel is compute-bound or smem bpound?}
 
 \section{Unwrapping the grid}
-After the grid is perturbed, and complex-to-real FFT is performed, the long-range force contributions are calculated.
+After the grid is modified, and complex-to-real FFT is performed, the long-range force contributions are calculated.
 
-Just like the Cartesian space grid is wrapped around after the spreading, it gets unwrapped before the force gathering. This does not require atomic operations, as it is only a memory copy operation.
+For the same reason the Cartesian space grid is wrapped around after the spreading, it gets unwrapped before the force gathering. This does not require atomic operations, as it is only a memory copy operation.
 
 \section{Force calculation}
 Force contribution gathering is a logical counterpart to the charge spreading. The values of the same grid cells affected by charge spreading are now summed up to get the long-range force contribution for the corresponding particles.
@@ -835,8 +837,6 @@ Therefore, in the hypothetical case of the multi-process PME running on GPUs, GR
 \iffalse
 Why not pinned memory?
 How are B-spline orders used?
-gromacs.org in bibliography\and my repository
-perturbation vs convolution
 \fi
 
 \bibliographystyle{plain}
