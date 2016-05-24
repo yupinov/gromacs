@@ -12,7 +12,6 @@
 \usepackage{pdfpages}
 \usepackage{url}
 
-
 %\addcontentsline{toc}{chapter}{Bibliography}
 
 %\DeclareMathAlphabet{\mathbbold}{U}{bbold}{m}{n}
@@ -89,7 +88,7 @@ High performance is important in molecular dynamics (MD) simulations, as they ar
 
 The main computational effort of a MD simulation time step is the calculation of the electrostatic forces, which, if implemented naively (each to each), would scale as the square of the number of particles $O(N^2)$.
 
-Particle Mesh Ewald (PME) is the long-range interactions computation algorithm for periodic systems. It is based on the Ewald summation, first described in 1921 \cite{pme}. Originally it was used for the ionic crystals' energy calculation. The method requires periodic boundary conditions and charge neutrality of the molecular system in order to accurately calculate the total Coulombic interaction. 
+Particle Mesh Ewald (PME) is the long-range interactions computation algorithm for periodic systems. It is based on the Ewald summation, first described in 1921 \cite{ewald}. Originally it was used for the ionic crystals' energy calculation. The method requires periodic boundary conditions and charge neutrality of the molecular system in order to accurately calculate the total Coulombic interaction. 
 
 The idea of the PME method in short is as follows: all the long-range energy contributions (usually selected by a certain interaction distance cut-off) are calculated in Fourier space, where they converge faster than the the real-space $\frac{1}{\lvert r\rvert}$ dependency in direct summation. The computational effort of a long-range component in PME is $ O(N\cdot\log(N))$. The method is described in more detail in the next chapter.
  
@@ -163,7 +162,7 @@ The asterisk on the outer sum signifies that the contributions with zero denomin
 
 The outer infinite series in \eqref{eq:ewald} is conditionally convergent, meaning that the result depends on the manner in which the numbers $n_1, n_2, n_3$ tend to infinity.
 % if the unit cell were not neutral it would converge to plus or minus infinity͒.
-In his work, Ewald \cite{pme} introduced the split of the sum in \eqref{eq:ewald} into the sum of two convergent series: a direct sum in Cartesian space, and a
+In his work, Ewald \cite{ewald} introduced the split of the sum in \eqref{eq:ewald} into the sum of two convergent series: a direct sum in Cartesian space, and a
 reciprocal sum in Fourier space. 
 
 In many MD simulations certain non-bonded interactions within same molecule are being omitted, being handled by different terms in the potential calculation. The corresponding particle pairs $(i, j)$ are stored in a masked list $M$. Therefore, the masked list correction should be subtracted from the direct and reciprocal energy sums. Usually the masked pairs are explicitly skipped over during the direct sum calculation.	 
@@ -219,7 +218,7 @@ rapidly, at the expense of slower convergence in $E_{rec}$.
 The choice of a fixed $\beta$ independent of the box
 dimensions allows for a fixed size cut-off (e.g. $1$ nm) in the
 $E_{dir}$, reducing its computation from $O(N^2)$ to $O(N)$.
-The computation of the direct-space energy $E_{dir}$ is then trivial to perform in a loop. However, approximating the sum of structure factors in the \eqref{eq:Erec} is more difficult. This is why the discrete particle mesh idea was suggested. It allows to reduce the computational effort of the $E_{rec}$ from $O(N^2)$ to  $O(N \log (N))$.
+The computation of the direct-space energy $E_{dir}$ is then trivial to perform in a loop. However, approximating the sum of structure factors in the equation \eqref{eq:Erec} is more difficult. This is why the discrete particle mesh idea was suggested in 1993 \cite{pme}. It allows to reduce the computational effort of the $E_{rec}$ from $O(N^2)$ to  $O(N \log (N))$.
 
 
 \section{B-splines interpolation on a grid}
@@ -529,7 +528,9 @@ That could expose $l^3$ parallel threads per particle. However, I choose to have
 
 The choice is for some reason to have both the spline calculation and spreading stages in a single kernel, so that 3 threads per particle compute spline values at first, the whole block is synchronized and then $l^2$ threads per particle calculate the charge contributions and atomically accumulate on the global grid. 
 
-%Spread is a very performance-heavy kernel (it takes about \draft{half of total PME GPU run-time}) which is limited by the performance of global memory and its L2 cache because of the atomic operations \draft{on Kepler}.  
+%Spread is a very performance-heavy kernel (it takes about \draft{half of total PME GPU run-time}) which is limited by the performance of global memory and its L2 cache because of the atomic operations \draft{on Kepler}. 
+
+%NADP-DEPENDENT ALCOHOL DEHYDROGENASE in water 
 
 \section{Wrapping the grid}
 As the method is dealing with a periodic system, the particle spline contributions that go over the grid boundary are supposed to be wrapped over into the other side.
