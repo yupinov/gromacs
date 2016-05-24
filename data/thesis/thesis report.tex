@@ -12,6 +12,7 @@
 \usepackage{pdfpages}
 \usepackage{url}
 
+
 %\addcontentsline{toc}{chapter}{Bibliography}
 
 %\DeclareMathAlphabet{\mathbbold}{U}{bbold}{m}{n}
@@ -550,7 +551,7 @@ Before and after the convolution kernel there is a 3D FFT of the grid to be perf
 CUDA platform has a cuFFT library which focuses on FFT on a GPU. 
 As the scope of the project was the implementation for a single GPU, the implementation required only a single cuFFT function call for a full 3D transform for both directions. 
 %However, this function call spawns around 8 different CUDA kernels nonetheless. The kernels being used, and their number depend on the size of the grid, as well as the overlaps. 
-Typically for FFT implementations, algorithms are optimized for grid sizes which are multiples of certain small factors (such as 2, 3, 5, 7); it is also recommended to stay away from the large prime factors.
+Typically for FFT implementations, algorithms are optimized for grid sizes which are multiples of certain small factors (such as 2, 3, 5, 7); it is also recommended to stay away from the large prime factors \cite{cufft}.
 
 \iffalse
 If one was to implement PME on GPU for multiple processes, a question of inter-process interaction would arise, as there are 2 data broadcasts required for a 3D FFT (like it is done in a PME code on CPU using the FFTW library and MPI). Be it host/device MPI or some direct GPU interaction (???), the question of viability of all these additional grid data transfers and perturbations would arise. The cuFFT is not even that much faster than FFTW (single process NUMBERS). 
