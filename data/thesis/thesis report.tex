@@ -595,6 +595,9 @@ The same data layout is used for the spline parameters and indices as well.
 \section{Receiving the results from the GPU}
 The computed forces and energy are asynchronously copied back after the respective kernels are done. This means that at the time when the results are needed in the host CPU code, it is enough just to put the synchronisation call which waits for the completion of the asynchronous memory transfers from device to host.
 
+Again, due to the overlap between the NB and PME computation, the transferring of 2 separate resulting force buffers from GPU memory to RAM is not crucial for performance, as only the last transfer happens with the GPU already idle. The OpenMP reduction can then be performed.
+%\draft{picture of overlap}
+
 \newpage
 \chapter{Results}
 
