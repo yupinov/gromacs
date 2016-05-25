@@ -92,12 +92,11 @@ The main computational effort of a MD simulation time step is the calculation of
 
 Particle Mesh Ewald (PME) is a long-range interactions computation algorithm for periodic systems. It is based on the Ewald summation, first described in 1921 \cite{ewald}. Originally it was used for the ionic crystals' energy calculation. The method requires periodic boundary conditions and charge neutrality of the molecular system in order to accurately calculate the total Coulombic interaction. 
 
-The idea of the PME method in short is as follows: all the long-range energy contributions (usually selected by a certain interaction distance cut-off) are calculated in Fourier space, where they converge faster than the the real-space $\frac{1}{\lvert r\rvert}$ dependency in direct summation. The computational effort of a long-range component in PME is $ O(N\cdot\log(N))$. The method is described in more detail in the next chapter.
+The idea of the PME method in short is as follows: all the long-range energy contributions (usually selected by a splitting function) are calculated in Fourier space, where they converge faster than the the real-space $\frac{1}{\lvert r\rvert}$ dependency in direct summation. The computational effort of a long-range component in PME is $ O(N\cdot\log(N))$. The method is described in more detail in the next chapter.
  
 \section{Objective} 
  
 In this project, the PME method is implemented in a highly-parallel code running on a GPU, using NVIDIA CUDA toolkit, as a part of an open-source molecular dynamics software package GROMACS. 
-%Refernce SciLifeLab
 % \cite{gromacs}}.
 Achieving good performance of PME on GPU is important for good performance of molecular simulations in general and in particular for the GROMACS package. 
 
@@ -134,10 +133,8 @@ The long-range component is obtained by spreading charged to a grid, determining
 
 The input data for PME is particle coordinates within unit cell, and their charges.  The output data is forces acting on each particles, the reciprocal energy and the virial of the system.
 
-The first step of PME, as described in the next section, is splitting all the particle-to-particle interactions into direct and non-direct. Usually this is done using an empirical cut-off of 9Å (?). Direct category is then calculated just like before, in the "naive" way, while non-direct is transformed into complex Fourier space, DERPed, transformed back (details in the next session).
+ Direct category is then calculated just like before, in the "naive" way, while non-direct is transformed into complex Fourier space, DERPed, transformed back (details in the next session).
 In the current version of Gromacs (5.1) there is support different architecture-depended ILP (AVX, SIMD,... ), TLP (OpenMP) as well as CUDA, OpenCL. As the direct particle-to particle interaction is so significant for MD simulation performance, this part has all these SImd implementations in GROMACS, and is the only part that has the GPU codepathwaythingie.
-There is also a balance of changing the value of the PME cut-off, as the performance of the direct computation goes to square, etc. And there is an existing balance of PP to PME as 3 to 1. All of these things have nothing to do with each other.
-So anyway, because GROMACS is such a multi-process thing (that has MPI as well), it would be nice for it to utilize GPUs more. If PME was done on the GPU as well, that would allow some processes of the simulation work mostly on GPUs. It could even be extremely beneficial for weird Multi-GPU clusters.
 \fi
 
 \newpage
@@ -146,6 +143,9 @@ So anyway, because GROMACS is such a multi-process thing (that has MPI as well),
 In this chapter, the Ewald summation and the smooth PME approach are described briefly.
 
 \iffalse
+
+\draft{Usually this is done using an empirical cut-off of 9Å (?).}
+
 \draft{
 The reciprocal Ewald sum is the solution to Poisson’s equation in periodic boundary conditions, with Gaussian charge densities as sources. 
 }
@@ -236,7 +236,7 @@ Therefore,
 
 %\draft{normalized}
 
-%It is shown in \draft{???} that the piece-wise interpolation of the exponentials is possible, using the Lagrange polynomials of order $p$:
+%It is shown in ??? that the piece-wise interpolation of the exponentials is possible, using the Lagrange polynomials of order $p$:
 %\[\exp\Big(2\pi i\frac{m_j u_j}{K_j}\Big) \approx \sum_{k\in \mathbb{Z}} W_{2p}(u_j - k) \cdot \exp\Big(2\pi i\frac{m_j k}{K_j}\Big)\]
 %However, while the energy given by the Lagrange interpolation is a continuous function of particle coordinates, it is only piece-wise smooth, not allowing us to use the numerical differentiation to arrive at the reciprocal forces.
 
@@ -371,10 +371,10 @@ The global broadcast communication is usually the limiting factor for scaling. I
  To reduce the effect of this problem, some processes are selected to do only the PME calculation, while the other processes, called particle-particle (PP) processes, do the rest of the work - the bonded and non-bonded summation. The number of the PME-only processes is usually limited to $\frac{1}{4}$ of the total process number. When the number of PME processes is reduced by a factor of
 4, the number of communication calls is reduced by about a factor of 16. Or put differently, the simulation can now effectively scale to 4 times more processes.
  
-%Multi-process GROMACS simulations have dynamic load balancing capabilities as well.
 \iffalse
-The system is partitioned over the processes at the beginning of each MD step in which \draft{neighbour
-searching is performed}.  
+Multi-process GROMACS simulations have dynamic load balancing capabilities as well.
+The system is partitioned over the processes at the beginning of each MD step in which neighbour
+searching is performed.  
 When different processes have a different computational load (load imbalance), all processes will have to
 wait for the one that takes the most time. One would like to avoid such a situation. Load imbalance
 can occur due to three reasons:
@@ -489,10 +489,6 @@ Therefore, the easiest way of plugging the PME GPU calls into the existing code 
 % The PME GPU stream is also assigned higher priority, in hopes of achieving so called "preemption"
 
 % This split does not appear to critically affect the performance, as the non-bonded GPIU  
-
-
-
-% \draft{add neighbor launches?}
 
 % \draft{this is a step for PP on the same rank}
 
