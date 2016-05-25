@@ -45,7 +45,9 @@ Editing
 
 The Particle Mesh Ewald (PME) method is used for efficient long-range electrostatic calculations in molecular dynamics (MD).
  
-In this project, PME is implemented on a GPU alongside the existing CPU implementation using the code base of an open source MD software GROMACS. The performance of the PME GPU implementation is then studied. 
+In this project, PME is implemented for a single GPU alongside the existing CPU implementation, using the code base of an open source MD software GROMACS and NVIDIA CUDA toolkit. The performance of the PME GPU implementation is then studied. 
+
+The motivation for the project is examining the PME algorithm's parallelism, and its potential benefit for performance scalability of MD simulations on various hardware. 
 
 %\draft{Should be translated to Swedish as well.}
 
