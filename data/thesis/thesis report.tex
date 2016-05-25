@@ -105,7 +105,7 @@ Achieving good performance of PME on GPU is important for good performance of mo
 Apart from the multiplication in the Fourier space, which is straightforward to vectorize, designing good algorithms for the other components is non-trivial.
 On the CPU most simulation packages have converged to the same approach. But on GPU most components can not take advantage of SIMD instructions of width 8 (AVX) or more (AVX512). 
 \fi
-As of a few years GPUs are becoming increasingly for running molecular simulations. There are two approaches to this, either run (nearly) everything on the GPU, or run only a part of the compute tasks on the GPU for better system utilization. GROMACS takes the latter approach. Currently only the non-bonded (NB) particle-pair interactions are being computed on the GPU. Moving part or all of the PME calculation onto the GPU could benefit performance significantly on current hardware. Some future hardware might have very weak CPUs compared to the GPUs and nearly everything will have to run on the GPU. The results of this project will directly benefit thousands of GROMACS users world-wide. The future benefit will be even higher, because supercomputers are also expected to also get relatively more GPU/accelerator power.
+As of a few years GPUs are becoming increasingly for running molecular simulations. There are two approaches to this, either run (nearly) everything on the GPU, or run only a part of the compute tasks on the GPU for better system utilization. GROMACS takes the latter approach. Currently only the non-bonded short-range particle pair interactions are being computed on the GPU. Moving part or all of the PME calculation onto the GPU could benefit performance significantly on current hardware. Some future hardware might have very weak CPUs compared to the GPUs and nearly everything will have to run on the GPU. The results of this project will directly benefit thousands of GROMACS users world-wide. The future benefit will be even higher, because supercomputers are also expected to also get relatively more GPU/accelerator power.
 
 \section{Scope} \label{chapter_scope}
 
@@ -313,15 +313,17 @@ PME - particle mesh Ewald algorithm, responsible for the computation of the long
 
 PP - short-range particle-particle components of the forces/energy, namely bonded and non-bonded (NB) contributions.
 
-NB - non-bonded component of the short-range forces/energy computations; usually takes a significant amount of time, as it requires looping over all pairs of particles. 
+NB - non-bonded component of the short-range forces/energy computations; typically takes a significant amount of time, as it requires looping over all pairs of particles. 
 
 PME process/rank - a GROMACS process that performs exclusively PME calculations.
 
 PP process/rank - a GROMACS process that performs exclusively PP calculations (bonded and NB).  
 
-\section{PME and NB variations}
+\section{PME and short-range implementations}
 
-There exists a PME implementation in GROMACS. However, the PME is currently always done on CPU, unlike the non-bonded forces computation. The reason for that is that the NB short-range calculations typically dominate the computational effort, so they remain the main optimization target. There exist CUDA, OpenCL and SIMD implementations of the non-bonded calculation kernels. Moreover, in the implementation there are many optimizations targeting specific versions of CUDA, OpenCL architectures and compute capabilities, SIMD instruction sets. 
+There exists a PME implementation in GROMACS. However, the PME is currently always done on CPU, unlike the non-bonded forces computation. The reason for that is that the short-range  calculations typically dominate the computational effort, so they remain the main optimization target. There exist CUDA, OpenCL and SIMD implementations of the short-range non-bonded calculation kernels. Moreover, in the implementation there are many optimizations targeting specific versions of CUDA, OpenCL architectures and compute capabilities, SIMD instruction sets. 
+
+The short-range bonded (listed) component is also computed only on CPU, as it has insignificant computational effort $O(N)$.
 
 The inter-process parallelization is also employed by all parts of the MD step, using the MPI.
 
@@ -336,12 +338,12 @@ The core timeline of a GROMACS MD step is presented on a figure \ref{fig:step-or
 \end{figure}
 \FloatBarrier
 
-Some steps, such as NB work being split into 2 "local" and "non-local" GPU streams, or inter-process communication, are deliberately omitted from the figure, as they were not in the focus of the project. 
+Some steps, such as  the non-bonded work being split into 2 "local" and "non-local" GPU streams, or inter-process communication, are deliberately omitted from the figure, as they were not in the focus of the project. 
 
 % In the case of a certain process doing only the PP or PME work, the corresponding components are not launched. 
 
 %There exist several load balancing mechanisms in GROMACS, which are described below
-\section{PME and NB balance} \label{PMEtuning}
+\section{Load balancing} \label{PMEtuning}
 Changing the electrostatic interaction length cut-off, as described in section \ref{sec_ewald}, influences the amount of computation performed in long- and short-range parts of the MD step. GROMACS uses this fact for the empiric load balancing at the beginning of the simulation run. Every certain number of MD steps the Coulomb cut-off, as well as the Fourier grid spacing, are scaled; the runtime statistics are being collected. Eventually, the parameter set with the closest \draft{PP} and PME runtime is chosen as the optimal. This currently allows to push both CPU and GPU to their limit - both in single- and multi-process scenarios on a single compute node.
 
 \section{Domain decomposition} \label{chapter:DD}
@@ -501,7 +503,7 @@ All of this data is computed on a CPU. It has a low computational effort and par
 
 The copying of coordinates and charges constitutes the majority of each step's initial data transfers, because of their regularity (each step) and size (in total 16 bytes per particle with a single precision) as well.
 
-Pairwise particle interaction calculations are also typically performed on GPU in GROMACS, thus in CUDA case the particle data should be shared between the NB and PME kernels, and only copied once. However, that is not part of the core implementation, as the NB kernels currently use two different data layouts, so implementing a data reordering kernel would be required for full support. This should not require a lot of effort as it is mostly the question of the higher level MD step code restructuring.
+Pairwise particle interaction calculations are also typically performed on GPU in GROMACS, thus in CUDA case the particle data should be shared between the NB (non-bonded) and PME kernels, and only copied once. However, that is not part of the core implementation, as the NB kernels currently use two different data layouts, so implementing a data reordering kernel would be required for full support. This should not require a lot of effort as it is mostly the question of the higher level MD step code restructuring.
 
 \section{Computation of the spline values and derivatives}
 For each particle and for each dimension the individual B-spline interpolation parameters are computed: $l$ values and $l$ derivative values, where $l$ is the spline interpolation order. This naturally suggests having 3 parallel threads per particle. The particle coordinates are used for calculation.
