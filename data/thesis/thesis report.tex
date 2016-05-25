@@ -333,7 +333,7 @@ The short-range bonded (listed) component can only be computed on CPU, as it has
 
 Currently, the PME is also computed only on CPU with SIMD optimizations. 
 
-The inter-process parallelization with MPI is employed by all computation stages of the MD step.
+The inter-process parallelization with MPI is employed by all computation stages of the MD step, as described in the section \ref{chapter:DD}.
 
 \section{MD step}
 \FloatBarrier
@@ -346,7 +346,7 @@ The core timeline of a GROMACS MD step is presented on a figure \ref{fig:step-or
 \end{figure}
 \FloatBarrier
 
-Some steps, such as  the non-bonded work being split into 2 "local" and "non-local" GPU streams, or inter-process communication, are deliberately omitted from the figure, as they are not sthe focus of the project. 
+Some steps, such as  the non-bonded work being split into 2 "local" and "non-local" GPU streams, or inter-process communication, are deliberately omitted from the figure, as they are not the focus of the project. 
 
 % In the case of a certain process doing only the PP or PME work, the corresponding components are not launched. 
 
