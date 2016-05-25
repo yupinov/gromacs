@@ -337,7 +337,8 @@ The inter-process parallelization with MPI is employed by all computation stages
 
 \section{MD step}
 \FloatBarrier
-The core timeline of a GROMACS MD step is presented on a figure \ref{fig:step-orig}. In a typical use case, as the process has to calculate all the forces and energies, it first launches the non-bonded work on a GPU to ensure the CPU/GPU overlapping, and only then performs the CPU calculations of the bonded and reciprocal forces. 
+The core timeline of a GROMACS MD step is presented on a figure \ref{fig:step-orig}. In a typical use case, as the process has to calculate all the components, it first launches the non-bonded work on a GPU to ensure overlapping of the CPU and GPU work, and only then performs the CPU calculations of the bonded and reciprocal forces. 
+%\draft[energies per 100 steps}
 \begin{figure}
     \centering
     \includegraphics[width=1\textwidth]{pics/mdstep-orig.png}
@@ -352,7 +353,7 @@ Some steps, such as  the non-bonded work being split into 2 "local" and "non-loc
 
 %There exist several load balancing mechanisms in GROMACS, which are described below
 \section{Load balancing} \label{PMEtuning}
-Changing the electrostatic interaction length cut-off, as described in section \ref{sec_ewald}, influences the amount of computation performed in long- and short-range parts of the MD step. GROMACS uses this fact for the empiric load balancing at the beginning of the simulation run. Every certain number of MD steps the Coulomb cut-off, as well as the Fourier grid spacing, are scaled; the runtime statistics are being collected. Eventually, the parameter set with the closest \draft{PP} and PME runtime is chosen as the optimal. This currently allows to push both CPU and GPU to their limit - both in single- and multi-process scenarios on a single compute node.
+Changing the electrostatic interaction length cut-off, as described in the section \ref{sec_ewald}, influences the amount of computation performed in long- and short-range parts of the MD step. GROMACS uses this fact for the automatic load balancing at the beginning of the simulation run. Every certain number of MD steps the Coulomb cut-off, as well as the Fourier grid spacing, are scaled; the run-time measurements of the components are collected. Eventually, the parameter set with the best simulation performance is chosen as the optimal. This currently allows to push both CPU and GPU to their limit - both in single- and multi-process scenarios on a single compute node.
 
 \section{Domain decomposition} \label{chapter:DD}
 Since most interactions in molecular simulations are local, domain decomposition is a natural way to decompose the system for the multi-node, multi-process simulations. In domain decomposition, a spatial domain is assigned to each process,
