@@ -518,15 +518,15 @@ The reasoning is as follows:
 \item A single particle's data for all 3 dimensions has to be kept together for optimizing cache access - the spreading and gathering individual threads are always going to access spline parameters for all 3 dimensions to some extent. 
 %\draft{as of now, for order of 4 all the block data makes up 1 (2?) cache line.} 
 \item Reads and writes have to be as coalesced as possible.
-\item The possibility of the \draft{global load optimizations} is also open for a single-dimension data.
+%\item The possibility of the \draft{global load optimizations} is also open for a single-dimension data.
 \end{itemize}
 
 \section{Spreading the particle charges over the grid}
-In this next algorithm part for each particle $l^3$ charge contributions to the discrete real-space grid are computed, using the charges as well as the splines data from the previous section.
+In the first algorithm stage $l^3$ charge contributions to the discrete real-space grid are computed for each particle, using the charges as well as the splines data from the previous section ($l$ is an \draft{interpolation order}).
 That could expose $l^3$ parallel threads per particle. However, I choose to have $l^2$ threads per particles so that each thread works on line of $l$ contributions. We choose these lines to be not in continuous(minor) dimension so that we keep having slightly coalesced access within warps. 
 %(\draft{Why did I not try $l$}?)
 
-The choice is for some reason to have both the spline calculation and spreading stages in a single kernel, so that 3 threads per particle compute spline values at first, the whole block is synchronized and then $l^2$ threads per particle calculate the charge contributions and atomically accumulate on the global grid. 
+The choice is \draft{for some reason} to have both the spline calculation and spreading stages in a single kernel, so that 3 threads per particle compute spline values at first, the whole block is synchronized and then $l^2$ threads per particle calculate the charge contributions and atomically accumulate on the global grid. 
 
 %Spread is a very performance-heavy kernel (it takes about \draft{half of total PME GPU run-time}) which is limited by the performance of global memory and its L2 cache because of the atomic operations \draft{on Kepler}. 
 
@@ -651,7 +651,7 @@ This data has been measured on the NVIDIA GTX TITAN X GPU, one of the fastest co
 
 
 
-Most of the stages presented on the figure \ref{fig:kernels} correspond to single CUDA kernels. Notable exception is FFT performed by the CUDA cuFFT library, which while having only 2 function calls (real-to-complex and complex-to-real) per MD step, spawns around 8 kernels for each call. The kernels being called also differ depending on the grid size. Moreover, the cuFFT functions have no \draft{launch configuration} and \draft{bounds}, unlike CUDA kernels, exposing next to no control over performance. 
+Most of the stages presented on the figure \ref{fig:kernels} correspond to single CUDA kernels. Notable exception is FFT performed by the CUDA cuFFT library, which while having only 2 function calls (real-to-complex and complex-to-real) per MD step, spawns around 8 kernels for each call. The kernels being called also differ depending on the grid size. Moreover, the cuFFT functions have no \draft{launch configuration} and \draft{bounds}, unlike CUDA kernels, exposing no granularity control, as they are pre-tuned for optimal performance. 
 
 \begin{figure} [h!]
     \centering
@@ -665,11 +665,13 @@ Most of the stages presented on the figure \ref{fig:kernels} correspond to singl
 It is no surprise overall that the FFT takes the larger ratio of the total GPU runtime, as the input size decreases. The reason for that is that the Coulomb cut-off has a fixed tuning range.
 % proofs
 
-Another observable feature on the left chart is the delay in the scaling of the wrapping, unwrapping, and the convolution kernels. It is also related to their workload being entirely dependent on the grid dimensions.
+Another observable feature on the chart is the wrapping, unwrapping, and the convolution kernels not scaling down well with input sizes. It is also related to their workload being entirely dependent on the grid dimensions.
 
 Finally, it shows that the biggest part of computational time is spent in the spreading kernel. On weaker GPU's (especially with Kepler architecture) this kernel's major bottleneck is the global memory/L2 cache throughput. Atomic operations are the obvious reason for that. Typically the counterpart force gathering kernel  is from 2 to 4 times as fast as the spreading. 
 
 %\draft{table of verall data}
+
+%\draft{ms!}
 
 %\draft{another GPU?}
 
