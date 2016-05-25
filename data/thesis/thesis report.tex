@@ -667,7 +667,7 @@ It is no surprise overall that the FFT takes the larger ratio of the total GPU r
 
 Another observable feature on the chart is the wrapping, unwrapping, and the convolution kernels not scaling down well with input sizes. It is also related to their workload being entirely dependent on the grid dimensions.
 
-Finally, it shows that the biggest part of computational time is spent in the spreading kernel. On weaker GPU's (especially with Kepler architecture) this kernel's major bottleneck is the global memory/L2 cache throughput. Atomic operations are the obvious reason for that. Typically the counterpart force gathering kernel  is from 2 to 4 times as fast as the spreading. 
+Finally, it shows that the biggest part of computational time is spent in the spreading kernel. On weaker GPU's (especially with Kepler architecture) this kernel's major bottleneck is the global memory/L2 cache throughput. Atomic operations are the obvious reason for that. Typically the counterpart force gathering kernels is from 2 to 4 times as fast as the spreading. 
 
 %\draft{table of verall data}
 
@@ -810,14 +810,22 @@ As in the PME GPU case only the listed forces are computed on the CPU (which is 
 %\draft{Would be nice to have something here.}
 
 \newpage
-\chapter{Summary, future work}
+\chapter{Conclusions, future work}
 This chapter describes the PME GPU implementation current status and its future prospects.
 
 \section{Implementation status}
-The PME GPU p  rototype has been implemented using GROMACS open-source code base within a rather limited scope. First and foremost, the GPU PME has only been implemented only for a single PME process. Additionally, only a single interpolation order is supported.
+The PME GPU prototype has been implemented using GROMACS open-source code base within a rather limited scope. 
 
+First and foremost, the GPU PME has only been implemented for a single PME process. This allows it to be ran on a single PP/PME process. The latter allows a single computer with several NVIDIA GPUs to fully utilize its hardware for the purposes of MD simulations, shifting majority of the workload onto GPUs.
+
+Only a single interpolation order (4) is currently supported. There is neither a large effort nor principal obstacles to implementing different orders. 
+
+The FFT stages of the algorithm can be computed either on CPU  or on NVIDIA GPU.
+
+\draft{
 Still, this implementation provides noticeable MD simulation performance gains for single-process PME work on high-end NVIDIA GPUs.
 More over, it is a foundation for further multi-process GPU PME implementation (which is discussed in the next sections).
+}
 
 The code is expected to be integrated into the GROMACS code base within several months. At the moment of writing it can be accessed at the public Git repository \cite{pmegpugit}.
 
