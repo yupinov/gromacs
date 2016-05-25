@@ -309,11 +309,11 @@ Rank - a single GROMACS process in a multi-process simulation (coming from the M
 
 MPI - Message Parsing Interface, a common standard of the multi-process communication interface; has several implementations; is used extensively for the inter-process communication in various programming languages.
 
-PME - particle mesh Ewald, long-range component of the forces/energy.
+PME - particle mesh Ewald algorithm, responsible for the computation of the long-range component of the forces/energy.
 
 PP - short-range particle-particle components of the forces/energy, namely bonded and non-bonded (NB) contributions.
 
-NB - non-bonded component of the short-range forces/energy computations.
+NB - non-bonded component of the short-range forces/energy computations; usually takes a significant amount of time, as it requires looping over all pairs of particles. 
 
 PME process/rank - a GROMACS process that performs exclusively PME calculations.
 
