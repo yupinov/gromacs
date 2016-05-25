@@ -609,7 +609,7 @@ The CPU and GPU PME comparisons were as follows:
  %\draft{(source?)}.
 \end{itemize} 
 
-\section{Performance factors}
+\section{Factors influencing performance}
 %\draft{There is a clear division in the PME stages computational effort: computational effort of spreading and gathering (the first and last stages) is dependent on the number of particles $N$ as well as the interpolation order $l$ : $O(N\cdot l^3)$. The effort for the rest of the stages (forward FFT, convolution, backward FFT) is entirely dependent only on the dimensions of the discrete Fourier grid in the single process case. - wtf, its actually NlogN}
 %\draft{In multiprocess simulations each 3D FFT execution would require 2 MPI all-to-all communications, where the message size is also dependent on the grid dimensions. However, the communication latency and synchronisation overhead would also be just an important factors.
 %As for the single process implementation,} 
