@@ -534,9 +534,9 @@ The choice is for some reason to have both the spline calculation and spreading 
 
 \section{Wrapping the grid}
 As the method is dealing with a periodic system, the particle spline contributions that go over the grid boundary are supposed to be wrapped over into the other side.
-However, integer division and modulo are highly computationally expensive operations in CUDA. 
-That is why it was chosen to have a grid allocated with additional $(l-1)$ overlap in all 3 dimensions. Instead of having modulo operations for grid indices in the spreading, 
-a separate wrapping kernel is scheduled afterwards. It only has to add each overlapped grid cell's value to its wrapped address once. 
+However, integer division and modulo are highly computationally expensive operations in CUDA. %\draft{explain l}
+That is why the grid is allocated with additional $(l-1)$ cells in all 3 dimensions. Instead of having modulo operations for grid indices in the spreading, 
+a separate wrapping kernel is scheduled afterwards. The kernel only has to add each overlapped grid cell's value to its wrapped address once. 
 
 %Funny, but now the wrapping kernel has excessive modulo operations because I am an idiot.\\
 
@@ -772,7 +772,6 @@ Overall, this result is somewhat disappointing, and that is even before the kern
 
 % Performance of all the GPU work suffers by ...\% on average.
  As long as the total step time is less than the step time with a GPU non-bonded and a CPU PME calculation, it is desirable to have PME on a GPU.  Still, the overall benefit is not that great. Therefore, using dedicated PME-only processes might be preferable.   
-\fi
 \iffalse
 
 \section{Separate PME process performance}
@@ -810,7 +809,7 @@ As in the PME GPU case only the listed forces are computed on the CPU (which is 
 This chapter describes the PME GPU implementation current status and its future prospects.
 
 \section{Implementation status}
-The PME GPU prototype has been implemented using GROMACS open-source code base within a rather limited scope. First and foremost, the GPU PME has only been implemented only for a single PME process. Additionally, only a single interpolation order is supported.
+The PME GPU p  rototype has been implemented using GROMACS open-source code base within a rather limited scope. First and foremost, the GPU PME has only been implemented only for a single PME process. Additionally, only a single interpolation order is supported.
 
 Still, this implementation provides noticeable MD simulation performance gains for single-process PME work on high-end NVIDIA GPUs.
 More over, it is a foundation for further multi-process GPU PME implementation (which is discussed in the next sections).
