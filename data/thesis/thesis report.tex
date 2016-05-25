@@ -109,15 +109,18 @@ As of a few years GPUs are becoming increasingly important for running molecular
 \section{Scope} \label{chapter_scope}
 
 The scope of this project is to implement PME on GPU in C++/CUDA C within GROMACS code base.
-There are 2 important design constraints here:
+There are several design constraints here:
 \begin{itemize}
 \item The method is implemented using NVIDIA CUDA toolkit (only for NVIDIA hardware). The reasons for choosing CUDA over OpenCL, a viable alternative standard, are practical - NVIDIA is currently the main GPU hardware producer; the NVIDIA CUDA library generally gives better performance than NVIDIA OpenCL implementation; and above all that, once the prototype is complete, it is not difficult to reimplement the same algorithms in OpenCL, as the core OpenCL C/CUDA C language concepts are similar. GROMACS users would much more benefit from the CUDA PME implementation.
 \item The method is implemented for a single PME simulation process working with a single GPU. GROMACS employs various parallelization techniques for better scaling, including domain decomposition algorithms, where parts of the domain are treated by different processes within the same simulation (read more about it in the section \ref{chapter:DD}). The existing CPU PME implementation supports multi-process computation as well. 
-However, a prospect of multi-GPU PME implementation is raising additional concerns, such as minimisation of the communication costs between GPUs, domain decomposition algorithms, and load balancing. While this should certainly be considered during future developments of PME GPU, a PME implementation for a single GPU should provide a foundation for that, highlighting the weak and strong points of the implementation and its scalability. The room for a scalable multi-GPU implementation is left in the implementation.
-
-%\draft{offsets}
+However, a prospect of multi-GPU PME implementation is raising additional concerns, such as minimisation of the communication costs between GPUs, domain decomposition algorithms, and load balancing. While this should certainly be considered during future developments of PME GPU, a PME implementation for a single GPU should provide a foundation for that, highlighting the weak and strong points of the implementation and its scalability. 
 \draft{Also note that the PME amounts only to a part of the total computation, while the other component (short-rage work, see section \ref{rangeimpl}) is already scalable over multiple processes/GPUs in GROMACS. Therefore, having PME computation sped up on a single process with the use of a dedicated GPU can already be beneficial for small-scale simulations running on a single machine with one or several GPUs.
 }
+\item The room for a scalable multi-GPU implementation is left in the implementation. The major part of the communication latency introduced with the multi-node scaling is caused by the the 3D FFT stages of the algorithm. For this reason, the PME GPU implementation has to provide an option to perform the FFT computation on CPU instead of GPU (more about it in the section \ref{FFTimpl}).
+
+%draft{descrieb cuFFT vs FFTw in implem} 
+
+%\draft{offsets}
 
 \end{itemize}
 \iffalse
@@ -554,7 +557,7 @@ a separate wrapping kernel is scheduled afterwards. The kernel only has to add e
 %The 4-value global load could be definitely exploited...\\
 Note that when this GPU implementation will be adapted for the multi-process GROMACS, the wrapping kernel will have to be modified. Only the wrapping in the continuous dimension will be needed; the overlap zones in the decomposed dimensions will have to be communicated between the PME processes, just like it is done in the CPU PME implementation. 
 
-\section{FFT}
+\section{3D FFT} \label{FFTimpl}
 %\draft{Write about cuFFT vs FFTW.}
 
 Before and after the convolution kernel there is a 3D FFT of the grid to be performed - real-to-complex and complex-to-real, respectively. 
