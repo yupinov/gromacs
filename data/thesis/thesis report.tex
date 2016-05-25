@@ -495,26 +495,25 @@ Therefore, the easiest way of plugging the PME GPU calls into the existing code 
 
 % \draft{this is a step for PP on the same rank}
 
-
-Implementation of the particular stages of the PME GPU are discussed below.
+Implementation of the individual stages of the PME is discussed below.
 
 \section{Sending input data to GPU}
-In the beginning of each MD simulation step the particle charges and coordinates are being copied to the CUDA device.
+In the beginning of each MD simulation step the particle charges and coordinates are copied to the CUDA device.
 
-Additional input data that is being copied to the GPU only occasionally (on any step during which the domain decomposition or configuration can possibly change) includes
+Additional input data that is copied to the GPU only occasionally (on any step during which the domain decomposition or configuration can possibly change) includes
 \begin{itemize}
 \item B-spline moduli for all 3 dimensions;
 \item Local grid line indices size of 5 times the grid size to allow for particles (to be out of the triclinic unit-cell by up to 2 box lengths in each direction, which might be required for a very skewed unit-cell)
 \item Reciprocal box vectors
 \end{itemize}
-All of this data is computed on a CPU. It has a low computational effort and parallelization possibility. The grid line indices are just lookup tables for a modulo operation results with some corrections for the rounding issues - and modulo is a rather costly operation on a GPU.
+All of this data is computed on a CPU. It has a low computational effort and parallelization possibility. The grid line indices are just lookup tables for a modulo operation results with some corrections for the rounding issues, and modulo is a rather costly operation on a GPU.
 
 The copying of coordinates and charges constitutes the majority of each step's initial data transfers, because of their regularity (each step) and size (in total 16 bytes per particle with a single precision) as well.
 
-Pairwise particle interaction calculations are also typically performed on GPU in GROMACS, thus in CUDA case the particle data should be shared between the NB (non-bonded) and PME kernels, and only copied once. However, that is not part of the core implementation, as the NB kernels currently use two different data layouts, so implementing a data reordering kernel would be required for full support. This should not require a lot of effort as it is mostly the question of the higher level MD step code restructuring.
+Pairwise particle interaction calculations are also typically performed on GPU in GROMACS, thus in CUDA case the particle data should be shared between the NB (non-bonded) and PME kernels, and only copied once. However, that is not part of the core implementation, as the NB kernel currently use a different particle data layout, so implementing a data reordering kernel would be required. This should not require a lot of effort as it is mostly the question of the higher level MD step code restructuring. It also does not affect the performance adversely, as the data copying operations are overlapped with kernels: by the time the NB particle data transfer starts, the GPU is working on the first PME kernel.
 
 \section{Computation of the spline values and derivatives}
-For each particle and for each dimension the individual B-spline interpolation parameters are computed: $l$ values and $l$ derivative values, where $l$ is the spline interpolation order. This naturally suggests having 3 parallel threads per particle. The particle coordinates are used for calculation.
+For each particle and for each dimension the individual B-spline interpolation parameters are computed: $l$ values and $l$ derivative values, where $l$ is the spline interpolation order. This naturally suggests using 3 threads per particle. The particle coordinates are used for calculation.
 The question of the optimal layout for the spline parameters is interesting. Pictured on \ref{fig:spline} is my choice for an in-memory $\theta$ and $d\theta$ arrays' layout. 
 \FloatBarrier
 \begin{figure}[h!]
