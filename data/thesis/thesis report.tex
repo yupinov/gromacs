@@ -110,10 +110,16 @@ As of a few years GPUs are becoming increasingly important for running molecular
 \section{Scope} \label{chapter_scope}
 
 The scope of this project is to implement PME on GPU in C++/CUDA C within GROMACS code base.
-There are 2 important limitations here:
+There are 2 important design constraints here:
 \begin{itemize}
-\item The method is only to be implemented using NVIDIA CUDA toolkit (only for NVIDIA hardware). The reasons for choosing CUDA over OpenCL, a viable alternative standard, are practical - NVIDIA is currently the main GPU hardware producer; the NVIDIA CUDA library generally gives better performance than NVIDIA OpenCL implementation; and above all that, once the prototype is complete, it is not difficult to reimplement the same algorithms in OpenCL, as the core OpenCL C/CUDA C language concepts are similar. Simply put, GROMACS users would much more benefit from the CUDA PME implementation.
-\item The method is only to be implemented for a single simulation process working with a single NVIDIA GPU. GROMACS employs various parallelization techniques for better scaling, including domain decomposition algorithms, where parts of the domain are treated by different processes within the same simulation (read more about it in the section \ref{chapter:DD}). The existing CPU PME implementation supports multi-process computation as well. However, the focus of this project is not on the communication part, as that would be a logical next step after implementing a single-process algorithm. 
+\item The method is implemented using NVIDIA CUDA toolkit (only for NVIDIA hardware). The reasons for choosing CUDA over OpenCL, a viable alternative standard, are practical - NVIDIA is currently the main GPU hardware producer; the NVIDIA CUDA library generally gives better performance than NVIDIA OpenCL implementation; and above all that, once the prototype is complete, it is not difficult to reimplement the same algorithms in OpenCL, as the core OpenCL C/CUDA C language concepts are similar. GROMACS users would much more benefit from the CUDA PME implementation.
+\item The method is implemented for a single PME simulation process working with a single GPU. GROMACS employs various parallelization techniques for better scaling, including domain decomposition algorithms, where parts of the domain are treated by different processes within the same simulation (read more about it in the section \ref{chapter:DD}). The existing CPU PME implementation supports multi-process computation as well. 
+However, a prospect of multi-GPU PME implementation is raising additional concerns, such as minimisation of the communication costs between GPUs, domain decomposition algorithms, and load balancing. While this should certainly be considered during future developments of PME GPU, a PME implementation for a single GPU should provide a foundation for that, highlighting the weak and strong points of the implementation and its scalability. The room for a scalable multi-GPU implementation is left in the implementation.
+
+%\draft{offsets}
+\draft{Also note that the PME amounts only to a part of the total computation, while the other component (short-rage work, see section \ref{rangeimpl}) is already scalable over multiple processes/GPUs in GROMACS. Therefore, having PME computation sped up on a single process with the use of a dedicated GPU can already be beneficial for small-scale simulations running on a single machine with one or several GPUs.
+}
+
 \end{itemize}
 \iffalse
 
@@ -319,13 +325,15 @@ PME process/rank - a GROMACS process that performs exclusively PME calculations.
 
 PP process/rank - a GROMACS process that performs exclusively PP calculations (bonded and NB).  
 
-\section{PME and short-range implementations}
+\section{PME and short-range implementations} \label{rangeimpl}
 
-There exists a PME implementation in GROMACS. However, the PME is currently always done on CPU, unlike the non-bonded forces computation. The reason for that is that the short-range  calculations typically dominate the computational effort, so they remain the main optimization target. There exist CUDA, OpenCL and SIMD implementations of the short-range non-bonded calculation kernels. Moreover, in the implementation there are many optimizations targeting specific versions of CUDA, OpenCL architectures and compute capabilities, SIMD instruction sets. 
+The short-range calculations typically dominate the computational effort, so they remain the main optimization target in GROMACS. There exist CUDA, OpenCL and SIMD implementations of the short-range non-bonded calculation kernels. Moreover, there are many optimizations targeting specific versions of CUDA, OpenCL architectures and different SIMD instruction sets. 
 
-The short-range bonded (listed) component is also computed only on CPU, as it has insignificant computational effort $O(N)$.
+The short-range bonded (listed) component can only be computed on CPU, as it has insignificant computational effort $O(N)$.
 
-The inter-process parallelization is also employed by all parts of the MD step, using the MPI.
+Currently, the PME is also computed only on CPU with SIMD optimizations. 
+
+The inter-process parallelization with MPI is employed by all computation stages of the MD step.
 
 \section{MD step}
 \FloatBarrier
@@ -338,7 +346,7 @@ The core timeline of a GROMACS MD step is presented on a figure \ref{fig:step-or
 \end{figure}
 \FloatBarrier
 
-Some steps, such as  the non-bonded work being split into 2 "local" and "non-local" GPU streams, or inter-process communication, are deliberately omitted from the figure, as they were not in the focus of the project. 
+Some steps, such as  the non-bonded work being split into 2 "local" and "non-local" GPU streams, or inter-process communication, are deliberately omitted from the figure, as they are not sthe focus of the project. 
 
 % In the case of a certain process doing only the PP or PME work, the corresponding components are not launched. 
 
