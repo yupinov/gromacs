@@ -434,6 +434,9 @@ Grid - a group of blocks. Grids can also have 1D, 2D or 3D structure - purely fo
 
 Texture memory - a read only GPU memory bank, optimized for 2D access pattern; uses smaller cache lines with respect to the global memory.
 
+\draft{Shared memory}
+\draft{Global memory}
+
 Divergence - the behaviour of the threads in the same warp executing different instructions at the same line of code based on a condition. What is actually happening on GPU SM's is that all the threads have to go through all the branches of a conditional, while the specific threads ignore the instruction result if the condition is false for them. Divergence reduces the kernel performance.
 
 Coalesced memory access - an optimal behaviour for accessing the memory within CUDA device code. The neighbouring threads within a warp have to access the neighbouring 4-byte long memory areas for the best cache utilisation, as data is cached in continuous cache lines (sized 128 bytes). 
@@ -446,19 +449,6 @@ Coalesced memory access - an optimal behaviour for accessing the memory within C
 %Compute capability 
 
 %sort me
-
-
-
-\iffalse
-The threads of a thread block execute concurrently on one multiprocessor, and multiple thread blocks can execute concurrently on one multiprocessor. As thread blocks terminate, new blocks are launched on the vacated multiprocessors.
-
-A multiprocessor is designed to execute hundreds of threads concurrently. To manage such a large amount of threads, it employs a unique architecture called SIMT (Single-Instruction, Multiple-Thread) that is described in SIMT Architecture. The instructions are pipelined to leverage instruction-level parallelism within a single thread, as well as thread-level parallelism extensively through simultaneous hardware multithreading as detailed in Hardware Multithreading. Unlike CPU cores they are issued in order however and there is no branch prediction and no speculative execution.
-
-%- See more at: http://docs.nvidia.com/cuda/cuda-c-programming-%guide/index.html#hardware-implementation
-% SIMT
-\fi
-
-%\draft{\cite{lampps}}
 
 \section{PME GPU scheduling}
 
@@ -522,11 +512,14 @@ The reasoning is as follows:
 \end{itemize}
 
 \section{Spreading the particle charges over the grid}
-In the first algorithm stage $l^3$ charge contributions to the discrete real-space grid are computed for each particle, using the charges as well as the splines data from the previous section ($l$ is an interpolation order).
-That could expose $l^3$ parallel threads per particle. However, I choose to have $l^2$ threads per particles so that each thread works on line of $l$ contributions. We choose these lines to be not in continuous(minor) dimension so that we keep having slightly coalesced access within warps. 
+In the first algorithm stage $l^3$ charge contributions to the discrete real-space grid are computed for each particle. The charges, the spline data and the grid-line indices from the previous stage are used.
+This could expose $l^3$ parallel threads per particle. I choose to have $l^2$ threads per particles so that each thread works on line of $l$ contributions. It allows to have enough granularity while \draft{ARGH}.
+Each $l$ threads in a warp can still access a single contribution grid-line (in minor dimension) in a coalesced way. 
 %(\draft{Why did I not try $l$}?)
 
-The choice is \draft{for some reason} to have both the spline calculation and spreading stages in a single kernel, so that 3 threads per particle compute spline values at first, the whole block is synchronized and then $l^2$ threads per particle calculate the charge contributions and atomically accumulate on the global grid. 
+To save on the global memory read/write operations, both the spline calculation and spreading stages are located in a single kernel. This way, the grid-line indices and spline parameters are stored in a shared memory between stages. At first 3 threads per particle compute spline values and particle grid indices at first, the whole block is synchronized, and then $l^2$ threads per particle calculate the charge contributions and atomically accumulate on the global grid. With the PME order of 4 and block size of 128 threads, that gives us 8 particles per block. A single warp ($8 * 3$ threads) is used for the spline calculation part.
+
+
 
 %Spread is a very performance-heavy kernel (it takes about \draft{half of total PME GPU run-time}) which is limited by the performance of global memory and its L2 cache because of the atomic operations \draft{on Kepler}. 
 
@@ -536,9 +529,7 @@ The choice is \draft{for some reason} to have both the spline calculation and sp
 As the method is dealing with a periodic system, the particle spline contributions that go over the grid boundary are supposed to be wrapped over into the other side.
 However, integer division and modulo are highly computationally expensive operations in CUDA. %\draft{explain l}
 That is why the grid is allocated with additional $(l-1)$ cells in all 3 dimensions. Instead of having modulo operations for grid indices in the spreading, 
-a separate wrapping kernel is scheduled afterwards. The kernel only has to add each overlapped grid cell's value to its wrapped address once. 
-
-%Funny, but now the wrapping kernel has excessive modulo operations because I am an idiot.\\
+a separate wrapping kernel is scheduled afterwards. The kernel only has to atomically add each overlapped grid cell's value to its wrapped address once. A single value is a work of a single thread.
 
 %Each thread works on one overlapped cell, so the number of threads to $(K_1 + l) \cdot (ny + l) \cdot (nz + l) - nx \cdot ny \cdot nz = l \cdot (nx \cdot ny + ny \cdot nz + nx \cdot nz + nx + ny + nz + 1)$ threads. 
 %As the kernel runtime is relatively short, it could probably benefit from further optimization using
@@ -567,12 +558,14 @@ If one was to implement PME on GPU for multiple processes, a question of inter-p
 %reference
 
 The algorithm needs to modify each value of the Fourier space complex grid, as well as compute the reciprocal energy and the virial contribution. This kernel only takes about \draft{1\%} of the total run-time, and additionally is embarrassingly parallel. The only common data is the B-spline moduli for all 3 dimensions, read through the texture memory, and the resulting global memory energy and $3 \times 3$ pressure virial (represented by 6 values because it is symmetric). The energy and the pressure virial are reduced block-wise in the shared memory, and then the result is atomically added to the global memory.
+
+Each grid cell is processed by a single thread; for convenience, the block size is rounded to multiples of the minor dimension grid-line size. 
 % \draft{This kernel is compute-bound or smem bpound?}
 
 \section{Unwrapping the grid}
 After the grid is modified, and complex-to-real FFT is performed, the long-range force contributions are calculated.
 
-For the same reason the Cartesian space grid is wrapped around after the spreading, it gets unwrapped before the force gathering. This does not require atomic operations, as it is only a memory copy operation.
+For the same reason the Cartesian space grid is wrapped around after the spreading, it gets unwrapped before the force gathering. This does not require atomic operations, as it is only a memory copy operation. Again, a single cell is processed by a single thread. However, this kernel could be partially replaced by bulk memory copying. 
 
 \section{Force calculation}
 Force contribution gathering is a logical counterpart to the charge spreading. The values of the same grid cells affected by charge spreading are now summed up to get the long-range force contribution for the corresponding particles.
