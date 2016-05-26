@@ -648,7 +648,7 @@ The CUDA toolkit version used during the project development was CUDA 7.5.
 \section{Individual kernel performance} \label{chapter_kernels}
 
 The first interesting thing to try is to measure the performance of the individual algorithm components across the different input data sizes.
-For this purpose, the kernel performance has been measured using the NVIDIA CUDA profiling tools (\textit{nvprof}, \textit{nvvp}). Concurrent kernel execution was turned off, to produce more reliable results.
+For this purpose, the kernel performance has been measured using the NVIDIA CUDA profiling tools (\textit{nvprof}, \textit{nvvp}). Concurrent kernel execution was turned off to produce more reliable results (the concurrent execution can increase the kernel run times, also increasing the dispersion). 
 This data has been measured on the NVIDIA GTX TITAN X GPU, one of the fastest consumer-grade GPUs.
 
 
