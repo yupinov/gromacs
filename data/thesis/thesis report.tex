@@ -17,8 +17,8 @@
 %\DeclareMathAlphabet{\mathbbold}{U}{bbold}{m}{n}
 
 %\newcommand{\draft}[1]{\textcolor{red}{#1}}
-%\newcommand{\draft}[1]{\textcolor{magenta}{\underline{#1}}}
-\newcommand{\draft}[1]{#1}
+\newcommand{\draft}[1]{\textcolor{magenta}{\underline{#1}}}
+%\newcommand{\draft}[1]{#1}
 \DeclareMathOperator\erf{erf}
 \DeclareMathOperator\erfc{erfc}
 
@@ -353,7 +353,7 @@ which will then integrate the equations of motion for the particles that current
 domain.
 
 GROMACS currently uses the eighth shell method, which is described in the GROMACS 4 paper \cite{gromacs4dd}. In the most general case of a triclinic unit cell, the Cartesian space in divided with a 1-, 2-, or 3-D grid in
-parallelepipeds which are called domain decomposition cells. Each cell is assigned to a certain \draft{particle-particle}
+parallelepipeds which are called domain decomposition cells. Each cell is assigned to a certain particle-particle 
 process. 
 
 The multi-process PME calculations can have a separate discrete grid decomposition.
@@ -522,7 +522,7 @@ The reasoning is as follows:
 \end{itemize}
 
 \section{Spreading the particle charges over the grid}
-In the first algorithm stage $l^3$ charge contributions to the discrete real-space grid are computed for each particle, using the charges as well as the splines data from the previous section ($l$ is an \draft{interpolation order}).
+In the first algorithm stage $l^3$ charge contributions to the discrete real-space grid are computed for each particle, using the charges as well as the splines data from the previous section ($l$ is an interpolation order).
 That could expose $l^3$ parallel threads per particle. However, I choose to have $l^2$ threads per particles so that each thread works on line of $l$ contributions. We choose these lines to be not in continuous(minor) dimension so that we keep having slightly coalesced access within warps. 
 %(\draft{Why did I not try $l$}?)
 
@@ -632,6 +632,8 @@ The performance has been measured only for the MD steps after the load balancing
 The comparisons use only a single GPU for the PME computation. For a CPU PME, as well as in the other parts of the MD step, parallelization over multiple OpenMP threads is used.
 
 The CUDA toolkit version used during the project development was CUDA 7.5.
+
+\draft{TOTAL MESS}
 
 %\draft{Comparisons are being performed on a system with NVIDIA GTX TITAN X (a high-end GPU built on modern Maxwell architecture) and Intel Core i7-5960X CPU. CPU implementation of the PME benefits from using 16 CPU cores through OpenMP threading, as well as AVX2 SIMD optimizations.}
 
@@ -758,32 +760,36 @@ Kernel concurrency slowdown, \% & -25.8 &-23.88 & -19.28& -4.07 & 14.41 & 13.63 
 Overall, this result is somewhat disappointing, and that is even before the kernel launch overhead and memory transfer overhead are taken into account.
 
 
-\section {CPU and GPU performance comparison}
+\section{CPU and GPU performance comparison}
 
-\draft{ADH 134201 atoms, 1 to 8 threads, NB on the main GT Titan X GPU, PME either on the CPU (?) or on the second GPu Quadro m6000}. 
-\iffalse
+For the multi-process simulations it is sensible to compare the overall simulation performance results by the single characteristic the end user is most interested in - the simulation time computed per real time. In GROMACS, it is usually measured in ns/day - amount of nanoseconds of the simulation runtime per real wall-clock time elapsed for computation.
+
+The input data used for comparison is a model of ADH enzyme in water, consisting of 134201 atoms.
+
+The simulation is ran with simulation consisting of 1 PP and 1 PME process. The PP process performs the short-range computations on the high-end NVIDIA GPU GTX Titan X.    
+The PME process is ran in one case on the CPU (Intel Core i7-5960X), and in another case on the NVIDIA GPU Quadro M6000. The number of the threads used by the processes is changed from 1 to 8.
+ 
+The resulting simulation performance comparison between the separate CPU and GPU PME ranks is presented on the figure \ref{fig:sepGPUNEW}.
+ 
 \FloatBarrier
 \begin{figure} [h!]
     \centering
-    \includegraphics[width=1\textwidth]{pics/GPU_CPU_ADH.png}
-    \caption{Simulation performance with a separate PME CPU/GPU process}
-    \label{fig:sepGPU}
+    \includegraphics[width=1\textwidth]{pics/CPU_GPU_ADH.png}
+    \caption{Simulation performance with a separate PME process working with the CPU/GPU}
+    \label{fig:sepGPUNEW}
 \end{figure}
 \FloatBarrier
-\fi
-\draft{A comparison of the CPU and GPU PME ns/day, maybe a third option with NB CPU as well?} 
+
+This comparison demonstrates not only a noticeable parallelization speed-up of a separate rank PME on a high-end GPU, but also a possibility of shifting the PME workload onto a GPU from the CPU. It is possible to enhance the load balancing algorithm of GROMACS to perform the switching between GPU and CPU PME dynamically as required.
 
 %\draft{The certain NVIDIA hardware also exposes 2 levels of priorities for CUDA streams. For example, GROMACS running with multiple processes and domain decomposition uses the high priority stream to schedule the calculation of the so called "non-local" non-bonded interactions, and schedule the rest in the low priority stream. Non-local particles are the ones in the buffer zones close to the other parts of the decomposed domain, therefore affecting them; the results of their computation have to be communicated among processes as soon as possible for better performance (FIGURE).}
 
 % Performance of all the GPU work suffers by ...\% on average.
- As long as the total step time is less than the step time with a GPU non-bonded and a CPU PME calculation, it is desirable to have PME on a GPU.  Still, the overall benefit is not that great. Therefore, using dedicated PME-only processes might be preferable.   
+ 
+    
 \iffalse
 
 \section{Separate PME process performance}
-
-A separate PME process with a dedicated GPU as part of a multi-process simulation is tried in this section.
-
-For the multi-process simulations it is sensible to compare the overall simulation performance results by the single characteristic the end user is most interested in - the simulation time computed per real time. In GROMACS, it is usually measured in ns / day - amount of nanoseconds of the simulation runtime per real wall-clock time elapsed for computation.
 
 For this test, a compute node with 2 16-core AMD Opteron CPUs and 2 NVIDIA GTX Titan GPUs is used.
 
@@ -816,7 +822,7 @@ This chapter describes the PME GPU implementation current status and its future 
 \section{Implementation status}
 The PME GPU prototype has been implemented using GROMACS open-source code base within a rather limited scope. 
 
-First and foremost, the GPU PME has only been implemented for a single PME process. This allows it to be ran on a single PP/PME process. The latter allows a single computer with several NVIDIA GPUs to fully utilize its hardware for the purposes of MD simulations, shifting majority of the workload onto GPUs.
+First and foremost, the GPU PME has only been implemented for a single PME process. This allows it to be ran on a single PP/PME process. The latter allows a single computer with several NVIDIA GPUs to fully utilize its hardware for the purposes of MD simulations, shifting most of the workload onto GPUs.
 
 Only a single interpolation order (4) is currently supported. There is neither a large effort nor principal obstacles to implementing different orders. 
 
