@@ -90,7 +90,7 @@ The idea of the PME method in short is as follows: all the long-range energy con
 \section{Objective} 
  
 In this project, the PME method is implemented in a highly-parallel code running on a GPU, using NVIDIA CUDA toolkit, as a part of an open-source molecular dynamics software package GROMACS. 
-% \cite{gromacs}}.
+% \cite{gromacs50}}.
 Achieving good performance of PME on GPU is important for good performance of molecular simulations in general and in particular for the GROMACS package. As of a few years GPUs are becoming increasingly important for running molecular simulations. The need for a strong scaling (as partially provided by thousands of cores on a typical GPU) and the current CPU performance bottleneck dictate the need for parallel GPU implementations of existing algorithms.
 
 There are two approaches to the GPU programming, either run (nearly) everything on the GPU, or run only a part of the compute tasks on the GPU for better system utilization. GROMACS takes the latter approach. Currently only the non-bonded short-range particle pair interactions are being computed on the GPU. Moving part or all of the PME calculation onto the GPU could benefit performance significantly on current hardware. Some future hardware might have very weak CPUs compared to the GPUs and nearly everything will have to run on the GPU. The results of this project will directly benefit thousands of GROMACS users world-wide. The future benefit will be even higher, because supercomputers are also expected to also get relatively more GPU/accelerator power.
@@ -319,9 +319,9 @@ PP process/rank - a GROMACS process that performs exclusively PP calculations (b
 
 \section{PME and short-range implementations} \label{rangeimpl}
 
-The short-range calculations typically dominate the computational effort, so they remain the main optimization target in GROMACS. There exist CUDA, OpenCL and SIMD implementations of the short-range non-bonded calculation kernels. Moreover, there are many optimizations targeting specific versions of CUDA, OpenCL architectures and different SIMD instruction sets. 
+The short-range calculations typically dominate the computational effort, so they remain the main optimization target in GROMACS. Since version 4.6 \cite{gromacs46}, GROMACS features native GPU acceleration for short-range non-bonded computations. Moreover, there are many optimizations targeting specific versions of CUDA, OpenCL architectures and different SIMD instruction sets. 
 
-The short-range bonded (listed) component can only be computed on CPU, as it has insignificant computational effort $O(N)$.
+The short-range bonded (listed) component is only computed on CPU, as it has insignificant computational effort $O(N)$.
 
 Currently, the PME is also computed only on CPU with SIMD optimizations. 
 
@@ -458,7 +458,7 @@ A multiprocessor is designed to execute hundreds of threads concurrently. To man
 % SIMT
 \fi
 
-
+%\draft{\cite{lampps}}
 
 \section{PME GPU scheduling}
 
@@ -648,7 +648,7 @@ The CUDA toolkit version used during the project development was CUDA 7.5.
 \section{Individual kernel performance} \label{chapter_kernels}
 
 The first interesting thing to try is to measure the performance of the individual algorithm components across the different input data sizes.
-For this purpose, the kernel performance has been measured using the NVIDIA CUDA profiling tools (\textit{nvprof}, \textit{nvvp}). Concurrent kernel execution was turned off to produce more reliable results (the concurrent execution can increase the kernel run times, also increasing the dispersion). 
+For this purpose, the kernel performance has been measured using the NVIDIA CUDA profiling tools (\textit{nvprof}, \textit{nvvp}). Concurrent kernel execution was turned off to produce more reliable results (the concurrent execution can increase the kernel run times, also increasing the  dispersion). 
 This data has been measured on the NVIDIA GTX TITAN X GPU, one of the fastest consumer-grade GPUs.
 
 
@@ -867,7 +867,7 @@ Therefore, in the hypothetical case of the multi-process PME running on GPUs, GR
 
 \iffalse
 Why not pinned memory?
-How are B-spline orders used?
+How are B-spline order	s used?
 \fi
 
 \bibliographystyle{plain}
