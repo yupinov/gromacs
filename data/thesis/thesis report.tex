@@ -319,7 +319,7 @@ PP process/rank - a GROMACS process that performs exclusively PP calculations (b
 
 \section{PME and short-range implementations} \label{rangeimpl}
 
-The short-range calculations typically dominate the computational effort, so they remain the main optimization target in GROMACS. Since version 4.6 \cite{gromacs46}, GROMACS features native GPU acceleration for short-range non-bonded computations. Moreover, there are many optimizations targeting specific versions of CUDA, OpenCL architectures and different SIMD instruction sets. 
+The short-range calculations typically dominate the computational effort, so they remain the main optimization target in GROMACS. Since version 4.6 \cite{gromacs46}, GROMACS features native GPU acceleration for short-range non-bonded computations, as well as OpenMP parallelization. Moreover, there are many optimizations targeting specific versions of CUDA, OpenCL architectures and different SIMD instruction sets. 
 
 The short-range bonded (listed) component is only computed on CPU, as it has insignificant computational effort $O(N)$.
 
@@ -402,7 +402,7 @@ General-purpose computing on graphics processing units (GPGPU) is the use of a G
 
 Currently there are 2 main toolkits for GPU programming: NVIDIA's proprietary platform CUDA, and Apple/Khronos Group's OpenCL standard which is supported by many hardware vendors. While OpenCL aims higher, and unlike CUDA, is targeting not only NVIDIA hardware, and not only GPUs, it has not gained much traction yet. CUDA is a single-vendor platform directly tied onto its implementation; OpenCL is a wider standard which by itself does not guarantee adequate performance on a specific hardware.
 
-Due to reasons described in the project scope section \ref{chapter_scope}, CUDA toolkit was chosen for the PME implementation. 
+Due to reasons described in the project scope section \ref{chapter_scope}, CUDA toolkit was chosen for the PME implementation. In recent years, several popular MD simulation packages have adopted and explored CUDA implementations of PME: AMBER \cite{amber}, ACEMD \cite{acemd}, LAMMPS \cite{lammps}.
 
 %The CUDA platform is a software layer that gives direct access to the NVIDIA GPU's virtual instruction set and parallel computational elements, for the execution of compute kernels. The CUDA platform is designed to work with programming languages such as C, C++ and Fortran. 
 
