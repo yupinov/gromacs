@@ -197,11 +197,11 @@ This allows the balance between the amount of short- and long-range computations
 The choice of a fixed $\beta$ independent of the box
 dimensions allows for a fixed size cut-off (e.g. $1$ nm) in the
 $E_{dir}$, reducing its computation from $O(N^2)$ to $O(N)$.
-The computation of the direct-space energy $E_{dir}$ is then trivial to perform in a loop. However, approximating the sum of structure factors in the equation \eqref{eq:Erec} is more difficult. This is why the discrete particle mesh idea was suggested in 1993 \cite{pme}. It allows to reduce the computational effort of the $E_{rec}$ from $O(N^2)$ to  $O(N \log (N))$.
+The computation of the direct-space energy $E_{dir}$ is then trivial to perform in a loop. However, approximating the sum of structure factors in the equation \eqref{eq:Erec} is more difficult. This is why the discrete particle mesh idea was suggested in 1993 \cite{pme}. It allows to reduce the computational effort of the $E_{rec}$ from $O(N^2)$ to $O(N \log (N))$.
 
 
 \section{B-splines interpolation on a grid}
-To approximate the exponentials appearing in the structure factors \eqref{eq:Sm}, interpolation can be used. Let us have a discrete 3D grid of sizes $K_1, K_2, K_3$, corresponding to the  unit cell. Scaled fractional coordinates of the particle with position $\bold{r}$ can be written: $u_j = K_j \bold{a}_j^*\cdot  \bold{r}$. 
+To approximate the exponentials appearing in the structure factors \eqref{eq:Sm}, interpolation can be used. Let us have a discrete 3D grid of sizes $K_1, K_2, K_3$, corresponding to the unit cell. Scaled fractional coordinates of the particle with position $\bold{r}$ can be written: $u_j = K_j \bold{a}_j^*\cdot  \bold{r}$. 
 Therefore, 
 \[\exp(2\pi i\bold{m}\cdot\bold{r}) = \prod\limits_{j=1}^3\exp\Big(2\pi i\frac{m_j u_j}{K_j}\Big)\]
 
@@ -494,7 +494,7 @@ The reasoning is as follows:
 \section{Spreading the particle charges over the grid}
 In the first algorithm stage $l^3$ charge contributions to the discrete real-space grid are computed for each particle. The charges, the spline data and the grid-line indices from the previous stage are used.
 This could expose $l^3$ parallel threads per particle. I choose to have $l^2$ threads per particles so that each thread works on line of $l$ contributions. It allows to have enough granularity while \draft{ARGH}.
-Each $l$ threads in a warp can still access a single contribution grid-line (in minor dimension) in a coalesced way. 
+Every $l$ threads in a warp can still access every single contribution grid-line (in minor dimension) in a coalesced way. 
 %(\draft{Why did I not try $l$}?)
 
 To save on the global memory read/write operations, both the spline calculation and spreading stages are located in a single kernel. This way, the grid-line indices and spline parameters are stored in a shared memory between stages. At first 3 threads per particle compute spline values and particle grid indices at first, the whole block is synchronized, and then $l^2$ threads per particle calculate the charge contributions and atomically accumulate on the global grid. With the PME order of 4 and block size of 128 threads, that gives us 8 particles per block. A single warp ($8 * 3$ threads) is used for the spline calculation part.
