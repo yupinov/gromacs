@@ -646,7 +646,7 @@ This data has been measured on the NVIDIA GTX TITAN X GPU, one of the fastest co
 
 
 
-Most of the stages presented on the figure \ref{fig:kernels} correspond to single CUDA kernels. Notable exception is FFT performed by the CUDA cuFFT library, which while having only 2 function calls (real-to-complex and complex-to-real) per MD step, spawns around 8 kernels for each call. The kernels being called also differ depending on the grid size. Moreover, the cuFFT functions have no \draft{launch configuration} and \draft{bounds}, unlike CUDA kernels, exposing no granularity control, as they are pre-tuned for optimal performance. 
+Most of the stages presented on the figure \ref{fig:kernels} correspond to single CUDA kernels. Notable exception is FFT performed by the CUDA cuFFT library, which while having only 2 function calls (real-to-complex and complex-to-real) per MD step, spawns around 8 kernels for each call. The kernels being called also differ depending on the grid size. Moreover, the cuFFT functions have no launch configuration and bounds, unlike CUDA kernels, exposing no granularity control, as they are pre-tuned for optimal performance. 
 
 \begin{figure} [h!]
     \centering
@@ -801,34 +801,24 @@ In the first case, 3 processes are ran: 1 PP process per GPU, and 1 PME process 
 As in the PME GPU case only the listed forces are computed on the CPU (which is a small computational effort), it means that the existence of the PME GPU option now allows for the majority of the simulation workload to be shifted from the CPU to the GPU with non-critical loss in performance. This can potentially mean better GPU performance of GROMACS on the clusters with abundant high-performance GPU hardware, where the bottleneck before would be a CPU PME computation.
 \fi
 
-%\draft{Tesla?}
-
-
-
-%\section{NAMD/Amber comparison}
-%\draft{Would be nice to have something here.}
-
 \newpage
 \chapter{Conclusions, future work}
 This chapter describes the PME GPU implementation current status and its future prospects.
 
-\section{Implementation status}
+\section{Implementation results}
 The PME GPU prototype has been implemented using GROMACS open-source code base within a rather limited scope. 
 
-First and foremost, the GPU PME has only been implemented for a single PME process. This allows it to be ran on a single PP/PME process. The latter allows a single computer with several NVIDIA GPUs to fully utilize its hardware for the purposes of MD simulations, shifting most of the workload onto GPUs.
+First and foremost, the GPU PME has only been implemented for a single PME process. This allows it to be ran on a single PP/PME process, or as a single separate PME process interacting with several PP processes. The latter allows a single computer with several NVIDIA GPUs to fully utilize its hardware for the purposes of MD simulations, shifting most of the workload onto GPUs. However, absence of PME decomposition is a barrier to further scaling.
+
+The existing load balancing and tuning mechanisms interact correctly with the PME GPU routines as well. 
 
 Only a single interpolation order (4) is currently supported. There is neither a large effort nor principal obstacles to implementing different orders. 
 
-The FFT stages of the algorithm can be computed either on CPU  or on NVIDIA GPU.
-
-\draft{
-Still, this implementation provides noticeable MD simulation performance gains for single-process PME work on high-end NVIDIA GPUs.
-More over, it is a foundation for further multi-process GPU PME implementation (which is discussed in the next sections).
-}
+The FFT stages of the algorithm can be performed either on CPU or on GPU. This leaves a possibility of introducing a multi-process decomposition into PME GPU with minimal effort, reusing the existing communication logic.
 
 The code is expected to be integrated into the GROMACS code base within several months. At the moment of writing it can be accessed at the public Git repository \cite{pmegpugit}.
 
-\section{Multi-process FFT}
+\section{Multi-process and FFT}
 
 Most stages of the PME algorithm should be trivial to adapt for working only on part of the decomposed grid in the multi-process case.
 The main uncertainty for the multi-process GPU implementation of PME is the Fourier transform. One way to go about it would be using the existing CPU FFTW Fourier transform calls with the MPI communication.
@@ -846,20 +836,22 @@ The only supported B-spline interpolation order in the current PME GPU implement
 
 Continuing this line of thought, interpolation order of 8 might be interesting to try out, as it will eliminate idle threads and divergence as well. The implementation would require only a relatively small effort to adapt to orders other than 4. It would most likely prove useful in a multiprocess case, since increasing the Fourier grid spacing and the interpolation order is a way to decrease the FFT communication requirements.
 
-\section{Multi-process scheduling}
+\section{Scheduling}
 
-As it has been shown in section \ref{overlapped}, scheduling both short- and long-range work on the same GPU\draft{within a single process} with the ultimate goal of minimizing the critical path runtime is already a problematic task.
+As it has been shown in section \ref{overlapped}, scheduling both short- and long-range work on the same GPU within a single process with the ultimate goal of minimizing the critical path runtime is already a problematic task.
 There are a few plausible long-term solutions: 
 \begin{itemize}
 \item Persistent kernels running in the background and polling the host memory for work;
 \item Reworking the structure of the program to get away from the strict "one command stream = one part of the algorithm" decomposition logic. Adoption of the more flexible approach: constantly resorting all the PME and NB work chunks into high and low priority streams, using the actual runtime estimates.
 \end{itemize}
+\iffalse
 With the multiprocess and domain decomposition GROMACS is already using the high priority stream to schedule the calculation of the so called "non-local" non-bonded interactions, and scheduling the rest in the low priority stream. Non-local particles are the ones in the buffer zones close to the other parts of the decomposed domain, therefore affecting them; the results of their computation have to be communicated among processes as soon as possible for better performance.
-Therefore, in the hypothetical case of the multi-process PME running on GPUs, GROMACS would have to schedule 3 logical GPU streams, and maybe perform the load-balancing for the scheduling order as well.  
+Therefore, in the hypothetical case of the multi-process PME running on GPUs, GROMACS would have to schedule 3 logical GPU streams, and perform the load-balancing for the scheduling order as well.  
+\fi
+The recommended way of using the current implementation is launching a separate PME process on a dedicated GPU instead of a mixed PP/PME process. This way alleviates the overlapping problems, and also allows for PP decomposition over multiple processes.
 %achieved by running the simulation with PME:PP balance auto-tuning.
 
 \iffalse
-Why not pinned memory?
 How are B-spline order	s used?
 \fi
 
