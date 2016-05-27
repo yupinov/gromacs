@@ -12,8 +12,6 @@
 \usepackage{pdfpages}
 \usepackage{url}
 
-%\addcontentsline{toc}{chapter}{Bibliography}
-
 %\DeclareMathAlphabet{\mathbbold}{U}{bbold}{m}{n}
 
 %\newcommand{\draft}[1]{\textcolor{red}{#1}}
@@ -24,19 +22,6 @@
 
 \author{Aleksei Iupinov}
 \title{Particle Mesh Ewald on a GPU}
-
-\iffalse
-Todo by priority
-GPU vs CPU
-Introduction
-Abstract
-Editing
-
-\fi
-
-
-
-
 
 \begin{document}
 \includepdf[pages={1-2}]{pics/cover.pdf}
@@ -158,10 +143,9 @@ The asterisk on the outer sum signifies that the contributions with zero denomin
 The outer infinite series in \eqref{eq:ewald} is conditionally convergent, meaning that the result depends on the manner in which the numbers $n_1, n_2, n_3$ tend to infinity.
 % if the unit cell were not neutral it would converge to plus or minus infinity͒.
 In his work, Ewald \cite{ewald} introduced the split of the sum in \eqref{eq:ewald} into the sum of two convergent series: a direct sum in Cartesian space, and a
-reciprocal sum in Fourier space. 
-
+reciprocal sum in Fourier space. The energies can be chosen such that the direct energy is negligible beyond a certain cut-off distance, and the reciprocal energy is a slowly varying function for all distances, therefore representable by a low number of vectors. Hence the direct sum corresponds to the short-range interactions, the reciprocal -- to the long-range.
+ 
 In many MD simulations certain non-bonded interactions within same molecule are being omitted, being handled by different terms in the potential calculation. The corresponding particle pairs $(i, j)$ are stored in a masked list $M$. Therefore, the masked list correction should be subtracted from the direct and reciprocal energy sums. Usually the masked pairs are explicitly skipped over during the direct sum calculation.	 
-
 For dealing with the Fourier space, the reciprocal lattice vectors can be defined through the reciprocal unit cell vectors $\bold{m} = m_1 \bold{a}_1^* + m_2 \bold{a}_2^* + m_3 \bold{a}_3^*$, for
 all $m_1, m_2, m_3 \in \mathbb{Z}$. 
 So called structure factor is then defined as:
@@ -210,6 +194,7 @@ The total energy E is invariant to the constant $\beta$, which
 controls the relative rate of convergence of the direct and
 reciprocal sums. Increasing $\beta$ causes $E_{dir}$ to converge more
 rapidly, at the expense of slower convergence in $E_{rec}$.
+
 The choice of a fixed $\beta$ independent of the box
 dimensions allows for a fixed size cut-off (e.g. $1$ nm) in the
 $E_{dir}$, reducing its computation from $O(N^2)$ to $O(N)$.
