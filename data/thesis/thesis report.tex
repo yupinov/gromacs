@@ -103,13 +103,10 @@ There are several design constraints here:
 \item The method is implemented using NVIDIA CUDA toolkit (only for NVIDIA hardware). The reasons for choosing CUDA over OpenCL, a viable alternative standard, are practical - NVIDIA is currently the main GPU hardware producer; the NVIDIA CUDA library generally gives better performance than NVIDIA OpenCL implementation; and above all that, once the prototype is complete, it is not difficult to reimplement the same algorithms in OpenCL, as the core OpenCL C/CUDA C language concepts are similar. GROMACS users would much more benefit from the CUDA PME implementation.
 \item The method is implemented for a single PME simulation process working with a single GPU. GROMACS employs various parallelization techniques for better scaling, including domain decomposition algorithms, where parts of the domain are treated by different processes within the same simulation (read more about it in the section \ref{chapter:DD}). The existing CPU PME implementation supports multi-process computation as well. 
 However, a prospect of multi-GPU PME implementation is raising additional concerns, such as minimisation of the communication costs between GPUs, domain decomposition algorithms, and load balancing. While this should certainly be considered during future developments of PME GPU, a PME implementation for a single GPU should provide a foundation for that, highlighting the weak and strong points of the implementation and its scalability. 
-\draft{Also note that the PME amounts only to a part of the total computation, while the other component (short-rage work, see section \ref{rangeimpl}) is already scalable over multiple processes/GPUs in GROMACS. Therefore, having PME computation sped up on a single process with the use of a dedicated GPU can already be beneficial for small-scale simulations running on a single machine with one or several GPUs.
-}
+Also note that the PME amounts only to a part of the total computation, while the other component (short-rage work, see section \ref{rangeimpl}) is already scalable over multiple processes/GPUs in GROMACS. Therefore, having PME computation sped up on a single process with the use of a dedicated GPU can already be beneficial for small-scale simulations running on a single machine with one or several GPUs.
 \item The room for a scalable multi-GPU implementation is left in the implementation. The major part of the communication latency introduced with the multi-node scaling is caused by the the 3D FFT stages of the algorithm. For this reason, the PME GPU implementation has to provide an option to perform the FFT computation on CPU instead of GPU (more about it in the section \ref{FFTimpl}).
 
-%draft{descrieb cuFFT vs FFTw in implem} 
-
-%\draft{offsets}
+%\draft{describe cuFFT vs FFTw in implem} 
 
 \end{itemize}
 \iffalse
@@ -544,9 +541,12 @@ CUDA platform has a cuFFT library which focuses on FFT on a GPU.
 As the scope of the project was the implementation for a single GPU, the implementation required only a single cuFFT function call for a full 3D transform for both directions. 
 %However, this function call spawns around 8 different CUDA kernels nonetheless. The kernels being used, and their number depend on the size of the grid, as well as the overlaps. 
 Typically for FFT implementations, algorithms are optimized for grid sizes which are multiples of certain small factors (such as 2, 3, 5, 7); it is also recommended to stay away from the large prime factors \cite{cufft}.
+With this implementation being a first step of the multi-process PME GPU implementation, the option to use the CPU FFT implementation is provided. The reason is that the FFT stage is responsible for most of communication in the multi-process case, having 2 all-to-all broadcastst between the PME processes. However, using the CPU FFT implementation means that the grid has to be transferred between host and GPU just for these stages. 
+
+
 
 \iffalse
-If one was to implement PME on GPU for multiple processes, a question of inter-process interaction would arise, as there are 2 data broadcasts required for a 3D FFT (like it is done in a PME code on CPU using the FFTW library and MPI). Be it host/device MPI or some direct GPU interaction (???), the question of viability of all these additional grid data transfers and perturbations would arise. The cuFFT is not even that much faster than FFTW (single process NUMBERS). 
+The cuFFT is not even that much faster than FFTW (single process NUMBERS). 
 \fi 
 % In the future, some FFT grid size tuning is in order - again, been done on CPU.
 
@@ -565,7 +565,7 @@ Each grid cell is processed by a single thread; for convenience, the block size 
 \section{Unwrapping the grid}
 After the grid is modified, and complex-to-real FFT is performed, the long-range force contributions are calculated.
 
-For the same reason the Cartesian space grid is wrapped around after the spreading, it gets unwrapped before the force gathering. This does not require atomic operations, as it is only a memory copy operation. Again, a single cell is processed by a single thread. However, this kernel could be partially replaced by bulk memory copying. 
+For the same reason the Cartesian space grid is wrapped around after the spreading, it gets unwrapped before the force gathering. This does not require atomic operations, as it is only a memory copy operation. Again, a single cell is processed by a single thread. This kernel could be partially replaced by bulk memory copying. 
 
 \section{Force calculation}
 Force contribution gathering is a logical counterpart to the charge spreading. The values of the same grid cells affected by charge spreading are now summed up to get the long-range force contribution for the corresponding particles.
@@ -646,7 +646,7 @@ This data has been measured on the NVIDIA GTX TITAN X GPU, one of the fastest co
 
 
 
-Most of the stages presented on the figure \ref{fig:kernels} correspond to single CUDA kernels. Notable exception is FFT performed by the CUDA cuFFT library, which while having only 2 function calls (real-to-complex and complex-to-real) per MD step, spawns around 8 kernels for each call. The kernels being called also differ depending on the grid size. Moreover, the cuFFT functions have no launch configuration and bounds, unlike CUDA kernels, exposing no granularity control, as they are pre-tuned for optimal performance. 
+Most of the stages presented at the figure \ref{fig:kernels} correspond to single CUDA kernels. Notable exception is FFT performed by the CUDA cuFFT library, which while having only 2 function calls (real-to-complex and complex-to-real) per MD step, spawns around 8 kernels for each call. The kernels being called also differ depending on the grid size. Moreover, the cuFFT functions have no launch configuration and bounds, unlike CUDA kernels, exposing no granularity control, as they are pre-tuned for optimal performance. 
 
 \begin{figure} [h!]
     \centering
@@ -679,7 +679,7 @@ GROMACS uses GPU for the computation of short-range non-bonded electrostatic int
 The modified MD step in this implementation launches the largest chunk of the PME work on a GPU before the NB work is launched (figure \ref{fig:step-gpu}). The PME stream is set to a high priority, using the CUDA runtime API, while the NB stream has lower priority. 
 The idea was to have the PME launched in advance and be computed in background, while the NB kernel with its irregular occupancy performs the main computational workload.
 
-Pictured on the figure \ref{fig:overlap} is a typical GPU PME and NB overlap timeline produced in the NVIDIA Visual Profiler with the concurrent kernel execution enabled.
+Pictured at the figure \ref{fig:overlap} is a typical GPU PME and NB overlap timeline produced in the NVIDIA Visual Profiler with the concurrent kernel execution enabled.
 %, on a NVIDIA GTX 750 GPU (Maxwell architecture). 
 The top timeline corresponds to the low-priority local NB command stream, the bottom one - to the high priority PME stream. The individual colored bars correspond to kernels (or sometimes memory transfers). 
 
@@ -759,10 +759,28 @@ For the multi-process simulations it is sensible to compare the overall simulati
 
 The input data used for comparison is a model of ADH enzyme in water, consisting of 134201 atoms.
 
-The simulation is ran with simulation consisting of 1 PP and 1 PME process. The PP process performs the short-range computations on the high-end NVIDIA GPU GTX Titan X.    
-The PME process is ran in one case on the CPU (Intel Core i7-5960X), and in another case on the NVIDIA GPU Quadro M6000. The number of the threads used by the processes is changed from 1 to 8.
+The simulation is first ran with simulation consisting of 1 PP/PME process. The short-range computations are performed on the high-end NVIDIA GPU GTX Titan X.    
+The PME part is computed in one case on the same GPU, and in another case on the CPU (Intel Core i7-5960X). The number of the threads used by the process is changed from 1 to 8.
  
-The resulting simulation performance comparison between the separate CPU and GPU PME ranks is presented on the figure \ref{fig:sepGPUNEW}.
+The resulting simulation performance comparison between the CPU and GPU PME is presented at the figure \ref{fig:sepGPUold}.
+ 
+\FloatBarrier
+\begin{figure} [h!]
+    \centering
+    \includegraphics[width=1\textwidth]{pics/CPU_GPU_ADH_SINGLE.png}
+    \caption{Simulation performance with a single PP/PME process performing PME on the the CPU/GPU}
+    \label{fig:sepGPUold}
+\end{figure}
+\FloatBarrier
+
+The GPU implementation is performing better than a CPU one at a lower number of CPU cores occupied, which makes it viable alternative for machines with strong GPUs and weaker CPUs. 
+
+%{This comparison demonstrates not only a noticeable parallelization speed-up of a separate rank PME on a high-end GPU, but also a possibility of shifting the PME workload onto a GPU from the CPU. It is possible to enhance the load balancing algorithm of GROMACS to perform the switching between GPU and CPU PME dynamically as required.%}
+
+For the next comparison we take the same machine, but run a simulation consisting of 2 separate processes: 1 PP and 1 PME process. The PP process performs the short-range computations on the high-end NVIDIA GPU GTX Titan X, as before.    
+The PME process is ran in one case on the CPU (Intel Core i7-5960X), and in another case on the second NVIDIA GPU Quadro M6000. The number of the threads used by the processes is changed from 1 to 8.
+ 
+The resulting simulation performance comparison between the separate CPU and GPU PME ranks is presented at the figure \ref{fig:sepGPUNEW}.
  
 \FloatBarrier
 \begin{figure} [h!]
@@ -773,7 +791,7 @@ The resulting simulation performance comparison between the separate CPU and GPU
 \end{figure}
 \FloatBarrier
 
-This comparison demonstrates not only a noticeable parallelization speed-up of a separate rank PME on a high-end GPU, but also a possibility of shifting the PME workload onto a GPU from the CPU. It is possible to enhance the load balancing algorithm of GROMACS to perform the switching between GPU and CPU PME dynamically as required.
+This comparison demonstrates not only a noticeable parallelization speed-up of PME on a dedicated high-end GPU, but also a possibility of offloading the PME workload onto a GPU from the CPU. This mean making the better use of the machines with abundant GPU hardware, avoiding the CPU bottleneck. It is possible to enhance the load balancing algorithm of GROMACS to perform the switching between GPU and CPU PME dynamically as required.
 
 %\draft{The certain NVIDIA hardware also exposes 2 levels of priorities for CUDA streams. For example, GROMACS running with multiple processes and domain decomposition uses the high priority stream to schedule the calculation of the so called "non-local" non-bonded interactions, and schedule the rest in the low priority stream. Non-local particles are the ones in the buffer zones close to the other parts of the decomposed domain, therefore affecting them; the results of their computation have to be communicated among processes as soon as possible for better performance (FIGURE).}
 
