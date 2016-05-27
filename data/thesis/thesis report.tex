@@ -770,7 +770,7 @@ The resulting simulation performance comparison between the separate CPU and GPU
 \end{figure}
 \FloatBarrier
 
-This comparison demonstrates not only a noticeable parallelization speed-up of PME on a dedicated high-end GPU, but also a possibility of offloading the PME workload onto a GPU from the CPU. This mean making the better use of the machines with abundant GPU hardware, avoiding the CPU bottleneck. It is possible to enhance the load balancing algorithm of GROMACS to perform the switching between GPU and CPU PME dynamically as required.
+This comparison demonstrates not only a noticeable parallelization speed-up of PME on a dedicated high-end GPU, but also a possibility of offloading the PME workload onto a GPU from the CPU. This means making the better use of the machines with abundant GPU hardware, avoiding the CPU bottleneck. It is possible to enhance the load balancing algorithm of GROMACS to perform the switching between GPU and CPU PME dynamically as required.
 
 %\draft{The certain NVIDIA hardware also exposes 2 levels of priorities for CUDA streams. For example, GROMACS running with multiple processes and domain decomposition uses the high priority stream to schedule the calculation of the so called "non-local" non-bonded interactions, and schedule the rest in the low priority stream. Non-local particles are the ones in the buffer zones close to the other parts of the decomposed domain, therefore affecting them; the results of their computation have to be communicated among processes as soon as possible for better performance (FIGURE).}
 
