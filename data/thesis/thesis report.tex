@@ -116,8 +116,6 @@ In this chapter, the Ewald summation and the smooth PME approach are described b
 
 \iffalse
 
-\draft{Usually this is done using an empirical cut-off of 9Å (?).}
-
 \draft{
 The reciprocal Ewald sum is the solution to Poisson’s equation in periodic boundary conditions, with Gaussian charge densities as sources. 
 }
@@ -493,9 +491,8 @@ The reasoning is as follows:
 
 \section{Spreading the particle charges over the grid}
 In the first algorithm stage $l^3$ charge contributions to the discrete real-space grid are computed for each particle. The charges, the spline data and the grid-line indices from the previous stage are used.
-This could expose $l^3$ parallel threads per particle. I choose to have $l^2$ threads per particles so that each thread works on line of $l$ contributions. It allows to have enough granularity while \draft{ARGH}.
-Every $l$ threads in a warp can still access every single contribution grid-line (in minor dimension) in a coalesced way. 
-%(\draft{Why did I not try $l$}?)
+This could expose $l^3$ parallel threads per particle. 
+I choose to have $l^2$ threads per particle so that each thread works on a single line of $l$ contributions for a particle. Every $l$ threads in a warp can still access every single contribution grid-line (in minor dimension) in a coalesced way, while the parallelism is highly exposed; meanwhile, the number of simultaneous atomic operation clashes in the case of the 2 neighbour particles is reduced. Overall, the balance here is between the parallelism and the global memory throughput (as well as the atomic clash latencies). This might require further profiling for different architectures and hardware.
 
 To save on the global memory read/write operations, both the spline calculation and spreading stages are located in a single kernel. This way, the grid-line indices and spline parameters are stored in a shared memory between stages. At first 3 threads per particle compute spline values and particle grid indices at first, the whole block is synchronized, and then $l^2$ threads per particle calculate the charge contributions and atomically accumulate on the global grid. With the PME order of 4 and block size of 128 threads, that gives us 8 particles per block. A single warp ($8 * 3$ threads) is used for the spline calculation part.
 
@@ -624,8 +621,6 @@ It is no surprise overall that the FFT takes the larger ratio of the total GPU r
 Another observable feature on the chart is the wrapping, unwrapping, and the convolution kernels not scaling down well with input sizes. It is also related to their workload being entirely dependent on the grid dimensions.
 
 Finally, it shows that the biggest part of computational time is spent in the spreading kernel. On weaker GPU's (especially with Kepler architecture) this kernel's major bottleneck is the global memory/L2 cache throughput. Atomic operations are the obvious reason for that. Typically the counterpart force gathering kernels is from 2 to 4 times as fast as the spreading. 
-
-%\draft{ms!}
 
 \FloatBarrier
 \section{Overlapping with the non-bonded kernels}\label{overlapped}
