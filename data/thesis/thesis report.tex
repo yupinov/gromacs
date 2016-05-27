@@ -17,8 +17,8 @@
 %\DeclareMathAlphabet{\mathbbold}{U}{bbold}{m}{n}
 
 %\newcommand{\draft}[1]{\textcolor{red}{#1}}
-\newcommand{\draft}[1]{\textcolor{magenta}{\underline{#1}}}
-%\newcommand{\draft}[1]{#1}
+%\newcommand{\draft}[1]{\textcolor{magenta}{\underline{#1}}}
+\newcommand{\draft}[1]{#1}
 \DeclareMathOperator\erf{erf}
 \DeclareMathOperator\erfc{erfc}
 
@@ -105,8 +105,6 @@ There are several design constraints here:
 However, a prospect of multi-GPU PME implementation is raising additional concerns, such as minimisation of the communication costs between GPUs, domain decomposition algorithms, and load balancing. While this should certainly be considered during future developments of PME GPU, a PME implementation for a single GPU should provide a foundation for that, highlighting the weak and strong points of the implementation and its scalability. 
 Also note that the PME amounts only to a part of the total computation, while the other component (short-rage work, see section \ref{rangeimpl}) is already scalable over multiple processes/GPUs in GROMACS. Therefore, having PME computation sped up on a single process with the use of a dedicated GPU can already be beneficial for small-scale simulations running on a single machine with one or several GPUs.
 \item The room for a scalable multi-GPU implementation is left in the implementation. The major part of the communication latency introduced with the multi-node scaling is caused by the the 3D FFT stages of the algorithm. For this reason, the PME GPU implementation has to provide an option to perform the FFT computation on CPU instead of GPU (more about it in the section \ref{FFTimpl}).
-
-%\draft{describe cuFFT vs FFTw in implem} 
 
 \end{itemize}
 \iffalse
@@ -429,10 +427,11 @@ Grid - a group of blocks. Grids can also have 1D, 2D or 3D structure - purely fo
 \end{figure}
 \FloatBarrier
 
-Texture memory - a read only GPU memory bank, optimized for 2D access pattern; uses smaller cache lines with respect to the global memory.
+Global memory - a high-latency memory bank residing on the GPU, which can be accessed by all the kernels simultaneously.
 
-\draft{Shared memory}
-\draft{Global memory}
+Shared memory - a low-latency memory bank, has a scope of a single kernel's block. It does not retain the information between the kernel launches.
+
+Texture memory - a read only GPU memory bank, optimized for 2D access pattern; uses smaller cache lines with respect to the global memory.
 
 Divergence - the behaviour of the threads in the same warp executing different instructions at the same line of code based on a condition. What is actually happening on GPU SM's is that all the threads have to go through all the branches of a conditional, while the specific threads ignore the instruction result if the condition is false for them. Divergence reduces the kernel performance.
 
@@ -469,7 +468,7 @@ Therefore, the easiest way of plugging the PME GPU calls into the existing code 
 
 % This split does not appear to critically affect the performance, as the non-bonded GPIU  
 
-% \draft{this is a step for PP on the same rank}
+% this is a step for PP on the same rank
 
 Implementation of the individual stages of the PME is discussed below.
 
@@ -520,8 +519,6 @@ To save on the global memory read/write operations, both the spline calculation 
 
 %Spread is a very performance-heavy kernel (it takes about \draft{half of total PME GPU run-time}) which is limited by the performance of global memory and its L2 cache because of the atomic operations \draft{on Kepler}. 
 
-%NADP-DEPENDENT ALCOHOL DEHYDROGENASE in water 
-
 \section{Wrapping the grid}
 As the method is dealing with a periodic system, the particle spline contributions that go over the grid boundary are supposed to be wrapped over into the other side.
 However, integer division and modulo are highly computationally expensive operations in CUDA. %\draft{explain l}
@@ -534,16 +531,13 @@ a separate wrapping kernel is scheduled afterwards. The kernel only has to atomi
 Note that when this GPU implementation will be adapted for the multi-process GROMACS, the wrapping kernel will have to be modified. Only the wrapping in the continuous dimension will be needed; the overlap zones in the decomposed dimensions will have to be communicated between the PME processes, just like it is done in the CPU PME implementation. 
 
 \section{3D FFT} \label{FFTimpl}
-%\draft{Write about cuFFT vs FFTW.}
 
 Before and after the convolution kernel there is a 3D FFT of the grid to be performed - real-to-complex and complex-to-real, respectively. 
 CUDA platform has a cuFFT library which focuses on FFT on a GPU. 
 As the scope of the project was the implementation for a single GPU, the implementation required only a single cuFFT function call for a full 3D transform for both directions. 
 %However, this function call spawns around 8 different CUDA kernels nonetheless. The kernels being used, and their number depend on the size of the grid, as well as the overlaps. 
 Typically for FFT implementations, algorithms are optimized for grid sizes which are multiples of certain small factors (such as 2, 3, 5, 7); it is also recommended to stay away from the large prime factors \cite{cufft}.
-With this implementation being a first step of the multi-process PME GPU implementation, the option to use the CPU FFT implementation is provided. The reason is that the FFT stage is responsible for most of communication in the multi-process case, having 2 all-to-all broadcastst between the PME processes. However, using the CPU FFT implementation means that the grid has to be transferred between host and GPU just for these stages. 
-
-
+With this implementation being a first step of the multi-process PME GPU implementation, the option to use the CPU FFT implementation is provided. The reason is that the FFT stage is responsible for most of communication in the multi-process case, having 2 all-to-all broadcastst between the PME processes. However, using the CPU FFT implementation means that the grid has to be transferred between host and GPU just for these stages, which incurs additional synchronisation latencies.
 
 \iffalse
 The cuFFT is not even that much faster than FFTW (single process NUMBERS). 
@@ -590,7 +584,6 @@ The GPUs used for the analysis are build on NVIDIA architectures Kepler and Maxw
 
 \section{Correctness}
 The correctness of the GPU PME implementation has been verified by comparing the results with the results of the CPU PME running with the same input data as the reference.
-%\draft{ with a fixed step size of 2 femtoseconds}
 The CPU and GPU PME comparisons were as follows:
 \begin{itemize}
 \item All of the PME's immediate results such as reciprocal energy, virial and forces have been compared after a single MD step. The relative difference of the reciprocal energy has been no more than $10^{-5}$. 
@@ -620,7 +613,7 @@ There is also a discrete grid size, which directly affects the runtime of the FF
 
 %\section{FFT grid size}
 
-%A system with varying number of particles is ran for several fixed values of the Fourier grid sizes. %Pictured\draft{Here} is a comparison of GPU/CPU runtime ratio.
+%A system with varying number of particles is ran for several fixed values of the Fourier grid sizes.
 
 \section{Individual kernels performance} \label{chapter_kernels}
 
