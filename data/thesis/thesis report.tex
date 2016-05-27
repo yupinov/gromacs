@@ -606,13 +606,20 @@ This data has been measured on the NVIDIA GTX TITAN X GPU, one of the fastest co
 
 Most of the stages presented at the figure \ref{fig:kernels} correspond to single CUDA kernels. Notable exception is FFT performed by the CUDA cuFFT library, which while having only 2 function calls (real-to-complex and complex-to-real) per MD step, spawns around 8 kernels for each call. The kernels being called also differ depending on the grid size. Moreover, the cuFFT functions have no launch configuration and bounds, unlike CUDA kernels, exposing no granularity control, as they are pre-tuned for optimal performance. 
 
+\iffalse
 \begin{figure} [h!]
     \centering
     \includegraphics[width=1\textwidth]{pics/kernels-noconcur.png}
     \caption{Performance of the individual PME stages as a function of the number of the input particles on a loglog scale (left) and normalized (right)}
+    \label{fig:kernels_}
+\end{figure}
+\fi
+\begin{figure} [h!]
+    \centering
+    \includegraphics[width=1\textwidth]{pics/kernels-noconcur-2.png}
+    \caption{Performance of the individual PME stages as a function of the number of the input particles on a loglog scale}
     \label{fig:kernels}
 \end{figure}
-
 % GAPS irrelevant!
 
 It is no surprise overall that the FFT takes the larger ratio of the total GPU runtime, as the input size decreases. The reason for that is that the Coulomb cut-off has a fixed tuning range.
