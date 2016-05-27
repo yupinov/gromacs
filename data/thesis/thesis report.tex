@@ -399,7 +399,7 @@ General-purpose computing on graphics processing units (GPGPU) is the use of a G
 
 Currently there are 2 main toolkits for GPU programming: NVIDIA's proprietary platform CUDA, and Apple/Khronos Group's OpenCL standard which is supported by many hardware vendors. While OpenCL aims higher, and unlike CUDA, is targeting not only NVIDIA hardware, and not only GPUs, it has not gained much traction yet. CUDA is a single-vendor platform directly tied onto its implementation; OpenCL is a wider standard which by itself does not guarantee adequate performance on a specific hardware.
 
-Due to reasons described in the project scope section \ref{chapter_scope}, CUDA toolkit was chosen for the PME implementation. In recent years, several popular MD simulation packages have adopted and explored CUDA implementations of PME: AMBER \cite{amber}, ACEMD \cite{acemd}, LAMMPS \cite{lammps}.
+Due to reasons described in the project scope section \ref{chapter_scope}, CUDA toolkit (version 7.5) was chosen for the PME implementation. In recent years, several popular MD simulation packages have adopted and explored CUDA implementations of PME: AMBER \cite{amber}, ACEMD \cite{acemd}, LAMMPS \cite{lammps}.
 
 %The CUDA platform is a software layer that gives direct access to the NVIDIA GPU's virtual instruction set and parallel computational elements, for the execution of compute kernels. The CUDA platform is designed to work with programming languages such as C, C++ and Fortran. 
 
@@ -614,22 +614,6 @@ The interpolation order is fixed in this implementation at 4, one of the most co
 
 There is also a discrete grid size, which directly affects the runtime of the FFT and convolution stages of the algorithm. However, as it is explained in the section \ref{PMEtuning}, the grid size and spacing can be automatically tuned for better PP/PME load balance, and this is the default behaviour of GROMACS. 
 
-\section{Performance measuring inputs and details}
-
-For performance measuring, an input system consisting of water molecules with number of atoms varying from 960 to 1536000 has been tried. 
-
-The grid size has been auto-tuned for PP/PME balance.
-
-The performance has been measured only for the MD steps after the load balancing, using the GROMACS command-line option "-resetstep".  
-
-The comparisons use only a single GPU for the PME computation. For a CPU PME, as well as in the other parts of the MD step, parallelization over multiple OpenMP threads is used.
-
-The CUDA toolkit version used during the project development was CUDA 7.5.
-
-\draft{TOTAL MESS}
-
-%\draft{Comparisons are being performed on a system with NVIDIA GTX TITAN X (a high-end GPU built on modern Maxwell architecture) and Intel Core i7-5960X CPU. CPU implementation of the PME benefits from using 16 CPU cores through OpenMP threading, as well as AVX2 SIMD optimizations.}
-
 %The average GPU and CPU runtime per single PME step are being compared. The CPU time is measured by standard wallclock functions. The GPU time is taken as a sum of PME kernels' execution times, measured with the use of CUDA events mechanism. \draft{It is shown further that it is hopeless for multiple streams}. The data transfers between the GPU and the host at the step beginning and end are excluded as they are not \draft{significant and in the future will } also beshared with the non-bonded work.
 
 
@@ -638,13 +622,13 @@ The CUDA toolkit version used during the project development was CUDA 7.5.
 
 %A system with varying number of particles is ran for several fixed values of the Fourier grid sizes. %Pictured\draft{Here} is a comparison of GPU/CPU runtime ratio.
 
-\section{Individual kernel performance} \label{chapter_kernels}
+\section{Individual kernels performance} \label{chapter_kernels}
 
 The first interesting thing to try is to measure the performance of the individual algorithm components across the different input data sizes.
-For this purpose, the kernel performance has been measured using the NVIDIA CUDA profiling tools (\textit{nvprof}, \textit{nvvp}). Concurrent kernel execution was turned off to produce more reliable results (the concurrent execution can increase the kernel run times, also increasing the  dispersion). 
+For this purpose, the kernel performance has been measured using the NVIDIA CUDA profiling tools (\textit{nvprof}, \textit{nvvp}). A synthetic benchmark consisting of water molecules with number of atoms varying from 960 to 1536000 has been used. 
+Concurrent kernel execution was turned off to produce more reliable results (the concurrent execution can increase the kernel run times, also increasing the  dispersion). The performance has been measured only for the MD steps after the load balancing, using the GROMACS command-line option "-resetstep". 
+ 
 This data has been measured on the NVIDIA GTX TITAN X GPU, one of the fastest consumer-grade GPUs.
-
-
 
 Most of the stages presented at the figure \ref{fig:kernels} correspond to single CUDA kernels. Notable exception is FFT performed by the CUDA cuFFT library, which while having only 2 function calls (real-to-complex and complex-to-real) per MD step, spawns around 8 kernels for each call. The kernels being called also differ depending on the grid size. Moreover, the cuFFT functions have no launch configuration and bounds, unlike CUDA kernels, exposing no granularity control, as they are pre-tuned for optimal performance. 
 
@@ -664,13 +648,8 @@ Another observable feature on the chart is the wrapping, unwrapping, and the con
 
 Finally, it shows that the biggest part of computational time is spent in the spreading kernel. On weaker GPU's (especially with Kepler architecture) this kernel's major bottleneck is the global memory/L2 cache throughput. Atomic operations are the obvious reason for that. Typically the counterpart force gathering kernels is from 2 to 4 times as fast as the spreading. 
 
-%\draft{table of verall data}
-
 %\draft{ms!}
 
-%\draft{another GPU?}
-
-%\draft{push it to the limit?}
 \FloatBarrier
 \section{Overlapping with the non-bonded kernels}\label{overlapped}
 
@@ -750,7 +729,7 @@ Kernel concurrency slowdown, \% & -25.8 &-23.88 & -19.28& -4.07 & 14.41 & 13.63 
 
 \fi
 
-Overall, this result is somewhat disappointing, and that is even before the kernel launch overhead and memory transfer overhead are taken into account.
+%Overall, this result is somewhat disappointing, and that is even before the kernel launch overhead and memory transfer overhead are taken into account.
 
 
 \section{CPU and GPU performance comparison}
@@ -760,7 +739,7 @@ For the multi-process simulations it is sensible to compare the overall simulati
 The input data used for comparison is a model of ADH enzyme in water, consisting of 134201 atoms.
 
 The simulation is first ran with simulation consisting of 1 PP/PME process. The short-range computations are performed on the high-end NVIDIA GPU GTX Titan X.    
-The PME part is computed in one case on the same GPU, and in another case on the CPU (Intel Core i7-5960X). The number of the threads used by the process is changed from 1 to 8.
+The PME part is computed in one case on the same GPU, and in another case on the CPU (Intel Core i7-5960X). The number of the OpenMP threads used by the process is varied from 1 to 8.
  
 The resulting simulation performance comparison between the CPU and GPU PME is presented at the figure \ref{fig:sepGPUold}.
  
@@ -777,8 +756,8 @@ The GPU implementation is performing better than a CPU one at a lower number of 
 
 %{This comparison demonstrates not only a noticeable parallelization speed-up of a separate rank PME on a high-end GPU, but also a possibility of shifting the PME workload onto a GPU from the CPU. It is possible to enhance the load balancing algorithm of GROMACS to perform the switching between GPU and CPU PME dynamically as required.%}
 
-For the next comparison we take the same machine, but run a simulation consisting of 2 separate processes: 1 PP and 1 PME process. The PP process performs the short-range computations on the high-end NVIDIA GPU GTX Titan X, as before.    
-The PME process is ran in one case on the CPU (Intel Core i7-5960X), and in another case on the second NVIDIA GPU Quadro M6000. The number of the threads used by the processes is changed from 1 to 8.
+For the next comparison the same machine is used, but a simulation consisting of 2 separate processes is ran: 1 PP and 1 PME process. The PP process performs the short-range computations on the high-end NVIDIA GPU GTX Titan X, as before.    
+The PME process is ran in one case on the CPU (Intel Core i7-5960X), and in another case on the second NVIDIA GPU Quadro M6000. The number of the threads used by the processes is varied from 1 to 8.
  
 The resulting simulation performance comparison between the separate CPU and GPU PME ranks is presented at the figure \ref{fig:sepGPUNEW}.
  
