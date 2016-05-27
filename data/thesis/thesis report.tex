@@ -175,8 +175,7 @@ The Coulombic force on atom $j$ can be obtained by differentiating the sum $E(\b
 
 \iffalse
 
- In
-order to bound the error due to cut-off in the direct sum, it is
+In order to bound the error due to cut-off in the direct sum, it is
 necessary that $erfc(\beta r)/r$ be less than a small tolerance $\eps_{dir}$
 for $r$ greater than the cut-off. Similarly, to bound the error due
 to cutoff in the reciprocal sum, it is necessary that
@@ -194,7 +193,7 @@ The total energy E is invariant to the constant $\beta$, which
 controls the relative rate of convergence of the direct and
 reciprocal sums. Increasing $\beta$ causes $E_{dir}$ to converge more
 rapidly, at the expense of slower convergence in $E_{rec}$.
-
+This allows the balance between the amount of short- and long-range computations to be changed, while not affecting the accuracy of the result. As the cut-off decreases, the number of the short-range pairs is decreased, while the amount of the important structure factors is increased.
 The choice of a fixed $\beta$ independent of the box
 dimensions allows for a fixed size cut-off (e.g. $1$ nm) in the
 $E_{dir}$, reducing its computation from $O(N^2)$ to $O(N)$.
@@ -325,7 +324,7 @@ Some steps, such as  the non-bonded work being split into 2 "local" and "non-loc
 
 %There exist several load balancing mechanisms in GROMACS, which are described below
 \section{Load balancing} \label{PMEtuning}
-Changing the electrostatic interaction length cut-off, as described in the section \ref{sec_ewald}, influences the amount of computation performed in long- and short-range parts of the MD step. GROMACS uses this fact for the automatic load balancing at the beginning of the simulation run. Every certain number of MD steps the Coulomb cut-off, as well as the Fourier grid spacing, are scaled; the run-time measurements of the components are collected. Eventually, the parameter set with the best simulation performance is chosen as the optimal. This currently allows to push both CPU and GPU to their limit - both in single- and multi-process scenarios on a single compute node.
+Changing the electrostatic interaction length cut-off, as mentioned in the section \ref{sec_ewald}, influences the amount of computation performed in long- and short-range parts of the MD step. GROMACS uses this fact for the automatic load balancing at the beginning of the simulation run. Every certain number of MD steps the Coulomb cut-off, as well as the Fourier grid spacing, are scaled; the run-time measurements of the components are collected. Eventually, the parameter set with the best simulation performance is chosen as the optimal. This currently allows to push both CPU and GPU to their limit - both in single- and multi-process scenarios on a single compute node.
 
 \section{Domain decomposition} \label{chapter:DD}
 Since most interactions in molecular simulations are local, domain decomposition is a natural way to decompose the system for the multi-node, multi-process simulations. In domain decomposition, a spatial domain is assigned to each process,
