@@ -54,13 +54,22 @@
 % graph of decompose
 % not converging?
 \item Ewald sum: decomposition into direct and reciprocal space components
+
+\FloatBarrier
+\begin{figure} 
+    \includegraphics[width=0.2\textwidth]{pics/cutoff1.png}
+\end{figure}
+\begin{figure} 
+    \includegraphics[width=0.2\textwidth]{pics/cutoff2.png}
+\end{figure}
+\FloatBarrier
 % formulas
 \item the direct space component converges before a certain cut-off
 \item the reciprocal component converges well in the Fourier space
 \end{itemize}
 \end{frame}
 
-\begin{frame}{Ewald sum details}
+\begin{frame}{Ewald sum}
 \begin{itemize}
 \item Fourier component $\implies$ periodic boundary conditions (system is a unit cell tiled in all directions)
 \item charge neutrality of the unit cell is needed for convergence
@@ -125,12 +134,25 @@
 \section{Results}
 \begin{frame}{Results}
 \begin{itemize}
-\item implemented for a single GPU
-\item should be
+\item implemented for a single GPU (should be extensible...)
+\item supports GPU and CPU FFT, which is the main parallelization barrier 
+\item only interpolation order of 4 (again, not a big limitation, the core is there)
+\item works in a single PME/PP process
+\item or as a single PME process with several PP ranks
+\item viable for small simulations on machines with several GPUs
+\item hopefully parallelized
+\item load balancing works
+\item integrated soon, accessible here
+% mroe about decomposition
+% mroe about tuning
+% more about B-splines
+% references?
 \end{itemize}
 \end{frame}
 
-\begin{frame}{Single process comparison}
+
+
+\begin{frame}{Single process CPU/GPU comparison}
 \begin{itemize}
 \item short-range computed on GPU
 \item PME computed either on a CPU or on NVIDIA Quadro M6000 GPU
@@ -151,15 +173,15 @@ For the next comparison the same machine is used, but a simulation consisting of
 The PME process is ran in one case on the CPU (Intel Core i7-5960X), and in another case on the second NVIDIA GPU Quadro M6000. The number of the threads used by the processes is varied from 1 to 8.
  
 The resulting simulation performance comparison between the separate CPU and GPU PME ranks is presented at the figure \ref{fig:sepGPUNEW}.
- 
+\begin{frame}{Separate process CPU/GPU comparison}
 \FloatBarrier
 \begin{figure} [h!]
     \centering
     \includegraphics[width=1\textwidth]{pics/CPU_GPU_ADH.png}
-    \caption{Simulation performance with a separate PME process working with the CPU/GPU}
     \label{fig:sepGPUNEW}
 \end{figure}
 \FloatBarrier
+\end{frame}
 
 \section{Conclusion}
 \begin{frame}{Conclusion}
@@ -179,19 +201,6 @@ The resulting simulation performance comparison between the separate CPU and GPU
 
 
 
-
-
-\iffalse
-\includegraphics[scale=0.15]{electrical.png} 
-\[\dot{y}_L(t) = f_L(y_L, y_A, t); \;\;y_L(t_0)=y_{L,0}\]
-\[\dot{y}_A(t) = f_A(y_L, y_A, t); \;\;y_A(t_0)=y_{A,0}\]
-
-\begin{itemize}
-\item the current implementation of the MPRK method is not suitable for our neuron model due to low performance
-\item the method was developed for modeling latent electrical circuits, so the assumption by the method's authors is a very small number of active components (not in our case - 22 out of 40)
-\item likely both our systems are stiff, so dynamic reassigning of latent/active roles based on error estimations would be interesting to study - not supported by the framework
-\item parallelization of active steps during latent step possible - better run on dozens/hundreds of cores to matter
-\fi
 
 
 \end{document}
