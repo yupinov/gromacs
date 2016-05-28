@@ -43,42 +43,123 @@
 \item electrostatic potential:
 \[E = \frac{1}{4 \pi \varepsilon_0}\sum\limits_{i < j}\frac{q_i q_j}{\lvert r_i-r_j\rvert}\]
 % force derivation
-\item large $N$ and computational effort $O(N^2) \implies$ low performance!
+\item large $N$ and computational effort $O(N^2) \implies$ slow computation!
 \end{itemize}
 \end{frame}
 
 \section{Method}
-\begin{frame}{Ewald summation}
+\begin{frame}{Ewald sum}
 \begin{itemize}
-\item interaction dependency is $\frac{1}{r}$ - not converging easily
+\item interaction dependency is $\frac{1}{r}$ - not converging
 % graph of decompose
-\item decomposition into direct and reciprocal space components
+% not converging?
+\item Ewald sum: decomposition into direct and reciprocal space components
 % formulas
 \item the direct space component converges before a certain cut-off
 \item the reciprocal component converges well in the Fourier space
 \end{itemize}
 \end{frame}
 
-\begin{frame}{Ewald summation assumptions}
+\begin{frame}{Ewald sum details}
 \begin{itemize}
 \item Fourier component $\implies$ periodic boundary conditions (system is a unit cell tiled in all directions)
 \item charge neutrality of the unit cell is needed for convergence
+\item can be implemented in $O(N^\frac{3}{2})$
+%\item manipulating the cut-off can change the balance
+
 %\item method originally used in crystallography
 %lattice picture
 %formulas
 \end{itemize}
 \end{frame}
 
-\begin{frame}{PME}
+\begin{frame}{Particle mesh Ewald}
+\begin{itemize}
+%picture of charges
+\item a way to approximate exponentials in the reciprocal sum 
+\item interpolation onto a discrete 3D grid
+\item smooth PME: B-Spline interpolation, the potential function is smooth $\implies$ simple analytical derivation of forces
+\item can be implemented in $O(N \log(N))$
+\end{itemize}
 \end{frame}
 
+\begin{frame}{PME stages}
+\begin{enumerate}
+\item Calculate the B-spline interpolation values for all particles (equation \eqref{BSpline}).
+\item Spread the particle charges on a discrete 3D grid (using the spline values), calculating the array $Q$ (equation \eqref{Qspread}).
+\item Perform three-dimensional real-to-complex FFT of the grid.
+\item Calculate the reciprocal energy contribution(equation \eqref{Erecfull}), transform the grid.
+\item Perform three-dimensional complex-to-real FFT of the convoluted grid.
+\item Gather the particle forces from the grid (using the spline values) (equation \eqref{Fgather}).
+\end{enumerate}
+\end{frame}
+
+%pictures?
+
 \section{Implementation}
-\begin{frame}{Implementation}
+\begin{frame}{Implementation (or still problem)}
+\begin{itemize}
+\item open source MD software GROMACS 5.1
+\item short-range particle pair interactions computed either on CPU or GPU (CUDA/OpenCL)
+\item PME only implemented for CPU
+\item PME GPU implementation can mean: more performance, more load balancing, more GPU hardware utilisation, less CPU bottleneck 
+%mention cutoff
+\end{itemize}
+\end{frame}
+
+\begin{frame}{PME GPU implementation potential benefits}
+\begin{itemize}
+\item more performance
+\item more possibilities for load balancing
+\item nearly all computation can be offloaded onto GPUs
+\item avoiding CPU bottleneck on machines with prevailing GPU power  
+\end{itemize}
+\end{frame}
+
+\begin{frame}{...}
+\end{frame}
+
+\begin{frame}{weird FFT}
 \end{frame}
 
 \section{Results}
 \begin{frame}{Results}
+\begin{itemize}
+\item implemented for a single GPU
+\item should be
+\end{itemize}
 \end{frame}
+
+\begin{frame}{Single process comparison}
+\begin{itemize}
+\item short-range computed on GPU
+\item PME computed either on a CPU or on NVIDIA Quadro M6000 GPU
+\end{itemize}
+%described comnditions
+\FloatBarrier
+\begin{figure} [h!]
+    \centering
+    \includegraphics[width=0.8\textwidth]{pics/CPU_GPU_ADH_SINGLE.png}
+\end{figure}
+\FloatBarrier
+\end{frame}
+
+
+%{This comparison demonstrates not only a noticeable parallelization speed-up of a separate rank PME on a high-end GPU, but also a possibility of shifting the PME workload onto a GPU from the CPU. It is possible to enhance the load balancing algorithm of GROMACS to perform the switching between GPU and CPU PME dynamically as required.%}
+
+For the next comparison the same machine is used, but a simulation consisting of 2 separate processes is ran: 1 PP and 1 PME process. The PP process performs the short-range computations on the high-end NVIDIA GPU GTX Titan X, as before.    
+The PME process is ran in one case on the CPU (Intel Core i7-5960X), and in another case on the second NVIDIA GPU Quadro M6000. The number of the threads used by the processes is varied from 1 to 8.
+ 
+The resulting simulation performance comparison between the separate CPU and GPU PME ranks is presented at the figure \ref{fig:sepGPUNEW}.
+ 
+\FloatBarrier
+\begin{figure} [h!]
+    \centering
+    \includegraphics[width=1\textwidth]{pics/CPU_GPU_ADH.png}
+    \caption{Simulation performance with a separate PME process working with the CPU/GPU}
+    \label{fig:sepGPUNEW}
+\end{figure}
+\FloatBarrier
 
 \section{Conclusion}
 \begin{frame}{Conclusion}
