@@ -31,7 +31,7 @@
 \item modelling large organic molecules (hundreds of thousands atoms)
 \item scaling performance is important (timesteps of $10^{-15}$ seconds, processes of $10^{-6}$ -- $10^{-3}$ seconds) 
 \item the balance shifting towards GPU/accelerator hardware (core speed limited, increasing number of cores instead)
-\item most computational time -- electrostatic interactions
+\item most computational time taken by electrostatic interactions
 \item PME used for computing long-range component
 \end{itemize}
 \end{frame}
@@ -39,10 +39,10 @@
 \section{Problem}
 \begin{frame}{Electrostatic interactions}
 \begin{itemize}
-\item particles coordinates $r_1 .. r_N$ and charges $q_1 .. q_N$ known, forces acting on particles to be computed 
+\item particles coordinates $\bold{r}_1, \dotsc, \bold{r}_N$ and charges $q_1, \dotsc, q_N$ known, forces $\bold{f}_1, \dotsc, \bold{f}_N$ acting on particles to be computed 
 \item electrostatic potential:
-\[E = \frac{1}{4 \pi \varepsilon_0}\sum\limits_{i < j}\frac{q_i q_j}{\lvert r_i-r_j\rvert}\]
-% force derivation
+\[E(\bold{r}_1, \dotsc, \bold{r}_N) = \frac{1}{4 \pi \varepsilon_0}\sum\limits_{i < j}\frac{q_i q_j}{\lvert \bold{r}_i-\bold{r}_j\rvert}\]
+\[\bold{f_i} = \frac{\partial E}{\partial \bold{r_i}} \]
 \item large $N$ and computational effort $O(N^2) \implies$ slow computation!
 \end{itemize}
 \end{frame}
@@ -50,7 +50,7 @@
 \section{Method}
 \begin{frame}{Ewald sum}
 \begin{itemize}
-\item interaction dependency is $\frac{1}{r}$ - not converging
+\item interaction dependency is $\frac{1}{\lvert \bold{r}\rvert }$
 % graph of decompose
 % not converging?
 \item Ewald sum: decomposition into direct and reciprocal space components
@@ -127,6 +127,16 @@
 
 \begin{frame}{...}
 \end{frame}
+
+
+\begin{frame}{Solving in Fourier space}
+\begin{itemize}
+\item a small compute-bound kernel
+\item performance dependent on the grid size
+\item energy reduction in shared memory per block, then incrementing a global result atomically
+\end{itemize}
+\end{frame}
+
 
 \begin{frame}{weird FFT}
 \end{frame}
