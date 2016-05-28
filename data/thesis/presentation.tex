@@ -1,0 +1,164 @@
+\documentclass[11pt]{beamer}
+\usetheme{Berlin}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{placeins}
+\usepackage{graphicx}
+\usepackage{tikz}
+\author{Aleksei Iupinov}
+\title{Particle mesh Ewald on a GPU}
+%\setbeamercovered{transparent} 
+%\setbeamertemplate{navigation symbols}{} 
+%\logo{} 
+\institute{KTH Royal Institute of Technology} 
+%\date{} 
+%\subject{} 
+\begin{document}
+
+\begin{frame}
+\titlepage
+\end{frame}
+
+\begin{frame}
+\tableofcontents
+\end{frame}
+
+\section{Introduction}
+\begin{frame}{Molecular dynamics}
+
+\begin{itemize}
+\item modeling plenty of processes on plenty of time and space scales
+\item simulations have to stay coherent, exchange data
+\item we want a partitioned numerical method that accounts for this and is robust
+\end{itemize}
+
+\end{frame}
+
+\section{Problem}
+\begin{frame}{Electrostatic interactions}
+\end{frame}
+
+\section{Method}
+\begin{frame}{Ewald sum and PME}
+\end{frame}
+
+\section{Implementation}
+\begin{frame}{Implementation}
+\end{frame}
+
+\section{Results}
+\begin{frame}{Results}
+\end{frame}
+
+\section{Conclusion}
+\begin{frame}{Conclusion}
+\end{frame}
+
+\begin{frame}[plain]
+      Thank you for listening!
+\end{frame}
+
+%references
+
+
+
+
+
+
+
+
+
+
+
+\iffalse
+\section{Introduction}
+\begin{frame}{Modeling of biological systems}
+\begin{itemize}
+\item modeling plenty of processes on plenty of time and space scales
+\item simulations have to stay coherent, exchange data
+\item we want a partitioned numerical method that accounts for this and is robust
+\end{itemize}
+
+\end{frame}
+\begin{frame}{Modeling of a neuron}
+\begin{itemize}
+\item neurons feature electrical and chemical processes
+\item current injection $\Rightarrow$ change of chemical system's steady state
+\item the electrical system is generally much faster than the chemical system
+\item looks like a potentially stiff problem
+\end{itemize}
+\includegraphics[scale=0.15]{electrical.png} 
+\includegraphics[scale=0.15]{chemical.png} 
+%\picture 1 - calcium!
+%\picture 2 - electric
+
+\end{frame}
+
+\section{Problem}
+\begin{frame}{Framework}
+\begin{itemize}
+\item the neuron model implemented in Matlab by Jerker Nilsson during his master thesis work in 2014
+\item he implemented and compared several numerical methods (RK4, Hines, BDF)
+\item the scope of this project was to try another numerical method in this framework: multirate partitioned Runge–Kutta method of the 4th order
+\end{itemize}
+\end{frame}
+
+\section{Method}
+\begin{frame}{MPRK method}
+\begin{itemize}
+\item assumes that ODE system is clearly split into latent (stiff) and active (non-stiff) parts:
+\[\dot{y}_L(t) = f_L(y_L, y_A, t); \;\;y_L(t_0)=y_{L,0}\]
+\[\dot{y}_A(t) = f_A(y_L, y_A, t); \;\;y_A(t_0)=y_{A,0}\]
+\item implicit RK4 method with large step for the stiff part
+\item explicit RK4 method with small step for the non-stiff part
+\item coupling at the end of each large step
+\item in our case electric is latent, chemical is active
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Step size control}
+\begin{itemize}
+\item as the methods are of the 4th order, the 3rd order RK methods with same stage values are embedded for error estimation
+\item step size coefficients are bounded to avoid zigzagging (abrupt changes) 
+\end{itemize}
+\[ h_{new} = h_{old}\cdot \min(1.5, \max(0.5, 0.9 \cdot \Big(\frac{\text{absolute tolerance}}{\text{error estimation}}\Big)^\frac{1}{4}))\]
+\end{frame}
+
+\section{Results}
+\begin{frame}{A small stiff problem}
+\begin{itemize}
+\item the method has been implemented and tested on a small problem
+\item 2 components, weak coupling
+\item compared the solution error with Matlab's stiff ODE solvers ode23s/ode15s
+\end{itemize}
+\includegraphics[scale=0.25]{final1.png} 
+\includegraphics[scale=0.21]{zoom.png} 
+\end{frame}
+
+\begin{frame}{Unsatisfactory performance}
+\begin{itemize}
+\item also compared the number of steps, function calls, running time with ode23s/ode15s
+\item number of latent steps larger by order of 1
+\item number of function calls for active part larger by order of 3
+\item running time also larger by order of 3
+\item same bad performance on the main problem (22 active + 18 latent components)
+\end{itemize}
+\end{frame}
+
+\section{Conclusion}
+\begin{frame}{Conclusion}
+\begin{itemize}
+\item the current implementation of the MPRK method is not suitable for our neuron model due to low performance
+\item the method was developed for modeling latent electrical circuits, so the assumption by the method's authors is a very small number of active components (not in our case - 22 out of 40)
+\item likely both our systems are stiff, so dynamic reassigning of latent/active roles based on error estimations would be interesting to study - not supported by the framework
+\item parallelization of active steps during latent step possible - better run on dozens/hundreds of cores to matter
+\end{itemize}
+
+\end{frame}
+
+\fi
+
+
+\end{document}
