@@ -158,7 +158,7 @@ With all this, \eqref{eq:ewald} can be rewritten as
 \[E = E_{dir} + E_{rec} + E_{corr}\,\mathrm{,}\]
 where
 \begin{equation} \label{eq:Edir}
-E_{dir} = \frac{1}{2}\sum\limits_{\bold{n\in \mathbb{Z}}}^*\sum\limits_{i=1}^N\sum\limits_{j=1}^N\frac{q_i q_j \erfc(\beta\lvert\bold{r}_i - \bold{r}_j + \bold{n} \rvert)}{\lvert\bold{r}_i - \bold{r}_j + \bold{n} \rvert}
+E_{dir} = \frac{1}{2}\sum\limits_{\bold{n\in \mathbb{Z}^3}}^*\sum\limits_{i=1}^N\sum\limits_{j=1}^N\frac{q_i q_j \erfc(\beta\lvert\bold{r}_i - \bold{r}_j + \bold{n} \rvert)}{\lvert\bold{r}_i - \bold{r}_j + \bold{n} \rvert}
 \end{equation}
 \begin{equation} \label{eq:Erec}
 E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus \mathbb{0}\}}\frac{\exp(-\frac{\pi^2\bold{m}^2}{\beta^2})}{\bold{m}^2}S(\bold{m})S(\bold{-m})
