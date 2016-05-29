@@ -7,15 +7,24 @@
 \usepackage{placeins}
 \usepackage{graphicx}
 \usepackage{tikz}
-\author{Aleksei Iupinov}
-\title{Particle mesh Ewald on a GPU}
+
+\DeclareMathOperator\erf{erf}
+\DeclareMathOperator\erfc{erfc}
+
+
+\author[Aleksei Iupinov]{Aleksei Iupinov\\{\footnotesize Supervised by: Berk Hess}}
+%\author{Aleksei Iupinov}
+\title{Master thesis project: \\Particle mesh Ewald on a GPU}
+\usepackage{subcaption}
 %\setbeamercovered{transparent} 
-%\setbeamertemplate{navigation symbols}{} 
+\setbeamertemplate{navigation symbols}{} 
 %\logo{} 
 \institute{KTH Royal Institute of Technology} 
 %\date{} 
 %\subject{} 
 \begin{document}
+%\setbeamertemplate{caption}{\raggedright\insertcaption\par}
+\captionsetup[figure]{labelformat=empty}
 
 \begin{frame}
 \titlepage
@@ -32,7 +41,7 @@
 \item scaling performance is important (timesteps of $10^{-15}$ seconds, processes of $10^{-6}$ -- $10^{-3}$ seconds) 
 \item the balance shifting towards GPU/accelerator hardware (core speed limited, increasing number of cores instead)
 \item most computational time taken by electrostatic interactions
-\item PME used for computing long-range component
+\item PME (particle mesh Ewald) used for computing so-called long-range component
 \end{itemize}
 \end{frame}
 
@@ -42,7 +51,8 @@
 \item particles coordinates $\bold{r}_1, \dotsc, \bold{r}_N$ and charges $q_1, \dotsc, q_N$ known, forces $\bold{f}_1, \dotsc, \bold{f}_N$ acting on particles to be computed 
 \item electrostatic potential:
 \[E(\bold{r}_1, \dotsc, \bold{r}_N) = \frac{1}{4 \pi \varepsilon_0}\sum\limits_{i < j}\frac{q_i q_j}{\lvert \bold{r}_i-\bold{r}_j\rvert}\]
-\[\bold{f_i} = \frac{\partial E}{\partial \bold{r_i}} \]
+\item forces are derived analytically:
+\[\bold{f_i} = -\frac{\partial E}{\partial \bold{r_i}} \]
 \item large $N$ and computational effort $O(N^2) \implies$ slow computation!
 \end{itemize}
 \end{frame}
@@ -50,29 +60,41 @@
 \section{Method}
 \begin{frame}{Ewald sum}
 \begin{itemize}
-\item interaction dependency is $\frac{1}{\lvert \bold{r}\rvert }$
-% graph of decompose
-% not converging?
-\item Ewald sum: decomposition into direct and reciprocal space components
 
-\FloatBarrier
-\begin{figure} 
-    \includegraphics[width=0.2\textwidth]{pics/cutoff1.png}
-\end{figure}
-\begin{figure} 
-    \includegraphics[width=0.2\textwidth]{pics/cutoff2.png}
-\end{figure}
-\FloatBarrier
+\item interaction dependency is $\frac{1}{\lvert \bold{r}\rvert }$
+\item Ewald sum: decomposition into direct and reciprocal space components, based on Gaussian error function
 % formulas
-\item the direct space component converges before a certain cut-off
-\item the reciprocal component converges well in the Fourier space
+\item the direct space component converges within a certain cut-off
+\item the reciprocal component converges in the Fourier space
 \end{itemize}
+%\noindent\makebox[\textwidth][c]{%
+\begin{figure} 
+\begin{minipage}[t]{0.4\textwidth}
+    \includegraphics[width=1\textwidth]{pics/{cutoff0.7}.png}
+\end{minipage}
+\begin{minipage}[t]{0.4\textwidth}
+    \includegraphics[width=1\textwidth]{pics/cutoff2.png}
+\end{minipage}
+\caption{Parametrized decomposition}
+\end{figure}
+%}
+
 \end{frame}
 
 \begin{frame}{Ewald sum}
+\[E = E_{dir} + E_{rec} + E_{corr}\,\mathrm{,}\]
+where
+\begin{equation} \label{eq:Edir}
+E_{dir} = \frac{1}{2}\sum\limits_{\bold{n\in \mathbb{Z}}}^*\sum\limits_{i=1}^N\sum\limits_{j=1}^N\frac{q_i q_j \erfc(\beta\lvert\bold{r}_i - \bold{r}_j + \bold{n} \rvert)}{\lvert\bold{r}_i - \bold{r}_j + \bold{n} \rvert}
+\end{equation}
+\begin{equation} \label{eq:Erec}
+E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus \mathbb{0}\}}\frac{\exp(-\frac{\pi^2\bold{m}^2}{\beta^2})}{\bold{m}^2}S(\bold{m})S(\bold{-m})
+\end{equation}
+\[E_{corr} = -\frac{1}{2}\sum\limits_{(i,j)\in M}\frac{q_i q_j \erf(\beta\lvert\bold{r}_i - \bold{r}_j\rvert)}{\lvert\bold{r}_i - \bold{r}_j\rvert} - \frac{\beta}{\sqrt{\pi}}\sum\limits_{i=1}^N q_i^2\]
 \begin{itemize}
 \item Fourier component $\implies$ periodic boundary conditions (system is a unit cell tiled in all directions)
 \item charge neutrality of the unit cell is needed for convergence
+\item additional correction component (bonded interactions split from direct sum)
 \item can be implemented in $O(N^\frac{3}{2})$
 %\item manipulating the cut-off can change the balance
 
@@ -89,34 +111,36 @@
 \item interpolation onto a discrete 3D grid
 \item smooth PME: B-Spline interpolation, the potential function is smooth $\implies$ simple analytical derivation of forces
 \item can be implemented in $O(N \log(N))$
+% formulas
 \end{itemize}
 \end{frame}
 
 \begin{frame}{PME stages}
 \begin{enumerate}
-\item Calculate the B-spline interpolation values for all particles (equation \eqref{BSpline}).
-\item Spread the particle charges on a discrete 3D grid (using the spline values), calculating the array $Q$ (equation \eqref{Qspread}).
-\item Perform three-dimensional real-to-complex FFT of the grid.
-\item Calculate the reciprocal energy contribution(equation \eqref{Erecfull}), transform the grid.
-\item Perform three-dimensional complex-to-real FFT of the convoluted grid.
-\item Gather the particle forces from the grid (using the spline values) (equation \eqref{Fgather}).
+\item calculate the B-spline interpolation values for all particles
+\item spread the particle charges on a discrete 3D grid
+\item perform three-dimensional real-to-complex FFT of the grid
+\item calculate the reciprocal energy contribution(equation \eqref{Erecfull}), transform the grid
+\item perform three-dimensional complex-to-real FFT of the grid
+\item gather the particle forces from the grid
 \end{enumerate}
 \end{frame}
 
 %pictures?
 
 \section{Implementation}
-\begin{frame}{Implementation (or still problem)}
+\begin{frame}{Implementation}
 \begin{itemize}
 \item open source MD software GROMACS 5.1
 \item short-range particle pair interactions computed either on CPU or GPU (CUDA/OpenCL)
 \item PME only implemented for CPU
-\item PME GPU implementation can mean: more performance, more load balancing, more GPU hardware utilisation, less CPU bottleneck 
+%\item PME GPU implementation can mean: more performance, more load balancing, more GPU hardware utilisation, less CPU bottleneck 
 %mention cutoff
 \end{itemize}
 \end{frame}
 
-\begin{frame}{PME GPU implementation potential benefits}
+\begin{frame}{Potential benefits of PME on GPU}
+% should be moved
 \begin{itemize}
 \item more performance
 \item more possibilities for load balancing
@@ -125,7 +149,35 @@
 \end{itemize}
 \end{frame}
 
-\begin{frame}{...}
+\begin{frame}{MD time step in GROMACS}
+\begin{figure}
+    \centering
+    \includegraphics[width=1\textwidth]{pics/mdstep-orig.png}
+    \caption{Timeline of MD step in a single-process GROMACS simulation}
+    \label{fig:step-orig}
+\end{figure}
+\FloatBarrier
+\end{frame}
+
+\begin{frame}{MD time step in GROMACS, modified for PME GPU}
+\begin{figure}
+    \centering
+    \includegraphics[width=1\textwidth]{pics/mdstep-gpu.png}
+    \caption{Timeline of a modified MD step with PME GPU}
+\end{figure}
+\FloatBarrier
+\end{frame}
+
+%\begin{frame}{Calculating the spline parameters}
+%\begin{itemize}
+
+\begin{frame}{Spreading the charges}
+\begin{itemize}
+\item a large part of the runtime
+\item charges accumulated onto the grid in parallel $\implies$ clashes of atomic operations
+\item a single thread works on one line of contributions, 
+\item block of threads works on 8 particles
+\end{itemize}
 \end{frame}
 
 
@@ -138,23 +190,24 @@
 \end{frame}
 
 
+\begin{frame}{FFT}
+\end{frame}
+
 \begin{frame}{weird FFT}
 \end{frame}
 
 \section{Results}
 \begin{frame}{Results}
 \begin{itemize}
-\item implemented for a single GPU (should be extensible...)
+\item implemented for a single GPU
 \item supports GPU and CPU FFT, which is the main parallelization barrier 
 \item only interpolation order of 4 (again, not a big limitation, the core is there)
-\item works in a single PME/PP process
-\item or as a single PME process with several PP ranks
-\item viable for small simulations on machines with several GPUs
-\item hopefully parallelized
+%\item works in a single PME/PP process
+%\item or as a single PME process with several PP ranks
 \item load balancing works
 \item integrated soon, accessible here
-% mroe about decomposition
-% mroe about tuning
+% more about decomposition
+% more about tuning
 % more about B-splines
 % references?
 \end{itemize}
@@ -162,39 +215,48 @@
 
 
 
-\begin{frame}{Single process CPU/GPU comparison}
+\begin{frame}{Single process CPU/GPU comparison, 134201 atoms}
 \begin{itemize}
-\item short-range computed on GPU
-\item PME computed either on a CPU or on NVIDIA Quadro M6000 GPU
+\item short-range computed on GPU (NVIDIA GTX Titan X)
+\item PME computed either on a CPU (Intel Core i7-5960X) or on the same GPU
+% threads varied
 \end{itemize}
-%described comnditions
 \FloatBarrier
 \begin{figure} [h!]
     \centering
     \includegraphics[width=0.8\textwidth]{pics/CPU_GPU_ADH_SINGLE.png}
 \end{figure}
+% superiority over weak CPUs
 \FloatBarrier
 \end{frame}
 
-
-%{This comparison demonstrates not only a noticeable parallelization speed-up of a separate rank PME on a high-end GPU, but also a possibility of shifting the PME workload onto a GPU from the CPU. It is possible to enhance the load balancing algorithm of GROMACS to perform the switching between GPU and CPU PME dynamically as required.%}
-
-For the next comparison the same machine is used, but a simulation consisting of 2 separate processes is ran: 1 PP and 1 PME process. The PP process performs the short-range computations on the high-end NVIDIA GPU GTX Titan X, as before.    
-The PME process is ran in one case on the CPU (Intel Core i7-5960X), and in another case on the second NVIDIA GPU Quadro M6000. The number of the threads used by the processes is varied from 1 to 8.
- 
-The resulting simulation performance comparison between the separate CPU and GPU PME ranks is presented at the figure \ref{fig:sepGPUNEW}.
-\begin{frame}{Separate process CPU/GPU comparison}
+\begin{frame}{2 processes (1 PP / 1 PME) CPU/GPU comparison}
+\begin{itemize}
+\item short-range computed on GPU (NVIDIA GTX Titan X)
+\item PME computed either on a CPU (Intel Core i7-5960X) or on the second GPU (NVIDIA Quadro M6000)
+\end{itemize}
 \FloatBarrier
+% threads varied
 \begin{figure} [h!]
     \centering
-    \includegraphics[width=1\textwidth]{pics/CPU_GPU_ADH.png}
+    \includegraphics[width=0.8\textwidth]{pics/CPU_GPU_ADH.png}
     \label{fig:sepGPUNEW}
 \end{figure}
 \FloatBarrier
 \end{frame}
 
 \section{Conclusion}
+
 \begin{frame}{Conclusion}
+\begin{itemize}
+\item the single GPU implementation provides a basis for further tuning
+\item supports a separate PME process with direct space decomposed over multiple PP processes, already viable for machines with several NVIDIA GPUs 
+\item should be easily extensible for scaling over multiple GPUs
+(compatible with the CPU FFT code supporting the Fourier grid decomposition)
+\item tshould also be easily extensible for interpolation orders other than 4
+(higher orders $\implies$ coarser grid $\implies$ less communication)
+
+\end{itemize}
 \end{frame}
 
 \begin{frame}[plain]
@@ -203,14 +265,8 @@ The resulting simulation performance comparison between the separate CPU and GPU
 
 %references
 
+%PP
 
-
-
-
-
-
-
-
-
+% where does the grid size come from?x
 
 \end{document}

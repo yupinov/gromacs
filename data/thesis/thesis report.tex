@@ -294,6 +294,8 @@ PME process/rank - a GROMACS process that performs exclusively PME calculations.
 
 PP process/rank - a GROMACS process that performs exclusively PP calculations (bonded and NB).  
 
+%\draft{Atomic}
+
 \section{PME and short-range implementations} \label{rangeimpl}
 
 The short-range calculations typically dominate the computational effort, so they remain the main optimization target in GROMACS. Since version 4.6 \cite{gromacs46}, GROMACS features native GPU acceleration for short-range non-bonded computations, as well as OpenMP parallelization. Moreover, there are many optimizations targeting specific versions of CUDA, OpenCL architectures and different SIMD instruction sets. 
