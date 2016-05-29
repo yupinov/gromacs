@@ -38,10 +38,10 @@
 \begin{frame}{Molecular dynamics simulation performance}
 \begin{itemize}
 \item modelling large organic molecules (hundreds of thousands atoms)
-\item scaling performance is important (timesteps of $10^{-15}$ seconds, processes of $10^{-6}$ -- $10^{-3}$ seconds) 
+\item scaling performance is important (time steps of $10^{-15}$ seconds, processes of $10^{-6}$ -- $10^{-3}$ seconds) 
 \item the balance shifting towards GPU/accelerator hardware (core speed limited, increasing number of cores instead)
 \item most computational time taken by electrostatic interactions
-\item PME (particle mesh Ewald) used for computing so-called long-range component
+\item PME (particle mesh Ewald) used for computing long-range component of electrostatics
 \end{itemize}
 \end{frame}
 
@@ -63,7 +63,6 @@
 
 \item interaction dependency is $\frac{1}{\lvert \bold{r}\rvert }$
 \item Ewald sum: decomposition into direct and reciprocal space components, based on Gaussian error function
-% formulas
 \item the direct space component converges within a certain cut-off
 \item the reciprocal component converges in the Fourier space
 \end{itemize}
@@ -79,43 +78,48 @@
 \end{figure}
 %}
 
+%mention cutoff and balance
+
 \end{frame}
 
-\begin{frame}{Ewald sum}
+\begin{frame}{Ewald sum conditions}
+\begin{itemize}
+\item Fourier component $\implies$ periodic boundary conditions (system is a unit cell tiled in all directions)
+\item all charges interact with the periodic images of charges as well
+\item charge neutrality of the unit cell is needed for convergence
+\item additional correction component (charges acting on self, bonded interactions split from direct sum)
+\item can be implemented in $O(N^\frac{3}{2})$
+
+%mention single process
+
+%lattice picture
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Ewald sum formulae}
 \[E = E_{dir} + E_{rec} + E_{corr}\]
 \[
 E_{dir} = \frac{1}{2}\sum\limits_{\bold{n\in \mathbb{Z}^3}}^*\sum\limits_{i=1}^N\sum\limits_{j=1}^N\frac{q_i q_j \erfc(\beta\lvert\bold{r}_i - \bold{r}_j + \bold{n} \rvert)}{\lvert\bold{r}_i - \bold{r}_j + \bold{n} \rvert}
 \]
 \[
-E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus \mathbb{0}\}}\frac{\exp(-\frac{\pi^2\bold{m}^2}{\beta^2})}{\bold{m}^2}S(\bold{m})S(\bold{-m})
+E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus {0}\}}\frac{\exp(-\frac{\pi^2\bold{m}^2}{\beta^2})}{\bold{m}^2}S(\bold{m})S(\bold{-m})
 \]
 \[
  S(\bold{m}) = 
 \sum\limits_{j=1}^Nq_j \exp(2\pi i\bold{m}\cdot\bold{r}_j)
 \]
-\[E_{corr} = -\frac{1}{2}\sum\limits_{(i,j)\in M}\frac{q_i q_j \erf(\beta\lvert\bold{r}_i - \bold{r}_j\rvert)}{\lvert\bold{r}_i - \bold{r}_j\rvert} - \frac{\beta}{\sqrt{\pi}}\sum\limits_{i=1}^N q_i^2\]
-
-\begin{itemize}
-\item Fourier component $\implies$ periodic boundary conditions (system is a unit cell tiled in all directions)
-\item charge neutrality of the unit cell is needed for convergence
-\item additional correction component (bonded interactions split from direct sum)
-\item can be implemented in $O(N^\frac{3}{2})$
-%\item manipulating the cut-off can change the balance
-
-%\item method originally used in crystallography
-%lattice picture
-%formulas
-\end{itemize}
+\[E_{corr} =  - \frac{\beta}{\sqrt{\pi}}\sum\limits_{i=1}^N q_i^2-\frac{1}{2}\sum\limits_{(i,j)\in M}\frac{q_i q_j \erf(\beta\lvert\bold{r}_i - \bold{r}_j\rvert)}{\lvert\bold{r}_i - \bold{r}_j\rvert}\]
+%bold 0
 \end{frame}
 
 \begin{frame}{Particle mesh Ewald}
 \begin{itemize}
-%picture of charges
+% picture of charges
 \item a way to approximate exponentials in the reciprocal sum 
 \item interpolation onto a discrete 3D grid
 \item smooth PME: B-spline interpolation of order $p$, the potential function is smooth $\implies$ simple analytical derivation of forces
 \item can be implemented in $O(N \log(N))$
-% formulas
+% B-spline formulas
 \end{itemize}
 \end{frame}
 
@@ -139,18 +143,14 @@ E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus \math
 \item open source MD software GROMACS 5.1
 \item short-range particle pair interactions computed either on CPU or GPU (CUDA/OpenCL) 
 \item PME only implemented for CPU
-%\item PME GPU implementation can mean: more performance, more load balancing, more GPU hardware utilisation, less CPU bottleneck 
-%mention cutoff
-\end{itemize}
-\end{frame}
-
-\begin{frame}{Potential benefits of PME on GPU}
-% should be moved
+\item potential benefits of PME on GPU:
 \begin{itemize}
 \item more performance
 \item more flexibility, possibilities for load balancing 
 \item nearly all computation can be offloaded onto GPUs
 \item avoiding CPU bottleneck on machines with lots of GPU power  
+\end{itemize}
+%mention cutoff
 \end{itemize}
 \end{frame}
 
@@ -176,7 +176,7 @@ E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus \math
 \begin{frame}{Calculating the spline parameters}
 \begin{itemize}
 \item a single thread performs a single dimension computation for a single particle (3 threads per particle)
-\item united with the spreading kernel to save on global memory accesses 
+\item unified with the spreading kernel to save on global memory accesses (such as grid-line indices) 
 \end{itemize}
 \end{frame}
 
@@ -185,10 +185,11 @@ E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus \math
 \item a large part of the runtime
 \item charges accumulated onto the grid in parallel $\implies$ clashes of atomic 
 addition operations
-\item for PME order $p= 4 $each particle affects $4^3 = 64$ cells
+\item for PME order $p=4$ each particle affects $4^3 = 64$ cells
 \item a single thread works on one line (4 contributions)
 \item a warp works exactly on 2 particles (16 threads per particle)
 % picture
+\item the grid has an overlap of $p - 1$ cells in each direction, is wrapped afterwards by a separate small kernel 
 \end{itemize}
 \end{frame}
 
@@ -197,7 +198,7 @@ addition operations
 \item happens twice (real-to-complex before solving, complex-to-real after solving)
 \item implemented as a call to CUDA cuFFT library
 \item with multiple PME processes requires all-to-all communication of the decomposed grid
-\item for this reason an option of using the CPU code (MPI + calls to FFTW library) is retained
+\item for this reason an option of using the existing CPU code (MPI + calls to FFTW library) exists
 % overlap
 \end{itemize}
 \end{frame}
@@ -214,15 +215,21 @@ addition operations
 
 \begin{frame}{Gather}
 \begin{itemize}
-\item counterpart of spread
-\item has to perform 
+\item counterpart of spreading
+\item has to perform reduction in shared memory or registers
+\item same layout and scheduling as spreading (4 contributions per thread, 16 threads per particle)
+\item the grid is also unwrapped before the gather
+%\item typically 3 times as fast as spread on newer  
 \end{itemize}
+%layout picture
 \end{frame}
 
 \section{Results}
+% why is this here
 \begin{frame}{Results}
 \begin{itemize}
 \item implemented for a single GPU
+\item CPU PME as reference for reciprocal and conserved energy values
 \item supports FFT both on GPU and CPU (should help with future multi-GPU parallelization) 
 \item only interpolation order of 4 has been tried
 %\item works in a single PME/PP process
@@ -230,16 +237,26 @@ addition operations
 \item load balancing works
 % more about decomposition
 % more about tuning
-% more about B-splines
 % references?
 \end{itemize}
 \end{frame}
 
-
+\begin{frame}{Individual kernels performance}
+\begin{itemize}
+\item a water box with number of atoms varying from 960 to 1536000
+\item a high end GPU (NVIDIA GTX TITAN X) 
+\end{itemize}
+\begin{figure}
+    %1\centering
+    \includegraphics[width=0.8\textwidth]{pics/kernels-noconcur-2.png}
+    %\caption{Performance of the individual PME stages as a function of the number of the input particles on a loglog scale}
+    \label{fig:kernels}
+\end{figure}
+\end{frame}
 
 \begin{frame}{Single process CPU/GPU comparison, 134201 atoms}
 \begin{itemize}
-\item short-range computed on GPU (NVIDIA GTX Titan X)
+\item short-range computed on GPU (NVIDIA GTX TITAN X)
 \item PME computed either on a CPU (Intel Core i7-5960X) or on the same GPU
 % threads varied
 \end{itemize}
@@ -254,7 +271,7 @@ addition operations
 
 \begin{frame}{2 processes (1 PP / 1 PME) CPU/GPU comparison}
 \begin{itemize}
-\item short-range computed on GPU (NVIDIA GTX Titan X)
+\item short-range computed on GPU (NVIDIA GTX TITAN X)
 \item PME computed either on a CPU (Intel Core i7-5960X) or on the second GPU (NVIDIA Quadro M6000)
 \end{itemize}
 \FloatBarrier
@@ -271,7 +288,7 @@ addition operations
 
 \begin{frame}{Conclusion}
 \begin{itemize}
-\item the single GPU implementation provides a foundation for further implementation tuning
+\item the single GPU implementation provides a foundation for further tuning
 \item supports a separate PME process with direct space decomposed over multiple PP processes, already viable for a machine with several NVIDIA GPUs 
 \item should be easily extensible for scaling over multiple GPUs
 (compatible with the CPU FFT code supporting the Fourier grid decomposition)

@@ -719,7 +719,7 @@ For the multi-process simulations it is sensible to compare the overall simulati
 
 The input data used for comparison is a model of ADH enzyme in water, consisting of 134201 atoms.
 
-The simulation is first ran with simulation consisting of 1 PP/PME process. The short-range computations are performed on the high-end NVIDIA GPU GTX Titan X.    
+The simulation is first ran with simulation consisting of 1 PP/PME process. The short-range computations are performed on the high-end NVIDIA GPU GTX TITAN X.    
 The PME part is computed in one case on the same GPU, and in another case on the CPU (Intel Core i7-5960X). The number of the OpenMP threads used by the process is varied from 1 to 8.
  
 The resulting simulation performance comparison between the CPU and GPU PME is presented at the figure \ref{fig:sepGPUold}.
@@ -737,7 +737,7 @@ The GPU implementation is performing better than a CPU one at a lower number of 
 
 %{This comparison demonstrates not only a noticeable parallelization speed-up of a separate rank PME on a high-end GPU, but also a possibility of shifting the PME workload onto a GPU from the CPU. It is possible to enhance the load balancing algorithm of GROMACS to perform the switching between GPU and CPU PME dynamically as required.%}
 
-For the next comparison the same machine is used, but a simulation consisting of 2 separate processes is ran: 1 PP and 1 PME process. The PP process performs the short-range computations on the high-end NVIDIA GPU GTX Titan X, as before.    
+For the next comparison the same machine is used, but a simulation consisting of 2 separate processes is ran: 1 PP and 1 PME process. The PP process performs the short-range computations on the high-end NVIDIA GPU GTX TITAN X, as before.    
 The PME process is ran in one case on the CPU (Intel Core i7-5960X), and in another case on the second NVIDIA GPU Quadro M6000. The number of the threads used by the processes is varied from 1 to 8.
  
 The resulting simulation performance comparison between the separate CPU and GPU PME ranks is presented at the figure \ref{fig:sepGPUNEW}.
@@ -762,7 +762,7 @@ This comparison demonstrates not only a noticeable parallelization speed-up of P
 
 \section{Separate PME process performance}
 
-For this test, a compute node with 2 16-core AMD Opteron CPUs and 2 NVIDIA GTX Titan GPUs is used.
+For this test, a compute node with 2 16-core AMD Opteron CPUs and 2 NVIDIA GTX TITAN GPUs is used.
 
 In the first case, 3 processes are ran: 1 PP process per GPU, and 1 PME process on CPU. In the second case, 2 processes are ran: 1 PP GPU, and 1 PME GPU. The performance is compared by the simulation time per real time result. The result is shown on a figure \ref{fig:sepGPU}.
 
