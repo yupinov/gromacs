@@ -113,7 +113,7 @@ E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus \math
 %picture of charges
 \item a way to approximate exponentials in the reciprocal sum 
 \item interpolation onto a discrete 3D grid
-\item smooth PME: B-Spline interpolation, the potential function is smooth $\implies$ simple analytical derivation of forces
+\item smooth PME: B-spline interpolation of order $p$, the potential function is smooth $\implies$ simple analytical derivation of forces
 \item can be implemented in $O(N \log(N))$
 % formulas
 \end{itemize}
@@ -121,12 +121,13 @@ E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus \math
 
 \begin{frame}{PME stages}
 \begin{enumerate}
-\item calculate the B-spline interpolation values for all particles
-\item spread the particle charges on a discrete 3D grid
+\item calculate the B-spline interpolation values for each particle
+(3 dimensions, $p$ values and $p$ derivatives in each, $p$ typically 4 or 5)
+\item spread the particle charges on a discrete 3D grid ($p^3$ contributions per particle)
 \item perform real-to-complex 3D FFT of the grid
-\item calculate the reciprocal energy contribution(equation \eqref{Erecfull}), transform the grid
+\item solve for reciprocal energy, transform the grid
 \item perform complex-to-real 3D FFT of the grid
-\item gather the particle forces from the grid
+\item gather the particle forces from the grid ($p^3$ contributions per particle)
 \end{enumerate}
 \end{frame}
 
@@ -174,17 +175,20 @@ E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus \math
 
 \begin{frame}{Calculating the spline parameters}
 \begin{itemize}
-\item...
+\item a single thread performs a single dimension computation for a single particle (3 threads per particle)
+\item united with the spreading kernel to save on global memory accesses 
 \end{itemize}
 \end{frame}
 
 \begin{frame}{Spreading the charges}
 \begin{itemize}
 \item a large part of the runtime
-\item charges accumulated onto the grid in parallel $\implies$ clashes of atomic operations
-\item a single thread works on one line of contributions
-\item a warp works exactly on 2 particles for order of 4
-%..order....
+\item charges accumulated onto the grid in parallel $\implies$ clashes of atomic 
+addition operations
+\item for PME order $p= 4 $each particle affects $4^3 = 64$ cells
+\item a single thread works on one line (4 contributions)
+\item a warp works exactly on 2 particles (16 threads per particle)
+% picture
 \end{itemize}
 \end{frame}
 
@@ -208,23 +212,22 @@ E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus \math
 \end{itemize}
 \end{frame}
 
-
-\begin{frame}{FFT}
-\end{frame}
-
-\begin{frame}{weird FFT}
+\begin{frame}{Gather}
+\begin{itemize}
+\item counterpart of spread
+\item has to perform 
+\end{itemize}
 \end{frame}
 
 \section{Results}
 \begin{frame}{Results}
 \begin{itemize}
 \item implemented for a single GPU
-\item supports GPU and CPU FFT, which is the main parallelization barrier 
-\item only interpolation order of 4 (again, not a big limitation, the core is there)
+\item supports FFT both on GPU and CPU (should help with future multi-GPU parallelization) 
+\item only interpolation order of 4 has been tried
 %\item works in a single PME/PP process
 %\item or as a single PME process with several PP ranks
 \item load balancing works
-\item integrated soon, accessible here
 % more about decomposition
 % more about tuning
 % more about B-splines
@@ -268,13 +271,13 @@ E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus \math
 
 \begin{frame}{Conclusion}
 \begin{itemize}
-\item the single GPU implementation provides a basis for further tuning
-\item supports a separate PME process with direct space decomposed over multiple PP processes, already viable for machines with several NVIDIA GPUs 
+\item the single GPU implementation provides a foundation for further implementation tuning
+\item supports a separate PME process with direct space decomposed over multiple PP processes, already viable for a machine with several NVIDIA GPUs 
 \item should be easily extensible for scaling over multiple GPUs
 (compatible with the CPU FFT code supporting the Fourier grid decomposition)
-\item tshould also be easily extensible for interpolation orders other than 4
+\item should also be easily extensible for interpolation orders other than 4
 (higher orders $\implies$ coarser grid $\implies$ less communication)
-
+\item hopefully part of GROMACS in a couple of months
 \end{itemize}
 \end{frame}
 
