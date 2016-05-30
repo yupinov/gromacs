@@ -57,7 +57,7 @@
 \item most computation can be offloaded onto GPUs
 \item avoiding CPU bottleneck on machines with lots of GPU power  
 \end{itemize}
-\item the task is an implementation of  PME for a single GPU
+\item the task is an implementation of PME for a single GPU, using the NVIDIA CUDA library 
 %mention cutoff
 \end{itemize}
 \end{frame}
@@ -232,7 +232,7 @@ addition operations
 \begin{frame}{Results}
 \begin{itemize}
 \item implemented for a single GPU
-\item CPU PME as reference for reciprocal and conserved energy values
+\item CPU PME used as reference for reciprocal and conserved energy values to ensure correctness
 \item supports FFT both on GPU and CPU (should help with future multi-GPU parallelization) 
 \item only interpolation order of 4 has been tried
 %\item works in a single PME/PP process
@@ -305,7 +305,7 @@ addition operations
 %      Thank you for listening! Questions?
 %\end{frame}
 
-%references
+%references, github link
 
 %PP, NB, other terms
 
