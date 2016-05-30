@@ -291,19 +291,19 @@ addition operations
 
 \begin{frame}{Conclusion}
 \begin{itemize}
-\item the single GPU implementation provides a foundation for further work
-\item supports a separate PME process with direct space decomposed over multiple PP processes, already viable for a machine with several NVIDIA GPUs 
+\item the CUDA implementation for a single GPU -- a foundation for further work
 \item should be easily extensible for scaling over multiple GPUs
 (compatible with the CPU FFT code supporting the Fourier grid decomposition)
 \item should also be easily extensible for interpolation orders other than 4
 (higher orders $\implies$ coarser grid $\implies$ less communication)
-\item hopefully part of GROMACS in a couple of months
+\item supports a separate PME process with direct space decomposed over multiple PP processes, already viable for a machine with several NVIDIA GPUs 
+\item will be integrated into GROMACS in a couple of months
 \end{itemize}
 \end{frame}
 
-\begin{frame}[plain]
-      Thank you for listening!
-\end{frame}
+%\begin{frame}[plain]
+%      Thank you for listening! Questions?
+%\end{frame}
 
 %references
 
