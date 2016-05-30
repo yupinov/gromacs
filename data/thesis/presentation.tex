@@ -37,15 +37,15 @@
 \section{Introduction}
 \begin{frame}{Molecular dynamics simulations' performance}
 \begin{itemize}
-\item modelling large organic molecules (hundreds of thousands atoms)
+\item typical use case: modelling large organic molecules (hundreds of thousands atoms)
 \item scaling performance is important (time steps of $10^{-15}$ seconds, processes of $10^{-6}$ -- $10^{-3}$ seconds) 
-\item the computational balance shifting towards GPU/accelerator hardware (single core speed limited $\implies$ increasing number of cores instead)
-\item most computational time taken by electrostatic interactions
-\item PME (particle mesh Ewald) used for computing long-range component of electrostatics
+\item the shift towards using GPU/accelerator highly-parallel hardware (a speed of single core stagnates $\implies$ increasing number of cores)
+\item most computational time in MD taken by electrostatic interactions
+\item PME (particle mesh Ewald) used for computing a certain component of electrostatic interactions
 \end{itemize}
 \end{frame}
 
-\begin{frame}{GROMACS}
+\begin{frame}{Project background}
 \begin{itemize}
 \item open source MD software GROMACS 5.1
 \item direct non-bonded particle pair interactions computed either on CPU or GPU (CUDA/OpenCL) 
@@ -53,7 +53,6 @@
 \item potential benefits of PME on GPU:
 \begin{itemize}
 \item more performance
-\item more flexibility 
 \item most computation can be offloaded onto GPUs
 \item avoiding CPU bottleneck on machines with lots of GPU power  
 \end{itemize}
@@ -78,8 +77,8 @@
 \begin{frame}{Ewald summation}
 \begin{itemize}
 
-\item the dependency on $\bold{r}$ is $\frac{1}{\lvert \bold{r}\rvert }$ -- no convergence, no cut-off
-\item Ewald sum: decomposition into direct and reciprocal space components, based on Gaussian error function
+\item the dependency of $E$ on $\bold{r}$ is $\frac{1}{\lvert \bold{r}\rvert }$ -- no convergence, no cut-off
+\item Ewald summation: decomposition into direct and reciprocal space components, based on Gaussian error function
 \item the direct space component converges within a certain cut-off
 \item the reciprocal component converges in the Fourier space
 \end{itemize}
@@ -156,6 +155,7 @@ E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus {0}\}
 
 \section{Implementation}
 
+\iffalse
 \begin{frame}{MD time step in GROMACS}
 \begin{figure}
     \centering
@@ -166,6 +166,7 @@ E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus {0}\}
 \FloatBarrier
 \end{frame}
 
+
 \begin{frame}{MD time step in GROMACS, modified for PME GPU}
 \begin{figure}
     \centering
@@ -174,6 +175,7 @@ E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus {0}\}
 \end{figure}
 \FloatBarrier
 \end{frame}
+\fi %uncomment
 
 \begin{frame}{Calculating the spline parameters}
 \begin{itemize}
@@ -199,9 +201,9 @@ addition operations
 \begin{frame}{3D FFT}
 \begin{itemize}
 \item happens twice (real-to-complex before solving, complex-to-real after solving)
-\item implemented as a call to CUDA cuFFT library
+\item implemented as a simple call to CUDA cuFFT library
 \item with multiple PME processes requires all-to-all communication of the decomposed grid
-\item for this reason an option of using the existing CPU code (MPI + calls to FFTW library) exists
+\item for this reason an option of using the existing CPU FFT code (MPI + calls to FFTW library) exists
 % overlap
 \end{itemize}
 \end{frame}
@@ -231,16 +233,12 @@ addition operations
 % why is this here
 \begin{frame}{Results}
 \begin{itemize}
-\item implemented for a single GPU
+\item PME implemented in CUDA for a single GPU
 \item CPU PME used as reference for reciprocal and conserved energy values to ensure correctness
 \item supports FFT both on GPU and CPU (should help with future multi-GPU parallelization) 
 \item only interpolation order of 4 has been tried
-%\item works in a single PME/PP process
-%\item or as a single PME process with several PP ranks
-%\item load balancing works
+\item also supports separate PEM rank, PME grid size tuning, dynamic load balancing
 % more about decomposition
-% more about tuning
-% references?
 \end{itemize}
 \end{frame}
 
@@ -297,7 +295,7 @@ addition operations
 \item should also be easily extensible for interpolation orders other than 4
 (higher orders $\implies$ coarser grid $\implies$ less communication)
 \item supports a separate PME process with direct space decomposed over multiple PP processes, already viable for a machine with several NVIDIA GPUs 
-\item will be integrated into GROMACS in a couple of months
+\item hopefully integrated into GROMACS in a few months
 \end{itemize}
 \end{frame}
 
