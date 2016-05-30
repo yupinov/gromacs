@@ -15,8 +15,8 @@
 %\DeclareMathAlphabet{\mathbbold}{U}{bbold}{m}{n}
 
 %\newcommand{\draft}[1]{\textcolor{red}{#1}}
-%\newcommand{\draft}[1]{\textcolor{magenta}{\underline{#1}}}
-\newcommand{\draft}[1]{#1}
+\newcommand{\draft}[1]{\textcolor{magenta}{\underline{#1}}}
+%\newcommand{\draft}[1]{#1}
 \DeclareMathOperator\erf{erf}
 \DeclareMathOperator\erfc{erfc}
 
@@ -277,34 +277,39 @@ GROMACS \cite{gromacshome} is an open source software package for performing mol
 
 It is primarily designed for simulating biochemical molecules like proteins, lipids and nucleic acids that have a lot of complicated bonded interactions. Since GROMACS is extremely fast at calculating the non-bonded interactions (that usually dominate simulation's computational effort) many groups also use it for research on non-biological systems, e.g.~polymers.
 
-\section{GROMACS glossary}
-Here is a glossary of the GROMACS terms and abbreviations that are used throughout the report.
+\section{GROMACS and \draft{???} glossary}
+Here is a glossary of the terms and abbreviations that are used throughout the report.
 
 Rank - a single GROMACS process in a multi-process simulation (coming from the MPI term for single process).
-
-MPI - Message Parsing Interface, a common standard of the multi-process communication interface; has several implementations; is used extensively for the inter-process communication in various programming languages.
 
 PME - particle mesh Ewald algorithm, responsible for the computation of the long-range component of the forces/energy.
 
 PP - short-range particle-particle components of the forces/energy, namely bonded and non-bonded (NB) contributions.
 
-NB - non-bonded component of the short-range forces/energy computations; typically takes a significant amount of time, as it requires looping over all pairs of particles. 
+NB - non-bonded component of the short-range forces/energy computations; typically takes a significant amount of time, as it requires looping over a large number of particle pairs. 
 
 PME process/rank - a GROMACS process that performs exclusively PME calculations.
 
 PP process/rank - a GROMACS process that performs exclusively PP calculations (bonded and NB).  
 
+MPI - Message Parsing Interface, a common standard of the multi-process communication interface; has several implementations; is used extensively for the inter-process communication in various programming languages.
+
 %\draft{Atomic}
 
-\section{PME and short-range implementations} \label{rangeimpl}
+%draft{SPMD MPMD SIMD}
 
-The short-range calculations typically dominate the computational effort, so they remain the main optimization target in GROMACS. Since version 4.6 \cite{gromacs46}, GROMACS features native GPU acceleration for short-range non-bonded computations, as well as OpenMP parallelization. Moreover, there are many optimizations targeting specific versions of CUDA, OpenCL architectures and different SIMD instruction sets. 
 
-The short-range bonded (listed) component is only computed on CPU, as it has insignificant computational effort $O(N)$.
+\section{The PME and direct sum implementation} \label{rangeimpl}
 
-Currently, the PME is also computed only on CPU with SIMD optimizations. 
+The short-range non-bonded calculations typically dominate the computational effort, so they remain the main optimization target in GROMACS. Since version 4.6 \cite{gromacs46}, GROMACS features native GPU acceleration for the non-bonded computations, as well as OpenMP parallelization. Moreover, there are many optimizations targeting specific versions of CUDA, OpenCL architectures and different SIMD instruction sets. 
 
-The inter-process parallelization with MPI is employed by all computation stages of the MD step, as described in the section \ref{chapter:DD}.
+The short-range bonded (listed) component is only computed on CPU, as it has non-significant run time (typically less than 5\%), and computational effort $O(M)$, where $M$ is a number of bonds. 
+%It also conflicts with DD parallelism balancing.
+
+Currently, the PME is also computed on CPU with SIMD optimizations, and the PME GPU option would be a good addition, potentially increasing the performance in some cases. 
+
+The inter-process MPI communication is employed by the PME and NB implementations of the MD step, as described in the section \ref{chapter:DD}. It is used for SPMD parallelization (multiple processes computing local parts of the direct and PME sums), and even MPMD parallelization (multiple processes, where a $\frac{1}{4}$ of the total number works exclusively on the PME sum, and $\frac{3}{4}$ works only on the direct sum).
+The \draft{convention} is that any GROMACS process uses only a single GPU (which avoids switching between different GPU contexts). 
 
 \section{MD step}
 \FloatBarrier
