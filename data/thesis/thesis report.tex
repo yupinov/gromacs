@@ -329,7 +329,9 @@ Some steps, such as  the non-bonded work being split into 2 "local" and "non-loc
 
 %There exist several load balancing mechanisms in GROMACS, which are described below
 \section{Load balancing} \label{PMEtuning}
-Changing the electrostatic interaction length cut-off, as mentioned in the section \ref{sec_ewald}, influences the amount of computation performed in long- and short-range parts of the MD step. GROMACS uses this fact for the automatic load balancing at the beginning of the simulation run. Every certain number of MD steps the Coulomb cut-off, as well as the Fourier grid spacing, are scaled; the run-time measurements of the components are collected. Eventually, the parameter set with the best simulation performance is chosen as the optimal. This currently allows to push both CPU and GPU to their limit - both in single- and multi-process scenarios on a single compute node.
+Changing the electrostatic interaction length cut-off, as mentioned in the section \ref{sec_ewald}, influences the amount of computation performed in long- and short-range parts of the MD step. GROMACS uses this fact for the automatic load balancing at the beginning of the simulation run. Periodically the Fourier grid spacing is scaled (the Coulomb cut-off is adjusted accordingly); the average step run-time is measured over the next period. Eventually, the parameter set with the best simulation performance is chosen as the optimal. This allows to increase the utilization of CPUs and GPUs both in single- and multi-process scenarios on a single compute node. 
+
+What is commonly happening with the load balancing is that the relatively small CPU PME work is traded for much larger amount of the GPU NB work (by increasing the grid spacing and the cut-off distance), while benefiting the overall simulation performance \draft{(mention efforts).} This is the case where the GPU PME implementation could possibly alleviate the CPU performance bottleneck. 
 
 \section{Domain decomposition} \label{chapter:DD}
 Since most interactions in molecular simulations are local, domain decomposition is a natural way to decompose the system for the multi-node, multi-process simulations. In domain decomposition, a spatial domain is assigned to each process,
@@ -587,6 +589,9 @@ The CPU and GPU PME comparisons were as follows:
 %\draft{There is a clear division in the PME stages computational effort: computational effort of spreading and gathering (the first and last stages) is dependent on the number of particles $N$ as well as the interpolation order $l$ : $O(N\cdot l^3)$. The effort for the rest of the stages (forward FFT, convolution, backward FFT) is entirely dependent only on the dimensions of the discrete Fourier grid in the single process case. - wtf, its actually NlogN}
 %\draft{In multiprocess simulations each 3D FFT execution would require 2 MPI all-to-all communications, where the message size is also dependent on the grid dimensions. However, the communication latency and synchronisation overhead would also be just an important factors.
 %As for the single process implementation,} 
+
+%!!! \draft{grid spacing and particles/gridpoint; water represents typical charge density}
+
 
 The important input parameters affecting the PME performance are the number of particles and the spline interpolation order.
 The interpolation order is fixed in this implementation at 4, one of the most common values.
