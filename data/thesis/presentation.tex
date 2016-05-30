@@ -12,7 +12,7 @@
 \DeclareMathOperator\erfc{erfc}
 
 
-\author[Aleksei Iupinov]{Aleksei Iupinov\\{\footnotesize Supervised by: Berk Hess}}
+\author[Aleksei Iupinov]{Aleksei Iupinov \\{\footnotesize Supervised by: Berk Hess}}
 %\author{Aleksei Iupinov}
 \title{Master thesis project: \\Particle mesh Ewald on a GPU}
 \usepackage{subcaption}
@@ -30,18 +30,35 @@
 \titlepage
 \end{frame}
 
-\begin{frame}
-\tableofcontents
-\end{frame}
+%\begin{frame}
+%\tableofcontents
+%\end{frame}
 
 \section{Introduction}
-\begin{frame}{Molecular dynamics simulation performance}
+\begin{frame}{Molecular dynamics simulations' performance}
 \begin{itemize}
 \item modelling large organic molecules (hundreds of thousands atoms)
 \item scaling performance is important (time steps of $10^{-15}$ seconds, processes of $10^{-6}$ -- $10^{-3}$ seconds) 
-\item the balance shifting towards GPU/accelerator hardware (core speed limited, increasing number of cores instead)
+\item the computational balance shifting towards GPU/accelerator hardware (single core speed limited $\implies$ increasing number of cores instead)
 \item most computational time taken by electrostatic interactions
 \item PME (particle mesh Ewald) used for computing long-range component of electrostatics
+\end{itemize}
+\end{frame}
+
+\begin{frame}{GROMACS}
+\begin{itemize}
+\item open source MD software GROMACS 5.1
+\item direct non-bonded particle pair interactions computed either on CPU or GPU (CUDA/OpenCL) 
+\item PME only implemented for CPU
+\item potential benefits of PME on GPU:
+\begin{itemize}
+\item more performance
+\item more flexibility 
+\item most computation can be offloaded onto GPUs
+\item avoiding CPU bottleneck on machines with lots of GPU power  
+\end{itemize}
+\item the task is an implementation of  PME for a single GPU
+%mention cutoff
 \end{itemize}
 \end{frame}
 
@@ -51,17 +68,17 @@
 \item particles coordinates $\bold{r}_1, \dotsc, \bold{r}_N$ and charges $q_1, \dotsc, q_N$ known, forces $\bold{f}_1, \dotsc, \bold{f}_N$ acting on particles to be computed 
 \item electrostatic potential:
 \[E(\bold{r}_1, \dotsc, \bold{r}_N) = \frac{1}{4 \pi \varepsilon_0}\sum\limits_{i < j}\frac{q_i q_j}{\lvert \bold{r}_i-\bold{r}_j\rvert}\]
-\item forces are derived analytically:
+\item forces to be derived:
 \[\bold{f_i} = -\frac{\partial E}{\partial \bold{r_i}} \]
 \item large $N$ and computational effort $O(N^2) \implies$ slow computation!
 \end{itemize}
 \end{frame}
 
 \section{Method}
-\begin{frame}{Ewald sum}
+\begin{frame}{Ewald summation}
 \begin{itemize}
 
-\item interaction dependency is $\frac{1}{\lvert \bold{r}\rvert }$
+\item the dependency on $\bold{r}$ is $\frac{1}{\lvert \bold{r}\rvert }$ -- no convergence, no cut-off
 \item Ewald sum: decomposition into direct and reciprocal space components, based on Gaussian error function
 \item the direct space component converges within a certain cut-off
 \item the reciprocal component converges in the Fourier space
@@ -129,30 +146,15 @@ E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus {0}\}
 (3 dimensions, $p$ values and $p$ derivatives in each, $p$ typically 4 or 5)
 \item spread the particle charges on a discrete 3D grid ($p^3$ contributions per particle)
 \item perform real-to-complex 3D FFT of the grid
-\item solve for reciprocal energy, transform the grid
+\item calculate the reciprocal energy, transform the grid
 \item perform complex-to-real 3D FFT of the grid
-\item gather the particle forces from the grid ($p^3$ contributions per particle)
+\item gather the particle forces from the grid and reduce ($p^3$ contributions per particle)
 \end{enumerate}
 \end{frame}
 
 %pictures?
 
 \section{Implementation}
-\begin{frame}{Implementation}
-\begin{itemize}
-\item open source MD software GROMACS 5.1
-\item short-range particle pair interactions computed either on CPU or GPU (CUDA/OpenCL) 
-\item PME only implemented for CPU
-\item potential benefits of PME on GPU:
-\begin{itemize}
-\item more performance
-\item more flexibility, possibilities for load balancing 
-\item nearly all computation can be offloaded onto GPUs
-\item avoiding CPU bottleneck on machines with lots of GPU power  
-\end{itemize}
-%mention cutoff
-\end{itemize}
-\end{frame}
 
 \begin{frame}{MD time step in GROMACS}
 \begin{figure}
@@ -182,14 +184,15 @@ E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus {0}\}
 
 \begin{frame}{Spreading the charges}
 \begin{itemize}
-\item a large part of the runtime
+\item a large part of the run time
 \item charges accumulated onto the grid in parallel $\implies$ clashes of atomic 
 addition operations
 \item for PME order $p=4$ each particle affects $4^3 = 64$ cells
 \item a single thread works on one line (4 contributions)
 \item a warp works exactly on 2 particles (16 threads per particle)
 % picture
-\item the grid has an overlap of $p - 1$ cells in each direction, is wrapped afterwards by a separate small kernel 
+\item the grid is meant to be periodic
+\item the implementation grid has an overlap of $p - 1$ cells in each direction, is wrapped afterwards by a separate small kernel (integer division is costly)
 \end{itemize}
 \end{frame}
 
@@ -213,12 +216,12 @@ addition operations
 \end{itemize}
 \end{frame}
 
-\begin{frame}{Gather}
+\begin{frame}{Gathering the forces}
 \begin{itemize}
 \item counterpart of spreading
-\item has to perform reduction in shared memory or registers
+\item the grid is unwrapped before the gather
+\item has to perform force reduction for each particle in shared memory or registers
 \item same layout and scheduling as spreading (4 contributions per thread, 16 threads per particle)
-\item the grid is also unwrapped before the gather
 %\item typically 3 times as fast as spread on newer  
 \end{itemize}
 %layout picture
@@ -234,14 +237,14 @@ addition operations
 \item only interpolation order of 4 has been tried
 %\item works in a single PME/PP process
 %\item or as a single PME process with several PP ranks
-\item load balancing works
+%\item load balancing works
 % more about decomposition
 % more about tuning
 % references?
 \end{itemize}
 \end{frame}
 
-\begin{frame}{Individual kernels performance}
+\begin{frame}{Individual stages performance}
 \begin{itemize}
 \item a water box with number of atoms varying from 960 to 1536000
 \item a high end GPU (NVIDIA GTX TITAN X) 
@@ -256,7 +259,7 @@ addition operations
 
 \begin{frame}{Single process CPU/GPU comparison, 134201 atoms}
 \begin{itemize}
-\item short-range computed on GPU (NVIDIA GTX TITAN X)
+\item non-bonded interactions computed on GPU (NVIDIA GTX TITAN X)
 \item PME computed either on a CPU (Intel Core i7-5960X) or on the same GPU
 % threads varied
 \end{itemize}
@@ -271,7 +274,7 @@ addition operations
 
 \begin{frame}{2 processes (1 PP / 1 PME) CPU/GPU comparison}
 \begin{itemize}
-\item short-range computed on GPU (NVIDIA GTX TITAN X)
+\item non-bonded interactions computed on GPU (NVIDIA GTX TITAN X)
 \item PME computed either on a CPU (Intel Core i7-5960X) or on the second GPU (NVIDIA Quadro M6000)
 \end{itemize}
 \FloatBarrier
@@ -288,7 +291,7 @@ addition operations
 
 \begin{frame}{Conclusion}
 \begin{itemize}
-\item the single GPU implementation provides a foundation for further tuning
+\item the single GPU implementation provides a foundation for further work
 \item supports a separate PME process with direct space decomposed over multiple PP processes, already viable for a machine with several NVIDIA GPUs 
 \item should be easily extensible for scaling over multiple GPUs
 (compatible with the CPU FFT code supporting the Fourier grid decomposition)

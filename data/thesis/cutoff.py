@@ -5,7 +5,7 @@ import math
 # Compute the x and y coordinates for points on a sine curve
 x = np.arange(0.01, 5, 0.01)
 y = 1 / x
-beta = 0.7
+beta = 2
 ydir = [math.erfc(beta * i) / i for i in x]
 yrec = [math.erf(beta * i) / i for i in x]
 
