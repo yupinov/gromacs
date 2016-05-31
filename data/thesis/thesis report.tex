@@ -633,10 +633,7 @@ Most of the stages presented in Figure \ref{fig:kernels} correspond to single CU
 \end{figure}
 % GAPS irrelevant!
 
-It is no surprise overall that the FFT takes the larger ratio of the total GPU runtime, as the input size decreases. The reason for that is that the Coulomb cut-off has a fixed tuning range.
-% proofs
-
-Another observable feature on the chart is the wrapping, unwrapping, and the convolution kernels not scaling down well with input sizes. It is also related to their workload being entirely dependent on the grid dimensions.
+It is no surprise overall that the FFT takes the larger ratio of the total GPU runtime, as the input size decreases. Another observable feature on the chart is the wrapping, unwrapping, and the convolution kernels not scaling down well with input sizes. It might be related to their workload being entirely dependent on the grid dimensions, unlike the rest of the stages.
 
 Finally, it shows that the biggest part of computational time is spent in the spreading kernel. On weaker GPU's (especially with Kepler architecture) this kernel's major bottleneck is the global memory/L2 cache throughput. Atomic operations are the obvious reason for that. Typically the counterpart force gathering kernels is from 2 to 4 times as fast as the spreading. 
 
