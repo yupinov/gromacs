@@ -331,7 +331,7 @@ Some steps, such as  the non-bonded work being split into 2 "local" and "non-loc
 \section{Load balancing} \label{PMEtuning}
 Changing the electrostatic interaction length cut-off, as mentioned in the section \ref{sec_ewald}, influences the amount of computation performed in long- and short-range parts of the MD step. GROMACS uses this fact for the automatic load balancing at the beginning of the simulation run. Periodically the Fourier grid spacing is scaled (the Coulomb cut-off is adjusted accordingly); the average step run-time is measured over the next period. Eventually, the parameter set with the best simulation performance is chosen as the optimal. This allows to increase the utilization of CPUs and GPUs both in single- and multi-process scenarios on a single compute node. 
 
-What is commonly happening with the load balancing is that the relatively small CPU PME work is traded for much larger amount of the GPU NB work (by increasing the grid spacing and the cut-off distance), while benefiting the overall simulation performance \draft{(mention efforts).} This is the case where the GPU PME implementation could possibly alleviate the CPU performance bottleneck. 
+What is commonly happening with the load balancing is that the relatively small amount of CPU PME work is traded for much larger amount of the GPU NB work (by increasing the grid spacing and the cut-off distance), while benefiting the overall simulation performance \draft{(mention efforts).} This is the case where the GPU PME implementation could possibly alleviate the CPU performance bottleneck. 
 
 \section{Domain decomposition} \label{chapter:DD}
 Since most interactions in molecular simulations are local, domain decomposition is a natural way to decompose the system for the multi-node, multi-process simulations. In domain decomposition, a spatial domain is assigned to each process,
@@ -594,11 +594,11 @@ The CPU and GPU PME comparisons were as follows:
 
 
 The important input parameters affecting the PME performance are the number of particles and the spline interpolation order.
-The interpolation order is fixed in this implementation at 4, one of the most common values.
+The interpolation order is fixed in this implementation at 4, one of the most common values. %\draft mention thsi earlier?
 
 % \draft{The reasons for that...}.
 
-There is also a discrete grid size, which directly affects the runtime of the FFT and convolution stages of the algorithm. However, as it is explained in the section \ref{PMEtuning}, the grid size and spacing can be automatically tuned for better PP/PME load balance, and this is the default behaviour of GROMACS. 
+There is also a discrete grid size, which directly affects the runtime of the FFT and convolution stages of the algorithm. However, as it is explained in the section \ref{PMEtuning}, the grid size and spacing can be automatically tuned for better PP/PME load balance, changing the grid spacing and the short-ranged interaction cut-off, and this is the default behaviour of GROMACS. 
 
 %The average GPU and CPU runtime per single PME step are being compared. The CPU time is measured by standard wallclock functions. The GPU time is taken as a sum of PME kernels' execution times, measured with the use of CUDA events mechanism. \draft{It is shown further that it is hopeless for multiple streams}. The data transfers between the GPU and the host at the step beginning and end are excluded as they are not \draft{significant and in the future will } also beshared with the non-bonded work.
 
@@ -611,10 +611,11 @@ There is also a discrete grid size, which directly affects the runtime of the FF
 \section{Individual kernels performance} \label{chapter_kernels}
 
 The first interesting thing to try is to measure the performance of the individual algorithm components across the different input data sizes.
-For this purpose, the kernel performance has been measured using the NVIDIA CUDA profiling tools (\textit{nvprof}, \textit{nvvp}). A synthetic benchmark consisting of water molecules with number of atoms varying from 960 to 1536000 has been used. 
-Concurrent kernel execution was turned off to produce more reliable results (the concurrent execution can increase the kernel run times, also increasing the  dispersion). The performance has been measured only for the MD steps after the load balancing, using the GROMACS command-line option "-resetstep". 
- 
-This data has been measured on the NVIDIA GTX TITAN X GPU, one of the fastest consumer-grade GPUs.
+For this purpose, the kernel performance has been measured using the NVIDIA CUDA profiling tools (\textit{nvprof}, \textit{nvvp}). Concurrent kernel execution was turned off to produce more reliable results (the concurrent execution can increase the kernel run times, also increasing the  dispersion). The performance has been measured only for the MD steps after the load balancing, using the GROMACS command-line option "-resetstep". 
+
+A synthetic benchmark consisting of water molecules with number of atoms varying from 960 to 1536000 has been used. The density of the water is close to the density of protein/cell membrane, which is a typical input in a biomolecular simulation.
+
+This comparison has been performed on the NVIDIA GTX TITAN X GPU, one of the fastest consumer-grade GPUs.
 
 Most of the stages presented at the figure \ref{fig:kernels} correspond to single CUDA kernels. Notable exception is FFT performed by the CUDA cuFFT library, which while having only 2 function calls (real-to-complex and complex-to-real) per MD step, spawns around 8 kernels for each call. The kernels being called also differ depending on the grid size. Moreover, the cuFFT functions have no launch configuration and bounds, unlike CUDA kernels, exposing no granularity control, as they are pre-tuned for optimal performance. 
 
