@@ -277,7 +277,7 @@ GROMACS \cite{gromacshome} is an open source software package for performing mol
 
 It is primarily designed for simulating biochemical molecules like proteins, lipids and nucleic acids that have a lot of complicated bonded interactions. Since GROMACS is extremely fast at calculating the non-bonded interactions (that usually dominate simulation's computational effort) many groups also use it for research on non-biological systems, e.g.~polymers.
 
-\section{GROMACS and \draft{???} glossary}
+\section{GROMACS \draft{technical} glossary}
 Here is a glossary of the terms and abbreviations that are used throughout the report.
 
 Rank - a single GROMACS process in a multi-process simulation (coming from the MPI term for single process).
@@ -615,7 +615,7 @@ A synthetic benchmark consisting of water molecules with number of atoms varying
 
 This comparison has been performed on the NVIDIA GTX TITAN X GPU, one of the fastest consumer-grade GPUs.
 
-Most of the stages presented in Figure \ref{fig:kernels} correspond to single CUDA kernels. Notable exception is FFT performed by the CUDA cuFFT library, which while having only 2 function calls (real-to-complex and complex-to-real) per MD step, spawns around 8 kernels for each call. The kernels being called also differ depending on the grid size. Moreover, the cuFFT functions have no launch configuration and bounds, unlike CUDA kernels, exposing no granularity control, as they are pre-tuned for optimal performance. 
+Most of the stages presented in Figure \ref{fig:kernels} correspond to single CUDA kernels. Notable exception is FFT performed by the CUDA cuFFT library, which while having only 2 function calls (real-to-complex and complex-to-real) per MD step, uses from 7 to 10 individual kernels for each call, depending on the grid size. Moreover, the cuFFT functions have no launch configuration and bounds, unlike CUDA kernels, exposing no granularity control, as they are pre-tuned for optimal performance. 
 
 \iffalse
 \begin{figure} [h!]
@@ -625,19 +625,31 @@ Most of the stages presented in Figure \ref{fig:kernels} correspond to single CU
     \label{fig:kernels_}
 \end{figure}
 \fi
+
 \begin{figure} [h!]
     \centering
     \includegraphics[width=1\textwidth]{pics/kernels-noconcur-2.png}
     \caption{Performance of the individual PME stages as a function of the number of the input particles on a loglog scale}
     \label{fig:kernels}
 \end{figure}
-% GAPS irrelevant!
+\FloatBarrier
 
 It is no surprise overall that the FFT takes the larger ratio of the total GPU runtime, as the input size decreases. Another observable feature on the chart is the wrapping, unwrapping, and the convolution kernels not scaling down well with input sizes. It might be related to their workload being entirely dependent on the grid dimensions, unlike the rest of the stages.
 
-Finally, it shows that the biggest part of computational time is spent in the spreading kernel. On weaker GPU's (especially with Kepler architecture) this kernel's major bottleneck is the global memory/L2 cache throughput. Atomic operations are the obvious reason for that. Typically the counterpart force gathering kernels is from 2 to 4 times as fast as the spreading. 
+It is also shown that the biggest share of computational time is spent in the spreading kernel. Typically this kernel's major bottleneck is the global memory/L2 cache throughput - due to atomic addition operation clashes. 
 
+To demonstrate this point further, the comparison between the CPU and GPU run-times of the principal PME stages is shown in Figure \ref{fig:bar}. The proportions of the run-times are also presented as numbers on top of bars. The input data is a model of ADH enzyme (134201 atoms).
+
+\begin{figure} [h!]
+    \centering
+    \includegraphics[width=1\textwidth]{pics/bar.png}
+    \caption{Comparison of the CPU and GPU PME stages run-times}
+    \label{fig:bar}
+\end{figure}
 \FloatBarrier
+
+The force gathering stage has larger speed-up than the rest of the stages. While both the gathering and spreading part have similar run-times on CPU and are memory-bound on GPU, their run-time ratio is rather different on GPU. This suggests that changing the current rather straightforward spreading algorithm should be a priority target for improving the PME GPU performance further. One of the options could be basing the single thread work not around a single particle's contribution line, but around a single grid cell/line. Moreover, this approach could be an alternative to the current algorithm, the choice depending on the density of the system (median number of particles contributing to a single grid point).
+
 \section{Overlapping with the non-bonded kernels}\label{overlapped}
 
 GROMACS uses GPU for the computation of short-range non-bonded electrostatic interactions. One of the project's goals was to study the possibility of calculating both short-range and long-range interactions on the same GPU at the same time, with so called overlapping. CUDA architectures allow for several command streams to execute concurrently, and newer architectures expose 2 possible values of stream priorities.
@@ -658,7 +670,7 @@ The top timeline corresponds to the low-priority local NB command stream, the bo
 \end{figure}
 \FloatBarrier
 
-From the figure it is quite clear that once the low-priority NB work occupies the GPU, the high priority PME kernels have a hard time getting launched as evidenced by the gaps, even though the PME has been launched in advance before the NB kernel has even started. The cuFFT consisting of many kernels amplifies the problem. The gaps are also rather irregular. This counter-intuitive behaviour is obviously related to the GPU internal scheduling mechanism, which NVIDIA does not disclose. 
+From the figure it is quite clear that once the low-priority NB work occupies the GPU, the high priority PME kernels have a hard time getting launched as evidenced by the gaps, even though the PME has been launched in advance before the NB kernel has even started. The cuFFT consisting of many kernels amplifies the problem. The gaps are also rather irregular. This counter-intuitive behaviour is most likely related to the GPU internal task scheduling mechanism, which NVIDIA does not disclose. 
 
 The only feasible solutions for decreasing the gaps are increasing the granularity of work (launching multiple NB kernels with small batches of data), and ultimately moving to persistent kernels, which are always running on a GPU and routinely polling host-mapped memory for a new workload. This requires a certain amount of effort, of course. Another thing that would help would be the ability to semi-statically delimit the GPU to only allow running certain streams on certain number of SMs. However, such thing currently does not exist in CUDA, and likely will not be exposed in the future.
 
@@ -719,7 +731,7 @@ Kernel concurrency slowdown, \% & -25.8 &-23.88 & -19.28& -4.07 & 14.41 & 13.63 
 %Overall, this result is somewhat disappointing, and that is even before the kernel launch overhead and memory transfer overhead are taken into account.
 
 
-\section{CPU and GPU performance comparison}
+\section{CPU and GPU simulation performance comparisons}
 
 For the multi-process simulations it is sensible to compare the overall simulation performance results by the single characteristic the end user is most interested in - the simulation time computed per real time. In GROMACS, it is usually measured in ns/day - amount of nanoseconds of the simulation runtime per real wall-clock time elapsed for computation.
 
@@ -762,11 +774,11 @@ This comparison demonstrates not only a noticeable parallelization speed-up of P
 %\draft{The certain NVIDIA hardware also exposes 2 levels of priorities for CUDA streams. For example, GROMACS running with multiple processes and domain decomposition uses the high priority stream to schedule the calculation of the so called "non-local" non-bonded interactions, and schedule the rest in the low priority stream. Non-local particles are the ones in the buffer zones close to the other parts of the decomposed domain, therefore affecting them; the results of their computation have to be communicated among processes as soon as possible for better performance (FIGURE).}
 
 % Performance of all the GPU work suffers by ...\% on average.
- 
+
     
 \iffalse
 
-\section{Separate PME process performance}
+%\section{Separate PME process performance}
 
 For this test, a compute node with 2 16-core AMD Opteron CPUs and 2 NVIDIA GTX TITAN GPUs is used.
 
