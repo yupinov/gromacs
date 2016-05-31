@@ -384,11 +384,12 @@ In this chapter, the PME on a GPU implementation details and choices are describ
 
 \section{GPU programming}
 
-General-purpose computing on graphics processing units (GPGPU) is the use of a GPU, which typically handles computation only for computer graphics, to perform computation in applications traditionally handled by the CPU. The main reason for this phenomenon is GPU having a lot of specialized processing units, allowing for efficient SIMD (Single Instruction Multiple Data) approach in algorithms with exposed parallelism and minimum amount of branching.
+General-purpose computing on graphics processing units (GPGPU) is the use of a GPU, which typically handles computation only for computer graphics, to perform computation in applications traditionally handled by the CPU. A modern GPU typically has thousands of specialized processing units, allowing to achieve better performance than CPU in programs with exposed parallelism and minimum amount of branching. % Another factor in favour of popularity of GPU programming is the stagnation of the CPU clock speeds and efficiency in recent years.
 
 Currently there are 2 main toolkits for GPU programming: NVIDIA's proprietary platform CUDA, and Apple/Khronos Group's OpenCL standard which is supported by many hardware vendors. While OpenCL aims higher, and unlike CUDA, is targeting not only NVIDIA hardware, and not only GPUs, it has not gained much traction yet. CUDA is a single-vendor platform directly tied onto its implementation; OpenCL is a wider standard which by itself does not guarantee adequate performance on a specific hardware.
 
 Due to reasons described in the project scope (Section \ref{chapter_scope}), CUDA toolkit (version 7.5) was chosen for the PME implementation. In recent years, several popular MD simulation packages have adopted and explored CUDA implementations of PME: AMBER \cite{amber}, ACEMD \cite{acemd}, LAMMPS \cite{lammps}.
+%\draft{So how do I end this paragraph}
 
 %The CUDA platform is a software layer that gives direct access to the NVIDIA GPU's virtual instruction set and parallel computational elements, for the execution of compute kernels. The CUDA platform is designed to work with programming languages such as C, C++ and Fortran. 
 
@@ -422,7 +423,7 @@ Shared memory - a low-latency memory bank, has a scope of a single kernel's bloc
 
 Texture memory - a read only GPU memory bank, optimized for 2D access pattern; uses smaller cache lines with respect to the global memory.
 
-Divergence - the behaviour of the threads in the same warp executing different instructions at the same line of code based on a condition. What is actually happening on GPU SM's is that all the threads have to go through all the branches of a conditional, while the specific threads ignore the instruction result if the condition is false for them. Divergence reduces the kernel performance.
+Divergence - the behaviour of the threads in the same warp executing different instructions at the same line of code based on a condition. What is actually happening on GPU SM's is that all the threads have to go through all the branches of a conditional, while the specific threads ignore the instruction result if the condition is false for them. Divergence can decrease kernel performance and is overall an undesirable occurrence in GPU programming.
 
 Coalesced memory access - an optimal behaviour for accessing the memory within CUDA device code. The neighbouring threads within a warp have to access the neighbouring 4-byte long memory areas for the best cache utilisation, as data is cached in continuous cache lines (sized 128 bytes). 
 
@@ -606,7 +607,7 @@ There is also a discrete grid size, which directly affects the runtime of the FF
 
 %A system with varying number of particles is ran for several fixed values of the Fourier grid sizes.
 
-\section{Individual kernels performance} \label{chapter_kernels}
+\section{PME stages performance} \label{chapter_kernels}
 
 The first interesting thing to try is to measure the performance of the individual algorithm components across the different input data sizes.
 For this purpose, the kernel performance has been measured using the NVIDIA CUDA profiling tools (\textit{nvprof}, \textit{nvvp}). Concurrent kernel execution was turned off to produce more reliable results (the concurrent execution can increase the kernel run times, also increasing the  dispersion). The performance has been measured only for the MD steps after the load balancing, using the GROMACS command-line option "-resetstep". 
@@ -634,7 +635,7 @@ Most of the stages presented in Figure \ref{fig:kernels} correspond to single CU
 \end{figure}
 \FloatBarrier
 
-It is no surprise overall that the FFT takes the larger ratio of the total GPU runtime, as the input size decreases. Another observable feature on the chart is the wrapping, unwrapping, and the convolution kernels not scaling down well with input sizes. It might be related to their workload being entirely dependent on the grid dimensions, unlike the rest of the stages.
+It is no surprise overall that the FFT takes the larger ratio of the total GPU runtime, as the input size decreases. Another observable feature on the chart is the wrapping, unwrapping, and the convolution kernels not scaling down well with input sizes. It is most likely related to their workload being entirely dependent on the grid dimensions, unlike the rest of the stages.
 
 It is also shown that the biggest share of computational time is spent in the spreading kernel. Typically this kernel's major bottleneck is the global memory/L2 cache throughput - due to atomic addition operation clashes. 
 
