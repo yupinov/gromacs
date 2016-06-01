@@ -353,14 +353,23 @@ which will then integrate the equations of motion for the particles that current
 domain.
 
 GROMACS currently uses the eighth shell method, which is described in the GROMACS 4 paper \cite{gromacs4dd}. In the most general case of a triclinic unit cell, the Cartesian space in divided with a 1-, 2-, or 3-D grid in
-parallelepipeds which are called domain decomposition cells. Each cell is assigned to a certain particle-particle 
+parallelepipeds which are called domain decomposition cells. Each cell is assigned to a single 
 process. 
 
 The multi-process PME calculations involve a PME grid decomposition.
-Since within PME all particles interact with each other no matter the distance, global communication is required (mostly for the FFT stage). The broadcast communication is the limiting factor for multi-process performance scaling. It also introduces the new degree of freedom into already complex task of the load balancing - now the simulation not only depends on the CPU/GPU load, but on the network load as well! 
- To reduce the effect of this problem, some processes are selected to do only the PME calculation, while the other processes, called particle-particle (PP) processes, do the rest of the work - the bonded and non-bonded summation. The number of the PME-only processes is usually limited to $\frac{1}{4}$ of the total process number. When the number of PME processes is reduced by a factor of
-4, the number of communication calls is reduced by about a factor of 16. Or put differently, the simulation can now effectively scale to 4 times more processes.
+Since within PME all particles interact with each other no matter the distance, global communication is required (mostly for the FFT stage). The broadcast communication is the limiting factor for multi-process performance scaling. It also introduces the new degree of freedom into already complex task of the dynamic load balancing - now the simulation not only depends on the CPU/GPU load, but on the communication latency as well. An example of inter-process PME communication is presented in Figure \ref{fig:DD} by red arrows.
+
+ \begin{figure} [htpb]
+    \centering
+    \includegraphics[width=1\textwidth]{pics/DD.png}
+    \caption{Example of domain decomposition over 8 processes without (left) and with (right) PME-only processes}
+    \label{fig:DD}
+\end{figure}
  
+ \FloatBarrier
+
+ To reduce the effect of this problem, some processes are selected to do only the PME calculation, while the other processes (called particle-particle, or PP) perform the rest of the work - the bonded and non-bonded direct-space summation. The number of the PME-only processes is usually limited to $\frac{1}{4}$ of the total process number. When the number of PME processes is reduced by a factor of 4, the number of communication calls is reduced by about a factor of 16. Or put differently, the simulation can now effectively scale to 4 times more processes. Additional PP-PME coordinate and force communication (blue arrows) is required, but the total communication complexity is lower.
+
 \iffalse
 Multi-process GROMACS simulations have dynamic load balancing capabilities as well.
 The system is partitioned over the processes at the beginning of each MD step in which neighbour
@@ -377,15 +386,9 @@ That is why there exists a dynamic load balancing algorithm where the volume of 
 cell can be adjusted independently.
 \fi
 
-\begin{figure}
-    \centering
-    \includegraphics[width=1\textwidth]{pics/DD.png}
-    \caption{Example of domain decomposition over 8 processes without (left) and with (right) PME-only processes}
-    \label{fig:DD}
-\end{figure}
-\FloatBarrier
 
-Additional PP - PME coordinate and force communication (blue arrows) is required, but the total communication complexity is lower.
+
+
 
 %\draft{no reference to the figure!}
 
@@ -483,13 +486,13 @@ Additional input data that is copied to the GPU only occasionally (on any step d
 \item Local grid line indices size of 5 times the grid size to allow for particles (to be out of the triclinic unit-cell by up to 2 box lengths in each direction, which might be required for a very skewed unit-cell)
 \item Reciprocal box vectors
 \end{itemize}
-All of this data is computed on a CPU. It has a low computational effort and parallelization possibility. The grid line indices are just lookup tables for a modulo operation results with some corrections for the rounding issues, and modulo is a rather costly operation on a GPU.
+This data is computed on a CPU, as it has a constant and very low computational effort. The grid line indices are just lookup tables for a modulo operation results with some corrections for the rounding issues, and modulo is a rather costly operation on a GPU.
 
 The copying of coordinates and charges constitutes the majority of each step's initial data transfers, because of their regularity (each step) and size (in total 16 bytes per particle with a single precision) as well.
 
 Pairwise particle interaction calculations are also typically performed on GPU in GROMACS, thus in CUDA case the particle data should be shared between the NB (non-bonded) and PME kernels, and only copied once. However, that is not part of the core implementation, as the NB kernel currently use a different particle data layout, so implementing a data reordering kernel would be required. This should not require a lot of effort as it is mostly the question of the higher level MD step code restructuring. It also does not affect the performance adversely, as the data copying operations are overlapped with kernels: by the time the NB particle data transfer starts, the GPU is working on the first PME kernel.
 
-\section{Computation of the spline values and derivatives}
+\section{Computation of the spline values \\ and derivatives}
 For each particle and for each dimension the individual B-spline interpolation parameters are computed: $l$ values and $l$ derivative values, where $l$ is the spline interpolation order. This naturally suggests using 3 threads per particle. The particle coordinates are used for calculation.
 The question of the optimal layout for the spline parameters is interesting. Shown in \ref{fig:spline} is my choice for an in-memory $\theta$ and $d\theta$ arrays' layout. 
 \FloatBarrier
