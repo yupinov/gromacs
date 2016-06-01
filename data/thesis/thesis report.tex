@@ -653,9 +653,13 @@ The force gathering stage has larger speed-up than the rest of the stages. While
 GROMACS uses GPU for the computation of short-range non-bonded electrostatic interactions. One of the project's goals was to study the possibility of calculating both short-range and long-range interactions on the same GPU at the same time, with so called overlapping. CUDA architectures allow for several command streams to execute concurrently, and newer architectures expose 2 possible values of stream priorities.
 
 The modified MD step in this implementation launches the largest chunk of the PME work on a GPU before the NB work is launched (Figure \ref{fig:step-gpu}). The PME stream is set to a high priority, using the CUDA runtime API, while the NB stream has lower priority. 
-The idea was to have the PME launched in advance and be computed in background, while the NB kernel with its irregular occupancy performs the main computational workload.
+The idea was to have the PME launched in advance and be computed in background, while the NB kernel with its irregular occupancy performs the main computational workload. This allows for:
+\begin{itemize}
+\item simultaneous PME and NB execution (with potential loss of performance);
+\item simultaneous memory transfers in one stream and kernel executions in another stream with no loss of performance.
+\end{itemize}
 
-Pictured in Figure \ref{fig:overlap} is a typical GPU PME and NB overlap timeline produced in the NVIDIA Visual Profiler with the concurrent kernel execution enabled.
+What was not expected with multiple CUDA streams is a kernel scheduling problem. Pictured in Figure \ref{fig:overlap} is a typical GPU PME and NB overlap timeline produced in the NVIDIA Visual Profiler with the concurrent kernel execution enabled.
 %, on a NVIDIA GTX 750 GPU (Maxwell architecture). 
 The top timeline corresponds to the low-priority local NB command stream, the bottom one - to the high priority PME stream. The individual colored bars correspond to kernels (or sometimes memory transfers). 
 
@@ -668,11 +672,12 @@ The top timeline corresponds to the low-priority local NB command stream, the bo
 \end{figure}
 \FloatBarrier
 
-From the figure it is quite clear that once the low-priority NB work occupies the GPU, the high priority PME kernels have a hard time getting launched as evidenced by the gaps, even though the PME has been launched in advance before the NB kernel has even started. The cuFFT consisting of many kernels amplifies the problem. The gaps are also rather irregular. This counter-intuitive behaviour is most likely related to the GPU internal task scheduling mechanism, which NVIDIA does not disclose. 
+From the figure it is quite clear that once the low priority NB work occupies the GPU, the high priority PME kernels have a hard time getting launched as evidenced by the gaps, even though the PME has been launched in advance before the NB kernel has even started. The cuFFT consisting of many kernels amplifies the problem. The gaps are also rather irregular. This counter-intuitive behaviour is most likely related to the GPU internal task scheduling mechanism, which NVIDIA does not disclose. 
 
-The only feasible solutions for decreasing the gaps are increasing the granularity of work (launching multiple NB kernels with small batches of data), and ultimately moving to persistent kernels, which are always running on a GPU and routinely polling host-mapped memory for a new workload. This requires a certain amount of effort, of course. Another thing that would help would be the ability to semi-statically delimit the GPU to only allow running certain streams on certain number of SMs. However, such thing currently does not exist in CUDA, and likely will not be exposed in the future.
+The only feasible solutions for decreasing the gaps are increasing the granularity of work (launching multiple NB kernels with small batches of data), and ultimately moving to persistent kernels, which are always running on a GPU and routinely polling host-mapped memory for a new workload. This requires a certain amount of effort, of course. Another thing that would help would be the ability to semi-statically delimit the GPU to only allow running certain streams on certain number of SMs. However, such capability currently does not exist in CUDA, and likely will not be exposed in the future.
 
- What is also happening in the concurrent execution case is that the kernels tend to execute longer. We can take the data from the previous section, run the measurements again with the concurrent kernel execution enabled, and compare the total kernel runtime (table \ref{concur}). Only the small systems avoid this, but the big point of using the GPU parallelization in the first place is that we are able to process robustly much more data in parallel, as compared to the CPU version. 
+\iffalse
+ What is also happening in the concurrent execution case is that the kernels tend to execute longer. We can take the individual kernel performance data from the previous section, run the measurements again with the concurrent kernel execution enabled, and compare the total kernel runtime (table \ref{concur}). Only the small systems avoid this, but the big point of using the GPU parallelization in the first place is that we are able to process robustly much more data in parallel, as compared to the CPU version. 
  
 \begin{table} 
 \resizebox{\textwidth}{!}{
@@ -703,7 +708,7 @@ Number of atoms & 	Kernel runtime,
 \end{table}
 
 \FloatBarrier
-
+\fi
 \iffalse
 \begin{table}
 \resizebox{\textwidth}{!}{
