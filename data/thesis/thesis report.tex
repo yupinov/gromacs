@@ -276,7 +276,7 @@ GROMACS \cite{gromacshome} is an open source software package for performing mol
 
 It is primarily designed for simulating biochemical molecules like proteins, lipids and nucleic acids that have a lot of complicated bonded interactions. Since GROMACS is extremely fast at calculating the non-bonded interactions (that usually dominate simulation's computational effort) many groups also use it for research on non-biological systems, e.g.~polymers.
 
-\section{GROMACS \draft{technical} glossary}
+\section{GROMACS and parallelization glossary}
 Here is a glossary of the terms and abbreviations that are used throughout the report.
 
 MPI - Message Parsing Interface, a common standard of the multi-process communication interface; has several implementations; is used extensively for the inter-process communication in various programming languages.
@@ -293,9 +293,10 @@ PME process/rank - a GROMACS process that performs exclusively PME calculations.
 
 PP process/rank - a GROMACS process that performs exclusively PP calculations (bonded and NB).  
 
-%\draft{Atomic}
+Atomic operation - a sequence of one or more machine instructions that are guaranteed to execute sequentially, without interruption (from the point of view of other programs running at the same time). An example use case of an atomic operation is a single memory location being updated from many threads/programs simultaneously, e.g. to calculate a sum or a maximum value.
 
-%draft{SPMD MPMD SIMD}
+SPMD, MPMD, SIMD - types of the computing architectures and multiprogramming approaches, according to Flynn's taxonomy. SIMD stands for "Single Instruction, Multiple Data", e.g. vector operations on CPUs. 
+SPMD is an extension of SIMD that stands for "Single Program, Multiple Data", e.g. parallelization involving the data decomposition across multiple identical processes. MPMD stands for "Multiple Programs, Multiple Data", e.g. "server/client" application architecture.
 
 
 \section{The PME and direct sum implementation} \label{rangeimpl}
@@ -394,7 +395,7 @@ Due to reasons described in the project scope (Section \ref{chapter_scope}), CUD
 %The CUDA platform is a software layer that gives direct access to the NVIDIA GPU's virtual instruction set and parallel computational elements, for the execution of compute kernels. The CUDA platform is designed to work with programming languages such as C, C++ and Fortran. 
 
 \section{CUDA glossary}
-Here is a basic glossary of CUDA terms that are used throughout the report.
+Here is a basic glossary of CUDA-specific terms that are used throughout the report.
  
 Thread - smallest independent sequence of programmed instructions.
 
@@ -404,7 +405,7 @@ Stream - sequence (possibly one out of several) of kernels and/or functions bein
 
 Streaming multiprocessor (SM) - a processing unit handling up to hundreds of threads. A single GPU can have up to dozens of SMs.
 
-Warp - the smallest group of threads executed in parallel by a single SM. Warp size is currently always 32. Individual threads composing a warp start together at the same program address, but they have their own instruction address counter and register state and are therefore free to branch and execute independently (increasing the runtime). The term warp originates from weaving, the first parallel thread technology. 
+Warp - the smallest group of threads executed in parallel by a single SM. Warp size is currently always 32 on all GPUs. Individual threads composing a warp start together at the same program address, but they have their own instruction address counter and register state and are therefore free to branch and execute independently (increasing the runtime). The term warp originates from weaving, the first parallel thread technology. 
 
 Block - a group of threads of a constant size. Usually the size is chosen by a programmer as multiple of the warp size. A block is assigned by CUDA runtime to be executed in its entirety by a single SM. For developers convenience, threads within a block can be accessed by 1D, 2D or 3D indices.
 
