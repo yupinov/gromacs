@@ -368,7 +368,7 @@ Since within PME all particles interact with each other no matter the distance, 
  
  \FloatBarrier
 
- To reduce the effect of this problem, some processes are selected to do only the PME calculation, while the other processes (called particle-particle, or PP) perform the rest of the work - the bonded and non-bonded direct-space summation. The number of the PME-only processes is usually limited to $\frac{1}{4}$ of the total process number. When the number of PME processes is reduced by a factor of 4, the number of communication calls is reduced by about a factor of 16. Or put differently, the simulation can now effectively scale to 4 times more processes. Additional PP-PME coordinate and force communication (blue arrows) is required, but the total communication complexity is lower.
+ To reduce the effect of this problem, some processes are selected to do only the PME calculation, while the other processes (called particle-particle, or PP) perform the rest of the work - the bonded and non-bonded direct-space summation. The number of the PME-only processes is usually limited to $\frac{1}{4}$ of the total process number. When the number of PME processes is reduced by a factor of 4, the number of communication calls is reduced by about a factor of 16. Or put differently, the simulation can effectively scale to 4 times more processes. Additional PP-PME coordinate and force communication (blue arrows) is required, but the total communication complexity is lower.
 
 \iffalse
 Multi-process GROMACS simulations have dynamic load balancing capabilities as well.
