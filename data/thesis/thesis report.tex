@@ -15,8 +15,7 @@
 %\DeclareMathAlphabet{\mathbbold}{U}{bbold}{m}{n}
 
 %\newcommand{\draft}[1]{\textcolor{red}{#1}}
-\newcommand{\draft}[1]{\textcolor{magenta}{\underline{#1}}}
-%\newcommand{\draft}[1]{#1}
+\newcommand{\draft}[1]{#1}
 \DeclareMathOperator\erf{erf}
 \DeclareMathOperator\erfc{erfc}
 
@@ -280,6 +279,8 @@ It is primarily designed for simulating biochemical molecules like proteins, lip
 \section{GROMACS \draft{technical} glossary}
 Here is a glossary of the terms and abbreviations that are used throughout the report.
 
+MPI - Message Parsing Interface, a common standard of the multi-process communication interface; has several implementations; is used extensively for the inter-process communication in various programming languages.
+
 Rank - a single GROMACS process in a multi-process simulation (coming from the MPI term for single process).
 
 PME - particle mesh Ewald algorithm, responsible for the computation of the long-range component of the forces/energy.
@@ -291,8 +292,6 @@ NB - non-bonded component of the short-range forces/energy computations; typical
 PME process/rank - a GROMACS process that performs exclusively PME calculations.
 
 PP process/rank - a GROMACS process that performs exclusively PP calculations (bonded and NB).  
-
-MPI - Message Parsing Interface, a common standard of the multi-process communication interface; has several implementations; is used extensively for the inter-process communication in various programming languages.
 
 %\draft{Atomic}
 
@@ -308,8 +307,7 @@ The short-range bonded (listed) component is only computed on CPU, as it has non
 
 Currently, the PME is also computed on CPU with SIMD optimizations, and the PME GPU option would be a good addition, potentially increasing the performance in some cases. 
 
-The inter-process MPI communication is employed by the PME and NB implementations of the MD step, as described in Section \ref{chapter:DD}. It is used for SPMD parallelization (multiple processes computing local parts of the direct and PME sums), and even MPMD parallelization (multiple processes, where a $\frac{1}{4}$ of the total number works exclusively on the PME sum, and $\frac{3}{4}$ works only on the direct sum).
-The \draft{convention} is that any GROMACS process uses only a single GPU (which avoids switching between different GPU contexts). 
+The inter-process MPI communication is employed by the PME and NB implementations of the MD step, as described in Section \ref{chapter:DD}. It is used for SPMD parallelization (multiple processes computing local parts of the direct and PME sums), and even MPMD parallelization (multiple processes, where a $\frac{1}{4}$ of the total number works exclusively on the PME sum, and $\frac{3}{4}$ works only on the direct sum). The current program architecture is such that any single GROMACS process uses only a single GPU (which avoids switching between different GPU contexts). 
 
 \section{MD step}
 \FloatBarrier
@@ -331,7 +329,9 @@ Some steps, such as  the non-bonded work being split into 2 "local" and "non-loc
 \section{Load balancing} \label{PMEtuning}
 Changing the electrostatic interaction length cut-off, as mentioned in Section \ref{sec_ewald}, influences the amount of computation performed in long- and short-range parts of the MD step. GROMACS uses this fact for the automatic load balancing at the beginning of the simulation run. Periodically the Fourier grid spacing is scaled (the Coulomb cut-off is adjusted accordingly); the average step run-time is measured over the next period. Eventually, the parameter set with the best simulation performance is chosen as the optimal. This allows to increase the utilization of CPUs and GPUs both in single- and multi-process scenarios on a single compute node. 
 
-What is commonly happening with the load balancing is that the relatively small amount of CPU PME work is traded for much larger amount of the GPU NB work (by increasing the grid spacing and the cut-off distance), while benefiting the overall simulation performance \draft{(mention efforts).} This is the case where the GPU PME implementation could possibly alleviate the CPU performance bottleneck. 
+What is commonly happening with the load balancing is that the relatively small amount of CPU PME work is traded for much larger amount of the GPU NB work (by increasing the grid spacing and the cut-off distance), while benefiting the overall simulation performance.
+% \draft{(mention efforts).} 
+This is the case where the GPU PME implementation could possibly alleviate the CPU performance bottleneck. 
 
 \section{Domain decomposition} \label{chapter:DD}
 Since most interactions in molecular simulations are local, domain decomposition is a natural way to decompose the system for the multi-node, multi-process simulations. In domain decomposition, a spatial domain is assigned to each process,
@@ -494,7 +494,6 @@ The reasoning is as follows:
 \item A single particle's data for all 3 dimensions has to be kept together for optimizing cache access - the spreading and gathering individual threads are always going to access spline parameters for all 3 dimensions to some extent. 
 %\draft{as of now, for order of 4 all the block data makes up 1 (2?) cache line.} 
 \item Reads and writes have to be as coalesced as possible.
-%\item The possibility of the \draft{global load optimizations} is also open for a single-dimension data.
 \end{itemize}
 
 \section{Spreading the particle charges over the grid}
@@ -540,10 +539,9 @@ The cuFFT is not even that much faster than FFTW (single process NUMBERS).
 
 %reference
 
-The algorithm needs to modify each value of the Fourier space complex grid, as well as compute the reciprocal energy and the virial contribution. This kernel only takes about \draft{1\%} of the total run-time, and additionally is embarrassingly parallel. The only common data is the B-spline moduli for all 3 dimensions, read through the texture memory, and the resulting global memory energy and $3 \times 3$ pressure virial (represented by 6 values because it is symmetric). The energy and the pressure virial are reduced block-wise in the shared memory, and then the result is atomically added to the global memory.
+The algorithm needs to modify each value of the Fourier space complex grid, as well as compute the reciprocal energy and the virial contribution. This kernel only takes about 1\% of the total run-time, and additionally is embarrassingly parallel. The only common data is the constant B-spline moduli for all 3 dimensions, and the resulting energy and $3 \times 3$ pressure virial (represented by 6 values because it is symmetric), staged in global memory. The energy and the pressure virial are reduced block-wise in the shared memory, and then the result is atomically added to the global memory.
 
 Each grid cell is processed by a single thread; for convenience, the block size is rounded to multiples of the minor dimension grid-line size. 
-% \draft{This kernel is compute-bound or smem bpound?}
 
 \section{Unwrapping the grid}
 After the grid is modified, and complex-to-real FFT is performed, the long-range force contributions are calculated.
@@ -555,7 +553,6 @@ Force contribution gathering is a logical counterpart to the charge spreading. T
 The same data layout is used for the spline parameters and indices as well.
 
 %In this kernel, the shuffle reduction was used for compute capability >= 3.0
-%\draft{texture objects}
 
 \section{Receiving the results from the GPU}
 The computed forces and energy are asynchronously copied back after the respective kernels are done. This means that at the time when the results are needed in the host CPU code, it is enough just to put the synchronisation call which waits for the completion of the asynchronous memory transfers from device to host.
@@ -649,7 +646,7 @@ To demonstrate this point further, the comparison between the CPU and GPU run-ti
 \end{figure}
 \FloatBarrier
 
-The force gathering stage has larger speed-up than the rest of the stages. While both the gathering and spreading part have similar run-times on CPU and are memory-bound on GPU, their run-time ratio is rather different on GPU. This suggests that changing the current rather straightforward spreading algorithm should be a priority target for improving the PME GPU performance further. One of the options could be basing the single thread work not around a single particle's contribution line, but around a single grid cell/line. Moreover, this approach could be an alternative to the current algorithm, the choice depending on the density of the system (median number of particles contributing to a single grid point).
+The force gathering stage has larger speed-up than the rest of the stages. While both the gathering and spreading part have similar run-times on CPU and are memory-bound on GPU, their run-time ratio is rather different on GPU. This suggests that changing the current rather straightforward spreading algorithm should be a priority target for improving the PME GPU performance further. One of the options could be basing the single thread work not around a single particle's contributions, but around a single grid cell/line. Moreover, this approach could be an alternative to the current algorithm, the choice being dependent on the density of the system (median number of particles contributing to a single grid point).
 
 \section{Overlapping with the non-bonded kernels}\label{overlapped}
 
@@ -772,7 +769,7 @@ The resulting simulation performance comparison between the separate CPU and GPU
 
 This comparison demonstrates not only a noticeable parallelization speed-up of PME on a dedicated high-end GPU, but also a possibility of offloading the PME workload onto a GPU from the CPU. This means making the better use of the machines with abundant GPU hardware, avoiding the CPU bottleneck. It is possible to enhance the load balancing algorithm of GROMACS to perform the switching between GPU and CPU PME dynamically as required.
 
-%\draft{The certain NVIDIA hardware also exposes 2 levels of priorities for CUDA streams. For example, GROMACS running with multiple processes and domain decomposition uses the high priority stream to schedule the calculation of the so called "non-local" non-bonded interactions, and schedule the rest in the low priority stream. Non-local particles are the ones in the buffer zones close to the other parts of the decomposed domain, therefore affecting them; the results of their computation have to be communicated among processes as soon as possible for better performance (FIGURE).}
+%{The certain NVIDIA hardware also exposes 2 levels of priorities for CUDA streams. For example, GROMACS running with multiple processes and domain decomposition uses the high priority stream to schedule the calculation of the so called "non-local" non-bonded interactions, and schedule the rest in the low priority stream. Non-local particles are the ones in the buffer zones close to the other parts of the decomposed domain, therefore affecting them; the results of their computation have to be communicated among processes as soon as possible for better performance (FIGURE).}
 
 % Performance of all the GPU work suffers by ...\% on average.
 
