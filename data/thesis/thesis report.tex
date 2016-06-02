@@ -546,7 +546,7 @@ Note that when this GPU implementation will be adapted for the multi-process GRO
 
 \section{3D FFT} \label{FFTimpl}
 
-Before and after the convolution kernel there is a 3D FFT of the grid to be performed - real-to-complex and complex-to-real, respectively. 
+Before and after the solving kernel there is a 3D FFT of the grid to be performed - real-to-complex and complex-to-real, respectively. 
 CUDA platform has a cuFFT library which focuses on FFT on a GPU. 
 As the scope of the project was the implementation for a single GPU, the implementation required only a single cuFFT function call for a full 3D transform for both directions. 
 %However, this function call spawns around 8 different CUDA kernels nonetheless. The kernels being used, and their number depend on the size of the grid, as well as the overlaps. 
@@ -561,7 +561,7 @@ The cuFFT is not even that much faster than FFTW (single process NUMBERS).
 % Both directions take similar amount of time (numbers) for the same grid size. 
 
 
-\section{Reciprocal convolution, energy calculation}
+\section{Reciprocal energy calculation}
 
 %reference
 
@@ -589,10 +589,7 @@ Again, due to the overlap between the NB and PME computation, the transferring o
 \newpage
 \chapter{Results}
 
-In this chapter the PME GPU implementation behaviour and performance is analysed.
-\iffalse
-The GPUs used for the analysis are build on NVIDIA architectures Kepler and Maxwell.
-\fi
+In this chapter the PME GPU implementation behaviour and performance is discussed.
 
 \section{Correctness}
 The correctness of the GPU PME implementation has been verified by comparing the results with the results of the CPU PME running with the same input data as the reference.
@@ -620,7 +617,7 @@ The interpolation order is fixed in this implementation at 4, one of the most co
 
 % \draft{The reasons for that...}.
 
-There is also a discrete grid size, which directly affects the runtime of the FFT and convolution stages of the algorithm. However, as it is explained in Section \ref{PMEtuning}, the grid size and spacing can be automatically tuned for better PP/PME load balance, changing the grid spacing and the short-ranged interaction cut-off, and this is the default behaviour of GROMACS. 
+There is also a discrete grid size, which directly affects the runtime of the FFT and solving stages of the algorithm. However, as it is explained in Section \ref{PMEtuning}, the grid size and spacing can be automatically tuned for better PP/PME load balance, changing the grid spacing and the short-ranged interaction cut-off, and this is the default behaviour of GROMACS. 
 
 %The average GPU and CPU runtime per single PME step are being compared. The CPU time is measured by standard wallclock functions. The GPU time is taken as a sum of PME kernels' execution times, measured with the use of CUDA events mechanism. \draft{It is shown further that it is hopeless for multiple streams}. The data transfers between the GPU and the host at the step beginning and end are excluded as they are not \draft{significant and in the future will } also beshared with the non-bonded work.
 
@@ -639,7 +636,7 @@ A synthetic benchmark consisting of water molecules with number of atoms varying
 
 This comparison has been performed on the NVIDIA GTX TITAN X GPU, one of the fastest consumer-grade GPUs.
 
-Most of the stages presented in Figure \ref{fig:kernels} correspond to single CUDA kernels. Notable exception is FFT performed by the CUDA cuFFT library, which while having only 2 function calls (real-to-complex and complex-to-real) per MD step, uses from 7 to 10 individual kernels for each call, depending on the grid size. Moreover, the cuFFT functions have no launch configuration and bounds, unlike CUDA kernels, exposing no granularity control, as they are pre-tuned for optimal performance. 
+Most of the stages presented in Figure \ref{fig:kernels} correspond to single CUDA kernels. Notable exception is FFT performed by the CUDA cuFFT library, which while having only 2 function calls (real-to-complex and complex-to-real) per MD step, uses from 7 to 10 individual kernels for each call, depending on the grid dimensions. Moreover, the cuFFT functions have no launch configuration and bounds, unlike CUDA kernels, exposing no granularity control, as they are pre-tuned for optimal performance. 
 
 \iffalse
 \begin{figure} [h!]
@@ -658,7 +655,7 @@ Most of the stages presented in Figure \ref{fig:kernels} correspond to single CU
 \end{figure}
 \FloatBarrier
 
-It is no surprise overall that the FFT takes the larger ratio of the total GPU runtime, as the input size decreases. Another observable feature on the chart is the wrapping, unwrapping, and the convolution kernels not scaling down well with input sizes. It is most likely related to their workload being entirely dependent on the grid dimensions, unlike the rest of the stages.
+It is no surprise overall that the FFT takes the larger ratio of the total GPU runtime, as the input size decreases. Another observable feature on the chart is the wrapping, unwrapping, and the solving(convolution) kernels not scaling down well with input sizes. It is most likely related to their workload being entirely dependent on the grid dimensions, unlike the rest of the stages.
 
 It is also shown that the biggest share of computational time is spent in the spreading kernel. Typically this kernel's major bottleneck is the global memory/L2 cache throughput - due to atomic addition operation clashes. 
 
@@ -672,7 +669,7 @@ To demonstrate this point further, the comparison between the CPU and GPU run-ti
 \end{figure}
 \FloatBarrier
 
-The force gathering stage has larger speed-up than the rest of the stages. While both the gathering and spreading part have similar run-times on CPU and are memory-bound on GPU, their run-time ratio is rather different on GPU. This suggests that changing the current rather straightforward spreading algorithm should be a priority target for improving the PME GPU performance further. One of the options could be basing the single thread work not around a single particle's contributions, but around a single grid cell/line. Moreover, this approach could be an alternative to the current algorithm, the choice being dependent on the density of the system (median number of particles contributing to a single grid point).
+The force gathering stage has larger speed-up than the rest of the stages. While both the gathering and spreading part have similar run-times on CPU and are memory-bound on GPU, their run-time ratio is rather different on GPU. This suggests that changing the current rather straightforward spreading algorithm should be a priority target for improving the PME GPU performance further. One of the options could be basing the single thread work not around a single particle's contributions, but around a single grid cell/line. This approach could be an alternative to the current one, the choice being dependent on the density of the system (median number of particles contributing to a single grid point).
 
 \section{Overlapping with the non-bonded kernels}\label{overlapped}
 
@@ -837,7 +834,7 @@ First and foremost, the GPU PME has only been implemented for a single PME proce
 
 The existing load balancing and tuning mechanisms interact correctly with the PME GPU routines as well. 
 
-Only a single interpolation order (4) is currently supported. There is neither a large effort nor principal obstacles to implementing different orders. 
+Only a single interpolation order (4) is currently supported. There is neither a large effort required nor principal obstacles to implementing different interpolation orders. 
 
 The FFT stages of the algorithm can be performed either on CPU or on GPU. This leaves a possibility of introducing a multi-process decomposition into PME GPU with minimal effort, reusing the existing communication logic.
 
@@ -850,8 +847,8 @@ The main uncertainty for the multi-process GPU implementation of PME is the Four
 
 Another option would be getting the cuFFT for use with MPI. Techniques for direct GPU-to-GPU communication, like NVIDIA GPUDirect, should definitely be tried in that case.
 
-However, a full 3D Fourier transform on a distributed grid requires 2 all-to-all communications. That would mean at least 6 copy operations of the local part of the grid between the host and the GPU - at least 12 during the single MD step. Such behaviour is rather undesirable, as memory transfers incur additional latencies.
-As it has been shown in \ref{chapter_kernels}, even in a single process case better cuFFT performance can be desired.
+However, a full 3D Fourier transform on a distributed grid requires 2 all-to-all communications. That would mean at least 6 copy operations of the local part of the grid between the host and the GPU - at least 12 during the single MD step. Such behaviour is rather undesirable, as memory transfers incur additional synchronisation latencies.
+As it has been shown in Section \ref{chapter_kernels}, even in a single process case better cuFFT performance can be desired.
 
 The question of the efficient communication of the grid data is important for the FFT and the wrapping/spreading stages, doubly so for a GPU.
  
@@ -875,10 +872,6 @@ Therefore, in the hypothetical case of the multi-process PME running on GPUs, GR
 \fi
 The recommended way of using the implementation in its current state is launching a separate PME process on a dedicated GPU instead of a mixed PP/PME process. This way alleviates the overlapping problems, and also allows for PP decomposition over multiple processes.
 %achieved by running the simulation with PME:PP balance auto-tuning.
-
-\iffalse
-How are B-spline order	s used?
-\fi
 
 \bibliographystyle{plain}
 \bibliography{pics/my}
