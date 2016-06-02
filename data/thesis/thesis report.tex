@@ -166,7 +166,7 @@ reciprocal sum in Fourier space. The energies can be chosen such that the direct
 \end{figure}
 %}
  
-In many MD simulations certain \draft{non-}bonded interactions within same molecule are being omitted, being handled by different terms in the potential calculation. The corresponding particle pairs $(i, j)$ are stored in a masked list $M$. Therefore, the masked list correction should be subtracted from the direct and reciprocal energy sums. Usually the masked pairs are explicitly skipped over during the direct sum calculation.	 The other contribution to the correction term is the charges acting on self.
+In many MD simulations certain non-bonded interactions within same molecule are being omitted, being handled by different terms in the potential calculation. The corresponding particle pairs $(i, j)$ are stored in a masked list $M$. Therefore, the masked list correction should be subtracted from the direct and reciprocal energy sums. Usually the masked pairs are explicitly skipped over during the direct sum calculation. The other contribution to the correction term is the charges acting on self.
 
 For dealing with the Fourier space, the reciprocal lattice vectors can be defined through the reciprocal unit cell vectors $\bold{m} = m_1 \bold{a}_1^* + m_2 \bold{a}_2^* + m_3 \bold{a}_3^*$, for
 all $m_1, m_2, m_3 \in \mathbb{Z}$. 
@@ -378,7 +378,7 @@ parallelepipeds which are called domain decomposition cells. Each cell is assign
 process. 
 
 The multi-process PME calculations involve a PME grid decomposition.
-Since within PME all particles interact with each other no matter the distance, global communication is required (mostly for the FFT stage). The broadcast communication is the limiting factor for multi-process performance scaling. It also introduces the new degree of freedom into already complex task of the dynamic load balancing - now the simulation not only depends on the CPU/GPU load, but on the communication latency as well. An example of inter-process PME communication is presented in Figure \ref{fig:DD} by red arrows.
+Since within PME all particles interact with each other no matter the distance, global communication is required (mostly for the FFT stage). The broadcast communication is the limiting factor for multi-process performance scaling. It also introduces the new degree of freedom into already complex task of the dynamic load balancing - now the simulation not only depends on the CPU/GPU load, but on the communication latency as well. An example of inter-process PME communication among 8 GROMACS processes is presented in Figure \ref{fig:DD} by red arrows.
 
  \begin{figure} [htpb]
     \centering
@@ -407,11 +407,6 @@ That is why there exists a dynamic load balancing algorithm where the volume of 
 cell can be adjusted independently.
 \fi
 
-
-
-
-
-%\draft{no reference to the figure!}
 
 \newpage
 \chapter{Implementation of PME on a GPU}
@@ -474,7 +469,7 @@ Coalesced memory access - an optimal behaviour for accessing the memory within C
 
 \section{PME GPU scheduling}
 %\draft{Introduce implementatuion
-The Figure \ref{fig:step-gpu} shows the schematic of a modified version of the MD step. Again, just like for the original MD step (Figure \ref{fig:step-orig}), multi-process communication details are omitted. 
+The Figure \ref{fig:step-gpu} shows the schematic of the MD step, modified for the GPU PME inclusion. Again, just like for the original MD step (Figure \ref{fig:step-orig}), multi-process communication details are omitted. 
 \begin{figure}[h!]
     \centering
     \includegraphics[width=1\textwidth]{pics/mdstep-gpu.png}
@@ -485,10 +480,10 @@ The Figure \ref{fig:step-gpu} shows the schematic of a modified version of the M
 
 The PME computations are scheduled into a separate, high-priority stream of commands.
 
-The reason for PME GPU launch being split into two blocks is that the CPU PME uses the buffer with bonded forces for the calculation.
-Therefore, the easiest way of plugging the PME GPU calls into the existing code was to copy the computed bonded forces buffer to the GPU for the reduction in the gather kernel. However, everything before the gathering stage should be launched as soon as possible, even before the non-bonded work.
+The reason for PME GPU launch being split into two parts is that the CPU PME uses the buffer with bonded forces for the calculation.
+Therefore, the easiest way of plugging the PME GPU calls into the existing code was to copy the computed bonded forces buffer to the GPU for the reduction in the gather kernel. Everything before the gathering stage should be launched as soon as possible.
 
-%MD step modifications are preliminary and might be adjusted in the future, especially for the hypothetical multi-process case.
+MD step modifications are preliminary and might be adjusted in the future, especially for the hypothetical multi-process case. For instance, with the NB GPU computations taking longer than expected, a multi-threaded force reduction on the idle CPU would actually save a bit of time, allowing the PME gathering to be launched earlier. The use of CPU FFT with PME GPU also introduces another synchronisation point (transferring the grid from GPU to the main memory).
 
 % The PME GPU stream is also assigned higher priority, in hopes of achieving so called "preemption"
 
@@ -514,8 +509,8 @@ The copying of coordinates and charges constitutes the majority of each step's i
 Pairwise particle interaction calculations are also typically performed on GPU in GROMACS, thus in CUDA case the particle data should be shared between the NB (non-bonded) and PME kernels, and only copied once. However, that is not part of the core implementation, as the NB kernel currently use a different particle data layout, so implementing a data reordering kernel would be required. This should not require a lot of effort as it is mostly the question of the higher level MD step code restructuring. It also does not affect the performance adversely, as the data copying operations are overlapped with kernels: by the time the NB particle data transfer starts, the GPU is working on the first PME kernel.
 
 \section{Computation of the spline values \\ and derivatives}
-For each particle and for each dimension the individual B-spline interpolation parameters are computed: $l$ values and $l$ derivative values, where $l$ is the spline interpolation order. This naturally suggests using 3 threads per particle. The particle coordinates are used for calculation.
-The question of the optimal layout for the spline parameters is interesting. Shown in \ref{fig:spline} is my choice for an in-memory $\theta$ and $d\theta$ arrays' layout. 
+For each particle and for each dimension the individual B-spline interpolation parameters are computed: $l$ values and $l$ derivative values, where $l$ is the spline interpolation order (fixed at 4 in this implementation). This naturally suggests using 3 threads per particle. The particle coordinates are used for calculation.
+The question of the optimal layout for the spline parameters is interesting. Shown in \ref{fig:spline} is my choice for an in-memory value $\theta$ and derivative $d\theta$ arrays' layout. 
 \FloatBarrier
 \begin{figure}[h!]
     \centering
@@ -561,7 +556,7 @@ CUDA platform has a cuFFT library which focuses on FFT on a GPU.
 As the scope of the project was the implementation for a single GPU, the implementation required only a single cuFFT function call for a full 3D transform for both directions. 
 %However, this function call spawns around 8 different CUDA kernels nonetheless. The kernels being used, and their number depend on the size of the grid, as well as the overlaps. 
 Typically for FFT implementations, algorithms are optimized for grid sizes which are multiples of certain small factors (such as 2, 3, 5, 7); it is also recommended to stay away from the large prime factors \cite{cufft}.
-With this implementation being a first step of the multi-process PME GPU implementation, the option to use the CPU FFT implementation is provided. The reason is that the FFT stage is responsible for most of communication in the multi-process case, having 2 all-to-all broadcastst between the PME processes. However, using the CPU FFT implementation means that the grid has to be transferred between host and GPU just for these stages, which incurs additional synchronisation latencies.
+With this implementation being a first step of the multi-process PME GPU implementation, the option to use the CPU FFT implementation is provided. The reason is that the FFT stage is responsible for most of communication in the multi-process case, having 2 all-to-all broadcasts among the PME processes. However, using the CPU FFT implementation means that the grid has to be transferred between host and GPU just for these stages, which incurs additional synchronisation latencies.
 
 \iffalse
 The cuFFT is not even that much faster than FFTW (single process NUMBERS). 
