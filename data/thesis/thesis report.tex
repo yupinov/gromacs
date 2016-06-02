@@ -11,6 +11,7 @@
 \usepackage[nottoc]{tocbibind}
 \usepackage{pdfpages}
 \usepackage{url}
+\usepackage{breqn}
 
 %\DeclareMathAlphabet{\mathbbold}{U}{bbold}{m}{n}
 
@@ -150,7 +151,7 @@ reciprocal sum in Fourier space. The energies can be chosen such that the direct
 \begin{minipage}[t]{0.5\textwidth}
     \includegraphics[width=1\textwidth]{pics/cutoff2.png}
 \end{minipage}
-\caption{Example of varying convergence of the Ewald sum components using the scaling parameter; parameter values 0.7 (left) and 2 (right)}
+\caption{Illustration of varying convergence of the distance-dependent components using the scaling parameter; parameter's values are 0.7 (left) and 2 (right)}
 \label{fig:split}
 \end{figure}
 %}
@@ -222,21 +223,31 @@ Therefore,
 %\[\exp\Big(2\pi i\frac{m_j u_j}{K_j}\Big) \approx \sum_{k\in \mathbb{Z}} W_{2p}(u_j - k) \cdot \exp\Big(2\pi i\frac{m_j k}{K_j}\Big)\]
 %However, while the energy given by the Lagrange interpolation is a continuous function of particle coordinates, it is only piece-wise smooth, not allowing us to use the numerical differentiation to arrive at the reciprocal forces.
 
-In the so called smooth PME method \cite{spme} cardinal B-splines $M_n$ are applied for interpolation that produces sufficiently smooth energy function, allowing for analytical differentiation to arrive at the forces.
-It is shown that using the Euler exponential spline, the exponential can be represented for even $n$ as
-\[\exp\Big(2\pi i\frac{m_j u_j}{K_j}\Big) \approx b_j(m_j) \sum\limits_{k\in \mathbb{Z}}M_n(u_j - k)\exp\Big(2\pi i\frac{m_j k}{K_j}\Big)\,,\]
+In the so called smooth PME method \cite{spme} cardinal B-splines $M_l$ are applied for interpolation that produces sufficiently smooth energy function, allowing for analytical differentiation to arrive at the forces.
+It is shown that using the Euler exponential spline, the exponential can be represented for interpolation order of $l$ as
+\[\exp\Big(2\pi i\frac{m_j u_j}{K_j}\Big) \approx b_j(m_j) \sum\limits_{k\in \mathbb{Z}}M_l(u_j - k)\exp\Big(2\pi i\frac{m_j k}{K_j}\Big)\,,\]
 \begin{equation}\label{BSpline}
-b_j(m_j) = \exp\Big(2\pi i\frac{m_j}{K_j}(n-1)\Big) \times \Big[\sum\limits_{k=0}^{n-2}M_n(k + 1)\exp\Big(2\pi i\frac{m_j k}{K_j}\Big) \Big]^{-1}
+b_j(m_j) = \exp\Big(2\pi i\frac{m_j}{K_j}(l-1)\Big) \times \Big[\sum\limits_{k=0}^{l-2}M_l(k + 1)\exp\Big(2\pi i\frac{m_j k}{K_j}\Big) \Big]^{-1}
 \end{equation}
-%\draft{Describe exception for odd n}
 
 With this, the structure factor can be approximated as
 \[\tilde{S}(\bold{m}) = b_1(m_1) b_2(m_2)b_3(m_3) F(Q)(m_1, m_2, m_3)\,,\]
 where $F$ is a Fourier transform,
-\begin{equation} \label{Qspread}
-Q(k_1, k_2, k_3) = \sum\limits_{i=1}^N \sum\limits_{\bold{n} \in \mathbb{N}^3} q_i M_n(u_{1i} -k_1 - n_1 K_1)\times M_n(u_{2i} -k_2 - n_2 K_2) \cdot M_n(u_{3i} -k_3 - n_3 K_3)
-\end{equation}
-are the discrete grid values. %\draft define m
+\begin{dmath} \label{Qspread}
+Q(k_1, k_2, k_3) = \sum\limits_{i=1}^N \sum\limits_{\bold{n} \in \mathbb{N}^3} q_i M_l(u_{1i} -k_1 - n_1 K_1)\times M_l(u_{2i} -k_2 - n_2 K_2) \cdot M_l(u_{3i} -k_3 - n_3 K_3)
+\end{dmath}
+are the discrete grid values after the charges being interpolated onto it. The example of such interpolation for 2D case is shown in Figure \ref{fig:gridded}.
+
+\begin{figure} [hptb]
+    \centering
+    \includegraphics[width=1\textwidth]{pics/gridded.png}
+    \caption{Example of charge spreading in 2D for interpolation order $l=4$; circle sizes signify absolute values of charge contributions}
+    \label{fig:gridded}
+\end{figure}
+ 
+
+
+%\draft define m
 
 The reciprocal energy can be approximated as:
 
@@ -255,7 +266,7 @@ and $\theta_{rec} = F(B\cdot C)$ is a reciprocal pair potential,
 0  & \bold{m} = \mathbb{0}
 \end{dcases}
 \]
-
+\FloatBarrier 
 The reciprocal potential does not depend on the particle coordinates, so the resulting reciprocal forces 
 can be calculated using the spline parameters:
 
@@ -275,7 +286,7 @@ The PME algorithm part for computing the reciprocal energy and forces can be sum
 \item Spread the particle charges on a discrete 3D grid (using the spline values), calculating the array $Q$ (equation \eqref{Qspread}).
 \item Perform three-dimensional real-to-complex FFT of the grid.
 \item Calculate the reciprocal energy contribution(equation \eqref{Erecfull}), transform the grid.
-\item Perform three-dimensional complex-to-real FFT of the convoluted grid.
+\item Perform three-dimensional complex-to-real FFT of the transformed grid.
 \item Gather the particle forces from the grid (using the spline values) (equation \eqref{Fgather}).
 \end{enumerate}
 
@@ -452,7 +463,7 @@ Coalesced memory access - an optimal behaviour for accessing the memory within C
 %sort me
 
 \section{PME GPU scheduling}
-
+%\draft{Introduce implementatuion
 The Figure \ref{fig:step-gpu} shows the schematic of a modified version of the MD step. Again, just like for the original MD step (Figure \ref{fig:step-orig}), multi-process communication details are omitted. 
 \begin{figure}[h!]
     \centering
@@ -862,7 +873,7 @@ There are a few plausible long-term solutions:
 With the multiprocess and domain decomposition GROMACS is already using the high priority stream to schedule the calculation of the so called "non-local" non-bonded interactions, and scheduling the rest in the low priority stream. Non-local particles are the ones in the buffer zones close to the other parts of the decomposed domain, therefore affecting them; the results of their computation have to be communicated among processes as soon as possible for better performance.
 Therefore, in the hypothetical case of the multi-process PME running on GPUs, GROMACS would have to schedule 3 logical GPU streams, and perform the load-balancing for the scheduling order as well.  
 \fi
-The recommended way of using the current implementation is launching a separate PME process on a dedicated GPU instead of a mixed PP/PME process. This way alleviates the overlapping problems, and also allows for PP decomposition over multiple processes.
+The recommended way of using the implementation in its current state is launching a separate PME process on a dedicated GPU instead of a mixed PP/PME process. This way alleviates the overlapping problems, and also allows for PP decomposition over multiple processes.
 %achieved by running the simulation with PME:PP balance auto-tuning.
 
 \iffalse
