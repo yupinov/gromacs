@@ -483,7 +483,7 @@ The PME computations are scheduled into a separate, high-priority stream of comm
 The reason for PME GPU launch being split into two parts is that the CPU PME uses the buffer with bonded forces for the calculation.
 Therefore, the easiest way of plugging the PME GPU calls into the existing code was to copy the computed bonded forces buffer to the GPU for the reduction in the gather kernel. Everything before the gathering stage should be launched as soon as possible.
 
-MD step modifications are preliminary and might be adjusted in the future, especially for the hypothetical multi-process case. For instance, with the NB GPU computations taking longer than expected, a multi-threaded force reduction on the idle CPU would actually save a bit of time, allowing the PME gathering to be launched earlier. The use of CPU FFT with PME GPU also introduces another synchronisation point (transferring the grid from GPU to the main memory).
+MD step modifications are preliminary and might be adjusted in the future, especially for the hypothetical multi-process case. For instance, with the NB GPU computations taking longer than PME, a multi-threaded force reduction on the idle CPU would actually save a bit of time, allowing the PME gathering to be launched earlier. The use of CPU FFT with PME GPU also introduces a synchronisation point (transferring the grid from GPU to the main memory).
 
 % The PME GPU stream is also assigned higher priority, in hopes of achieving so called "preemption"
 
