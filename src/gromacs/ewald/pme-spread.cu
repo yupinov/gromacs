@@ -601,9 +601,6 @@ __global__ void pme_wrap_kernel
      real * __restrict__ grid
      )
 {
-    // const int overlap = order - 1;
-
-    // WRAP
     const int blockId = blockIdx.x
                  + blockIdx.y * gridDim.x
                  + gridDim.x * gridDim.y * blockIdx.z;
@@ -612,7 +609,7 @@ __global__ void pme_wrap_kernel
             + threadIdx.x;
     const int threadId = blockId * (blockDim.x * blockDim.y * blockDim.z) + threadLocalId;
 
-    //should use ldg.128
+    // should use ldg.128
 
     if (threadId < OVERLAP.overlapCellCounts[OVERLAP_ZONES - 1])
     {   
