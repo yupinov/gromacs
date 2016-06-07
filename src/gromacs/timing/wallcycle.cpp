@@ -124,7 +124,7 @@ static const char *wcsn[ewcsNR] =
     "Nonbonded F",
     "Ewald F correction",
     "NB X buffer ops.",
-    "NB F buffer ops."
+    "NB F buffer ops.",
 };
 
 static const char *PMEStageNames[] =
@@ -139,7 +139,7 @@ static const char *PMEStageNames[] =
     "Solve",
     "FFT c2r",
     "Unwrap",
-    "Gather"
+    "Gather",
 };
 
 gmx_bool wallcycle_have_counter(void)
@@ -955,7 +955,7 @@ void wallcycle_print(FILE *fplog, const gmx::MDLogger &mdlog, int nnodes, int np
         print_gputimes(fplog, "Total ", gpu_t->nb_c, tot_gpu, tot_gpu);
         fprintf(fplog, "%s\n", hline);
 
-        gpu_cpu_ratio = tot_gpu/tot_cpu_overlap; //yupinov outdated!
+        gpu_cpu_ratio = tot_gpu/tot_cpu_overlap;
         if (gpu_t->nb_c > 0 && wc->wcc[ewcFORCE].n > 0)
         {
             fprintf(fplog, "\nAverage per-step force GPU/CPU evaluation time ratio: %.3f ms/%.3f ms = %.3f\n",
