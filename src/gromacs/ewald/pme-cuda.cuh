@@ -92,6 +92,7 @@ struct pme_gpu_const_parameters
     rvec nXYZ;
 };
 
+// the main PME GPU structure
 struct gmx_pme_cuda_t
 {
     cudaStream_t pmeStream;
@@ -130,7 +131,7 @@ struct gmx_pme_cuda_t
 
     gmx_device_info_t *deviceInfo;
 
-    pme_gpu_timing timingEvents[PME_GPU_STAGES];
+    std::vector<pme_gpu_timing *> timingEvents;
 
     gmx_parallel_3dfft_gpu_t *pfft_setup_gpu;
 
@@ -140,7 +141,7 @@ struct gmx_pme_cuda_t
     std::vector<void *> StoragePointers;
 
 
-    // some device pointers/objects below - they are assigned from the PMEStoragePointers!
+    // some device pointers/objects below - they are assigned from the PMEStoragePointers
 
     // spline calculation
     // fractional shifts (pme->fsh*)
@@ -157,12 +158,11 @@ struct gmx_pme_cuda_t
     // solve
     // 6 virial components, energy => 7 elements
     real *energyAndVirial;
-    size_t energyAndVirialSize; //bytes
+    size_t energyAndVirialSize; // bytes
 
     // gather
     // forces
     real *forces;
-
 
     // forces and coordinates should be shared with nonbondeds!
     float3 *coordinates;
@@ -176,5 +176,6 @@ void *PMEMemoryFetch(gmx_pme_t *pme, PMEDataID id, size_t size, MemLocType locat
 // deallocate memory
 void PMEMemoryFree(gmx_pme_t *pme, PMEDataID id, MemLocType location);
 
-void PMECopyConstant(const void *dest, const void *src, size_t size, cudaStream_t s); //H2D only
+void PMECopyConstant(const void *dest, const void *src, size_t size, cudaStream_t s); // H2D
+
 #endif

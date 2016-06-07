@@ -1409,8 +1409,10 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
     finish_run(fplog, mdlog, cr,
                inputrec, nrnb, wcycle, walltime_accounting,
                fr ? fr->nbv : NULL,
+               fr ? fr->pmedata : NULL,
                EI_DYNAMICS(inputrec->eI) && !MULTISIM(cr));
 
+    // Free PME data (including the GPU)
     if (pmedata)
     {
         gmx_pme_destroy(pmedata);

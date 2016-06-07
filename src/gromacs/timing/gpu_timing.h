@@ -43,6 +43,8 @@
 #ifndef GMX_TIMING_GPU_TIMING_H
 #define GMX_TIMING_GPU_TIMING_H
 
+#include <vector>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -52,6 +54,13 @@ struct gmx_nbnxn_kernel_timing_data_t
 {
     double  t; /**< Accumulated lapsed time */
     int     c; /**< Number of calls corresponding to the elapsed time */
+};
+
+/*! \internal \brief GPU timings for PME. */
+struct gmx_wallclock_gpu_pme_t
+{
+    // a separate PME structure to avoid refactoring the NB code for gmx_wallclock_gpu_t
+    std::vector<gmx_nbnxn_kernel_timing_data_t> timing;
 };
 
 /*! \internal \brief GPU timings for kernels and H2d/D2H transfers. */
@@ -65,16 +74,9 @@ struct gmx_wallclock_gpu_t
     int     nb_c;                                      /**< total call count of the nonbonded gpu operations */
     double  pl_h2d_t;                                  /**< pair search step host to device transfer time */
     int     pl_h2d_c;                                  /**< pair search step  host to device transfer call count */
-};
 
-//yupinov
-#include "wallcycle.h"
-struct gmx_wallclock_gpu_pme_t
-{
-  struct gmx_nbnxn_kernel_timing_data_t pme_time[PME_GPU_STAGES];
+    struct gmx_wallclock_gpu_pme_t pme;
 };
-
-extern struct gmx_wallclock_gpu_pme_t gmx_wallclock_gpu_pme;
 
 #ifdef __cplusplus
 }

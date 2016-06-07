@@ -5,6 +5,7 @@
 #include "gromacs/math/vectypes.h"
 #include "gromacs/math/gmxcomplex.h"
 #include "gromacs/utility/basedefinitions.h"
+#include "gromacs/timing/gpu_timing.h"
 
 //yupinov add author info everywhere
 // gmx_unused
@@ -125,5 +126,7 @@ CUDA_FUNC_QUALIFIER void pme_gpu_step_end(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
 
 CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_destroy_gpu(const gmx_parallel_3dfft_gpu_t &CUDA_FUNC_ARGUMENT(pfft_setup)) CUDA_FUNC_TERM
 
+
+CUDA_FUNC_QUALIFIER void pme_gpu_get_timings(gmx_wallclock_gpu_t **CUDA_FUNC_ARGUMENT(timings), gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 #endif // PMEGPU_H

@@ -870,7 +870,7 @@ void reuse_pmegrids(const pmegrids_t *oldgrid, pmegrids_t *newgrid)
 
 static void dump_grid(FILE *fp,
                       int sx, int sy, int sz, int nx, int ny, int nz,
-                      int mx, int my, int mz, const real *g, const gmx_pme_t *pme)
+                      int mx, int my, int mz, const real *g, const gmx_unused gmx_pme_t *pme)
 {
     int x, y, z;
 

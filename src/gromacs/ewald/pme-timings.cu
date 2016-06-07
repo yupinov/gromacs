@@ -1,9 +1,12 @@
-#include "gromacs/utility/basedefinitions.h"
 #include <cuda.h>
+
+#include "pme.h"
 #include "pme-cuda.cuh"
 #include "pme-timings.cuh"
 #include "gromacs/timing/gpu_timing.h"
 #include "gromacs/timing/wallcycle.h"
+#include "gromacs/utility/gmxassert.h"
+#include "gromacs/utility/smalloc.h"
 #include "gromacs/gpu_utils/cudautils.cuh"
 
 pme_gpu_timing::pme_gpu_timing()
@@ -84,53 +87,78 @@ unsigned int pme_gpu_timing::get_call_count()
     return call_count;
 }
 
+// general functions
+
 void pme_gpu_timing_start(gmx_pme_t *pme, int ewcsn)
 {
     const int i = ewcsn - ewcsPME_INTERPOL_IDX;
-    pme->gpu->timingEvents[i].start_recording(pme->gpu->pmeStream);
+    pme->gpu->timingEvents[i]->start_recording(pme->gpu->pmeStream);
 }
 
 void pme_gpu_timing_stop(gmx_pme_t *pme, int ewcsn)
 {
-    const int i = ewcsn - ewcsPME_INTERPOL_IDX;
-    pme->gpu->timingEvents[i].stop_recording(pme->gpu->pmeStream);
+    const int i = ewcsn - ewcsPME_INTERPOL_IDX; //yupinov
+    pme->gpu->timingEvents[i]->stop_recording(pme->gpu->pmeStream);
 }
 
-void pme_gpu_get_timings(gmx_pme_t *pme)
+void pme_gpu_get_timings(gmx_wallclock_gpu_t **timings, gmx_pme_t *pme)
 {
-    if (pme && pme->bGPU)
+    if (pme_gpu_enabled(pme))
     {
-        for (int i = 0; i < PME_GPU_STAGES; i++)
+        GMX_ASSERT(timings, "Null GPU timing pointer");
+        if (!*timings)
         {
-            gmx_wallclock_gpu_pme.pme_time[i].t = pme->gpu->timingEvents[i].get_total_time_milliseconds();
-            gmx_wallclock_gpu_pme.pme_time[i].c = pme->gpu->timingEvents[i].get_call_count();
+            // alloc for PME-only run
+            snew(*timings, 1);
+            // init_timings(*timings);
+            // frankly, it's just memset..
+        }
+        (*timings)->pme.timing.resize(pme->gpu->timingEvents.size());
+        for (size_t i = 0; i < pme->gpu->timingEvents.size(); i++)
+        {
+            (*timings)->pme.timing[i].t = pme->gpu->timingEvents[i]->get_total_time_milliseconds();
+            (*timings)->pme.timing[i].c = pme->gpu->timingEvents[i]->get_call_count();
         }
     }
 }
 
 void pme_gpu_update_timings(gmx_pme_t *pme)
 {
-    if (pme && pme->bGPU)
+    if (pme_gpu_enabled(pme))
     {
-        for (int i = 0; i < PME_GPU_STAGES; i++)
-            pme->gpu->timingEvents[i].update();
+        for (size_t i = 0; i < pme->gpu->timingEvents.size(); i++)
+            pme->gpu->timingEvents[i]->update();
     }
 }
 
 void pme_gpu_init_timings(gmx_pme_t *pme)
 {
-    if (pme && pme->bGPU)
+    if (pme_gpu_enabled(pme))
     {
-        for (int i = 0; i < PME_GPU_STAGES; i++)
-            pme->gpu->timingEvents[i].enable();
+        cudaStreamSynchronize(pme->gpu->pmeStream);
+        for (size_t i = 0; i < PME_GPU_STAGES; i++)
+        {
+            pme->gpu->timingEvents.push_back(new pme_gpu_timing());
+            pme->gpu->timingEvents[i]->enable();
+        }
+    }
+}
+
+void pme_gpu_destroy_timings(gmx_pme_t *pme)
+{
+    if (pme_gpu_enabled(pme))
+    {
+        for (size_t i = 0; i < pme->gpu->timingEvents.size(); i++)
+            delete pme->gpu->timingEvents[i];
+        pme->gpu->timingEvents.resize(0);
     }
 }
 
 void pme_gpu_reset_timings(gmx_pme_t *pme)
 {
-    if (pme && pme->bGPU)
+    if (pme_gpu_enabled(pme))
     {
-        for (int i = 0; i < PME_GPU_STAGES; i++)
-            pme->gpu->timingEvents[i].reset();
+        for (size_t i = 0; i < pme->gpu->timingEvents.size(); i++)
+            pme->gpu->timingEvents[i]->reset();
     }
 }

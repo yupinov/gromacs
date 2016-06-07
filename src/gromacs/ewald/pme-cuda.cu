@@ -190,7 +190,7 @@ void pme_gpu_deinit(//gmx_pme_gpu_t **pmeGPU,
         sfree((*pme)->gpu->pfft_setup_gpu);
     }
 
-    // destroy synchronization events
+    // destroy sthe ynchronization events
     stat = cudaEventDestroy((*pme)->gpu->syncEnerVirD2H);
     CU_RET_ERR(stat, "cudaEventDestroy failed on syncEnerVirH2D");
     stat = cudaEventDestroy((*pme)->gpu->syncForcesD2H);
@@ -199,6 +199,9 @@ void pme_gpu_deinit(//gmx_pme_gpu_t **pmeGPU,
     CU_RET_ERR(stat, "cudaEventDestroy failed on syncpreadGridH2D");
     stat = cudaEventDestroy((*pme)->gpu->syncSolveGridD2H);
     CU_RET_ERR(stat, "cudaEventDestroy failed on syncSolveGridH2D");
+
+    // destroy the timing events
+    pme_gpu_destroy_timings(*pme);
 
     // destroy the stream
     stat = cudaStreamDestroy((*pme)->gpu->pmeStream);
@@ -237,8 +240,6 @@ void pme_gpu_step_end(gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCal
         pme_gpu_get_energy_virial(pme);
 
     pme_gpu_update_timings(pme);
-
-    pme_gpu_get_timings(pme); // no need to call every step
 
     pme_gpu_step_reinit(pme);
 }
