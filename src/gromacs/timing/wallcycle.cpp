@@ -55,8 +55,6 @@
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/snprintf.h"
 
-struct gmx_wallclock_gpu_pme_t gmx_wallclock_gpu_pme;
-
 static const bool useCycleSubcounters = GMX_CYCLE_SUBCOUNTERS;
 
 /* DEBUG_WCYCLE adds consistency checking for the counters.
@@ -126,8 +124,11 @@ static const char *wcsn[ewcsNR] =
     "Nonbonded F",
     "Ewald F correction",
     "NB X buffer ops.",
-    "NB F buffer ops.",
-    //PME part
+    "NB F buffer ops."
+};
+
+static const char *PMEStageNames[] =
+{
     "Interpolation",
     "Spline",
     "Spread",
@@ -138,7 +139,7 @@ static const char *wcsn[ewcsNR] =
     "Solve",
     "FFT c2r",
     "Unwrap",
-    "Gather",
+    "Gather"
 };
 
 gmx_bool wallcycle_have_counter(void)
@@ -877,22 +878,12 @@ void wallcycle_print(FILE *fplog, const gmx::MDLogger &mdlog, int nnodes, int np
     {
         fprintf(fplog, " Breakdown of PP computation\n");
         fprintf(fplog, "%s\n", hline);
-        for (i = 0; i < ewcsPME_INTERPOL_IDX; i++)
+        for (i = 0; i < ewcsNR; i++)
         {
             print_cycles(fplog, c2t_pp, wcsn[i],
                          npp, nth_pp,
                          wc->wcsc[i].n, cyc_sum[ewcNR+i], tot);
         }
-        fprintf(fplog, "%s\n", hline);
-        fprintf(fplog, " Additional breakdown of PME computation\n");
-        fprintf(fplog, "%s\n", hline);
-        for (i = ewcsPME_INTERPOL_IDX; i < ewcsNR; i++)
-        {
-            print_cycles(fplog, c2t_pp, wcsn[i],
-                         npp, nth_pp,
-                         wc->wcsc[i].n, cyc_sum[ewcNR+i], tot);
-        }
-        //yupinov - what about percentage?
         fprintf(fplog, "%s\n", hline);
     }
 
@@ -951,7 +942,7 @@ void wallcycle_print(FILE *fplog, const gmx::MDLogger &mdlog, int nnodes, int np
         {
             if (gpu_t->pme.timing[k].c)
             {
-                print_gputimes(fplog, wcsn[ewcsPME_INTERPOL_IDX + k],
+                print_gputimes(fplog, PMEStageNames[k],
                         gpu_t->pme.timing[k].c,
                         gpu_t->pme.timing[k].t,
                         tot_gpu);

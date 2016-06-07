@@ -28,8 +28,8 @@ public:
 };
 
 void pme_gpu_init_timings(gmx_pme_t *pme);
-void pme_gpu_timing_start(gmx_pme_t *pme, int ewcsn);
-void pme_gpu_timing_stop(gmx_pme_t *pme, int ewcsn);
+void pme_gpu_timing_start(gmx_pme_t *pme, int PMEStageId);
+void pme_gpu_timing_stop(gmx_pme_t *pme, int PMEStageId);
 void pme_gpu_update_timings(gmx_pme_t *pme);
 void pme_gpu_destroy_timings(gmx_pme_t *pme);
 

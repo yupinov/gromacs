@@ -89,16 +89,14 @@ unsigned int pme_gpu_timing::get_call_count()
 
 // general functions
 
-void pme_gpu_timing_start(gmx_pme_t *pme, int ewcsn)
+void pme_gpu_timing_start(gmx_pme_t *pme, int PMEStageId)
 {
-    const int i = ewcsn - ewcsPME_INTERPOL_IDX;
-    pme->gpu->timingEvents[i]->start_recording(pme->gpu->pmeStream);
+    pme->gpu->timingEvents[PMEStageId]->start_recording(pme->gpu->pmeStream);
 }
 
-void pme_gpu_timing_stop(gmx_pme_t *pme, int ewcsn)
+void pme_gpu_timing_stop(gmx_pme_t *pme, int PMEStageId)
 {
-    const int i = ewcsn - ewcsPME_INTERPOL_IDX; //yupinov
-    pme->gpu->timingEvents[i]->stop_recording(pme->gpu->pmeStream);
+    pme->gpu->timingEvents[PMEStageId]->stop_recording(pme->gpu->pmeStream);
 }
 
 void pme_gpu_get_timings(gmx_wallclock_gpu_t **timings, gmx_pme_t *pme)
@@ -136,7 +134,7 @@ void pme_gpu_init_timings(gmx_pme_t *pme)
     if (pme_gpu_enabled(pme))
     {
         cudaStreamSynchronize(pme->gpu->pmeStream);
-        for (size_t i = 0; i < PME_GPU_STAGES; i++)
+        for (size_t i = 0; i < ewcsPME_END_INVALID; i++)
         {
             pme->gpu->timingEvents.push_back(new pme_gpu_timing());
             pme->gpu->timingEvents[i]->enable();

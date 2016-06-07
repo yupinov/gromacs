@@ -73,8 +73,13 @@ enum {
     ewcsEWALD_CORRECTION,
     ewcsNB_X_BUF_OPS,
     ewcsNB_F_BUF_OPS,
-    //yupinov: change in the cpp as well!
-    ewcsPME_INTERPOL_IDX,
+    ewcsNR
+};
+
+// PME GPU timings
+// some might be unused
+enum {
+    ewcsPME_INTERPOL_IDX = 0,
     ewcsPME_SPLINE,
     ewcsPME_SPREAD,
     ewcsPME_SPLINEANDSPREAD,
@@ -85,13 +90,8 @@ enum {
     ewcsPME_FFT_C2R,
     ewcsPME_UNWRAP,
     ewcsPME_GATHER,
-    //
-    ewcsNR
+    ewcsPME_END_INVALID
 };
-//yupinov
-#ifndef PME_GPU_STAGES
-#define PME_GPU_STAGES (ewcsPME_GATHER - ewcsPME_INTERPOL_IDX + 1)
-#endif
 
 gmx_bool wallcycle_have_counter(void);
 /* Returns if cycle counting is supported */
