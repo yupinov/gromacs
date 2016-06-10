@@ -736,6 +736,8 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
 
     if (pme->bGPU) // safeguards
     {
+        GMX_RELEASE_ASSERT(pme->nnodes == 1, "PME GPU is only implemented for a single rank");
+        // only a single rank
         GMX_RELEASE_ASSERT(!pme->bFEP, "PME GPU is only implemented for a single grid");
         // shouldn't be difficult to extend though
         GMX_RELEASE_ASSERT(!EVDW_PME(ir->vdwtype), "PME LJ is not implemented on a GPU");
