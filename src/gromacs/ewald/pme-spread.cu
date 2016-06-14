@@ -103,10 +103,13 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
     // spline derivatives
     __shared__ real dtheta[thetaStride * order];
 
+    const int sharedIndex = localIndexCalc * DIM + dimIndex; // was threadLocalId
+
+    const int localLimit = (dimIndex < DIM) && (threadIdx.x == 0);
+    const int globalLimit = (globalIndexCalc < n);
 
     // INTERPOLATION INDICES
-
-    if ((globalIndexCalc < n) && (localIndexCalc < particlesPerBlock) && (dimIndex < DIM))
+    if (localLimit && globalLimit)
     {
         int constIndex, tInt;
         real n, t;
@@ -141,36 +144,32 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
         // Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes
         t = (t + 2.0f) * n;
         tInt = (int)t;
-        fractX[threadLocalId] = t - tInt;
+        fractX[sharedIndex] = t - tInt;
         constIndex += tInt;
 
 #if PME_USE_TEXTURES
 #if USE_TEXOBJ
-        fractX[threadLocalId] += tex1Dfetch<real>(fshTexture, constIndex);
-        idx[threadLocalId] = tex1Dfetch<int>(nnTexture, constIndex);
+        fractX[sharedIndex] += tex1Dfetch<real>(fshTexture, constIndex);
+        idx[sharedIndex] = tex1Dfetch<int>(nnTexture, constIndex);
 #else
-        fractX[threadLocalId] += tex1Dfetch(fshTextureRef, constIndex);
-        idx[threadLocalId] = tex1Dfetch(nnTextureRef, constIndex);
+        fractX[sharedIndex] += tex1Dfetch(fshTextureRef, constIndex);
+        idx[sharedIndex] = tex1Dfetch(nnTextureRef, constIndex);
 #endif
 #else
-        fractX[threadLocalId] += fsh[constIndex];
-        idx[threadLocalId] = nn[constIndex];
+        fractX[sharedIndex] += fsh[constIndex];
+        idx[sharedIndex] = nn[constIndex];
 #endif
         // staging for both parts
+        idxGlobal[globalIndexBase * DIM + sharedIndex] = idx[sharedIndex];
 
-        idxGlobal[globalIndexCalc * DIM + dimIndex] = idx[threadLocalId];
-    }
-    __syncthreads();
+        // MAKE BSPLINES
 
-    // MAKE BSPLINES
-    if ((globalIndexCalc < n) && (localIndexCalc < particlesPerBlock) && (dimIndex < DIM))
-    {
         if (bCalcAlways || (coefficient[localIndexCalc] != 0.0f))
         {
-            real dr, div;
+            real div;
             real data[order];
 
-            dr = fractX[threadLocalId];
+            const real dr = fractX[sharedIndex];
 
             /* dr is relative offset from lower cell limit */
             data[order - 1] = 0;
@@ -190,7 +189,7 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
                 data[0] = div * (1 - dr) * data[0];
             }
             /* differentiate */
-            const int thetaOffsetBase = localIndexCalc * DIM + dimIndex;
+            const int thetaOffsetBase = sharedIndex;
             dtheta[thetaOffsetBase] = -data[0];
 
 #pragma unroll
@@ -260,7 +259,7 @@ __device__ __forceinline__ void spread_charges(const real * __restrict__ coeffic
     {
         // spline Y/Z coordinates
         const int ithy = threadIdx.y;
-        const int ithz = threadIdx.z;
+        const int ithz = threadIdx.x;
         const int ix = idx[localIndex * DIM + XX] - offx;
         const int iy = idx[localIndex * DIM + YY] - offy;
         const int iz = idx[localIndex * DIM + ZZ] - offz;
@@ -337,7 +336,7 @@ __global__ void pme_spline_and_spread_kernel
     // spline parameters
     __shared__ real theta[thetaStride * order];
 
-    const int localIndex = threadIdx.x;
+    const int localIndex = threadIdx.z;
     const int globalIndexBase = blockIdx.x * particlesPerBlock;
     const int globalIndex = globalIndexBase + localIndex;
 
@@ -347,9 +346,7 @@ __global__ void pme_spline_and_spread_kernel
 
     stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal);
 
-    const int localIndexCalc = threadLocalId / DIM; // 4 instead of DIM
-    const int dimIndex = threadLocalId - localIndexCalc * DIM;
-    const int globalIndexCalc = globalIndexBase + localIndexCalc;
+    const int dimIndex = threadIdx.y;
 
     if (bCalcSplines)
     {
@@ -359,8 +356,8 @@ __global__ void pme_spline_and_spread_kernel
                                                                RECIPBOX,
 #endif
                                                                n,
-                                                               globalIndexCalc,
-                                                               localIndexCalc,
+                                                               globalIndex,
+                                                               localIndex,
                                                                globalIndexBase,
                                                                dimIndex,
                                                                threadLocalId);
@@ -368,6 +365,7 @@ __global__ void pme_spline_and_spread_kernel
     else if (bSpread) // staging for spread
     {
         //yupinov - unmaintained, unused branch!
+            /*
         if ((globalIndexCalc < n) && (dimIndex < DIM) && (localIndexCalc < particlesPerBlock))
         {
             idx[localIndexCalc * DIM + dimIndex] = idxGlobal[globalIndexCalc * DIM + dimIndex];
@@ -381,8 +379,10 @@ __global__ void pme_spline_and_spread_kernel
                 theta[thetaIndex] = thetaGlobal[thetaGlobalOffsetBase + thetaIndex];
             }
         }
+        */
+        __syncthreads();
     }
-    __syncthreads();
+
 
     // SPREAD
     if (bSpread)
@@ -761,8 +761,8 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     dim3 nBlocksSpread((n + blockSize - 1) / blockSize * order * order);
     dim3 nBlocksSpline((n + splineParticlesPerBlock - 1) / splineParticlesPerBlock);
-    dim3 dimBlockSpread(particlesPerBlock, order, order);
-    dim3 dimBlockSpline(splineParticlesPerBlock, DIM);
+    dim3 dimBlockSpread(order, order, particlesPerBlock); // used for spline_and_spread / spread
+    dim3 dimBlockSpline(splineParticlesPerBlock, DIM); // used for spline
     switch (order)
     {
         case 4:
