@@ -66,7 +66,7 @@ texture<float, 1, cudaReadModeElementType> fshTextureRef;
 template <
         const int order,
         const int particlesPerBlock,
-        const gmx_bool bDoSplines
+        const gmx_bool bCalcAlways
         >
 __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
                                         const int3 nnOffset,
@@ -165,7 +165,7 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
     // MAKE BSPLINES
     if ((globalIndexCalc < n) && (localIndexCalc < particlesPerBlock) && (dimIndex < DIM))
     {
-        if (bDoSplines || (coefficient[localIndexCalc] != 0.0f))
+        if (bCalcAlways || (coefficient[localIndexCalc] != 0.0f))
         {
             real dr, div;
             real data[order];
@@ -298,7 +298,7 @@ template <
         const int order,
         const int particlesPerBlock,
         const gmx_bool bCalcSplines, // first part
-        const gmx_bool bDoSplines,   // bypassing conditional in the first part
+        const gmx_bool bCalcAlways,   // bypassing conditional in the first part
         const gmx_bool bSpread       // second part
         >
 //#if GMX_PTX_ARCH <= 300
@@ -353,7 +353,7 @@ __global__ void pme_spline_and_spread_kernel
 
     if (bCalcSplines)
     {
-        calculate_splines<order, particlesPerBlock, bDoSplines>(nXYZ, nnOffset, coordinatesGlobal, coefficient,
+        calculate_splines<order, particlesPerBlock, bCalcAlways>(nXYZ, nnOffset, coordinatesGlobal, coefficient,
                                                                thetaGlobal, theta, dthetaGlobal, idxGlobal, idx,
 #if !PME_EXTERN_CMEM
                                                                RECIPBOX,
@@ -398,7 +398,7 @@ __global__ void pme_spline_and_spread_kernel
 template <
         const int order,
         const int particlesPerBlock,
-        const gmx_bool bDoSplines
+        const gmx_bool bCalcAlways
         >
 __global__ void pme_spline_kernel
 (const float3 nXYZ,
@@ -433,14 +433,13 @@ __global__ void pme_spline_kernel
             + (threadIdx.y * blockDim.x)
             + threadIdx.x;
 
-    const int localIndexCalc = threadLocalId / DIM; // 4 instead of DIM
-    const int dimIndex = threadLocalId - localIndexCalc * DIM;
-
+    const int localIndexCalc = threadIdx.x;
+    const int dimIndex = threadIdx.y;
     const int globalIndexCalc = globalIndexBase + localIndexCalc;
 
     stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal);
 
-    calculate_splines<order, particlesPerBlock, bDoSplines>(nXYZ, nnOffset, coordinatesGlobal, coefficient,
+    calculate_splines<order, particlesPerBlock, bCalcAlways>(nXYZ, nnOffset, coordinatesGlobal, coefficient,
                                                            thetaGlobal, theta, dthetaGlobal, idxGlobal, idx,
 #if !PME_EXTERN_CMEM
                                                            RECIPBOX,
@@ -690,7 +689,7 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
          const gmx_bool bSpread,
          const gmx_bool bDoSplines)
 {
-    const gmx_bool separateKernels = false;  // significantly slower if true
+    const gmx_bool bSeparateKernels = false;  // significantly slower if true
     if (!bCalcSplines && !bSpread)
         gmx_fatal(FARGS, "No splining or spreading to be done?"); //yupinov use of gmx_fatal
 
@@ -752,24 +751,22 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
         */
     }
 
-    // in spread-unified each kernel thread works on one particle: calculates its splines, spreads it to [order^3] gridpoints
-    // here each kernel thread works on [order] contiguous x grid points, so we multiply the total number of threads by [order^2]
+    // each spread kernel thread works on [order] contiguous x grid points, so we multiply the total number of threads by [order^2]
     // so only [1/order^2] of all kernel threads works on particle splines -> does it make sense to split it like this
 
-    //const int particlesPerBlock = warp_size;
     const int blockSize = THREADS_PER_BLOCK;
     const int particlesPerBlock = blockSize / order / order;
-    //duplicated below!
+    const int splineParticlesPerBlock = particlesPerBlock; //blockSize / DIM; - can be easily changed, just have to pass spread theta stride to the spline kernel!
+    // duplicated below!
 
-    //this is the number of particles for SPREAD, btw
-    dim3 nBlocks((n + blockSize - 1) / blockSize * order * order, 1, 1);
-    //dim3 dimBlock(order, order, D); //each block has 32 threads now to hand 32 particlesPerBlock
-    //dim3 dimBlock(particlesPerBlock, 1, 1);
-    dim3 dimBlock(particlesPerBlock, order, order);
+    dim3 nBlocksSpread((n + blockSize - 1) / blockSize * order * order);
+    dim3 nBlocksSpline((n + splineParticlesPerBlock - 1) / splineParticlesPerBlock);
+    dim3 dimBlockSpread(particlesPerBlock, order, order);
+    dim3 dimBlockSpline(splineParticlesPerBlock, DIM);
     switch (order)
     {
         case 4:
-            if (separateKernels)
+            if (bSeparateKernels)
             {
                 if (bCalcSplines)
                 {
@@ -779,7 +776,7 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
                         gmx_fatal(FARGS, "the code for bDoSplines==true was not tested!");
                     else
                     {
-                        pme_spline_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocks, dimBlock, 0, s>>>
+                        pme_spline_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocksSpline, dimBlockSpline, 0, s>>>
                                                                                                    (nXYZ,
                                                                                                     nnOffset,
 #if PME_USE_TEXTURES
@@ -808,7 +805,7 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
                 {
                     pme_gpu_timing_start(pme, ewcsPME_SPREAD);
 
-                    pme_spread_kernel<4, blockSize / 4 / 4> <<<nBlocks, dimBlock, 0, s>>>
+                    pme_spread_kernel<4, blockSize / 4 / 4> <<<nBlocksSpread, dimBlockSpread, 0, s>>>
                                                                             (/*pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,*/
                                                                              pny, pnz,
                                                                              pme->gpu->coefficients,
@@ -832,7 +829,7 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
                     {
                         if (bSpread)
                         {
-                            pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, FALSE, TRUE> <<<nBlocks, dimBlock, 0, s>>>
+                            pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, FALSE, TRUE> <<<nBlocksSpread, dimBlockSpread, 0, s>>>
                                   (nXYZ,
                                    pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
                                    pny, pnz,
