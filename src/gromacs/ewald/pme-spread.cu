@@ -80,7 +80,6 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
                                         const real * __restrict__ fsh,
 #endif
                                         const float3 * __restrict__ coordinatesGlobal,
-                                        const real * __restrict__ coefficientGlobal,
                                         real * __restrict__ coefficient,
                                         real * __restrict__ thetaGlobal,
                                         real * __restrict__ theta,
@@ -160,8 +159,6 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
         // staging for both parts
 
         idxGlobal[globalIndexCalc * DIM + dimIndex] = idx[threadLocalId];
-        if (threadLocalId < particlesPerBlock)
-            coefficient[threadLocalId] = coefficientGlobal[globalIndexBase + threadLocalId];
     }
     __syncthreads();
 
@@ -285,6 +282,19 @@ __device__ __forceinline__ void spread_charges(const real * __restrict__ coeffic
 }
 
 template <
+        const int particlesPerBlock
+        >
+__device__ __forceinline__ void stage_charges(const int threadLocalId,
+                                              real * __restrict__ coefficient,
+                                              const real * __restrict__ coefficientGlobal)
+{
+    const int globalIndexBase = blockIdx.x * particlesPerBlock;
+    if (threadLocalId < particlesPerBlock)
+        coefficient[threadLocalId] = coefficientGlobal[globalIndexBase + threadLocalId];
+    __syncthreads();
+}
+
+template <
         const int order,
         const int particlesPerBlock,
         const gmx_bool bCalcSplines, // first part
@@ -335,13 +345,15 @@ __global__ void pme_spline_and_spread_kernel
             + (threadIdx.y * blockDim.x)
             + threadIdx.x;
 
+    stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal);
+
     const int localIndexCalc = threadLocalId / DIM; // 4 instead of DIM
     const int dimIndex = threadLocalId - localIndexCalc * DIM;
     const int globalIndexCalc = globalIndexBase + localIndexCalc;
 
     if (bCalcSplines)
     {
-        calculate_splines<order, particlesPerBlock, bDoSplines>(nXYZ, nnOffset, coordinatesGlobal, coefficientGlobal, coefficient,
+        calculate_splines<order, particlesPerBlock, bDoSplines>(nXYZ, nnOffset, coordinatesGlobal, coefficient,
                                                                thetaGlobal, theta, dthetaGlobal, idxGlobal, idx,
 #if !PME_EXTERN_CMEM
                                                                RECIPBOX,
@@ -368,9 +380,6 @@ __global__ void pme_spline_and_spread_kernel
                 const int thetaIndex = thetaOffsetBase + k * thetaStride;
                 theta[thetaIndex] = thetaGlobal[thetaGlobalOffsetBase + thetaIndex];
             }
-
-            if (threadLocalId < particlesPerBlock)
-                coefficient[threadLocalId] = coefficientGlobal[globalIndexBase + threadLocalId];
         }
     }
     __syncthreads();
@@ -429,7 +438,9 @@ __global__ void pme_spline_kernel
 
     const int globalIndexCalc = globalIndexBase + localIndexCalc;
 
-    calculate_splines<order, particlesPerBlock, bDoSplines>(nXYZ, nnOffset, coordinatesGlobal, coefficientGlobal, coefficient,
+    stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal);
+
+    calculate_splines<order, particlesPerBlock, bDoSplines>(nXYZ, nnOffset, coordinatesGlobal, coefficient,
                                                            thetaGlobal, theta, dthetaGlobal, idxGlobal, idx,
 #if !PME_EXTERN_CMEM
                                                            RECIPBOX,
@@ -467,6 +478,9 @@ __global__ void pme_spread_kernel
     const int threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
             + (threadIdx.y * blockDim.x)
             + threadIdx.x;
+
+    stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal);
+
     const int localIndexCalc = threadLocalId / DIM;
     const int dimIndex = threadLocalId - localIndexCalc * DIM;
     const int globalIndexCalc = globalParticleIndexBase + localIndexCalc;
@@ -482,9 +496,6 @@ __global__ void pme_spread_kernel
             const int thetaIndex = thetaOffsetBase + k * thetaStride;
             theta[thetaIndex] = thetaGlobal[thetaGlobalOffsetBase + thetaIndex];
         }
-
-        if (threadLocalId < particlesPerBlock)
-            coefficient[threadLocalId] = coefficientGlobal[globalParticleIndexBase + threadLocalId];
     }
     __syncthreads();
 
