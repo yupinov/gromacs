@@ -79,7 +79,7 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
                                         const int * __restrict__ nn,
                                         const real * __restrict__ fsh,
 #endif
-                                        const float3 * __restrict__ coordinatesGlobal,
+                                        const float3 * __restrict__ coordinates,
                                         real * __restrict__ coefficient,
                                         real * __restrict__ thetaGlobal,
                                         real * __restrict__ theta,
@@ -93,8 +93,7 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
                                         const int globalIndexCalc,
                                         const int localIndexCalc,
                                         const int globalIndexBase,
-                                        const int dimIndex,
-                                        const int threadLocalId)
+                                        const int dimIndex)
 {
     const int thetaStride = particlesPerBlock * DIM;
 
@@ -103,7 +102,7 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
     // spline derivatives
     __shared__ real dtheta[thetaStride * order];
 
-    const int sharedIndex = localIndexCalc * DIM + dimIndex; // was threadLocalId
+    const int sharedIndex = localIndexCalc * DIM + dimIndex;
 
     const int localLimit = (dimIndex < DIM) && (threadIdx.x == 0);
     const int globalLimit = (globalIndexCalc < n);
@@ -113,7 +112,7 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
     {
         int constIndex, tInt;
         real n, t;
-        const float3 x = coordinatesGlobal[globalIndexCalc];
+        const float3 x = coordinates[localIndexCalc];
         // accessing fields in nnOffset/nXYZ/RECIPBOX/... with dimIndex offset
         // puts them into local memory (!) instead of accessing the constant memory directly
         // that's the reason for the switch
@@ -290,7 +289,19 @@ __device__ __forceinline__ void stage_charges(const int threadLocalId,
     const int globalIndexBase = blockIdx.x * particlesPerBlock;
     if (threadLocalId < particlesPerBlock)
         coefficient[threadLocalId] = coefficientGlobal[globalIndexBase + threadLocalId];
-    __syncthreads();
+}
+
+template <
+        const int particlesPerBlock
+        >
+__device__ __forceinline__ void stage_coordinates(const int threadLocalId,
+                                              real * __restrict__ coordinates,
+                                              const real * __restrict__ coordinatesGlobal)
+{
+    const int globalIndexBase = blockIdx.x * particlesPerBlock * DIM;
+    const int index = threadLocalId - 1 * particlesPerBlock;
+    if ((index >= 0) && (index < DIM * particlesPerBlock))
+        coordinates[index] = coordinatesGlobal[globalIndexBase + index];
 }
 
 template <
@@ -344,13 +355,17 @@ __global__ void pme_spline_and_spread_kernel
             + (threadIdx.y * blockDim.x)
             + threadIdx.x;
 
-    stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal);
-
     const int dimIndex = threadIdx.y;
 
     if (bCalcSplines)
     {
-        calculate_splines<order, particlesPerBlock, bCalcAlways>(nXYZ, nnOffset, coordinatesGlobal, coefficient,
+        // coordinates
+        __shared__ real coordinates[DIM * particlesPerBlock];
+
+        stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal);
+        stage_coordinates<particlesPerBlock>(threadLocalId, coordinates, (const real *)coordinatesGlobal);
+        __syncthreads();
+        calculate_splines<order, particlesPerBlock, bCalcAlways>(nXYZ, nnOffset, (const float3 *)coordinates, coefficient,
                                                                thetaGlobal, theta, dthetaGlobal, idxGlobal, idx,
 #if !PME_EXTERN_CMEM
                                                                RECIPBOX,
@@ -359,12 +374,11 @@ __global__ void pme_spline_and_spread_kernel
                                                                globalIndex,
                                                                localIndex,
                                                                globalIndexBase,
-                                                               dimIndex,
-                                                               threadLocalId);
+                                                               dimIndex);
     }
     else if (bSpread) // staging for spread
     {
-        //yupinov - unmaintained, unused branch!
+        //yupinov - unmaintained
             /*
         if ((globalIndexCalc < n) && (dimIndex < DIM) && (localIndexCalc < particlesPerBlock))
         {
@@ -380,9 +394,9 @@ __global__ void pme_spline_and_spread_kernel
             }
         }
         */
+        stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal);
         __syncthreads();
     }
-
 
     // SPREAD
     if (bSpread)
@@ -422,9 +436,13 @@ __global__ void pme_spline_kernel
 {
     const int thetaStride = particlesPerBlock * DIM;
 
+    // gridline indices
     __shared__ int idx[thetaStride];
+    // charges
     __shared__ real coefficient[particlesPerBlock];
-
+    // coordinates
+    __shared__ real coordinates[DIM * particlesPerBlock];
+    // spline parameters
     __shared__ real theta[thetaStride * order];
 
     const int globalIndexBase = blockIdx.x * particlesPerBlock;
@@ -438,8 +456,10 @@ __global__ void pme_spline_kernel
     const int globalIndexCalc = globalIndexBase + localIndexCalc;
 
     stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal);
+    stage_coordinates<particlesPerBlock>(threadLocalId, coordinates, (const real *)coordinatesGlobal);
+    __syncthreads();
 
-    calculate_splines<order, particlesPerBlock, bCalcAlways>(nXYZ, nnOffset, coordinatesGlobal, coefficient,
+    calculate_splines<order, particlesPerBlock, bCalcAlways>(nXYZ, nnOffset, (const float3 *)coordinates, coefficient,
                                                            thetaGlobal, theta, dthetaGlobal, idxGlobal, idx,
 #if !PME_EXTERN_CMEM
                                                            RECIPBOX,
@@ -448,8 +468,7 @@ __global__ void pme_spline_kernel
                                                            globalIndexCalc,
                                                            localIndexCalc,
                                                            globalIndexBase,
-                                                           dimIndex,
-                                                           threadLocalId);
+                                                           dimIndex);
 }
 
 
@@ -479,6 +498,7 @@ __global__ void pme_spread_kernel
             + threadIdx.x;
 
     stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal);
+    __syncthreads();
 
     const int localIndexCalc = threadLocalId / DIM;
     const int dimIndex = threadLocalId - localIndexCalc * DIM;
@@ -665,7 +685,7 @@ void pme_gpu_alloc_grids(gmx_pme_t *pme, const int gmx_unused grid_index)
 void pme_gpu_clear_grid(gmx_pme_t *pme, const int gmx_unused grid_index)
 {
     /*
-    pmegrid_t *pmegrid = &(pme->pmegrid[grid_index].grid); //yupinov most PME GPU functions ignore grid indices anyway
+    pmegrid_t *pmegrid = &(pme->pmegrid[grid_index].grid);
     const int pnx = pmegrid->n[XX];
     const int pny = pmegrid->n[YY];
     const int pnz = pmegrid->n[ZZ];
