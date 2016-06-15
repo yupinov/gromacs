@@ -119,16 +119,16 @@ __global__ void pme_gather_kernel
     {
         const int thetaOffsetBase = localIndex * PME_SPLINE_PARTICLE_STRIDE;
         const int thetaOffsetY = thetaOffsetBase + ithy * PME_SPLINE_ORDER_STRIDE + YY;
-        const int thetaOffsetZ = thetaOffsetBase + ithz * PME_SPLINE_ORDER_STRIDE + ZZ;
         const real ty = theta[thetaOffsetY];
-        const real tz = theta[thetaOffsetZ];
         const real dy = dtheta[thetaOffsetY];
+        const int thetaOffsetZ = thetaOffsetBase + ithz * PME_SPLINE_ORDER_STRIDE + ZZ;
         const real dz = dtheta[thetaOffsetZ];
+        const real tz = theta[thetaOffsetZ];
+        const int indexBaseYZ = ((idx[localIndex * DIM + XX] + 0) * pny + (idx[localIndex * DIM + YY] + ithy)) * pnz + (idx[localIndex * DIM + ZZ] + ithz);
+#pragma unroll
         for (int ithx = 0; (ithx < order); ithx++)
         {
-            const int index_x = (idx[localIndex * DIM + XX] + ithx) * pny * pnz;
-            const int index_xy = index_x + (idx[localIndex * DIM + YY] + ithy) * pnz;
-            const real gridValue = gridGlobal[index_xy + (idx[localIndex * DIM + ZZ] + ithz)];
+            const real gridValue = gridGlobal[indexBaseYZ + ithx * pny * pnz];
             const int thetaOffsetX = thetaOffsetBase + ithx * PME_SPLINE_ORDER_STRIDE + XX;
             const real tx = theta[thetaOffsetX];
             const real dx = dtheta[thetaOffsetX];
