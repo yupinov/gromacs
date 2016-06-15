@@ -82,9 +82,7 @@ __global__ void pme_gather_kernel
     const int thetaSize = PME_SPREADGATHER_BLOCK_DATA_SIZE * order;
     const int idxSize = PME_SPREADGATHER_BLOCK_DATA_SIZE;
     __shared__ int idx[idxSize];
-    __shared__ real theta[thetaSize];
-    __shared__ real dtheta[thetaSize];
-
+    __shared__ float2 splineParams[thetaSize]; // theta/dtheta pairs
 
     // spline Y/Z coordinates
     const int ithy = threadIdx.y;
@@ -104,8 +102,8 @@ __global__ void pme_gather_kernel
     }
     if ((threadLocalId < thetaSize))
     {
-        theta[threadLocalId] = thetaGlobal[blockIdx.x * thetaSize + threadLocalId];
-        dtheta[threadLocalId] = dthetaGlobal[blockIdx.x * thetaSize + threadLocalId];
+        splineParams[threadLocalId].x = thetaGlobal[blockIdx.x * thetaSize + threadLocalId];
+        splineParams[threadLocalId].y = dthetaGlobal[blockIdx.x * thetaSize + threadLocalId];
     }
 
     //locality?
@@ -119,29 +117,21 @@ __global__ void pme_gather_kernel
     {
         const int thetaOffsetBase = localIndex * PME_SPLINE_PARTICLE_STRIDE;
         const int thetaOffsetY = thetaOffsetBase + ithy * PME_SPLINE_ORDER_STRIDE + YY;
-        const real ty = theta[thetaOffsetY];
-        const real dy = dtheta[thetaOffsetY];
+        const float2 tdy = splineParams[thetaOffsetY];
         const int thetaOffsetZ = thetaOffsetBase + ithz * PME_SPLINE_ORDER_STRIDE + ZZ;
-        const real dz = dtheta[thetaOffsetZ];
-        const real tz = theta[thetaOffsetZ];
+        const float2 tdz = splineParams[thetaOffsetZ];
         const int indexBaseYZ = ((idx[localIndex * DIM + XX] + 0) * pny + (idx[localIndex * DIM + YY] + ithy)) * pnz + (idx[localIndex * DIM + ZZ] + ithz);
 #pragma unroll
         for (int ithx = 0; (ithx < order); ithx++)
         {
             const real gridValue = gridGlobal[indexBaseYZ + ithx * pny * pnz];
             const int thetaOffsetX = thetaOffsetBase + ithx * PME_SPLINE_ORDER_STRIDE + XX;
-            const real tx = theta[thetaOffsetX];
-            const real dx = dtheta[thetaOffsetX];
-            const real fxy1 = tz * gridValue;
-            const real fz1  = dz * gridValue;
-            fx += dx * ty * fxy1;
-            fy += tx * dy * fxy1;
-            fz += tx * ty * fz1;
-            /*
-            atomicAdd(fx + localIndex, dx * ty * fxy1);
-            atomicAdd(fy + localIndex, tx * dy * fxy1);
-            atomicAdd(fz + localIndex, tx * ty * fz1);
-            */
+            const float2 tdx = splineParams[thetaOffsetX];
+            const real fxy1 = tdz.x * gridValue;
+            const real fz1  = tdz.y * gridValue;
+            fx += tdx.y * tdy.x * fxy1;
+            fy += tdx.x * tdy.y * fxy1;
+            fz += tdx.x * tdy.x * fz1;
         }
     }
     __syncthreads();
