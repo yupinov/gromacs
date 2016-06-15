@@ -491,10 +491,12 @@ __global__ void pme_spread_kernel
     const int localIndexCalc = threadLocalId / DIM;
     const int dimIndex = threadLocalId - localIndexCalc * DIM;
     const int globalIndexCalc = globalParticleIndexBase + localIndexCalc;
+
     if ((globalIndexCalc < n) && (dimIndex < DIM) && (localIndexCalc < particlesPerBlock))
     {
-        idx[localIndexCalc * DIM + dimIndex] = idxGlobal[globalIndexCalc * DIM + dimIndex]; //yupinov check instructions
+        idx[localIndexCalc * DIM + dimIndex] = idxGlobal[globalIndexCalc * DIM + dimIndex];
 
+        //unmaintained...
         const int thetaOffsetBase = localIndexCalc * DIM + dimIndex;
         const int thetaGlobalOffsetBase = globalParticleIndexBase * DIM * order;
 #pragma unroll

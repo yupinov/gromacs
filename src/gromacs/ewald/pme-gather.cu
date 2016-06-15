@@ -117,8 +117,9 @@ __global__ void pme_gather_kernel
 
     if (globalIndex < n)
     {
-        const int thetaOffsetY = localIndex * DIM + ithy * PME_SPLINE_ORDER_STRIDE + YY;
-        const int thetaOffsetZ = localIndex * DIM + ithz * PME_SPLINE_ORDER_STRIDE + ZZ;
+        const int thetaOffsetBase = localIndex * PME_SPLINE_PARTICLE_STRIDE;
+        const int thetaOffsetY = thetaOffsetBase + ithy * PME_SPLINE_ORDER_STRIDE + YY;
+        const int thetaOffsetZ = thetaOffsetBase + ithz * PME_SPLINE_ORDER_STRIDE + ZZ;
         const real ty = theta[thetaOffsetY];
         const real tz = theta[thetaOffsetZ];
         const real dy = dtheta[thetaOffsetY];
@@ -128,7 +129,7 @@ __global__ void pme_gather_kernel
             const int index_x = (idx[localIndex * DIM + XX] + ithx) * pny * pnz;
             const int index_xy = index_x + (idx[localIndex * DIM + YY] + ithy) * pnz;
             const real gridValue = gridGlobal[index_xy + (idx[localIndex * DIM + ZZ] + ithz)];
-            const int thetaOffsetX = localIndex * DIM + ithx * PME_SPLINE_ORDER_STRIDE + XX;
+            const int thetaOffsetX = thetaOffsetBase + ithx * PME_SPLINE_ORDER_STRIDE + XX;
             const real tx = theta[thetaOffsetX];
             const real dx = dtheta[thetaOffsetX];
             const real fxy1 = tz * gridValue;
@@ -239,9 +240,9 @@ __global__ void pme_gather_kernel
         contrib *= -coefficient;
 
         if (bOverwriteForces)
-            forcesGlobal[blockIdx.x * particlesPerBlock * DIM + threadLocalId] = contrib;
+            forcesGlobal[blockIdx.x * PME_SPREADGATHER_BLOCK_DATA_SIZE + threadLocalId] = contrib;
         else
-            forcesGlobal[blockIdx.x * particlesPerBlock * DIM + threadLocalId] += contrib;
+            forcesGlobal[blockIdx.x * PME_SPREADGATHER_BLOCK_DATA_SIZE + threadLocalId] += contrib;
     }
 }
 

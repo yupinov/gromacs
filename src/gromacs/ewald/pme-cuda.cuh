@@ -15,15 +15,15 @@
 
 // particles per block and block sizes should also be here....
 
-// now the hierarchy of the global spline data is order -> particle -> dimension
-#define PME_SPLINE_ORDER_STRIDE (particlesPerBlock * DIM)
-#define PME_SPLINE_PARTICLE_STRIDE (DIM)
+// the hierarchy of the global spline data was for some silly reason order -> particle -> dimension
+//#define PME_SPLINE_ORDER_STRIDE (particlesPerBlock * DIM)
+//#define PME_SPLINE_PARTICLE_STRIDE (DIM)
 
-// particles should be on top
-// let's try particle -> order -> dimension
+// particles should be on top, so now it's particle -> order -> dimension
 // that means switching the particle and order indices
-//#define PME_SPLINE_ORDER_STRIDE (DIM)
-//#define PME_SPLINE_PARTICLE_STRIDE (DIM * order)
+#define PME_SPLINE_ORDER_STRIDE (DIM)
+#define PME_SPLINE_PARTICLE_STRIDE (DIM * order)
+
 
 #define PME_SPREADGATHER_BLOCK_DATA_SIZE (particlesPerBlock * DIM)
 
