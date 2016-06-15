@@ -98,7 +98,7 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
     // spline derivatives
     __shared__ real dtheta[PME_SPREADGATHER_BLOCK_DATA_SIZE * order];
 
-    const int sharedIndex = localIndexCalc * DIM + dimIndex;
+    const int sharedMemoryIndex = localIndexCalc * DIM + dimIndex;
 
     const int localLimit = (dimIndex < DIM) && (threadIdx.x == 0);
     const int globalLimit = (globalIndexCalc < n);
@@ -139,23 +139,23 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
         // Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes
         t = (t + 2.0f) * n;
         tInt = (int)t;
-        fractX[sharedIndex] = t - tInt;
+        fractX[sharedMemoryIndex] = t - tInt;
         constIndex += tInt;
 
 #if PME_USE_TEXTURES
 #if USE_TEXOBJ
-        fractX[sharedIndex] += tex1Dfetch<real>(fshTexture, constIndex);
-        idx[sharedIndex] = tex1Dfetch<int>(nnTexture, constIndex);
+        fractX[sharedMemoryIndex] += tex1Dfetch<real>(fshTexture, constIndex);
+        idx[sharedMemoryIndex] = tex1Dfetch<int>(nnTexture, constIndex);
 #else
-        fractX[sharedIndex] += tex1Dfetch(fshTextureRef, constIndex);
-        idx[sharedIndex] = tex1Dfetch(nnTextureRef, constIndex);
+        fractX[sharedMemoryIndex] += tex1Dfetch(fshTextureRef, constIndex);
+        idx[sharedMemoryIndex] = tex1Dfetch(nnTextureRef, constIndex);
 #endif
 #else
-        fractX[sharedIndex] += fsh[constIndex];
-        idx[sharedIndex] = nn[constIndex];
+        fractX[sharedMemoryIndex] += fsh[constIndex];
+        idx[sharedMemoryIndex] = nn[constIndex];
 #endif
         // staging for both parts
-        idxGlobal[globalIndexBase * DIM + sharedIndex] = idx[sharedIndex];
+        idxGlobal[globalIndexBase * DIM + sharedMemoryIndex] = idx[sharedMemoryIndex];
 
         // MAKE BSPLINES
 
@@ -164,7 +164,7 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
             real div;
             real data[order];
 
-            const real dr = fractX[sharedIndex];
+            const real dr = fractX[sharedMemoryIndex];
 
             /* dr is relative offset from lower cell limit */
             data[order - 1] = 0;
@@ -184,7 +184,7 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
                 data[0] = div * (1 - dr) * data[0];
             }
             /* differentiate */
-            const int thetaOffsetBase = sharedIndex;
+            const int thetaOffsetBase = localIndexCalc * PME_SPLINE_PARTICLE_STRIDE + dimIndex; //sharedMemoryIndex;
             dtheta[thetaOffsetBase] = -data[0];
 
 #pragma unroll
@@ -252,12 +252,12 @@ __device__ __forceinline__ void spread_charges(const real * __restrict__ coeffic
     {
         // spline Y/Z coordinates
         const int ithy = threadIdx.y;
-        const int ithz = threadIdx.x;
+        const int ithz = threadIdx.x; //?
         const int ix = idx[localIndex * DIM + XX] - offx;
         const int iy = idx[localIndex * DIM + YY] - offy;
         const int iz = idx[localIndex * DIM + ZZ] - offz;
 
-        const int thetaOffsetBase = localIndex * DIM;
+        const int thetaOffsetBase = localIndex * PME_SPLINE_PARTICLE_STRIDE;
         const real thz = theta[thetaOffsetBase + ithz * PME_SPLINE_ORDER_STRIDE + ZZ];
         const real thy = theta[thetaOffsetBase + ithy * PME_SPLINE_ORDER_STRIDE + YY];
         const real constVal = thz * thy * coefficient[localIndex];

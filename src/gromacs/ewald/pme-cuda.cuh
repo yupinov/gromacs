@@ -13,8 +13,17 @@
 #define PME_EXTERN_CMEM 0
 // constants as extern instead of arguments -> needs CUDA_SEPARABLE_COMPILATION which is off by default
 
+// particles per block and block sizes should also be here....
+
+// now the hierarchy of the global spline data is order -> particle -> dimension
 #define PME_SPLINE_ORDER_STRIDE (particlesPerBlock * DIM)
-// 8 * 3 == 24
+#define PME_SPLINE_PARTICLE_STRIDE (DIM)
+
+// particles should be on top
+// let's try particle -> order -> dimension
+// that means switching the particle and order indices
+//#define PME_SPLINE_ORDER_STRIDE (DIM)
+//#define PME_SPLINE_PARTICLE_STRIDE (DIM * order)
 
 #define PME_SPREADGATHER_BLOCK_DATA_SIZE (particlesPerBlock * DIM)
 
