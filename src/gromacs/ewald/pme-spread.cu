@@ -46,8 +46,6 @@
 #include "pme-timings.cuh"
 #include "pme-cuda.cuh"
 
-#include <assert.h>
-
 #define THREADS_PER_BLOCK   (4 * warp_size)
 #define MIN_BLOCKS_PER_MP   (16)
 
@@ -95,12 +93,10 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
                                         const int globalIndexBase,
                                         const int dimIndex)
 {
-    const int thetaStride = particlesPerBlock * DIM;
-
     // fractional coordinates
-    __shared__ real fractX[thetaStride];
+    __shared__ real fractX[PME_SPREADGATHER_BLOCK_DATA_SIZE];
     // spline derivatives
-    __shared__ real dtheta[thetaStride * order];
+    __shared__ real dtheta[PME_SPREADGATHER_BLOCK_DATA_SIZE * order];
 
     const int sharedIndex = localIndexCalc * DIM + dimIndex;
 
@@ -194,7 +190,7 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
 #pragma unroll
             for (int k = 1; k < order; k++)
             {
-                dtheta[thetaOffsetBase + k * thetaStride] = data[k - 1] - data[k];
+                dtheta[thetaOffsetBase + k * PME_SPLINE_ORDER_STRIDE] = data[k - 1] - data[k];
             }
 
             div             = 1.0f / (order - 1);
@@ -209,7 +205,7 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
 #pragma unroll
             for (int k = 0; k < order; k++)
             {
-                theta[thetaOffsetBase + k * thetaStride] = data[k];
+                theta[thetaOffsetBase + k * PME_SPLINE_ORDER_STRIDE] = data[k];
             }
 
             // store to global
@@ -217,7 +213,7 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
 #pragma unroll
             for (int k = 0; k < order; k++)
             {
-                const int thetaIndex = thetaOffsetBase + k * thetaStride;
+                const int thetaIndex = thetaOffsetBase + k * PME_SPLINE_ORDER_STRIDE;
 
                 thetaGlobal[thetaGlobalOffsetBase + thetaIndex] = theta[thetaIndex];
                 dthetaGlobal[thetaGlobalOffsetBase + thetaIndex] = dtheta[thetaIndex];
@@ -249,8 +245,6 @@ __device__ __forceinline__ void spread_charges(const real * __restrict__ coeffic
     offy = pmegrid->offset[YY];
     offz = pmegrid->offset[ZZ];
     */
-
-    const int thetaStride = particlesPerBlock * DIM;
     const int offx = 0, offy = 0, offz = 0;
     // unused for now
 
@@ -264,8 +258,8 @@ __device__ __forceinline__ void spread_charges(const real * __restrict__ coeffic
         const int iz = idx[localIndex * DIM + ZZ] - offz;
 
         const int thetaOffsetBase = localIndex * DIM;
-        const real thz = theta[thetaOffsetBase + ithz * thetaStride + ZZ];
-        const real thy = theta[thetaOffsetBase + ithy * thetaStride + YY];
+        const real thz = theta[thetaOffsetBase + ithz * PME_SPLINE_ORDER_STRIDE + ZZ];
+        const real thy = theta[thetaOffsetBase + ithy * PME_SPLINE_ORDER_STRIDE + YY];
         const real constVal = thz * thy * coefficient[localIndex];
         const int constOffset = (iy + ithy) * pnz + (iz + ithz);
         const real *thx = theta + (thetaOffsetBase + XX);
@@ -274,7 +268,7 @@ __device__ __forceinline__ void spread_charges(const real * __restrict__ coeffic
         for (int ithx = 0; (ithx < order); ithx++)
         {
             const int index_x = (ix + ithx) * pny * pnz;
-            atomicAdd(gridGlobal + index_x + constOffset, thx[ithx * thetaStride] * constVal);
+            atomicAdd(gridGlobal + index_x + constOffset, thx[ithx * PME_SPLINE_ORDER_STRIDE] * constVal);
         }
     }
 }
@@ -338,14 +332,12 @@ __global__ void pme_spline_and_spread_kernel
 #endif
  const int n)
 {
-    const int thetaStride = particlesPerBlock * DIM;
-
     // gridline indices
-    __shared__ int idx[thetaStride];
+    __shared__ int idx[PME_SPREADGATHER_BLOCK_DATA_SIZE];
     // charges
     __shared__ real coefficient[particlesPerBlock];
     // spline parameters
-    __shared__ real theta[thetaStride * order];
+    __shared__ real theta[PME_SPREADGATHER_BLOCK_DATA_SIZE * order];
 
     const int localIndex = threadIdx.z;
     const int globalIndexBase = blockIdx.x * particlesPerBlock;
@@ -434,16 +426,14 @@ __global__ void pme_spline_kernel
  #endif
  const int n)
 {
-    const int thetaStride = particlesPerBlock * DIM;
-
     // gridline indices
-    __shared__ int idx[thetaStride];
+    __shared__ int idx[PME_SPREADGATHER_BLOCK_DATA_SIZE];
     // charges
     __shared__ real coefficient[particlesPerBlock];
     // coordinates
     __shared__ real coordinates[DIM * particlesPerBlock];
     // spline parameters
-    __shared__ real theta[thetaStride * order];
+    __shared__ real theta[PME_SPREADGATHER_BLOCK_DATA_SIZE * order];
 
     const int globalIndexBase = blockIdx.x * particlesPerBlock;
 
@@ -480,12 +470,10 @@ __global__ void pme_spread_kernel
  real * __restrict__ gridGlobal, real * __restrict__ thetaGlobal, const int * __restrict__ idxGlobal,
  int n)
 {
-    const int thetaStride = particlesPerBlock * DIM;
-
-    __shared__ int idx[thetaStride];
+    __shared__ int idx[PME_SPREADGATHER_BLOCK_DATA_SIZE];
     __shared__ real coefficient[particlesPerBlock];
 
-    __shared__ real theta[thetaStride * order];
+    __shared__ real theta[PME_SPREADGATHER_BLOCK_DATA_SIZE * order];
 
     const int localIndex = threadIdx.x;
     const int globalParticleIndexBase = blockIdx.x * particlesPerBlock;
@@ -512,7 +500,7 @@ __global__ void pme_spread_kernel
 #pragma unroll
         for (int k = 0; k < order; k++)
         {
-            const int thetaIndex = thetaOffsetBase + k * thetaStride;
+            const int thetaIndex = thetaOffsetBase + k * PME_SPLINE_ORDER_STRIDE;
             theta[thetaIndex] = thetaGlobal[thetaGlobalOffsetBase + thetaIndex];
         }
     }

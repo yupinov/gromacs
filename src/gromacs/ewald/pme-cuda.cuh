@@ -13,6 +13,11 @@
 #define PME_EXTERN_CMEM 0
 // constants as extern instead of arguments -> needs CUDA_SEPARABLE_COMPILATION which is off by default
 
+#define PME_SPLINE_ORDER_STRIDE (particlesPerBlock * DIM)
+// 8 * 3 == 24
+
+#define PME_SPREADGATHER_BLOCK_DATA_SIZE (particlesPerBlock * DIM)
+
 #if PME_EXTERN_CMEM
 #error "Unfinished separable compilation implementation"
 

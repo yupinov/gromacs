@@ -79,9 +79,8 @@ __global__ void pme_gather_kernel
     const int blockSize = particlesPerBlock * particleDataSize; //1 line per thread
     // should the array size aligned by warp size for shuffle?
 
-    const int thetaStride = particlesPerBlock * DIM; // a global size dependency with spread!
-    const int thetaSize = thetaStride * order;
-    const int idxSize = thetaStride;
+    const int thetaSize = PME_SPREADGATHER_BLOCK_DATA_SIZE * order;
+    const int idxSize = PME_SPREADGATHER_BLOCK_DATA_SIZE;
     __shared__ int idx[idxSize];
     __shared__ real theta[thetaSize];
     __shared__ real dtheta[thetaSize];
@@ -118,8 +117,8 @@ __global__ void pme_gather_kernel
 
     if (globalIndex < n)
     {
-        const int thetaOffsetY = localIndex * DIM + ithy * thetaStride + YY;
-        const int thetaOffsetZ = localIndex * DIM + ithz * thetaStride + ZZ;
+        const int thetaOffsetY = localIndex * DIM + ithy * PME_SPLINE_ORDER_STRIDE + YY;
+        const int thetaOffsetZ = localIndex * DIM + ithz * PME_SPLINE_ORDER_STRIDE + ZZ;
         const real ty = theta[thetaOffsetY];
         const real tz = theta[thetaOffsetZ];
         const real dy = dtheta[thetaOffsetY];
@@ -129,7 +128,7 @@ __global__ void pme_gather_kernel
             const int index_x = (idx[localIndex * DIM + XX] + ithx) * pny * pnz;
             const int index_xy = index_x + (idx[localIndex * DIM + YY] + ithy) * pnz;
             const real gridValue = gridGlobal[index_xy + (idx[localIndex * DIM + ZZ] + ithz)];
-            const int thetaOffsetX = localIndex * DIM + ithx * thetaStride + XX;
+            const int thetaOffsetX = localIndex * DIM + ithx * PME_SPLINE_ORDER_STRIDE + XX;
             const real tx = theta[thetaOffsetX];
             const real dx = dtheta[thetaOffsetX];
             const real fxy1 = tz * gridValue;
