@@ -115,17 +115,23 @@ __global__ void pme_gather_kernel
 
     if (globalIndex < n)
     {
-        const int thetaOffsetBase = localIndex * PME_SPLINE_PARTICLE_STRIDE;
-        const int thetaOffsetY = thetaOffsetBase + ithy * PME_SPLINE_ORDER_STRIDE + YY;
+        const int particleWarpIndex = localIndex % PARTICLES_PER_WARP;
+        const int warpIndex = localIndex / PARTICLES_PER_WARP; // should be just a real warp index!
+
+        const int thetaOffsetBase = PME_SPLINE_THETA_STRIDE * order * warpIndex * DIM * PARTICLES_PER_WARP + particleWarpIndex;
+        const int orderStride = PME_SPLINE_THETA_STRIDE * DIM * PARTICLES_PER_WARP;  // PME_SPLINE_ORDER_STRIDE
+        const int dimStride = PME_SPLINE_THETA_STRIDE * PARTICLES_PER_WARP; // ?
+
+        const int thetaOffsetY = thetaOffsetBase + ithy * orderStride + YY * dimStride;
         const float2 tdy = splineParams[thetaOffsetY];
-        const int thetaOffsetZ = thetaOffsetBase + ithz * PME_SPLINE_ORDER_STRIDE + ZZ;
+        const int thetaOffsetZ = thetaOffsetBase + ithz * orderStride + ZZ * dimStride;
         const float2 tdz = splineParams[thetaOffsetZ];
         const int indexBaseYZ = ((idx[localIndex * DIM + XX] + 0) * pny + (idx[localIndex * DIM + YY] + ithy)) * pnz + (idx[localIndex * DIM + ZZ] + ithz);
 #pragma unroll
         for (int ithx = 0; (ithx < order); ithx++)
         {
             const real gridValue = gridGlobal[indexBaseYZ + ithx * pny * pnz];
-            const int thetaOffsetX = thetaOffsetBase + ithx * PME_SPLINE_ORDER_STRIDE + XX;
+            const int thetaOffsetX = thetaOffsetBase + ithx * orderStride + XX * dimStride;
             const float2 tdx = splineParams[thetaOffsetX];
             const real fxy1 = tdz.x * gridValue;
             const real fz1  = tdz.y * gridValue;

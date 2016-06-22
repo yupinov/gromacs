@@ -214,9 +214,14 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
             for (int k = 0; k < order; k++)
             {
                 const int thetaIndex = thetaOffsetBase + k * PME_SPLINE_ORDER_STRIDE;
+                //yupinov - compare with threadLocalId for coalescing!
+                const int particleWarpIndex = localIndexCalc % PARTICLES_PER_WARP;
+                const int warpIndex = localIndexCalc / PARTICLES_PER_WARP; // should be just a real warp index!
+                const int thetaGlobalIndex = thetaGlobalOffsetBase + PME_SPLINE_THETA_STRIDE *
+                        (((k + order * warpIndex) * DIM + dimIndex) * PARTICLES_PER_WARP + particleWarpIndex);
 
-                thetaGlobal[thetaGlobalOffsetBase + thetaIndex] = theta[thetaIndex];
-                dthetaGlobal[thetaGlobalOffsetBase + thetaIndex] = dtheta[thetaIndex];
+                thetaGlobal[thetaGlobalIndex] = theta[thetaIndex];
+                dthetaGlobal[thetaGlobalIndex] = dtheta[thetaIndex];
             }
         }
     }

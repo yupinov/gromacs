@@ -24,8 +24,16 @@
 #define PME_SPLINE_ORDER_STRIDE (DIM)
 #define PME_SPLINE_PARTICLE_STRIDE (DIM * order)
 
+#define PME_SPLINE_THETA_STRIDE 1
+// should be 2 for float2 theta/dtheta storage
 
 #define PME_SPREADGATHER_BLOCK_DATA_SIZE (particlesPerBlock * DIM)
+
+#define PARTICLES_PER_WARP (warp_size / order / order)
+// there is some redundancy here!
+// what do I do when order > 5?
+
+//yupinov - document spline param layout (2 particles -> order -> dim -> particle 1, 2)
 
 #if PME_EXTERN_CMEM
 #error "Unfinished separable compilation implementation"
