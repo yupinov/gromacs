@@ -35,13 +35,13 @@
 %\end{frame}
 
 \section{Introduction}
-\begin{frame}{Molecular dynamics simulations' performance}
+\begin{frame}{Molecular dynamics simulations performance}
 \begin{itemize}
 \item typical use case: modelling large organic molecules (hundreds of thousands atoms)
-\item scaling performance is important (time steps of $10^{-15}$ seconds, processes of $10^{-6}$ -- $10^{-3}$ seconds) 
-\item the shift towards using GPU/accelerator highly-parallel hardware (a speed of single core stagnates $\implies$ increasing number of cores)
+\item scaling performance is important (time steps of $10^{-15}$ seconds, scale of processes is $10^{-6}$ -- $10^{-3}$ seconds) 
+\item the general shift towards using GPU/accelerator highly-parallel hardware (a speed of single core stagnates $\implies$ increasing number of cores)
 \item most computational time in MD taken by electrostatic interactions
-\item PME (particle mesh Ewald) used for computing a certain component of electrostatic interactions
+\item PME (particle mesh Ewald) method is used for computing a "long-range" component of electrostatic interactions
 \end{itemize}
 \end{frame}
 
@@ -132,7 +132,7 @@ E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus {0}\}
 \begin{itemize}
 % picture of charges
 \item a way to approximate exponentials in the reciprocal sum 
-\item interpolation onto a discrete 3D grid
+\item interpolation onto a discrete, finite 3D grid
 \item smooth PME: B-spline interpolation of order $p$, the potential function is smooth $\implies$ simple analytical derivation of forces
 \item can be implemented in $O(N \log(N))$
 % B-spline formulas
@@ -141,9 +141,9 @@ E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus {0}\}
 
 \begin{frame}{PME stages}
 \begin{enumerate}
-\item calculate the B-spline interpolation values for each particle
-(3 dimensions, $p$ values and $p$ derivatives in each, $p$ typically 4 or 5)
-\item spread the particle charges on a discrete 3D grid ($p^3$ contributions per particle)
+\item calculate the B-spline interpolation values for each particle \\
+(3 dimensions, $p$ values/derivatives in each, $p$ typically 4 or 5)
+\item spread the particle charges on a discrete 3D grid \\ ($p^3$ contributions per particle)
 \item perform real-to-complex 3D FFT of the grid
 \item calculate the reciprocal energy, transform the grid
 \item perform complex-to-real 3D FFT of the grid
