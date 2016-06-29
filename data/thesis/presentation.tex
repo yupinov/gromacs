@@ -45,10 +45,10 @@ pictures picctures pictures!
 \section{Introduction}
 \begin{frame}{Molecular dynamics simulations performance}
 \begin{itemize}
-\item typical use case: modelling large organic molecules (hundreds of thousands atoms)
+\item typical MD use case: modelling large organic molecules (hundreds of thousands atoms)
 \item scaling performance is important (time steps of $10^{-15}$ seconds, scale of processes is $10^{-6}$ -- $10^{-3}$ seconds) 
 \item the general shift towards using GPU/accelerator highly-parallel hardware (a speed of single core stagnates $\implies$ increasing number of cores)
-\item most computational time in MD taken by electrostatic interactions
+\item most computational time in MD simulations taken by electrostatic interactions
 \item PME (particle mesh Ewald) method is used for computing a "long-range" component of electrostatic interactions
 \end{itemize}
 \end{frame}
@@ -143,15 +143,17 @@ E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus {0}\}
 \item interpolation onto a discrete, finite 3D grid
 \item smooth PME: B-spline interpolation of order $p$, the potential function is smooth $\implies$ simple analytical derivation of forces
 \item can be implemented in $O(N \log(N))$
-% B-spline formulas
+% B-spline formulae
 \end{itemize}
 \end{frame}
 
 \begin{frame}{PME stages}
+
 \begin{enumerate}
 \item calculate the B-spline interpolation values for each particle \\
 (3 dimensions, $p$ values/derivatives in each, $p$ typically 4 or 5)
-\item spread the particle charges on a discrete 3D grid \\ ($p^3$ contributions per particle)
+\item 
+    spread the particle charges on a discrete 3D grid \\ ($p^3$ contributions per particle)
 \item perform real-to-complex 3D FFT of the grid
 \item calculate the reciprocal energy, transform the grid
 \item perform complex-to-real 3D FFT of the grid
@@ -163,7 +165,6 @@ E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus {0}\}
 
 \section{Implementation}
 
-\iffalse
 \begin{frame}{MD time step in GROMACS}
 \begin{figure}
     \centering
@@ -183,7 +184,6 @@ E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus {0}\}
 \end{figure}
 \FloatBarrier
 \end{frame}
-\fi %uncomment
 
 %order 4!
 
@@ -199,15 +199,14 @@ E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus {0}\}
 
 \begin{frame}{Spreading the charges}
 \begin{itemize}
-\item a most important, memory-bound part of the runtime
-\item charges accumulated onto the global grid in parallel $\implies$ clashes of atomic 
-addition operations
+\item the most important, memory-bound part of the run-time
+\item charges accumulated onto the global grid in parallel $\implies$ clashes of atomic addition operations
 \item for PME order $p=4$ each particle affects $4^3 = 64$ cells
 \item a single thread works on one line (4 contributions)
 \item a warp works exactly on 2 particles (16 threads per particle)
 % picture
 \item the grid is meant to be periodic
-\item the implementation grid has an overlap of $p - 1$ cells in each direction, is wrapped afterwards by a separate small kernel
+\item the implementation grid has an 'overlap' of $(p - 1)$ cells in each direction, is wrapped afterwards by a separate small kernel
 \end{itemize}
 \end{frame}
 
