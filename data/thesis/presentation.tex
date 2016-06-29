@@ -1,4 +1,4 @@
-\documentclass[11pt]{beamer}
+ \documentclass[11pt]{beamer}
 \usetheme{Berlin}
 \usepackage[utf8]{inputenc}
 \usepackage{amsmath}
@@ -25,8 +25,16 @@
 \begin{document}
 %\setbeamertemplate{caption}{\raggedright\insertcaption\par}
 \captionsetup[figure]{labelformat=empty}
-
-\begin{frame}
+\iffalse
+asterisk
+computebound solve? 
+characteristics of all kernels?
+B-spline formulae
+steps
+theta layout
+pictures picctures pictures!
+\fi
+\begin{frame}	
 \titlepage
 \end{frame}
 
@@ -147,7 +155,7 @@ E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus {0}\}
 \item perform real-to-complex 3D FFT of the grid
 \item calculate the reciprocal energy, transform the grid
 \item perform complex-to-real 3D FFT of the grid
-\item gather the particle forces from the grid and reduce ($p^3$ contributions per particle)
+\item gather the particle forces from the grid and reduce \\ (again, $p^3$ contributions per particle)
 \end{enumerate}
 \end{frame}
 
@@ -177,24 +185,29 @@ E_{rec}=\frac{1}{2\pi V}\sum\limits_{\bold{m} \in \{\mathbb{Z}^3 \setminus {0}\}
 \end{frame}
 \fi %uncomment
 
+%order 4!
+
 \begin{frame}{Calculating the spline parameters}
 \begin{itemize}
-\item a single thread performs a single dimension computation for a single particle (3 threads per particle)
-\item unified with the spreading kernel to save on global memory accesses (such as grid-line indices) 
+\item independent 3 dimensions of each particle's spline parameters $\implies$ 3 threads per particle
+\item each dimension of a particle spline involves $p=4$ spline values/derivatives 
+\item $p$ threads can perform redundant work for a single spline; \\each stores only $1$ value/derivative $\implies$ less global memory transactions
+\item overall, $3 \cdot 4 = 12$ threads per particle 
+\item united with the next stage - the charge spreading kernel \\ (to save on spline parameter accesses using shared memory) 
 \end{itemize}
 \end{frame}
 
 \begin{frame}{Spreading the charges}
 \begin{itemize}
-\item a large part of the run time
-\item charges accumulated onto the grid in parallel $\implies$ clashes of atomic 
+\item a most important, memory-bound part of the runtime
+\item charges accumulated onto the global grid in parallel $\implies$ clashes of atomic 
 addition operations
 \item for PME order $p=4$ each particle affects $4^3 = 64$ cells
 \item a single thread works on one line (4 contributions)
 \item a warp works exactly on 2 particles (16 threads per particle)
 % picture
 \item the grid is meant to be periodic
-\item the implementation grid has an overlap of $p - 1$ cells in each direction, is wrapped afterwards by a separate small kernel (integer division is costly)
+\item the implementation grid has an overlap of $p - 1$ cells in each direction, is wrapped afterwards by a separate small kernel
 \end{itemize}
 \end{frame}
 
@@ -203,7 +216,7 @@ addition operations
 \item happens twice (real-to-complex before solving, complex-to-real after solving)
 \item implemented as a simple call to CUDA cuFFT library
 \item with multiple PME processes requires all-to-all communication of the decomposed grid
-\item for this reason an option of using the existing CPU FFT code (MPI + calls to FFTW library) exists
+\item for this reason there exists an option of using the existing CPU FFT code  (MPI + calls to FFTW library) 
 % overlap
 \end{itemize}
 \end{frame}
@@ -213,14 +226,14 @@ addition operations
 \item a small compute-bound kernel
 \item performance dependent on the grid size
 \item a single thread works on one grid cell
-\item block works on one/several grid lines
-\item energy reduction in shared memory per block, then incrementing a global result atomically
+\item a thread block works on one/several grid lines, aligned by a warp size
+\item energy reduction in shared memory per block, incrementing a global result atomically
 \end{itemize}
 \end{frame}
 
 \begin{frame}{Gathering the forces}
 \begin{itemize}
-\item counterpart of spreading
+\item a less memory-intensive counterpart of spreading
 \item the grid is unwrapped before the gather
 \item has to perform force reduction for each particle in shared memory or registers
 \item same layout and scheduling as spreading (4 contributions per thread, 16 threads per particle)
@@ -237,7 +250,7 @@ addition operations
 \item CPU PME used as reference for reciprocal and conserved energy values to ensure correctness
 \item supports FFT both on GPU and CPU (should help with future multi-GPU parallelization) 
 \item only interpolation order of 4 has been tried
-\item also supports separate PME rank, PME grid size tuning, dynamic load balancing
+\item supports separate PME process, PME grid size tuning, dynamic load balancing
 % more about decomposition
 \end{itemize}
 \end{frame}
