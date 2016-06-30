@@ -201,9 +201,9 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
             const real dr = fractX[sharedMemoryIndex];
 
             /* dr is relative offset from lower cell limit */
-            data[(order - 1) * dataSize + dataOffset] = 0;
+            data[(order - 1) * dataSize + dataOffset] = 0.0f;
             data[1 * dataSize + dataOffset]         = dr;
-            data[0 * dataSize + dataOffset]         = 1 - dr;
+            data[0 * dataSize + dataOffset]         = 1.0f - dr;
 
 #pragma unroll
             for (int k = 3; k < order; k++)
@@ -215,7 +215,7 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
                 {
                     data[(k - l - 1) * dataSize + dataOffset] = div * ((dr + l) * data[(k - l - 2) * dataSize + dataOffset] + (k - l - dr) * data[(k - l - 1) * dataSize + dataOffset]);
                 }
-                data[0 * dataSize + dataOffset] = div * (1 - dr) * data[0 * dataSize + dataOffset];
+                data[0 * dataSize + dataOffset] = div * (1.0f - dr) * data[0 * dataSize + dataOffset];
             }
 
             const int particleWarpIndex = localIndexCalc % PARTICLES_PER_WARP;
@@ -246,7 +246,7 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
             {
                 data[(order - l - 1) * dataSize + dataOffset] = div * ((dr + l) * data[(order - l - 2) * dataSize + dataOffset] + (order - l - dr) * data[(order - l - 1) * dataSize + dataOffset]);
             }
-            data[0 * dataSize + dataOffset] = div * (1 - dr) * data[0 * dataSize + dataOffset];
+            data[0 * dataSize + dataOffset] = div * (1.0f - dr) * data[0 * dataSize + dataOffset];
 
             // store theta to shared and global
 
