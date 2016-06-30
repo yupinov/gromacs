@@ -51,6 +51,20 @@ void pme_gpu_copy_forces(gmx_pme_t *pme)
     cu_copy_H2D_async(pme->gpu->forces, forces, forcesSize, pme->gpu->pmeStream);
 }
 
+// like in spread, unrolling the dynamic index accesses to avoid local memory operations
+__device__ __forceinline__ real read_grid_size(const pme_gpu_const_parameters constants, const int dimIndex)
+{
+    switch (dimIndex)
+    {
+        case XX: return constants.nXYZ[XX];
+        case YY: return constants.nXYZ[YY];
+        case ZZ: return constants.nXYZ[ZZ];
+    }
+    // we really shouldn't be here
+    assert(false);
+    return 0.0f;
+}
+
 template <
         const int order,
         const int particlesPerBlock,
@@ -184,7 +198,10 @@ __global__ void pme_gather_kernel
         }
 
         if (splineIndex < 3)
-            *((real *)(&fSumArray[localIndex]) + splineIndex) = fx * constants.nXYZ[splineIndex];
+        {
+            const real n = read_grid_size(constants, splineIndex);
+            *((real *)(&fSumArray[localIndex]) + splineIndex) = fx * n;
+        }
     }
     else
 #endif
@@ -197,12 +214,13 @@ __global__ void pme_gather_kernel
 
         if (splineIndex < 3)
         {
+            const real n = read_grid_size(constants, splineIndex);
             float f = 0.0f;
             for (int j = localIndex * particleDataSize; j < (localIndex + 1) * particleDataSize; j++)
             {
                 f += fSharedArray[blockSize * splineIndex + j];
             }
-            *((real *)(&fSumArray[localIndex]) + splineIndex) = f * constants.nXYZ[splineIndex];
+            *((real *)(&fSumArray[localIndex]) + splineIndex) = f * n;
         }
     }
     __syncthreads();
