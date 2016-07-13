@@ -21,7 +21,7 @@
 \DeclareMathOperator\erfc{erfc}
 
 \author{Aleksei Iupinov}
-\title{Particle Mesh Ewald on a GPU}
+\title{Implementation of the Particle Mesh Ewald method on a GPU}
 
 \begin{document}
 \includepdf[pages={1}]{pics/cover.pdf}
@@ -860,7 +860,7 @@ The question of the efficient communication of the grid data is important for th
  
 % And then the gather is not that important after all...
 \section{PME interpolation order}
-The only supported B-spline interpolation order in the current PME GPU implementation is 4. While the commonly used values for the PME interpolation order are 4 and 5, as suggested in \cite{spme}, the value of 4 allows for exactly $32/4^2 = 2$ particles processed by a single warp within spread and gather parts of the algorithm with neither idle threads nor divergence. As 32 is not divisible by 5, with PME interpolation order of 5 those issues will certainly come up.
+The only supported B-spline interpolation order in the current PME GPU implementation is 4. While the commonly used values for the PME interpolation order are 4 and 5, as suggested in \cite{spme}, the value of 4 allows for exactly $32/4^2 = 2$ particles processed by a single warp within spread and gather parts of the algorithm with neither idle threads nor thread divergence (non-uniform conditional behaviour within a warp, see CUDA glossary). As 32 is not divisible by 5, with PME interpolation order of 5 those issues will certainly come up.
 
 Continuing this line of thought, interpolation order of 8 might be interesting to try out, as it will eliminate idle threads and divergence as well. The implementation would require only a relatively small effort to adapt to orders other than 4. It would most likely prove useful in a multiprocess case, since increasing the Fourier grid spacing and the interpolation order is a way to decrease the FFT communication requirements.
 
