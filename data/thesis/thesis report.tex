@@ -91,7 +91,7 @@ In this chapter the project domain, objective and scope are outlined.
 
 \section{Domain}
 
-High performance is important in molecular dynamics (MD) simulations, as they are commonly used for modelling complex organic molecules and structures on various scales. System sizes may vary from hundreds to millions particles. Time scales may vary up to trillions of time steps - a single time step is usually on the order of femtoseconds while the duration of processes being modelled might range from nanoseconds to milliseconds.
+High performance is important in molecular dynamics (MD) simulations, as they are commonly used for modelling complex organic molecules and structures on various scales. System sizes may vary from hundreds to millions of particles. Time scales may vary up to trillions of time steps - a single time step is usually on the order of femtoseconds while the duration of processes being modelled might range from nanoseconds to milliseconds.
 
 The main computational effort of a MD simulation time step is the calculation of the electrostatic forces, which, if implemented naively (each to each), would scale as the square of the number of particles $O(N^2)$.
 
@@ -101,7 +101,7 @@ The idea of the PME method in short is as follows: all the long-range energy con
  
 \section{Objective} 
  
-In this project, the PME method is implemented in a highly-parallel code running on a GPU, using NVIDIA CUDA toolkit, as a part of an open-source molecular dynamics software package GROMACS. 
+In this project, the PME method is implemented in a highly-parallel code running on a GPU, using NVIDIA CUDA toolkit, as a part of the open-source molecular dynamics software package GROMACS. 
 % \cite{gromacs50}}.
 Achieving good performance of PME on GPU is important for good performance of molecular simulations in general and in particular for the GROMACS package. As of a few years GPUs are becoming increasingly important for running molecular simulations. The need for a strong scaling (as partially provided by thousands of cores on a typical GPU) and the current CPU performance bottleneck dictate the need for parallel GPU implementations of existing algorithms.
 
@@ -115,7 +115,7 @@ There are several design constraints here:
 \item The method is implemented using NVIDIA CUDA toolkit (only for NVIDIA hardware). The reasons for choosing CUDA over OpenCL, a viable alternative standard, are practical - NVIDIA is currently the main GPU hardware producer; the NVIDIA CUDA library generally gives better performance than NVIDIA OpenCL implementation; and above all that, once the prototype is complete, it is not difficult to reimplement the same algorithms in OpenCL, as the core OpenCL C/CUDA C language concepts are similar. GROMACS users would much more benefit from the CUDA PME implementation.
 \item The method is implemented for a single PME simulation process working with a single GPU. GROMACS employs various parallelization techniques for better scaling, including domain decomposition algorithms, where parts of the domain are treated by different processes within the same simulation (read more about it in Section \ref{chapter:DD}). The existing CPU PME implementation supports multi-process computation as well. 
 However, a prospect of multi-GPU PME implementation is raising additional concerns, such as minimisation of the communication costs between GPUs, domain decomposition algorithms, and load balancing. While this should certainly be considered during future developments of PME GPU, a PME implementation for a single GPU should provide a foundation for that, highlighting the weak and strong points of the implementation and its scalability. 
-Also note that the PME amounts only to a part of the total computation, while the other component (short-rage work, see Section \ref{rangeimpl}) is already scalable over multiple processes/GPUs in GROMACS. Therefore, having PME computation speed up on a single process with the use of a dedicated GPU can already be beneficial for small-scale simulations running on a single machine with one or several GPUs.
+Also note that the PME amounts only to a part of the total computation, while the other component (short-range work, see Section \ref{rangeimpl}) is already scalable over multiple processes/GPUs in GROMACS. Therefore, having PME computation speed up on a single process with the use of a dedicated GPU can already be beneficial for small-scale simulations running on a single machine with one or several GPUs.
 \item The room for a scalable multi-GPU implementation is left in the implementation. The major part of the communication latency introduced with the multi-node scaling is caused by the 3D FFT stages of the algorithm. For this reason, the PME GPU implementation has to provide an option to perform the FFT computation on CPU instead of GPU (more about it in Section \ref{FFTimpl}).
 
 \end{itemize}
@@ -159,7 +159,7 @@ their periodic images at positions $\bold{r}_j + n_1 \bold{a}_1  + n_2 \bold{a}_
 all $n_1, n_2 , n_3 \in \mathbb{Z}$. It also interacts with its own periodic
 images at $\bold{r}_i + n_1 \bold{a}_1  + n_2 \bold{a}_2  + n_3 \bold{a}_3$, only that  $\bold{n} = (n_1, n_2, n_3)^T \neq \mathbb{0}$ to exclude the original. 
 
-An electrostatic energy of the unit cell can be written:
+The electrostatic energy of the unit cell can be written:
 
 \begin{equation} \label{eq:ewald}
 E(\bold{r}_1, \dotsc, \bold{r}_N) = \frac{1}{2} \sum\limits_{\bold{n} \in \mathbb{Z}^3}^* \sum_{i=1}^N \sum\limits_{j=1}^N \frac{q_i q_j}{\lvert\bold{r}_i - \bold{r}_j + \bold{n} \rvert}
@@ -184,11 +184,11 @@ reciprocal sum in Fourier space. The energies can be chosen such that the direct
 \end{figure}
 %}
  
-In many MD simulations certain non-bonded interactions within same molecule are being omitted, being handled by different terms in the potential calculation. The corresponding particle pairs $(i, j)$ are stored in a masked list $M$. Therefore, the masked list correction should be subtracted from the direct and reciprocal energy sums. Usually the masked pairs are explicitly skipped over during the direct sum calculation. The other contribution to the correction term is the charges acting on self.
+In many MD simulations certain non-bonded interactions within the same molecule are omitted, being handled by different terms in the potential calculation. The corresponding particle pairs $(i, j)$ are stored in a masked list $M$. Therefore, the masked list correction should be subtracted from the direct and reciprocal energy sums. Usually the masked pairs are explicitly skipped over during the direct sum calculation. The other contribution to the correction term is the charges acting on themselves.
 
 For dealing with the Fourier space, the reciprocal lattice vectors can be defined through the reciprocal unit cell vectors $\bold{m} = m_1 \bold{a}_1^* + m_2 \bold{a}_2^* + m_3 \bold{a}_3^*$, for
 all $m_1, m_2, m_3 \in \mathbb{Z}$. 
-So called structure factor is then defined as:
+The so called structure factor is then defined as:
 \begin{equation} \label{eq:Sm}
  S(\bold{m}) = 
 \sum\limits_{j=1}^Nq_j \exp(2\pi i\bold{m}\cdot\bold{r}_j)= 
