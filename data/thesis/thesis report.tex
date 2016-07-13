@@ -235,8 +235,7 @@ reciprocal sums. Increasing $\beta$ causes $E_{dir}$ to converge more
 rapidly, at the expense of slower convergence in $E_{rec}$.
 This allows the balance between the amount of short- and long-range computations to be changed, while not affecting the accuracy of the result. As the cut-off decreases, the number of the short-range pairs is decreased, while the amount of the important structure factors is increased.
 The choice of a fixed $\beta$ independent of the box
-dimensions allows for a fixed size cut-off (e.g. $1$ nm) in the
-$E_{dir}$, reducing its computation from $O(N^2)$ to $O(N)$.
+dimensions allows for a fixed size cut-off (e.g. $1$ nm) in $E_{dir}$, reducing its computation from $O(N^2)$ to $O(N)$.
 The computation of the direct-space energy $E_{dir}$ is then trivial to perform in a loop. However, approximating the sum of structure factors in the equation \eqref{eq:Erec} is more difficult. This is why the discrete particle mesh idea was suggested in 1993 \cite{pme}. It allows to reduce the computational effort of the $E_{rec}$ from $O(N^2)$ to $O(N \log (N))$.
 
 
@@ -284,7 +283,7 @@ The reciprocal energy can be approximated as:
 \tilde{E}_{rec} = \frac{1}{2 \pi V}\sum\limits_{\bold{m} \neq \mathbb{0}}\frac{\exp(-\frac{\pi^2\bold{m}^2}{\beta^2})}{\bold{m}^2} B(\bold{m}) F(Q)(\bold{m})F(Q)(-\bold{m})= \\
 \frac{1}{2}\sum\limits_{m_1 = 0}^{K_1 -1}\sum\limits_{m_2 = 0}^{K_2 -1}\sum\limits_{m_3 = 0}^{K_3 -1}Q(m_1, m_2, m_3)(\theta_{rec} \ast Q)(m_1, m_2, m_3)
 \end{split}
-\end{equation}, where 
+\end{equation} where 
 \begin{equation} 
 B(\bold{m}) = \prod\limits_{i=1}^3 \lvert b_i(m_i) \rvert ^2
 \end{equation}
@@ -359,7 +358,7 @@ The short-range non-bonded calculations typically dominate the computational eff
 The short-range bonded (listed) component is only computed on CPU, as it has non-significant run time (typically less than 5\%), and computational effort $O(M)$, where $M$ is a number of bonds. 
 %It also conflicts with DD parallelism balancing.
 
-Currently, the PME is also computed on CPU with SIMD optimizations, and the PME GPU option would be a good addition, potentially increasing the performance in some cases. 
+Currently, the PME is also computed on CPU with SIMD optimizations, and the PME GPU option would be a good addition, potentially increasing the performance. 
 
 The inter-process MPI communication is employed by the PME and NB implementations of the MD step, as described in Section \ref{chapter:DD}. It is used for SPMD parallelization (multiple processes computing local parts of the direct and PME sums), and even MPMD parallelization (multiple processes, where a $\frac{1}{4}$ of the total number works exclusively on the PME sum, and $\frac{3}{4}$ works only on the direct sum). The current program architecture is such that any single GROMACS process uses only a single GPU (which avoids switching between different GPU contexts). 
 
@@ -528,7 +527,7 @@ Pairwise particle interaction calculations are also typically performed on GPU i
 
 \section{Computation of the spline values \\ and derivatives}
 For each particle and for each dimension the individual B-spline interpolation parameters are computed: $l$ values and $l$ derivative values, where $l$ is the spline interpolation order (fixed at 4 in this implementation). This naturally suggests using 3 threads per particle. The particle coordinates are used for calculation.
-The question of the optimal layout for the spline parameters is interesting. Shown in \ref{fig:spline} is my choice for an in-memory value $\theta$ and derivative $d\theta$ arrays' layout. 
+The question of the optimal layout for the spline parameters is interesting. Shown in Figure \ref{fig:spline} is my choice for an in-memory value $\theta$ and derivative $d\theta$ arrays' layout. 
 \FloatBarrier
 \begin{figure}[h!]
     \centering
