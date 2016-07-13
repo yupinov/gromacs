@@ -80,7 +80,7 @@ The main computational effort of a MD simulation time step is the calculation of
 
 Particle Mesh Ewald (PME) is a long-range interactions computation algorithm for periodic systems. It is based on the Ewald summation, first described in 1921 \cite{ewald}. Originally it was used for the ionic crystals' energy calculation. The method requires periodic boundary conditions and charge neutrality of the molecular system in order to accurately calculate the total Coulombic interaction. 
 
-The idea of the PME method in short is as follows: all the long-range energy contributions (usually selected by a splitting function) are calculated in Fourier space, where they converge faster than the the real-space $\frac{1}{\lvert r\rvert}$ dependency in direct summation. The computational effort of a long-range component in PME is $ O(N\cdot\log(N))$. The method is described in more detail in the next chapter.
+The idea of the PME method in short is as follows: all the long-range energy contributions (usually selected by a splitting function) are calculated in Fourier space, where they converge faster than the real-space $\frac{1}{\lvert r\rvert}$ dependency in direct summation. The computational effort of a long-range component in PME is $ O(N\cdot\log(N))$. The method is described in more detail in the next chapter.
  
 \section{Objective} 
  
@@ -98,8 +98,8 @@ There are several design constraints here:
 \item The method is implemented using NVIDIA CUDA toolkit (only for NVIDIA hardware). The reasons for choosing CUDA over OpenCL, a viable alternative standard, are practical - NVIDIA is currently the main GPU hardware producer; the NVIDIA CUDA library generally gives better performance than NVIDIA OpenCL implementation; and above all that, once the prototype is complete, it is not difficult to reimplement the same algorithms in OpenCL, as the core OpenCL C/CUDA C language concepts are similar. GROMACS users would much more benefit from the CUDA PME implementation.
 \item The method is implemented for a single PME simulation process working with a single GPU. GROMACS employs various parallelization techniques for better scaling, including domain decomposition algorithms, where parts of the domain are treated by different processes within the same simulation (read more about it in Section \ref{chapter:DD}). The existing CPU PME implementation supports multi-process computation as well. 
 However, a prospect of multi-GPU PME implementation is raising additional concerns, such as minimisation of the communication costs between GPUs, domain decomposition algorithms, and load balancing. While this should certainly be considered during future developments of PME GPU, a PME implementation for a single GPU should provide a foundation for that, highlighting the weak and strong points of the implementation and its scalability. 
-Also note that the PME amounts only to a part of the total computation, while the other component (short-rage work, see Section \ref{rangeimpl}) is already scalable over multiple processes/GPUs in GROMACS. Therefore, having PME computation sped up on a single process with the use of a dedicated GPU can already be beneficial for small-scale simulations running on a single machine with one or several GPUs.
-\item The room for a scalable multi-GPU implementation is left in the implementation. The major part of the communication latency introduced with the multi-node scaling is caused by the the 3D FFT stages of the algorithm. For this reason, the PME GPU implementation has to provide an option to perform the FFT computation on CPU instead of GPU (more about it in Section \ref{FFTimpl}).
+Also note that the PME amounts only to a part of the total computation, while the other component (short-rage work, see Section \ref{rangeimpl}) is already scalable over multiple processes/GPUs in GROMACS. Therefore, having PME computation speed up on a single process with the use of a dedicated GPU can already be beneficial for small-scale simulations running on a single machine with one or several GPUs.
+\item The room for a scalable multi-GPU implementation is left in the implementation. The major part of the communication latency introduced with the multi-node scaling is caused by the 3D FFT stages of the algorithm. For this reason, the PME GPU implementation has to provide an option to perform the FFT computation on CPU instead of GPU (more about it in Section \ref{FFTimpl}).
 
 \end{itemize}
 \iffalse
@@ -132,9 +132,10 @@ The reciprocal Ewald sum is the solution to Poisson’s equation in periodic bou
 \fi
 
 \section{Ewald summation} \label{sec_ewald}
+
 In an electrostatic calculation with periodic boundary conditions, one first assumes that the system is contained in a so called unit cell $U$. Let $U$ be defined by the edge vectors $\bold{a}_1, \bold{a}_2, \bold{a}_3$, which are not necessarily orthogonal. We can also define for later use conjugate reciprocal vectors $\bold{a}_1^*, \bold{a}_2^*, \bold{a}_3^*$ such that $\bold{a}_i^* \bold{a}_j = \delta_{ij}$ (Kronecker delta).
- Let there be $N$ point charges $q_1, \dotsc, q_N$ with positions $\bold{r}_1, \dotsc, \bold{r}_N$ within $U$ satisfying charge neutrality:  $\sum\limits_{i=1}^N q_i=0$. We can define fractional coordinates of charge $q_j$ by $s_{kj} = \bold{a}_k^* \cdot \bold{r}_j$, where $k = 1, 2, 3$. 
-\\
+ Let there be $N$ point charges $q_1, \dotsc, q_N$ with positions $\bold{r}_1, \dotsc, \bold{r}_N$ within $U$ satisfying charge neutrality:  $\sum\limits_{i=1}^N q_i=0$. We can define fractional coordinates of charge $q_j$ by $s_{kj} = \bold{a}_k^* \cdot \bold{r}_j$, where $k = 1, 2, 3$.
+ 
 The charges interact according to Coulomb’s law with periodic boundary conditions. Thus a point charge $q_i$ at position $\bold{r}_i$ interacts with
 other charges $q_j$, $j \neq i$ at positions $\bold{r}_j$ as well as with all of
 their periodic images at positions $\bold{r}_j + n_1 \bold{a}_1  + n_2 \bold{a}_2  + n_3 \bold{a}_3$ for
@@ -314,7 +315,7 @@ It is primarily designed for simulating biochemical molecules like proteins, lip
 \section{GROMACS and parallelization glossary}
 Here is a glossary of the terms and abbreviations that are used throughout the report.
 
-MPI - Message Parsing Interface, a common standard of the multi-process communication interface; has several implementations; is used extensively for the inter-process communication in various programming languages.
+MPI - Message Passing Interface, a common standard of the multi-process communication interface; has several implementations; is used extensively for the inter-process communication in various programming languages.
 
 Rank - a single GROMACS process in a multi-process simulation (coming from the MPI term for single process).
 
