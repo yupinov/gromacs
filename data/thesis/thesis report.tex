@@ -1,4 +1,4 @@
-\documentclass[12pt,a4paper]{report}
+\documentclass[12pt,a4paper,notitlepage]{report}
 \usepackage[utf8]{inputenc}
 \usepackage{amsmath}
 \usepackage{amsfonts}
@@ -12,6 +12,7 @@
 \usepackage{pdfpages}
 \usepackage{url}
 \usepackage{breqn}
+\usepackage{titling}
 
 %\DeclareMathAlphabet{\mathbbold}{U}{bbold}{m}{n}
 
@@ -21,7 +22,9 @@
 \DeclareMathOperator\erfc{erfc}
 
 \author{Aleksei Iupinov}
-\title{Implementation of the Particle Mesh Ewald method on a GPU}
+%\title{Implementation of the Particle Mesh Ewald method on a GPU}
+\title{Partikel Mesh Ewald metod: GPU implementering}
+\date{\vspace{-5ex}}
 
 \begin{document}
 \includepdf[pages={1}]{pics/cover4.pdf}
@@ -35,7 +38,12 @@ In this project, PME is implemented for a single GPU alongside the existing CPU 
 The motivation for the project is examining the PME algorithm's parallelism, and its potential benefit for performance scalability of MD simulations on various hardware. 
 \end{abstract}
 \newpage
+%\Large
+
 \renewcommand{\abstractname}{Referat}
+
+\iffalse
+
 \begin{abstract}
 
 Partikel Mesh Ewald (PME) är en metod som används för effektiva långdistans elektrostatiska beräkningar i molekyldynamik (MD).
@@ -44,10 +52,19 @@ I detta projekt är PME implementerad för en enda GPU parallellt med befintliga
 
 Den motiveringen för projektet är att undersöka PME algoritm parallellitet och dess potentiella fördelar för prestanda skalbarhet i MD simuleringar på olika maskinvaror.
 
-%\draft{Should be translated to Swedish as well.}
-
 \end{abstract}
 \newpage
+\fi
+\begin{titlingpage}
+    \maketitle
+    \begin{abstract}
+Partikel Mesh Ewald (PME) är en metod som används för effektiva långdistans elektrostatiska beräkningar i molekyldynamik (MD).
+ 
+I detta projekt är PME implementerad för en enda GPU parallellt med befintliga CPU implementering med hjälp av NVIDIA CUDA SDK, grundad på öppen-källkod MD programvara GROMACS. PME GPU implementering prestanda studeras.
+
+Den motiveringen för projektet är att undersöka PME algoritm parallellitet och dess potentiella fördelar för prestanda skalbarhet i MD simuleringar på olika maskinvaror.
+    \end{abstract}
+\end{titlingpage}
 
 \tableofcontents
 \newpage
