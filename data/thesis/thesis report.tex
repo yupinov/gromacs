@@ -360,7 +360,7 @@ The short-range bonded (listed) component is only computed on CPU, as it has non
 
 Currently, the PME is also computed on CPU with SIMD optimizations, and the PME GPU option would be a good addition, potentially increasing the performance. 
 
-The inter-process MPI communication is employed by the PME and NB implementations of the MD step, as described in Section \ref{chapter:DD}. It is used for SPMD parallelization (multiple processes computing local parts of the direct and PME sums), and even MPMD parallelization (multiple processes, where a $\frac{1}{4}$ of the total number works exclusively on the PME sum, and $\frac{3}{4}$ works only on the direct sum). The current program architecture is such that any single GROMACS process uses only a single GPU (which avoids switching between different GPU contexts). 
+The inter-process MPI communication is employed by the PME and NB implementations of the MD step, as described in Section \ref{chapter:DD}. It is used for SPMD parallelization (multiple processes computing local parts of the direct and PME sums), and even MPMD parallelization (multiple processes, where a quarter of the total process number works exclusively on the PME sum, and the rest works only on the direct sum). The current program architecture is such that any single GROMACS process uses only a single GPU (which avoids switching between different GPU contexts). 
 
 \section{MD step}
 \FloatBarrier
