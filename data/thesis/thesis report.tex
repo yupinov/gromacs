@@ -91,7 +91,9 @@ In this chapter the project domain, objective and scope are outlined.
 
 \section{Domain}
 
-High performance is important in molecular dynamics (MD) simulations, as they are commonly used for modelling complex organic molecules and structures on various scales. System sizes may vary from hundreds to millions of particles. Time scales may vary up to trillions of time steps - a single time step is usually on the order of femtoseconds while the duration of processes being modelled might range from nanoseconds to milliseconds.
+Molecular dynamics (MD) is a computer simulation field for studying the physical movements of atoms and molecules. The atoms and molecules are allowed to interact for a fixed period of time, giving a view of the dynamical evolution of the system. In the most common version, the trajectories of atoms and molecules are determined by numerically solving Newton's equations of motion for a system of interacting particles, where forces between the particles and their potential energies are calculated using interatomic potentials or molecular mechanics force fields. 
+
+High performance is important in MD simulations, as they are commonly used for modelling complex organic molecules and structures on various scales. System sizes may vary from hundreds to millions of particles. Time scales may vary up to trillions of time steps - a single time step is usually on the order of femtoseconds while the duration of processes being modelled might range from nanoseconds to milliseconds.
 
 The main computational effort of a MD simulation time step is the calculation of the electrostatic forces, which, if implemented naively (each to each), would scale as the square of the number of particles $O(N^2)$.
 
