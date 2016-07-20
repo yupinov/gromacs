@@ -148,6 +148,25 @@ The reciprocal Ewald sum is the solution to Poisson’s equation in periodic bou
 }
 \fi
 
+\section{Molecular dynamics}
+
+Molecular dynamics (MD) simulations solve Newton’s equations of motion in small time steps for a system of
+$N$ interacting particles, where new positions $\bold{r}_1, \ldots, \bold{r}_N$ are the unknown:
+
+\[m_i \frac{\partial^2\bold{r}_i}{\partial t^2} = \bold{F}_i, \, i = 1\ldots N\]
+
+The forces that act on particles are the negative derivatives of a potential function $E(\bold{r}_1,\ldots,\bold{r}_N)$:
+
+\[\bold{F}_i = - \frac{\partial E}{\partial \bold{r}_i}\]
+
+The potential function has to be computed first in order to solve the equations.
+A lot of computation is required to calculate the electrostatic potential which depends on the pairwise charge interaction.
+
+\section{Periodic boundary conditions}
+
+The classical way to minimize edge effects in a finite system is to apply
+periodic boundary conditions. The particles of the system to be simulated are put into a space-filling box, which is surrounded by translated copies of itself. Thus there are no boundaries of the system; the artifact caused by unwanted boundaries in an isolated cluster is replaced by the artifact of periodic conditions. The errors can be evaluated by comparing various system sizes; they are expected to be less severe than the errors resulting from an unnatural boundary with vacuum.
+
 \section{Ewald summation} \label{sec_ewald}
 
 In an electrostatic calculation with periodic boundary conditions, one first assumes that the system is contained in a so called unit cell $U$. Let $U$ be defined by the edge vectors $\bold{a}_1, \bold{a}_2, \bold{a}_3$, which are not necessarily orthogonal. We can also define for later use conjugate reciprocal vectors $\bold{a}_1^*, \bold{a}_2^*, \bold{a}_3^*$ such that $\bold{a}_i^* \bold{a}_j = \delta_{ij}$ (Kronecker delta).
@@ -316,6 +335,10 @@ The PME algorithm part for computing the reciprocal energy and forces can be sum
 \item Perform three-dimensional complex-to-real FFT of the transformed grid.
 \item Gather the particle forces from the grid (using the spline values) (equation \eqref{Fgather}).
 \end{enumerate}
+
+\iffalse
+\section{Accuracy}
+\fi
 
 \newpage
 \chapter{GROMACS}
