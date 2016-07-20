@@ -721,11 +721,12 @@ The force gathering stage has larger speed-up than the rest of the stages. While
 
 \section{Overlapping with the non-bonded kernels}\label{overlapped}
 
-GROMACS uses GPU for the computation of short-range non-bonded electrostatic interactions. One of the project's goals was to study the possibility of calculating both short-range and long-range interactions on the same GPU at the same time, with so called overlapping. CUDA architectures allow for several command streams to execute concurrently, and newer architectures expose 2 possible values of stream priorities.
+GROMACS uses GPU for the computation of short-range non-bonded electrostatic interactions. One of the project's goals was to study the possibility of calculating both short-range and long-range interactions on the same GPU at the same time, with so called overlapping. CUDA architectures allow for several command streams to execute concurrently, and newer architectures expose 2 possible values of stream priorities. 
 
 The modified MD step in this implementation launches the largest chunk of the PME work on a GPU before the NB work is launched (Figure \ref{fig:step-gpu}). The PME stream is set to a high priority, using the CUDA runtime API, while the NB stream has lower priority. 
 The idea was to have the PME launched in advance and be computed in background, while the NB kernel with its irregular occupancy performs the main computational workload. This allows for:
 \begin{itemize}
+\item higher GPU utilization;
 \item simultaneous PME and NB execution (with potential loss of performance);
 \item simultaneous memory transfers in one stream and kernel executions in another stream with no loss of performance.
 \end{itemize}
