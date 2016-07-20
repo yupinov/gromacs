@@ -639,10 +639,10 @@ Again, due to the overlap between the NB and PME computation, the transferring o
 In this chapter the PME GPU implementation behaviour and performance is discussed.
 
 \section{Correctness}
-The correctness of the GPU PME implementation has been verified by comparing the results with the results of the CPU PME running with the same input data as the reference.
+The correctness of the GPU PME implementation has been verified by comparing the results with the results of the CPU PME running with the same input data as the reference. Both implementations use the single floating point precision ($1.19\times10^{-7}$).
 The CPU and GPU PME comparisons were as follows:
 \begin{itemize}
-\item All of the PME's immediate results such as reciprocal energy, virial and forces have been compared after a single MD step. The relative difference of the reciprocal energy has been no more than $10^{-5}$. 
+\item All of the PME's immediate results such as reciprocal energy, virial and forces have been compared after a single MD step. The relative difference of the reciprocal energy has been no more than $10^{-5}$.
 %This is comparable to the single precision floating point machine epsilon $1.19\times10^{-7}$ being reduced over $10^5$ --- $10^6$ complex grid cells.
 
 %\draft{The interesting part was how given the same input real grid data, the CPU FFT call (using the FFTW library \draft{link here?}) and the GPU FFT call (using the CUDA cuFFT library) produced rather different results. Only the values above certain fixed threshold were the same up to machine precision between the grids.} 
