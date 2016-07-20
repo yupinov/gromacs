@@ -317,7 +317,7 @@ The reciprocal potential does not depend on the particle coordinates, so the res
 can be calculated using the spline parameters:
 
 \begin{equation}  \label{Fgather}
-\frac{\partial\tilde{E}_{rec}}{\partial\bold{r}_{ij}} = \sum\limits_{m_1 = 0}^{K_1 -1}\sum\limits_{m_2 = 0}^{K_2 -1}\sum\limits_{m_3 = 0}^{K_3 -1}\frac{\partial Q}{\partial\bold{r}_{ij}}(m_1, m_2, m_3)(\theta_{rec} \ast Q)(m_1, m_2, m_3)
+\bold{F}_{ij}=-\frac{\partial\tilde{E}_{rec}}{\partial\bold{r}_{ij}} = -\sum\limits_{m_1 = 0}^{K_1 -1}\sum\limits_{m_2 = 0}^{K_2 -1}\sum\limits_{m_3 = 0}^{K_3 -1}\frac{\partial Q}{\partial\bold{r}_{ij}}(m_1, m_2, m_3)(\theta_{rec} \ast Q)(m_1, m_2, m_3)
 \end{equation}
 
 % m redefin. - m...
