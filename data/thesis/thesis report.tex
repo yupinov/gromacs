@@ -169,7 +169,7 @@ A lot of computation is required to calculate the electrostatic potential which 
 The classical way to minimize edge effects in a finite system is to apply
 periodic boundary conditions. The particles of the system to be simulated are put into a space-filling box, which is surrounded by translated copies of itself. Thus there are no boundaries of the system; the artifact caused by unwanted boundaries in an isolated cluster is replaced by the artifact of periodic conditions. The errors can be evaluated by comparing various system sizes; they are expected to be less severe than the errors resulting from an unnatural boundary with vacuum.
 
-\section{Ewald summation} \label{sec_ewald}
+\section{Ewald summation}
 
 In an electrostatic calculation with periodic boundary conditions, one first assumes that the system is contained in a so called unit cell $U$. Let $U$ be defined by the edge vectors $\bold{a}_1, \bold{a}_2, \bold{a}_3$, which are not necessarily orthogonal. We can also define for later use conjugate reciprocal vectors $\bold{a}_1^*, \bold{a}_2^*, \bold{a}_3^*$ such that $\bold{a}_i^* \bold{a}_j = \delta_{ij}$ (Kronecker delta).
  Let there be $N$ point charges $q_1, \dotsc, q_N$ with positions $\bold{r}_1, \dotsc, \bold{r}_N$ within $U$ satisfying charge neutrality:  $\sum\limits_{i=1}^N q_i=0$. We can define fractional coordinates of charge $q_j$ by $s_{kj} = \bold{a}_k^* \cdot \bold{r}_j$, where $k = 1, 2, 3$.
@@ -250,13 +250,13 @@ off.
 
 The computational effort of the listed bonds and correction $E_{corr}$ is $O(N)$. Therefore it is not very important effort-wise.
 
-The total energy E is invariant to the constant $\beta$, which
+The total energy E is invariant to the parameter $\beta$, which
 controls the relative rate of convergence of the direct and
 reciprocal sums. Increasing $\beta$ causes $E_{dir}$ to converge more
 rapidly, at the expense of slower convergence in $E_{rec}$.
 This allows the balance between the amount of short- and long-range computations to be changed, while not affecting the accuracy of the result. As the cut-off decreases, the number of the short-range pairs is decreased, while the amount of the important structure factors is increased.
 The choice of a fixed $\beta$ independent of the box
-dimensions allows for a fixed size cut-off (e.g. $1$ nm) in $E_{dir}$, reducing its computation from $O(N^2)$ to $O(N)$.
+dimensions allows for a fixed size real space cut-off $r_c$ (e.g. $1$ nm) in $E_{dir}$, reducing its computation from $O(N^2)$ to $O(N)$.
 The computation of the direct-space energy $E_{dir}$ is then trivial to perform in a loop. However, approximating the sum of structure factors in the equation \eqref{eq:Erec} is more difficult. This is why the discrete particle mesh idea was suggested in 1993 \cite{pme}. It allows to reduce the computational effort of the $E_{rec}$ from $O(N^2)$ to $O(N \log (N))$.
 
 
@@ -338,10 +338,20 @@ The PME algorithm part for computing the reciprocal energy and forces can be sum
 \item Gather the particle forces from the grid (using the spline values) (equation \eqref{Fgather}).
 \end{enumerate}
 
+\section{Accuracy} \label{sec_ewald}
+There exist a priori error estimates both for real and reciprocal components of the calculated forces. They depend on the splitting parameter $\beta$, the interpolation order $p$, the cut-off radius $r_c$ and the Fourier grid dimensions. The cut-off radius affects only the real space error; increasing the interpolation order and the grid dimensions decreases the reciprocal error. 
+\[\Delta F_{dir}= \frac{2 \exp(-\beta^2 r_c^2)}{\sqrt{r_c N V}} \sum\limits_{i=1}^Nq_i^2,\]
+\[\Delta F_{rec}= V^{-1}\sqrt{\frac{Q}{N}} \sum\limits_{i=1}^Nq_i^2,\]
+\[Q = \int\limits_{V}\int\limits_{V} (F_{rec}(\bold{r}_1, \bold{r}_2)-F_{rec,exact}(\bold{r}_1, \bold{r}_2))^2 d^3 \bold{r}_1 d^3 \bold{r}_2,\]
+\[(\Delta F)^2 = (\Delta F_{dir} )^2 + (\Delta F_{rec} )^2\]
+See \cite{errors} for further details on error estimates.
+
+
+If one scales $r_c$, the grid spacing and $\frac{1}{\beta}$ by the same factor, the error in the potential changes by not more than this scaling factor, since the potential depends on distance as $\frac{1}{r}$. This scaling changes the ratio of the direct and reciprocal computational workload, while maintaining the accuracy.
 \iffalse
-\section{Accuracy}
-The \cite{errors}
+We only allow an increase of the cut-off. This increases the cost of the non-bonded pair interactions by the scaling factor cubed and reduces the FFT, grid transpose and communication volume by the scaling factor cubed, thereby essentially increasing the size of the compute dominated task and reducing the size of several memory/communication dominated tasks.
 \fi
+
 
 \newpage
 \chapter{GROMACS}
