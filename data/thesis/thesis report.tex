@@ -348,9 +348,6 @@ See \cite{errors} for further details on error estimates.
 
 
 If one scales $r_c$, the grid spacing and $\frac{1}{\beta}$ by the same factor, the error in the potential changes by not more than this scaling factor, since the potential depends on distance as $\frac{1}{r}$. This scaling changes the ratio of the direct and reciprocal computational workload, while maintaining the accuracy.
-\iffalse
-We only allow an increase of the cut-off. This increases the cost of the non-bonded pair interactions by the scaling factor cubed and reduces the FFT, grid transpose and communication volume by the scaling factor cubed, thereby essentially increasing the size of the compute dominated task and reducing the size of several memory/communication dominated tasks.
-\fi
 
 
 \newpage
@@ -415,7 +412,7 @@ Some steps, such as  the non-bonded work being split into 2 "local" and "non-loc
 
 %There exist several load balancing mechanisms in GROMACS, which are described below
 \section{Load balancing} \label{PMEtuning}
-Changing the electrostatic interaction length cut-off, as mentioned in Section \ref{sec_ewald}, influences the amount of computation performed in long- and short-range parts of the MD step. GROMACS uses this fact for the automatic load balancing at the beginning of the simulation run. Periodically the Fourier grid spacing is scaled (the Coulomb cut-off is adjusted accordingly); the average step run-time is measured over the next period. Eventually, the parameter set with the best simulation performance is chosen as the optimal. This allows to increase the utilization of CPUs and GPUs both in single- and multi-process scenarios on a single compute node. 
+Changing the electrostatic interaction length cut-off, the grid spacing and the splitting parameter, as mentioned in Section \ref{sec_ewald}, influences the amount of computation performed in long- and short-range parts of the MD step. GROMACS uses this fact for the automatic load balancing at the beginning of the simulation run. Periodically the Fourier grid spacing is scaled (the Coulomb cut-off is adjusted accordingly); the average step run-time is measured over the next period. Eventually, the parameter set with the best simulation performance is chosen as the optimal. This allows to increase the utilization of CPUs and GPUs both in single- and multi-process scenarios on a single compute node. 
 
 What is commonly happening with the load balancing is that the relatively small amount of CPU PME work is traded for much larger amount of the GPU NB work (by increasing the grid spacing and the cut-off distance), while benefiting the overall simulation performance.
 % \draft{(mention efforts).} 
