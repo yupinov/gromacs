@@ -23,7 +23,7 @@
 
 \author{Aleksei Iupinov}
 %\title{Implementation of the Particle Mesh Ewald method on a GPU}
-\title{Partikel Mesh Ewald metod: GPU implementering}
+\title{Implementering av Particle Mesh Ewald metoden på en GPU}
 \date{\vspace{-5ex}}
 
 \begin{document}
@@ -46,11 +46,24 @@ The motivation for the project is examining the PME algorithm's parallelism, and
 
 \begin{abstract}
 
+\iffalse
 Partikel Mesh Ewald (PME) är en metod som används för effektiva långdistans elektrostatiska beräkningar i molekyldynamik (MD).
  
 I detta projekt är PME implementerad för en enda GPU parallellt med befintliga CPU implementering med hjälp av NVIDIA CUDA SDK, grundad på öppen-källkod MD programvara GROMACS. PME GPU implementering prestanda studeras.
 
 Den motiveringen för projektet är att undersöka PME algoritm parallellitet och dess potentiella fördelar för prestanda skalbarhet i MD simuleringar på olika maskinvaror.
+\fi
+
+Particle Mesh Ewald (PME) metoden används inom molekyldynamiken (MD) för
+effektiva elektrostatiska beräkningar med långdistans-potentialer.
+I detta projekt, PME implementeras för ett enda GPU tillsammans med en redan
+existerande CPU implementation. Här används koden av den fri tillgängliga MD
+mjukvaran GROMACS samt NVIDIA CUDA programmeringsomgivningen. Hädanefter,
+prestandan av PME GPU implementationen studeras.
+Motivationen bakom projektet är att undersöka PME algoritmens
+parallelliserbarhet. Detta kan medföra en potentiell fördel för skalbarheten
+av prestandan för MD simulationer på olika hårdvaror.
+
 
 \end{abstract}
 \newpage
@@ -58,11 +71,19 @@ Den motiveringen för projektet är att undersöka PME algoritm parallellitet oc
 \begin{titlingpage}
     \maketitle
     \begin{abstract}
-Partikel Mesh Ewald (PME) är en metod som används för effektiva långdistans elektrostatiska beräkningar i molekyldynamik (MD).
- 
-I detta projekt är PME implementerad för en enda GPU parallellt med befintliga CPU implementering med hjälp av NVIDIA CUDA SDK, grundad på öppen-källkod MD programvara GROMACS. PME GPU implementering prestanda studeras.
+Particle Mesh Ewald (PME) metoden används inom molekyldynamiken (MD) för
+effektiva elektrostatiska beräkningar med 
+långdistans-potentialer.
 
-Den motiveringen för projektet är att undersöka PME algoritm parallellitet och dess potentiella fördelar för prestanda skalbarhet i MD simuleringar på olika maskinvaror.
+I detta projekt, PME implementeras för ett enda GPU tillsammans med en redan
+existerande CPU implementation. Här används koden av den fri tillgängliga MD
+mjukvaran GROMACS samt NVIDIA CUDA programmeringsomgivningen. Hädanefter,
+prestandan av PME GPU implementationen studeras.
+
+Motivationen bakom projektet är att undersöka PME algoritmens
+parallelliserbarhet. Detta kan medföra en potentiell fördel för skalbar-heten
+av prestandan för MD simulationer på olika hårdvaror.
+
     \end{abstract}
 \end{titlingpage}
 
