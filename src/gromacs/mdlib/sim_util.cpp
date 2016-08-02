@@ -1037,14 +1037,6 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
             if (flags & GMX_FORCE_VIRIAL)
             {
                 fr->f_novirsum = fr->f_novirsum_alloc;
-                if (fr->bDomDec)
-                {
-                    clear_rvecs(fr->f_novirsum_n, fr->f_novirsum);
-                }
-                else
-                {
-                    clear_rvecs(homenr, fr->f_novirsum+start);
-                }
             }
             else
             {
@@ -1056,8 +1048,22 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
             }
         }
 
+        if (fr->bF_NoVirSum)
+        {
+            if (flags & GMX_FORCE_VIRIAL)
+            {
+                if (fr->bDomDec)
+                {
+                    clear_rvecs_omp(fr->f_novirsum_n, fr->f_novirsum);
+                }
+                else
+                {
+                    clear_rvecs_omp(homenr, fr->f_novirsum+start);
+                }
+            }
+        }
         /* Clear the short- and long-range forces */
-        clear_rvecs(fr->natoms_force_constr, f);
+        clear_rvecs_omp(fr->natoms_force_constr, f);
 
         clear_rvec(fr->vir_diag_posres);
     }
@@ -1836,6 +1842,14 @@ void do_force_cutsGROUP(FILE *fplog, t_commrec *cr,
             if (flags & GMX_FORCE_VIRIAL)
             {
                 fr->f_novirsum = fr->f_novirsum_alloc;
+                if (fr->bDomDec)
+                {
+                    clear_rvecs(fr->f_novirsum_n, fr->f_novirsum);
+                }
+                else
+                {
+                    clear_rvecs(homenr, fr->f_novirsum+start);
+                }
             }
             else
             {
@@ -1847,28 +1861,8 @@ void do_force_cutsGROUP(FILE *fplog, t_commrec *cr,
             }
         }
 
-        // cppcheck-suppress unreadVariable
-        int gmx_unused nth = gmx_omp_nthreads_get(emntDefault);
-#pragma omp parallel num_threads(nth)
-        {
-            if (fr->bF_NoVirSum)
-            {
-                if (flags & GMX_FORCE_VIRIAL)
-                {
-
-                    if (fr->bDomDec)
-                    {
-                        clear_rvecs_omp_nowait(fr->f_novirsum_n, fr->f_novirsum);
-                    }
-                    else
-                    {
-                        clear_rvecs_omp_nowait(homenr, fr->f_novirsum+start);
-                    }
-                }
-            }
-            /* Clear the short- and long-range forces */
-            clear_rvecs_omp_nowait(fr->natoms_force_constr, f);
-        }
+        /* Clear the short- and long-range forces */
+        clear_rvecs(fr->natoms_force_constr, f);
 
         clear_rvec(fr->vir_diag_posres);
     }

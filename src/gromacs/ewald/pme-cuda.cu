@@ -73,7 +73,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         (*pmeGPU)->bGPUFFT = (*pmeGPU)->bGPUSingle && !getenv("GMX_PME_GPU_FFTW");
         // currently cuFFT is only used for a single rank
 
-        (*pmeGPU)->bGPUSolve = true;//(*pmeGPU)->bGPUFFT;
+        (*pmeGPU)->bGPUSolve = true; //(*pmeGPU)->bGPUFFT;
         // solve is done between the 2 FFTs - not worth it to copy
         // CPU solve with the CPU FFTW is definitely broken at the moment - 20150511
 
