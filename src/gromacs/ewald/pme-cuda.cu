@@ -75,7 +75,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
 
         (*pmeGPU)->bGPUSolve = true; //(*pmeGPU)->bGPUFFT;
         // solve is done between the 2 FFTs - not worth it to copy
-        // CPU solve with the CPU FFTW is definitely broken at the moment - 20150511
+        // CPU solve with the CPU FFTW is definitely broken at the moment - 20160511
 
         (*pmeGPU)->bGPUGather = true;
         // CPU gather has got to be broken - at least fix the spline parameters layout at the end of spread_on_grid_gpu
