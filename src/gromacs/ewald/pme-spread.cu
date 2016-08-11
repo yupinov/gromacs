@@ -90,8 +90,7 @@ template <
         const int particlesPerBlock,
         const gmx_bool bCalcAlways
         >
-__device__ __forceinline__ void calculate_splines(const float3 nXYZ,
-                                        const int3 nnOffset,
+__device__ __forceinline__ void calculate_splines(const int3 nnOffset,
 #if PME_USE_TEXTURES
 #if USE_TEXOBJ
                                         cudaTextureObject_t nnTexture,
@@ -146,19 +145,19 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
             {
                 case 0:
                 constIndex = nnOffset.x;
-                n = nXYZ.x;
+                n = constants.gridSizeFP.x;
                 t = x.x * constants.recipbox[dimIndex].x + x.y * constants.recipbox[dimIndex].y + x.z * constants.recipbox[dimIndex].z;
                 break;
 
                 case 1:
                 constIndex = nnOffset.y;
-                n = nXYZ.y;
+                n = constants.gridSizeFP.y;
                 t = /*x.x * constants.recipbox[dimIndex].x + */ x.y * constants.recipbox[dimIndex].y + x.z * constants.recipbox[dimIndex].z;
                 break;
 
                 case 2:
                 constIndex = nnOffset.z;
-                n = nXYZ.z;
+                n = constants.gridSizeFP.z;
                 t = /*x.x * constants.recipbox[dimIndex].x + x.y * constants.recipbox[dimIndex].y + */ x.z * constants.recipbox[dimIndex].z;
                 break;
             }
@@ -358,8 +357,7 @@ __launch_bounds__(THREADS_PER_BLOCK, MIN_BLOCKS_PER_MP)
 //#endif
 //yupinov put bounds on separate kernels as well
 __global__ void pme_spline_and_spread_kernel
-(const float3 nXYZ,
- int start_ix, int start_iy, int start_iz,
+(int start_ix, int start_iy, int start_iz,
  const int pny, const int pnz,
  const int3 nnOffset,
 #if PME_USE_TEXTURES
@@ -407,7 +405,7 @@ __global__ void pme_spline_and_spread_kernel
         stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal);
         stage_coordinates<particlesPerBlock>(threadLocalId, coordinates, (const real *)coordinatesGlobal);
         __syncthreads();
-        calculate_splines<order, particlesPerBlock, bCalcAlways>(nXYZ, nnOffset, (const float3 *)coordinates, coefficient,
+        calculate_splines<order, particlesPerBlock, bCalcAlways>(nnOffset, (const float3 *)coordinates, coefficient,
                                                                thetaGlobal, theta, dthetaGlobal, idxGlobal, idx,
                                                                constants,
                                                                globalCalcIndex,
@@ -457,8 +455,7 @@ template <
         const gmx_bool bCalcAlways
         >
 __global__ void pme_spline_kernel
-(const float3 nXYZ,
- const int3 nnOffset,
+(const int3 nnOffset,
 #if PME_USE_TEXTURES
 #if USE_TEXOBJ
   cudaTextureObject_t nnTexture,
@@ -497,7 +494,7 @@ __global__ void pme_spline_kernel
     stage_coordinates<particlesPerBlock>(threadLocalId, coordinates, (const real *)coordinatesGlobal);
     __syncthreads();
 
-    calculate_splines<order, particlesPerBlock, bCalcAlways>(nXYZ, nnOffset, (const float3 *)coordinates, coefficient,
+    calculate_splines<order, particlesPerBlock, bCalcAlways>(nnOffset, (const float3 *)coordinates, coefficient,
                                                            thetaGlobal, theta, dthetaGlobal, idxGlobal, idx,
                                                            constants,
                                                            globalIndexCalc,
@@ -789,7 +786,6 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
     int idx_size = n * DIM * sizeof(int);
     int *idx_d = (int *)PMEMemoryFetch(pme, PME_ID_IDXPTR, idx_size, ML_DEVICE);
 
-    const float3 nXYZ = {(real)nx, (real)ny, (real)nz};
     const int3 nnOffset = {0, 5 * nx, 5 * (nx + ny)};
 
 
@@ -830,8 +826,7 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
                     else
                     {
                         pme_spline_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocksSpline, dimBlockSpline, 0, s>>>
-                                                                                                   (nXYZ,
-                                                                                                    nnOffset,
+                                                                                                   (nnOffset,
 #if PME_USE_TEXTURES
 #if USE_TEXOBJ
                                                                                                     nnTexture, fshTexture,
@@ -880,8 +875,7 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
                         if (bSpread)
                         {
                             pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, FALSE, TRUE> <<<nBlocksSpread, dimBlockSpread, 0, s>>>
-                                  (nXYZ,
-                                   pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
+                                  (pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
                                    pny, pnz,
                                    nnOffset,
 #if PME_USE_TEXTURES

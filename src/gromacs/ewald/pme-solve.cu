@@ -339,7 +339,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     const int majorDim = !YZXOrdering ? XX : YY;
 
     // should use constants.NXYZ here as well;
-    const int nMinor = !YZXOrdering ? pme->nkz : pme->nkx;
+    const int nMinor = !YZXOrdering ? pme->nkz : pme->nkx; //yupinov fix all pme->nkx and such
     const int nMajor = !YZXOrdering ? pme->nkx : pme->nky;
     const int nMiddle = !YZXOrdering ? pme->nky : pme->nkz;
 

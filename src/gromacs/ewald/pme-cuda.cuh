@@ -96,7 +96,7 @@ struct pme_gpu_const_parameters
     //yupinov specify column or row
     float3 recipbox[DIM];
     // grid sizes in floating point format
-    rvec nXYZ;
+    float3 gridSizeFP;
     // number of local particles
     int nAtoms;
 };

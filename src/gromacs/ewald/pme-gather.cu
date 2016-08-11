@@ -49,9 +49,9 @@ __device__ __forceinline__ real read_grid_size(const pme_gpu_const_parameters co
 {
     switch (dimIndex)
     {
-        case XX: return constants.nXYZ[XX];
-        case YY: return constants.nXYZ[YY];
-        case ZZ: return constants.nXYZ[ZZ];
+        case XX: return constants.gridSizeFP.x;
+        case YY: return constants.gridSizeFP.y;
+        case ZZ: return constants.gridSizeFP.z;
     }
     // we really shouldn't be here
     assert(false);
@@ -405,8 +405,6 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
     // indices
     int *idx_d = (int *)PMEMemoryFetch(pme, PME_ID_IDXPTR, DIM * size_indices, ML_DEVICE);
 
-    const float3 nXYZ = {(real)nx, (real)ny, (real)nz};
-    memcpy(pme->gpu->constants.nXYZ, &nXYZ, sizeof(nXYZ));
 
 
     const int blockSize = 4 * warp_size;
