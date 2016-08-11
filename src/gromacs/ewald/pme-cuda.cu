@@ -257,7 +257,7 @@ void pme_gpu_copy_recipbox(gmx_pme_t *pme)
         {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
     };
     assert(pme->recipbox[XX][XX] != 0.0);
-    memcpy(pme->gpu->recipbox.box, box, sizeof(box));
+    memcpy(pme->gpu->constants.recipbox, box, sizeof(box));
 }
 
 void pme_gpu_copy_coordinates(gmx_pme_t *pme)

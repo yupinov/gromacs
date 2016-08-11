@@ -81,11 +81,6 @@ enum MemLocType
 // basically, spread uses matrix columns (while solve and gather use rows)
 // maybe swap it the other way around?
 
-struct pme_gpu_recipbox_t
-{
-    float3 box[DIM];
-};
-
 // wrap/unwrap overlap zones
 struct pme_gpu_overlap_t
 {
@@ -94,9 +89,13 @@ struct pme_gpu_overlap_t
     int overlapCellCounts[OVERLAP_ZONES];
 };
 
+// this is a structure for storing common constants accessed within GPU kernels by value
 struct pme_gpu_const_parameters
 {
-    // grid sizes
+    // reciprocal box
+    //yupinov specify column or row
+    float3 recipbox[DIM];
+    // grid sizes in floating point format
     rvec nXYZ;
     // number of local particles
     int nAtoms;
@@ -133,7 +132,6 @@ struct gmx_pme_cuda_t
     gmx_bool useTextureObjects; /* If false, then use references */
 
     // constant structures for arguments
-    pme_gpu_recipbox_t recipbox;
     pme_gpu_overlap_t overlap;
 
     gmx_device_info_t *deviceInfo;

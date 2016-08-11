@@ -86,7 +86,7 @@ __global__ void pme_solve_kernel
  const real * __restrict__ BSplineModuleMiddle,
  float2 * __restrict__ globalGrid,
  const real volume,
-  const struct pme_gpu_recipbox_t RECIPBOX,
+    const struct pme_gpu_const_parameters constants,
  real * __restrict__ virialAndEnergy)
 {
     // this is a PME solve kernel
@@ -175,9 +175,9 @@ __global__ void pme_solve_kernel
 
         if (notZeroPoint)
         {     
-            mhxk      = mX * RECIPBOX.box[XX].x;
-            mhyk      = mX * RECIPBOX.box[XX].y + mY * RECIPBOX.box[YY].y;
-            mhzk      = mX * RECIPBOX.box[XX].z + mY * RECIPBOX.box[YY].z + mZ * RECIPBOX.box[ZZ].z;
+            mhxk      = mX * constants.recipbox[XX].x;
+            mhyk      = mX * constants.recipbox[XX].y + mY * constants.recipbox[YY].y;
+            mhzk      = mX * constants.recipbox[XX].z + mY * constants.recipbox[YY].z + mZ * constants.recipbox[ZZ].z;
 
             m2k       = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
             real denom = m2k * bMajorMiddle * BSplineModuleMinor[kMinor];
@@ -390,7 +390,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
-               pme->gpu->recipbox,
+               pme->gpu->constants,
                pme->gpu->energyAndVirial);
         else
             pme_solve_kernel<FALSE, TRUE> <<<blocks, threads, 0, s>>>
@@ -401,7 +401,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
-               pme->gpu->recipbox,
+               pme->gpu->constants,
                pme->gpu->energyAndVirial);
     }
     else
@@ -415,7 +415,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
-               pme->gpu->recipbox,
+               pme->gpu->constants,
                pme->gpu->energyAndVirial);
         else
             pme_solve_kernel<FALSE, FALSE> <<<blocks, threads, 0, s>>>
@@ -426,7 +426,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
-               pme->gpu->recipbox,
+               pme->gpu->constants,
                pme->gpu->energyAndVirial);
     }
     CU_LAUNCH_ERR("pme_solve_kernel");

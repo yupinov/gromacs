@@ -67,7 +67,7 @@
     ----------------------------------------------------------------------------
     so each data chunk for a single warp is 24 floats - goes both for theta and dtheta
     24 = 2 particles per warp *  order 4 * 3 dimensions
-    48 floats (1.5 warpsize) per warp in total
+    48 floats (1.5 warp size) per warp in total
 */
 
 #define THREADS_PER_BLOCK   (4 * warp_size)
@@ -108,7 +108,6 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
                                         real * __restrict__ dthetaGlobal,
                                         int * __restrict__ idxGlobal,
                                         int * __restrict__ idx,
-                                        const struct pme_gpu_recipbox_t RECIPBOX,
                                         const pme_gpu_const_parameters constants,
                                         const int globalIndexCalc,
                                         const int localIndexCalc,
@@ -140,7 +139,7 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
             int constIndex, tInt;
             real n, t;
             const float3 x = coordinates[localIndexCalc];
-            // accessing fields in nnOffset/nXYZ/RECIPBOX/... with dimIndex offset
+            // accessing fields in nnOffset/nXYZ/recipbox/... with dimIndex offset
             // puts them into local memory (!) instead of accessing the constant memory directly
             // that's the reason for the switch
             switch (dimIndex)
@@ -148,19 +147,19 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
                 case 0:
                 constIndex = nnOffset.x;
                 n = nXYZ.x;
-                t = x.x * RECIPBOX.box[dimIndex].x + x.y * RECIPBOX.box[dimIndex].y + x.z * RECIPBOX.box[dimIndex].z;
+                t = x.x * constants.recipbox[dimIndex].x + x.y * constants.recipbox[dimIndex].y + x.z * constants.recipbox[dimIndex].z;
                 break;
 
                 case 1:
                 constIndex = nnOffset.y;
                 n = nXYZ.y;
-                t = /*x.x * RECIPBOX.box[dimIndex].x + */ x.y * RECIPBOX.box[dimIndex].y + x.z * RECIPBOX.box[dimIndex].z;
+                t = /*x.x * constants.recipbox[dimIndex].x + */ x.y * constants.recipbox[dimIndex].y + x.z * constants.recipbox[dimIndex].z;
                 break;
 
                 case 2:
                 constIndex = nnOffset.z;
                 n = nXYZ.z;
-                t = /*x.x * RECIPBOX.box[dimIndex].x + x.y * RECIPBOX.box[dimIndex].y + */ x.z * RECIPBOX.box[dimIndex].z;
+                t = /*x.x * constants.recipbox[dimIndex].x + x.y * constants.recipbox[dimIndex].y + */ x.z * constants.recipbox[dimIndex].z;
                 break;
             }
             // parts of multiplication are commented because these components are actually 0
@@ -376,7 +375,6 @@ __global__ void pme_spline_and_spread_kernel
  const real * __restrict__ coefficientGlobal,
  real * __restrict__ gridGlobal, real * __restrict__ thetaGlobal,
  real * __restrict__ dthetaGlobal, int * __restrict__ idxGlobal,
- const struct pme_gpu_recipbox_t RECIPBOX,
  const pme_gpu_const_parameters constants)
 {
     // gridline indices
@@ -411,7 +409,6 @@ __global__ void pme_spline_and_spread_kernel
         __syncthreads();
         calculate_splines<order, particlesPerBlock, bCalcAlways>(nXYZ, nnOffset, (const float3 *)coordinates, coefficient,
                                                                thetaGlobal, theta, dthetaGlobal, idxGlobal, idx,
-                                                               RECIPBOX,
                                                                constants,
                                                                globalCalcIndex,
                                                                localCalcIndex,
@@ -474,7 +471,6 @@ __global__ void pme_spline_kernel
  const float3 * __restrict__ coordinatesGlobal,
  const real * __restrict__ coefficientGlobal,
  real * __restrict__ thetaGlobal, real * __restrict__ dthetaGlobal, int * __restrict__ idxGlobal,
-  const struct pme_gpu_recipbox_t RECIPBOX,
  const pme_gpu_const_parameters constants)
 {
     // gridline indices
@@ -503,7 +499,6 @@ __global__ void pme_spline_kernel
 
     calculate_splines<order, particlesPerBlock, bCalcAlways>(nXYZ, nnOffset, (const float3 *)coordinates, coefficient,
                                                            thetaGlobal, theta, dthetaGlobal, idxGlobal, idx,
-                                                           RECIPBOX,
                                                            constants,
                                                            globalIndexCalc,
                                                            localIndexCalc,
@@ -847,7 +842,6 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
                                                                                                     pme->gpu->coordinates,
                                                                                                     pme->gpu->coefficients,
                                                                                                     theta_d, dtheta_d, idx_d,
-                                                                                                    pme->gpu->recipbox,
                                                                                                     pme->gpu->constants);
 
 
@@ -898,7 +892,6 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
                                    pme->gpu->nnArray, pme->gpu->fshArray,
 #endif
                                    pme->gpu->coordinates, pme->gpu->coefficients, pme->gpu->grid, theta_d, dtheta_d, idx_d,
-                                   pme->gpu->recipbox,
                                    pme->gpu->constants);
                         }
                         else

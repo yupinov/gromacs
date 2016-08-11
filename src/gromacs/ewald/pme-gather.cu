@@ -74,7 +74,6 @@ __global__ void pme_gather_kernel(const real * __restrict__ gridGlobal,         
                                   const real * __restrict__ dthetaGlobal,
                                   real * __restrict__ forcesGlobal,
                                   const real * __restrict__ coefficientGlobal,
-                                  const struct pme_gpu_recipbox_t RECIPBOX,
                                   const int * __restrict__ idxGlobal
  )
 {
@@ -235,15 +234,15 @@ __global__ void pme_gather_kernel(const real * __restrict__ gridGlobal,         
         switch (dimIndex)
         {
             case XX:
-            contrib = RECIPBOX.box[XX].x * fSum.x /*+ RECIPBOX.box[YY].x * fSum.y + RECIPBOX.box[ZZ].x * fSum.z*/;
+            contrib = constants.recipbox[XX].x * fSum.x /*+ constants.recipbox[YY].x * fSum.y + constants.recipbox[ZZ].x * fSum.z*/;
             break;
 
             case YY:
-            contrib = RECIPBOX.box[XX].y * fSum.x + RECIPBOX.box[YY].y * fSum.y /* + RECIPBOX.box[ZZ].y * fSum.z*/;
+            contrib = constants.recipbox[XX].y * fSum.x + constants.recipbox[YY].y * fSum.y /* + constants.recipbox[ZZ].y * fSum.z*/;
             break;
 
             case ZZ:
-            contrib = RECIPBOX.box[XX].z * fSum.x + RECIPBOX.box[YY].z * fSum.y + RECIPBOX.box[ZZ].z * fSum.z;
+            contrib = constants.recipbox[XX].z * fSum.x + constants.recipbox[YY].z * fSum.y + constants.recipbox[ZZ].z * fSum.z;
             break;
         }
         contrib *= -coefficient;
@@ -424,7 +423,6 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
                pme->gpu->constants, pnx, pny, pnz,
                theta_d, dtheta_d,
                pme->gpu->forces, pme->gpu->coefficients,
-               pme->gpu->recipbox,
                idx_d);
         else
             pme_gather_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocks, dimBlock, 0, s>>>
@@ -432,7 +430,6 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
                pme->gpu->constants, pnx, pny, pnz,
                theta_d, dtheta_d,
                pme->gpu->forces, pme->gpu->coefficients,
-               pme->gpu->recipbox,
                idx_d);
     else
         gmx_fatal(FARGS, "gather: orders other than 4 untested!");
