@@ -151,6 +151,7 @@ gmx_bool pme_gpu_enabled(const gmx_pme_t *pme)
     return (pme != NULL) && pme->bGPU;
 }
 
+// unused openMP reduction of 2 force buffers
 void pme_gpu_sloppy_force_reduction(const gmx_pme_t *pme, const real *forcesGPU)
 {
 #pragma omp parallel for num_threads(pme->nthread)

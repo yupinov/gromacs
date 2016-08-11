@@ -1,27 +1,32 @@
-#include "pme.h"
-
-#include "gromacs/utility/basedefinitions.h"
-#include "gromacs/utility/real.h"
-#include "gromacs/math/vectypes.h"
-#include "gromacs/gpu_utils/cudautils.cuh"
-#include "gromacs/gpu_utils/cuda_arch_utils.cuh"
-#include <cuda.h>
-
-#include "pme-timings.cuh"
-
-#include "pme-internal.h"
-#include "pme-cuda.cuh"
-
 #include <assert.h>
 
+#include "gromacs/gpu_utils/cuda_arch_utils.cuh"
+#include "pme-cuda.cuh"
+
+// allocate the GPU output buffer for the resulting PME forces
 void pme_gpu_alloc_gather_forces(gmx_pme_t *pme)
 {
-    const int n = pme->atc[0].n; //?
+    const int n = pme->atc[0].n;
     assert(n > 0);
-    const int forcesSize = DIM * n * sizeof(real);
+    const size_t forcesSize = DIM * n * sizeof(real);
     pme->gpu->forces = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_DEVICE);
 }
 
+// copy the PME resulting forces from the GPU to the CPU buffer
+void pme_gpu_copy_forces(gmx_pme_t *pme)
+{
+    // host-to-device copy of the forces to be reduced with the gather results
+    // we have to be sure that the atc forces (listed and such) are already calculated
+
+    const int n = pme->atc[0].n;
+    assert(n > 0);
+    const int forcesSize = DIM * n * sizeof(real);
+    real *forces = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
+    memcpy(forces, pme->atc[0].f, forcesSize);
+    cu_copy_H2D_async(pme->gpu->forces, forces, forcesSize, pme->gpu->pmeStream);
+}
+
+// wait for the PME resulting forces on the CPU, and copy to the original CPU buffer (atc->f)
 void pme_gpu_get_forces(gmx_pme_t *pme)
 {
     cudaStream_t s = pme->gpu->pmeStream;
@@ -29,7 +34,8 @@ void pme_gpu_get_forces(gmx_pme_t *pme)
     CU_RET_ERR(stat, "error while waiting for PME forces");
 
     const int n = pme->atc[0].n;
-    const int forcesSize = DIM * n * sizeof(real);
+    assert(n > 0);
+    const size_t forcesSize = DIM * n * sizeof(real);
     real *forces = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
     memcpy(pme->atc[0].f, forces, forcesSize);
     // did not succeed in using cudaHostRegister instead of memcpy
@@ -38,20 +44,7 @@ void pme_gpu_get_forces(gmx_pme_t *pme)
     // done on the GPU instead by passing bOverwriteForces = FALSE to the gather functions
 }
 
-void pme_gpu_copy_forces(gmx_pme_t *pme)
-{
-    // host-to-device copy of the forces to be reduces with the gather results
-    // we have to be sure that the atc forces (listed and such) are already calculated
-
-    const int n = pme->atc[0].n;
-    assert(n);
-    const int forcesSize = DIM * n * sizeof(real);
-    real *forces = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
-    memcpy(forces, pme->atc[0].f, forcesSize);
-    cu_copy_H2D_async(pme->gpu->forces, forces, forcesSize, pme->gpu->pmeStream);
-}
-
-// like in spread, unrolling the dynamic index accesses to avoid local memory operations
+// unroll the dynamic index accesses to the constant grid sizes to avoid local memory operations
 __device__ __forceinline__ real read_grid_size(const pme_gpu_const_parameters constants, const int dimIndex)
 {
     switch (dimIndex)
@@ -65,22 +58,27 @@ __device__ __forceinline__ real read_grid_size(const pme_gpu_const_parameters co
     return 0.0f;
 }
 
+// perform the gathering stage of the PME
 template <
-        const int order,
-        const int particlesPerBlock,
-        const gmx_bool bOverwriteForces
+        const int order,                    // the PME interpolation order - assumed to be 4
+        const int particlesPerBlock,        // the number of particles in a block - assumed to be (2 * number of warps) for order of 4
+        const gmx_bool bOverwriteForces     // true: forces are written into the output, false: forces are added to the output
         >
 __launch_bounds__(4 * warp_size, 16)
-__global__ void pme_gather_kernel
-(const real * __restrict__ gridGlobal, const int n,
- const pme_gpu_const_parameters constants, const int pnx, const int pny, const int pnz,
- const real * __restrict__ thetaGlobal,
- const real * __restrict__ dthetaGlobal,
- real * __restrict__ forcesGlobal, const real * __restrict__ coefficientGlobal,
- #if !PME_EXTERN_CMEM
-  const struct pme_gpu_recipbox_t RECIPBOX,
- #endif
- const int * __restrict__ idxGlobal
+__global__ void pme_gather_kernel(const real * __restrict__ gridGlobal,          // global grid after the solving, overlap of (order - 1) included
+                                  const int n,
+                                  const pme_gpu_const_parameters constants,
+                                  const int pnx,
+                                  const int pny,
+                                  const int pnz,
+                                  const real * __restrict__ thetaGlobal,
+                                  const real * __restrict__ dthetaGlobal,
+                                  real * __restrict__ forcesGlobal,
+                                  const real * __restrict__ coefficientGlobal,
+#if !PME_EXTERN_CMEM
+                                  const struct pme_gpu_recipbox_t RECIPBOX,
+#endif
+                                  const int * __restrict__ idxGlobal
  )
 {
     /* sum forces for local particles */
@@ -299,7 +297,8 @@ __global__ void pme_unwrap_kernel
 
         // replace integer division/modular arithmetics - a big performance hit
         // try int_fastdiv?
-        const int ixy = cellIndex / zoneSizeYZ.y; //yupinov check expensive integer divisions everywhere!
+        const int ixy = cellIndex / zoneSizeYZ.y;
+        // expensive integer divisions everywhere => should rewrite wrap/unwrap kernels
         const int iz = cellIndex - zoneSizeYZ.y * ixy;
         const int ix = ixy / zoneSizeYZ.x;
         const int iy = ixy - zoneSizeYZ.x * ix;
