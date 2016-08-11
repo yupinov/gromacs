@@ -38,26 +38,26 @@ void pme_gpu_copy_bspline_moduli(gmx_pme_t *pme)
 
     for (int i = 0; i < DIM; i++)
     {
-        int n;
+        int gridSize;
         PMEDataID id;
         switch (i)
         {
             case XX:
-            n = pme->nkx;
+            gridSize = pme->nkx;
             id = PME_ID_BSP_MOD_XX;
             break;
 
             case YY:
-            n = pme->nky;
+            gridSize = pme->nky;
             id = PME_ID_BSP_MOD_YY;
             break;
 
             case ZZ:
-            n = pme->nkz;
+            gridSize = pme->nkz;
             id = PME_ID_BSP_MOD_ZZ;
             break;
         }
-        int modSize = n * sizeof(real);
+        int modSize = gridSize * sizeof(real);
         real *bspMod_h = (real *)PMEMemoryFetch(pme, id, modSize, ML_HOST);
         memcpy(bspMod_h, pme->bsp_mod[i], modSize);
         real *bspMod_d = (real *)PMEMemoryFetch(pme, id, modSize, ML_DEVICE);

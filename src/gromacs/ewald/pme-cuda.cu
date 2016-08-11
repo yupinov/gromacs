@@ -33,8 +33,9 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
     const int grid_index = 0;
 
     gmx_bool firstInit = !*pmeGPU;
-    if (firstInit) // the very first init
+    if (firstInit)
     {
+        // this is only ran once
         snew(*pmeGPU, 1);
         cudaError_t stat;
 
@@ -157,7 +158,10 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
     }
 
     if (localParticleNumberChanged)
+    {
+        pme->gpu->constants.nAtoms = pme->atc[0].n;
         pme_gpu_alloc_gather_forces(pme);
+    }
 
     pme_gpu_step_reinit(pme);
 }
@@ -268,10 +272,8 @@ void pme_gpu_copy_recipbox(gmx_pme_t *pme)
 
 void pme_gpu_copy_coordinates(gmx_pme_t *pme)
 {
-    const int n = pme->atc[0].n;
-
     // coordinates
-    const size_t coordinatesSize = DIM * n * sizeof(real);
+    const size_t coordinatesSize = DIM * pme->gpu->constants.nAtoms * sizeof(real);
     float3 *coordinates_h = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_HOST);
     memcpy(coordinates_h, pme->atc[0].x, coordinatesSize);
     pme->gpu->coordinates = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_DEVICE);
@@ -279,7 +281,7 @@ void pme_gpu_copy_coordinates(gmx_pme_t *pme)
     /*
     float4 *xptr_h = (float4 *)PMEMemoryFetch(pme, PME_ID_XPTR, 4 * n_blocked * sizeof(real), ML_HOST);
     memset(xptr_h, 0, 4 * n_blocked * sizeof(real));
-    for (int i = 0; i < n; i++)
+    for (int i = 0; i < pme->gpu->constants.nAtoms; i++)
     {
        memcpy(xptr_h + i, atc->x + i, sizeof(rvec));
     }
@@ -290,9 +292,8 @@ void pme_gpu_copy_coordinates(gmx_pme_t *pme)
 
 void pme_gpu_copy_charges(gmx_pme_t *pme)
 {
-    const int n = pme->atc[0].n;
     // coefficients - can be different for PME/LJ?
-    const size_t coefficientSize = n * sizeof(real);
+    const size_t coefficientSize = pme->gpu->constants.nAtoms * sizeof(real);
     real *coefficients_h = (real *)PMEMemoryFetch(pme, PME_ID_COEFFICIENT, coefficientSize, ML_HOST);
     memcpy(coefficients_h, pme->atc[0].coefficient, coefficientSize); // why not just register host memory?
     pme->gpu->coefficients = (real *)PMEMemoryFetch(pme, PME_ID_COEFFICIENT, coefficientSize, ML_DEVICE);

@@ -112,6 +112,8 @@ struct pme_gpu_const_parameters
 {
     // grid sizes
     rvec nXYZ;
+    // number of local particles
+    int nAtoms;
 };
 
 // the main PME GPU structure

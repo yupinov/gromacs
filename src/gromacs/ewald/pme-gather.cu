@@ -6,7 +6,7 @@
 // allocate the GPU output buffer for the resulting PME forces
 void pme_gpu_alloc_gather_forces(gmx_pme_t *pme)
 {
-    const int n = pme->atc[0].n;
+    const int n = pme->gpu->constants.nAtoms;
     assert(n > 0);
     const size_t forcesSize = DIM * n * sizeof(real);
     pme->gpu->forces = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_DEVICE);
@@ -18,7 +18,7 @@ void pme_gpu_copy_forces(gmx_pme_t *pme)
     // host-to-device copy of the forces to be reduced with the gather results
     // we have to be sure that the atc forces (listed and such) are already calculated
 
-    const int n = pme->atc[0].n;
+    const int n = pme->gpu->constants.nAtoms;
     assert(n > 0);
     const int forcesSize = DIM * n * sizeof(real);
     real *forces = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
@@ -33,7 +33,7 @@ void pme_gpu_get_forces(gmx_pme_t *pme)
     cudaError_t stat = cudaStreamWaitEvent(s, pme->gpu->syncForcesD2H, 0);
     CU_RET_ERR(stat, "error while waiting for PME forces");
 
-    const int n = pme->atc[0].n;
+    const int n = pme->gpu->constants.nAtoms;
     assert(n > 0);
     const size_t forcesSize = DIM * n * sizeof(real);
     real *forces = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
@@ -66,7 +66,6 @@ template <
         >
 __launch_bounds__(4 * warp_size, 16)
 __global__ void pme_gather_kernel(const real * __restrict__ gridGlobal,          // global grid after the solving, overlap of (order - 1) included
-                                  const int n,
                                   const pme_gpu_const_parameters constants,
                                   const int pnx,
                                   const int pny,
@@ -125,7 +124,7 @@ __global__ void pme_gather_kernel(const real * __restrict__ gridGlobal,         
     real fy = 0.0f;
     real fz = 0.0f;
 
-    if (globalIndex < n)
+    if (globalIndex < constants.nAtoms)
     {
         const int particleWarpIndex = localIndex % PARTICLES_PER_WARP;
         const int warpIndex = localIndex / PARTICLES_PER_WARP; // should be just a real warp index!
@@ -329,12 +328,11 @@ __global__ void pme_unwrap_kernel
 
 void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
                    pme_atomcomm_t *atc,
-                   splinedata_t *spline,
                    real scale,
                    const gmx_bool bOverwriteForces)
 {
-    int n = spline->n;
-    if (!n)
+    int nAtoms = pme->gpu->constants.nAtoms; //spline->n;
+    if (!nAtoms)
         return;
 
     if (!bOverwriteForces)
@@ -395,13 +393,13 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
             gmx_fatal(FARGS, "gather: orders other than 4 untested!");
     }
 
-    int forcesSize = DIM * n * sizeof(real);
-    int size_indices = n * sizeof(int);
-    int size_splines = order * n * sizeof(int);
+    int forcesSize = DIM * nAtoms * sizeof(real);
+    int size_indices = nAtoms * sizeof(int);
+    int size_splines = order * nAtoms * sizeof(int);
 
     real *atc_f_h = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
 
-    for (int i = 0; i < n; i++)
+    for (int i = 0; i < nAtoms; i++)
     {
         // coefficients
         atc_coefficient[i] *= scale;
@@ -420,7 +418,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
 
     const int blockSize = 4 * warp_size;
     const int particlesPerBlock = blockSize / order / order;
-    dim3 nBlocks((n + blockSize - 1) / blockSize * order * order);
+    dim3 nBlocks((nAtoms + blockSize - 1) / blockSize * order * order);
     dim3 dimBlock(order, order, particlesPerBlock);
 
     pme_gpu_timing_start(pme, ewcsPME_GATHER);
@@ -429,7 +427,6 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
         if (bOverwriteForces)
             pme_gather_kernel<4, blockSize / 4 / 4, TRUE> <<<nBlocks, dimBlock, 0, s>>>
               (pme->gpu->grid,
-               n,
                pme->gpu->constants, pnx, pny, pnz,
                theta_d, dtheta_d,
                pme->gpu->forces, pme->gpu->coefficients,
@@ -440,7 +437,6 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
         else
             pme_gather_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocks, dimBlock, 0, s>>>
               (pme->gpu->grid,
-               n,
                pme->gpu->constants, pnx, pny, pnz,
                theta_d, dtheta_d,
                pme->gpu->forces, pme->gpu->coefficients,

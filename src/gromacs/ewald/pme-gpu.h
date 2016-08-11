@@ -78,7 +78,6 @@ CUDA_FUNC_QUALIFIER void spread_on_grid_gpu(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
 CUDA_FUNC_QUALIFIER void gather_f_bsplines_gpu(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
               real *CUDA_FUNC_ARGUMENT(grid),
               pme_atomcomm_t *CUDA_FUNC_ARGUMENT(atc),
-              splinedata_t *CUDA_FUNC_ARGUMENT(spline),
               const real CUDA_FUNC_ARGUMENT(scale),
               const gmx_bool CUDA_FUNC_ARGUMENT(bOverwriteForces)) CUDA_FUNC_TERM
 

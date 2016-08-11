@@ -111,7 +111,7 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
 #if !PME_EXTERN_CMEM
                                         const struct pme_gpu_recipbox_t RECIPBOX,
 #endif
-                                        const int n,
+                                        const pme_gpu_const_parameters constants,
                                         const int globalIndexCalc,
                                         const int localIndexCalc,
                                         const int globalIndexBase,
@@ -132,7 +132,7 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
     real data[dataSize * order];
 
     const int localLimit = (dimIndex < DIM) && (orderIndex < (PME_GPU_PARALLEL_SPLINE ? order : 1));
-    const int globalLimit = (globalIndexCalc < n);
+    const int globalLimit = (globalIndexCalc < constants.nAtoms);
 
     // INTERPOLATION INDICES
     if (localLimit && globalLimit)
@@ -273,7 +273,7 @@ template <
         >
 __device__ __forceinline__ void spread_charges(const real * __restrict__ coefficient,
                                               real * __restrict__ gridGlobal,
-                                              const int n,
+                                              const pme_gpu_const_parameters constants,
                                               const int globalIndex,
                                               const int localIndex,
                                               const int pny,
@@ -293,7 +293,7 @@ __device__ __forceinline__ void spread_charges(const real * __restrict__ coeffic
     const int offx = 0, offy = 0, offz = 0;
     // unused for now
 
-    if ((globalIndex < n) && (coefficient[localIndex] != 0.0f))
+    if ((globalIndex < constants.nAtoms) && (coefficient[localIndex] != 0.0f))
     {
         // spline Y/Z coordinates
         const int ithy = threadIdx.y;
@@ -381,7 +381,7 @@ __global__ void pme_spline_and_spread_kernel
 #if !PME_EXTERN_CMEM
  const struct pme_gpu_recipbox_t RECIPBOX,
 #endif
- const int n)
+ const pme_gpu_const_parameters constants)
 {
     // gridline indices
     __shared__ int idx[PME_SPREADGATHER_BLOCK_DATA_SIZE];
@@ -418,7 +418,7 @@ __global__ void pme_spline_and_spread_kernel
 #if !PME_EXTERN_CMEM
                                                                RECIPBOX,
 #endif
-                                                               n,
+                                                               constants,
                                                                globalCalcIndex,
                                                                localCalcIndex,
                                                                globalParticleIndexBase,
@@ -452,7 +452,7 @@ __global__ void pme_spline_and_spread_kernel
     {
         const int localSpreadIndex = threadIdx.z;
         const int globalSpreadIndex = globalParticleIndexBase + localSpreadIndex;
-        spread_charges<order, particlesPerBlock>(coefficient, gridGlobal, n, globalSpreadIndex, localSpreadIndex,
+        spread_charges<order, particlesPerBlock>(coefficient, gridGlobal, constants, globalSpreadIndex, localSpreadIndex,
                                                 pny, pnz, idx, theta);
     }
 }
@@ -483,7 +483,7 @@ __global__ void pme_spline_kernel
  #if !PME_EXTERN_CMEM
   const struct pme_gpu_recipbox_t RECIPBOX,
  #endif
- const int n)
+ const pme_gpu_const_parameters constants)
 {
     // gridline indices
     __shared__ int idx[PME_SPREADGATHER_BLOCK_DATA_SIZE];
@@ -514,7 +514,7 @@ __global__ void pme_spline_kernel
 #if !PME_EXTERN_CMEM
                                                            RECIPBOX,
 #endif
-                                                           n,
+                                                           constants,
                                                            globalIndexCalc,
                                                            localIndexCalc,
                                                            globalIndexBase,
@@ -523,13 +523,14 @@ __global__ void pme_spline_kernel
 }
 
 
-template <const int order, const int particlesPerBlock>
+template
+<const int order, const int particlesPerBlock>
 __global__ void pme_spread_kernel
 ( //int start_ix, int start_iy, int start_iz,
   const int pny, const int pnz,
  const real * __restrict__ coefficientGlobal,
  real * __restrict__ gridGlobal, real * __restrict__ thetaGlobal, const int * __restrict__ idxGlobal,
- int n)
+             const pme_gpu_const_parameters constants)
 {
     __shared__ int idx[PME_SPREADGATHER_BLOCK_DATA_SIZE];
     __shared__ real coefficient[particlesPerBlock];
@@ -553,7 +554,7 @@ __global__ void pme_spread_kernel
     const int dimIndex = threadLocalId - localIndexCalc * DIM;
     const int globalIndexCalc = globalParticleIndexBase + localIndexCalc;
 
-    if ((globalIndexCalc < n) && (dimIndex < DIM) && (localIndexCalc < particlesPerBlock))
+    if ((globalIndexCalc < constants.nAtoms) && (dimIndex < DIM) && (localIndexCalc < particlesPerBlock))
     {
         idx[localIndexCalc * DIM + dimIndex] = idxGlobal[globalIndexCalc * DIM + dimIndex];
 
@@ -570,7 +571,7 @@ __global__ void pme_spread_kernel
     __syncthreads();
 
     // SPREAD
-    spread_charges<order, particlesPerBlock>(coefficient, gridGlobal, n, globalIndex, localIndex,
+    spread_charges<order, particlesPerBlock>(coefficient, gridGlobal, constants, globalIndex, localIndex,
                                             pny, pnz, idx, theta);
 }
 
@@ -771,9 +772,6 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
 
     cudaStream_t s = pme->gpu->pmeStream;
 
-    atc->spline[0].n = atc->n;
-    // used in gather
-
     //int nx = pmegrid->s[XX], ny = pmegrid->s[YY], nz = pmegrid->s[ZZ];
     const int order = pmegrid->order;
     const int overlap = order - 1;
@@ -795,7 +793,8 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
     const int ny = pme->nky;
     const int nz = pme->nkz;
 
-    int n = atc->n;
+    const int n = pme->gpu->constants.nAtoms;
+
     const int gridSize = pnx * pny * pnz * sizeof(real);
 
     int size_order = order * n * sizeof(real);
@@ -863,7 +862,7 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
 #if !PME_EXTERN_CMEM
                                                                                                     pme->gpu->recipbox,
 #endif
-                                                                                                    n);
+                                                                                                    pme->gpu->constants);
 
 
                     }
@@ -881,7 +880,7 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
                                                                              pny, pnz,
                                                                              pme->gpu->coefficients,
                                                                              pme->gpu->grid, theta_d, idx_d,
-                                                                             n);
+                                                                             pme->gpu->constants);
 
                     CU_LAUNCH_ERR("pme_spread_kernel");
 
@@ -916,7 +915,7 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
 #if !PME_EXTERN_CMEM
                                    pme->gpu->recipbox,
 #endif
-                                   n);
+                                   pme->gpu->constants);
                         }
                         else
                             gmx_fatal(FARGS, "the code for bSpread==false was not tested!");
