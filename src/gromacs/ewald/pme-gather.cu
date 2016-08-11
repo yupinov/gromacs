@@ -74,9 +74,7 @@ __global__ void pme_gather_kernel(const real * __restrict__ gridGlobal,         
                                   const real * __restrict__ dthetaGlobal,
                                   real * __restrict__ forcesGlobal,
                                   const real * __restrict__ coefficientGlobal,
-#if !PME_EXTERN_CMEM
                                   const struct pme_gpu_recipbox_t RECIPBOX,
-#endif
                                   const int * __restrict__ idxGlobal
  )
 {
@@ -265,9 +263,7 @@ template <
 __global__ void pme_unwrap_kernel
     (const int nx, const int ny, const int nz,
      const int pny, const int pnz,
- #if !PME_EXTERN_CMEM
      const struct pme_gpu_overlap_t OVERLAP,
- #endif
      real * __restrict__ grid
      )
 {
@@ -379,9 +375,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
             pme_gpu_timing_start(pme, ewcsPME_UNWRAP);
 
             pme_unwrap_kernel<4> <<<nBlocks, blockSize, 0, s>>>(nx, ny, nz, pny, pnz,
-#if !PME_EXTERN_CMEM
                                                                 pme->gpu->overlap,
-#endif
                                                                 pme->gpu->grid);
 
             CU_LAUNCH_ERR("pme_unwrap_kernel");
@@ -430,9 +424,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
                pme->gpu->constants, pnx, pny, pnz,
                theta_d, dtheta_d,
                pme->gpu->forces, pme->gpu->coefficients,
-#if !PME_EXTERN_CMEM
                pme->gpu->recipbox,
-#endif
                idx_d);
         else
             pme_gather_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocks, dimBlock, 0, s>>>
@@ -440,9 +432,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
                pme->gpu->constants, pnx, pny, pnz,
                theta_d, dtheta_d,
                pme->gpu->forces, pme->gpu->coefficients,
-#if !PME_EXTERN_CMEM
                pme->gpu->recipbox,
-#endif
                idx_d);
     else
         gmx_fatal(FARGS, "gather: orders other than 4 untested!");

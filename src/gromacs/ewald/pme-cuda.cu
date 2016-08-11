@@ -248,12 +248,6 @@ void pme_gpu_step_end(gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCal
     pme_gpu_step_reinit(pme);
 }
 
-#if PME_EXTERN_CMEM
-__constant__ __device__ int2 OVERLAP_SIZES[OVERLAP_ZONES];
-__constant__ __device__ int OVERLAP_CELLS_COUNTS[OVERLAP_ZONES];
-__constant__ __device__ float3 RECIPBOX[3];
-#endif
-
 void pme_gpu_copy_recipbox(gmx_pme_t *pme)
 {
     const float3 box[3] =
@@ -263,11 +257,7 @@ void pme_gpu_copy_recipbox(gmx_pme_t *pme)
         {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
     };
     assert(pme->recipbox[XX][XX] != 0.0);
-#if PME_EXTERN_CMEM
-    PMECopyConstant(RECIPBOX, box, sizeof(box), s);
-#else
     memcpy(pme->gpu->recipbox.box, box, sizeof(box));
-#endif
 }
 
 void pme_gpu_copy_coordinates(gmx_pme_t *pme)
@@ -349,13 +339,8 @@ void pme_gpu_copy_wrap_zones(gmx_pme_t *pme)
     {
         cellsAccumCount_h[i] = cellsAccumCount_h[i] + cellsAccumCount_h[i - 1];
     }
-#if PME_EXTERN_CMEM
-    PMECopyConstant(OVERLAP_SIZES, zoneSizesYZ_h, sizeof(zoneSizesYZ_h), s);
-    PMECopyConstant(OVERLAP_CELLS_COUNTS, cellsAccumCount_h, sizeof(cellsAccumCount_h), s);
-#else
     memcpy(pme->gpu->overlap.overlapSizes, zoneSizesYZ_h, sizeof(zoneSizesYZ_h));
     memcpy(pme->gpu->overlap.overlapCellCounts, cellsAccumCount_h, sizeof(cellsAccumCount_h));
-#endif
 }
 
 // wrappers just for the pme.cpp host calls - a PME GPU code that should ideally be in this file as well
