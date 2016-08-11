@@ -145,19 +145,19 @@ __device__ __forceinline__ void calculate_splines(const int3 nnOffset,
             {
                 case 0:
                 constIndex = nnOffset.x;
-                n = constants.gridSizeFP.x;
+                n = constants.localGridSizeFP.x;
                 t = x.x * constants.recipbox[dimIndex].x + x.y * constants.recipbox[dimIndex].y + x.z * constants.recipbox[dimIndex].z;
                 break;
 
                 case 1:
                 constIndex = nnOffset.y;
-                n = constants.gridSizeFP.y;
+                n = constants.localGridSizeFP.y;
                 t = /*x.x * constants.recipbox[dimIndex].x + */ x.y * constants.recipbox[dimIndex].y + x.z * constants.recipbox[dimIndex].z;
                 break;
 
                 case 2:
                 constIndex = nnOffset.z;
-                n = constants.gridSizeFP.z;
+                n = constants.localGridSizeFP.z;
                 t = /*x.x * constants.recipbox[dimIndex].x + x.y * constants.recipbox[dimIndex].y + */ x.z * constants.recipbox[dimIndex].z;
                 break;
             }

@@ -95,8 +95,10 @@ struct pme_gpu_const_parameters
     // reciprocal box
     //yupinov specify column or row
     float3 recipbox[DIM];
-    // grid sizes in floating point format
-    float3 gridSizeFP;
+    // grid sizes
+    int3 localGridSize;
+    float3 localGridSizeFP;
+    int3 localGridSizePadded; // padding includes (order - 1) overlap and possibly some alignment in Z?
     // number of local particles
     int nAtoms;
 };

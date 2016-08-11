@@ -138,8 +138,12 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
 
     if (gridSizeChanged)
     {
-        const float3 nXYZ = {(real)pme->nkx, (real)pme->nky, (real)pme->nkz};
-        memcpy(&pme->gpu->constants.gridSizeFP, &nXYZ, sizeof(nXYZ));
+        const int3 localGridSize = {pme->nkx, pme->nky, pme->nkz};
+        memcpy(&pme->gpu->constants.localGridSize, &localGridSize, sizeof(localGridSize));
+        const float3 localGridSizeFP = {(real)localGridSize.x, (real)localGridSize.y, (real)localGridSize.z};
+        memcpy(&pme->gpu->constants.localGridSizeFP, &localGridSizeFP, sizeof(localGridSizeFP));
+        const int3 localGridSizePadded = {pme->pmegrid_nx, pme->pmegrid_ny, pme->pmegrid_nz};
+        memcpy(&pme->gpu->constants.localGridSizePadded, &localGridSizePadded, sizeof(localGridSizePadded));
 
         pme_gpu_copy_wrap_zones(pme);
         pme_gpu_copy_calcspline_constants(pme);

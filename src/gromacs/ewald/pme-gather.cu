@@ -49,9 +49,9 @@ __device__ __forceinline__ real read_grid_size(const pme_gpu_const_parameters co
 {
     switch (dimIndex)
     {
-        case XX: return constants.gridSizeFP.x;
-        case YY: return constants.gridSizeFP.y;
-        case ZZ: return constants.gridSizeFP.z;
+        case XX: return constants.localGridSizeFP.x;
+        case YY: return constants.localGridSizeFP.y;
+        case ZZ: return constants.localGridSizeFP.z;
     }
     // we really shouldn't be here
     assert(false);
@@ -67,9 +67,6 @@ template <
 __launch_bounds__(4 * warp_size, 16)
 __global__ void pme_gather_kernel(const real * __restrict__ gridGlobal,          // global grid after the solving, overlap of (order - 1) included
                                   const pme_gpu_const_parameters constants,
-                                  const int pnx,
-                                  const int pny,
-                                  const int pnz,
                                   const real * __restrict__ thetaGlobal,
                                   const real * __restrict__ dthetaGlobal,
                                   real * __restrict__ forcesGlobal,
@@ -123,6 +120,9 @@ __global__ void pme_gather_kernel(const real * __restrict__ gridGlobal,         
 
     if (globalIndex < constants.nAtoms)
     {
+        const int pny = constants.localGridSizePadded.y;
+        const int pnz = constants.localGridSizePadded.z;
+
         const int particleWarpIndex = localIndex % PARTICLES_PER_WARP;
         const int warpIndex = localIndex / PARTICLES_PER_WARP; // should be just a real warp index!
 
@@ -260,9 +260,8 @@ template <
     const int order
     >
 __global__ void pme_unwrap_kernel
-    (const int nx, const int ny, const int nz,
-     const int pny, const int pnz,
-     const struct pme_gpu_overlap_t OVERLAP,
+    (const pme_gpu_const_parameters constants,
+        const struct pme_gpu_overlap_t OVERLAP,
      real * __restrict__ grid
      )
 {
@@ -275,7 +274,14 @@ __global__ void pme_unwrap_kernel
                   + (threadIdx.y * blockDim.x)
                   + threadIdx.x;
 
-    //should use ldg.128
+    const int nx = constants.localGridSize.x;
+    const int ny = constants.localGridSize.y;
+    const int nz = constants.localGridSize.z;
+    const int pny = constants.localGridSizePadded.y;
+    const int pnz = constants.localGridSizePadded.z;
+
+
+    // should use ldg.128
 
     if (threadId < OVERLAP.overlapCellCounts[OVERLAP_ZONES - 1])
     {
@@ -344,20 +350,11 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
 
     const int order = pme->pme_order;
 
-    /*
-    const int pnx = pmegrid->n[XX];
-    const int pny = pmegrid->n[YY];
-    const int pnz = pmegrid->n[ZZ];
-    */
-    const int pnx   = pme->pmegrid_nx;
-    const int pny   = pme->pmegrid_ny;
-    const int pnz   = pme->pmegrid_nz;
-    const int nx = pme->nkx;
-    const int ny = pme->nky;
-    const int nz = pme->nkz;
-
-    const int ndatatot = pnx * pny * pnz;
-    const int gridSize = ndatatot * sizeof(real);
+    const int nx = pme->gpu->constants.localGridSize.x;
+    const int ny = pme->gpu->constants.localGridSize.y;
+    const int nz = pme->gpu->constants.localGridSize.z;
+    const int gridSize = pme->gpu->constants.localGridSizePadded.x *
+            pme->gpu->constants.localGridSizePadded.y * pme->gpu->constants.localGridSizePadded.z * sizeof(real);
     if (!pme->gpu->bGPUFFT)
         cu_copy_H2D_async(pme->gpu->grid, grid, gridSize, s);
 
@@ -373,7 +370,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
 
             pme_gpu_timing_start(pme, ewcsPME_UNWRAP);
 
-            pme_unwrap_kernel<4> <<<nBlocks, blockSize, 0, s>>>(nx, ny, nz, pny, pnz,
+            pme_unwrap_kernel<4> <<<nBlocks, blockSize, 0, s>>>(pme->gpu->constants,
                                                                 pme->gpu->overlap,
                                                                 pme->gpu->grid);
 
@@ -418,14 +415,14 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
         if (bOverwriteForces)
             pme_gather_kernel<4, blockSize / 4 / 4, TRUE> <<<nBlocks, dimBlock, 0, s>>>
               (pme->gpu->grid,
-               pme->gpu->constants, pnx, pny, pnz,
+               pme->gpu->constants,
                theta_d, dtheta_d,
                pme->gpu->forces, pme->gpu->coefficients,
                idx_d);
         else
             pme_gather_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocks, dimBlock, 0, s>>>
               (pme->gpu->grid,
-               pme->gpu->constants, pnx, pny, pnz,
+               pme->gpu->constants,
                theta_d, dtheta_d,
                pme->gpu->forces, pme->gpu->coefficients,
                idx_d);
