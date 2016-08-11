@@ -86,9 +86,7 @@ __global__ void pme_solve_kernel
  const real * __restrict__ BSplineModuleMiddle,
  float2 * __restrict__ globalGrid,
  const real volume,
- #if !PME_EXTERN_CMEM
   const struct pme_gpu_recipbox_t RECIPBOX,
- #endif
  real * __restrict__ virialAndEnergy)
 {
     // this is a PME solve kernel
@@ -392,9 +390,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
-#if !PME_EXTERN_CMEM
                pme->gpu->recipbox,
-#endif
                pme->gpu->energyAndVirial);
         else
             pme_solve_kernel<FALSE, TRUE> <<<blocks, threads, 0, s>>>
@@ -405,9 +401,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
-#if !PME_EXTERN_CMEM
                pme->gpu->recipbox,
-#endif
                pme->gpu->energyAndVirial);
     }
     else
@@ -421,9 +415,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
-#if !PME_EXTERN_CMEM
                pme->gpu->recipbox,
-#endif
                pme->gpu->energyAndVirial);
         else
             pme_solve_kernel<FALSE, FALSE> <<<blocks, threads, 0, s>>>
@@ -434,9 +426,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d, vol,
-#if !PME_EXTERN_CMEM
                pme->gpu->recipbox,
-#endif
                pme->gpu->energyAndVirial);
     }
     CU_LAUNCH_ERR("pme_solve_kernel");

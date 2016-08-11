@@ -108,9 +108,7 @@ __device__ __forceinline__ void calculate_splines(const float3 nXYZ,
                                         real * __restrict__ dthetaGlobal,
                                         int * __restrict__ idxGlobal,
                                         int * __restrict__ idx,
-#if !PME_EXTERN_CMEM
                                         const struct pme_gpu_recipbox_t RECIPBOX,
-#endif
                                         const pme_gpu_const_parameters constants,
                                         const int globalIndexCalc,
                                         const int localIndexCalc,
@@ -378,9 +376,7 @@ __global__ void pme_spline_and_spread_kernel
  const real * __restrict__ coefficientGlobal,
  real * __restrict__ gridGlobal, real * __restrict__ thetaGlobal,
  real * __restrict__ dthetaGlobal, int * __restrict__ idxGlobal,
-#if !PME_EXTERN_CMEM
  const struct pme_gpu_recipbox_t RECIPBOX,
-#endif
  const pme_gpu_const_parameters constants)
 {
     // gridline indices
@@ -415,9 +411,7 @@ __global__ void pme_spline_and_spread_kernel
         __syncthreads();
         calculate_splines<order, particlesPerBlock, bCalcAlways>(nXYZ, nnOffset, (const float3 *)coordinates, coefficient,
                                                                thetaGlobal, theta, dthetaGlobal, idxGlobal, idx,
-#if !PME_EXTERN_CMEM
                                                                RECIPBOX,
-#endif
                                                                constants,
                                                                globalCalcIndex,
                                                                localCalcIndex,
@@ -480,9 +474,7 @@ __global__ void pme_spline_kernel
  const float3 * __restrict__ coordinatesGlobal,
  const real * __restrict__ coefficientGlobal,
  real * __restrict__ thetaGlobal, real * __restrict__ dthetaGlobal, int * __restrict__ idxGlobal,
- #if !PME_EXTERN_CMEM
   const struct pme_gpu_recipbox_t RECIPBOX,
- #endif
  const pme_gpu_const_parameters constants)
 {
     // gridline indices
@@ -511,9 +503,7 @@ __global__ void pme_spline_kernel
 
     calculate_splines<order, particlesPerBlock, bCalcAlways>(nXYZ, nnOffset, (const float3 *)coordinates, coefficient,
                                                            thetaGlobal, theta, dthetaGlobal, idxGlobal, idx,
-#if !PME_EXTERN_CMEM
                                                            RECIPBOX,
-#endif
                                                            constants,
                                                            globalIndexCalc,
                                                            localIndexCalc,
@@ -581,9 +571,7 @@ template <
 __global__ void pme_wrap_kernel
     (const int nx, const int ny, const int nz,
      const int pny, const int pnz,
-#if !PME_EXTERN_CMEM
     const pme_gpu_overlap_t OVERLAP,
-#endif
      real * __restrict__ grid
      )
 {
@@ -859,9 +847,7 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
                                                                                                     pme->gpu->coordinates,
                                                                                                     pme->gpu->coefficients,
                                                                                                     theta_d, dtheta_d, idx_d,
-#if !PME_EXTERN_CMEM
                                                                                                     pme->gpu->recipbox,
-#endif
                                                                                                     pme->gpu->constants);
 
 
@@ -912,9 +898,7 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
                                    pme->gpu->nnArray, pme->gpu->fshArray,
 #endif
                                    pme->gpu->coordinates, pme->gpu->coefficients, pme->gpu->grid, theta_d, dtheta_d, idx_d,
-#if !PME_EXTERN_CMEM
                                    pme->gpu->recipbox,
-#endif
                                    pme->gpu->constants);
                         }
                         else
@@ -937,9 +921,7 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
                 pme_gpu_timing_start(pme, ewcsPME_WRAP);
 
                 pme_wrap_kernel<4> <<<nBlocks, blockSize, 0, s>>>(nx, ny, nz, pny, pnz,
-#if !PME_EXTERN_CMEM
                                                                   pme->gpu->overlap,
-#endif
                                                                   pme->gpu->grid);
 
                 CU_LAUNCH_ERR("pme_wrap_kernel");

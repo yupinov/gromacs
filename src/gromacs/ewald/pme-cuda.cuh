@@ -10,9 +10,6 @@
 #define PME_USE_TEXTURES 1
 // using textures instead of global memory
 
-#define PME_EXTERN_CMEM 0
-// constants as extern instead of arguments -> needs CUDA_SEPARABLE_COMPILATION which is off by default
-
 // particles per block and block sizes should also be here....
 
 // the hierarchy of the global spline data was for some silly reason order -> particle -> dimension
@@ -34,17 +31,6 @@
 // what do I do when order > 5?
 
 //yupinov - document spline param layout (2 particles -> order -> dim -> particle 1, 2)
-
-#if PME_EXTERN_CMEM
-#error "Unfinished separable compilation implementation"
-
-// spread/solve/gather
-extern __constant__ __device__ float3 RECIPBOX[3];
-// wrap/unwrap
-#define OVERLAP_ZONES 7
-extern __constant__ __device__ int2 OVERLAP_SIZES[OVERLAP_ZONES];
-extern __constant__ __device__ int OVERLAP_CELLS_COUNTS[OVERLAP_ZONES];
-#endif
 
 // internal identifiers for PME data stored on GPU and host
 enum PMEDataID
@@ -146,12 +132,9 @@ struct gmx_pme_cuda_t
 
     gmx_bool useTextureObjects; /* If false, then use references */
 
-#if !PME_EXTERN_CMEM
     // constant structures for arguments
     pme_gpu_recipbox_t recipbox;
     pme_gpu_overlap_t overlap;
-#endif
-
 
     gmx_device_info_t *deviceInfo;
 
