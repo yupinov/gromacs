@@ -152,14 +152,10 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
 
         if ((*pmeGPU)->bGPUFFT)
         {
-            ivec ndata;
-            ndata[0] = pme->nkx;
-            ndata[1] = pme->nky;
-            ndata[2] = pme->nkz;
             snew((*pmeGPU)->pfft_setup_gpu, pme->ngrids);
             for (int i = 0; i < pme->ngrids; ++i)
             {
-                gmx_parallel_3dfft_init_gpu(&(*pmeGPU)->pfft_setup_gpu[i], ndata, pme);
+                gmx_parallel_3dfft_init_gpu(&(*pmeGPU)->pfft_setup_gpu[i], (int *)&localGridSize, pme);
             }
         }
     }

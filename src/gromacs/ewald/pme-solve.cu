@@ -79,6 +79,7 @@ __global__ void pme_solve_kernel
 (const int localCountMajor, const int localCountMiddle, const int localCountMinor,
  const int localOffsetMinor, const int localOffsetMajor, const int localOffsetMiddle,
  const int localSizeMinor, /*const int localSizeMajor,*/ const int localSizeMiddle,
+
  const real elfac, const real ewaldFactor,
  const real * __restrict__ BSplineModuleMinor,
  const real * __restrict__ BSplineModuleMajor,
