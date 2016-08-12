@@ -560,9 +560,7 @@ __global__ void pme_spread_kernel
 template <
     const int order
     >
-__global__ void pme_wrap_kernel
-    (const int nx, const int ny, const int nz,
-     const int pny, const int pnz,
+__global__ void pme_wrap_kernel(const pme_gpu_const_parameters constants,
     const pme_gpu_overlap_t OVERLAP,
      real * __restrict__ grid
      )
@@ -574,6 +572,12 @@ __global__ void pme_wrap_kernel
             + (threadIdx.y * blockDim.x)
             + threadIdx.x;
     const int threadId = blockId * (blockDim.x * blockDim.y * blockDim.z) + threadLocalId;
+
+    const int nx = constants.localGridSize.x;
+    const int ny = constants.localGridSize.y;
+    const int nz = constants.localGridSize.z;
+    const int pny = constants.localGridSizePadded.y;
+    const int pnz = constants.localGridSizePadded.z;
 
     // should use ldg.128
 
@@ -907,7 +911,7 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
 
                 pme_gpu_timing_start(pme, ewcsPME_WRAP);
 
-                pme_wrap_kernel<4> <<<nBlocks, blockSize, 0, s>>>(nx, ny, nz, pny, pnz,
+                pme_wrap_kernel<4> <<<nBlocks, blockSize, 0, s>>>(pme->gpu->constants,
                                                                   pme->gpu->overlap,
                                                                   pme->gpu->grid);
 
