@@ -272,11 +272,12 @@ __device__ __forceinline__ void spread_charges(const real * __restrict__ coeffic
                                               const pme_gpu_const_parameters constants,
                                               const int globalIndex,
                                               const int localIndex,
-                                              const int pny,
-                                              const int pnz,
                                               const int * __restrict__ idx,
                                               const real * __restrict__ theta)
 {
+    const int pny = constants.localGridSizePadded.y;
+    const int pnz = constants.localGridSizePadded.z;
+
     /*
     pnx = pmegrid->s[XX];
     pny = pmegrid->s[YY];
@@ -357,9 +358,7 @@ __launch_bounds__(THREADS_PER_BLOCK, MIN_BLOCKS_PER_MP)
 //#endif
 //yupinov put bounds on separate kernels as well
 __global__ void pme_spline_and_spread_kernel
-(int start_ix, int start_iy, int start_iz,
- const int pny, const int pnz,
- const int3 nnOffset,
+(const int3 nnOffset,
 #if PME_USE_TEXTURES
 #if USE_TEXOBJ
  cudaTextureObject_t nnTexture,
@@ -442,7 +441,7 @@ __global__ void pme_spline_and_spread_kernel
         const int localSpreadIndex = threadIdx.z;
         const int globalSpreadIndex = globalParticleIndexBase + localSpreadIndex;
         spread_charges<order, particlesPerBlock>(coefficient, gridGlobal, constants, globalSpreadIndex, localSpreadIndex,
-                                                pny, pnz, idx, theta);
+                                                idx, theta);
     }
 }
 
@@ -508,9 +507,7 @@ __global__ void pme_spline_kernel
 template
 <const int order, const int particlesPerBlock>
 __global__ void pme_spread_kernel
-( //int start_ix, int start_iy, int start_iz,
-  const int pny, const int pnz,
- const real * __restrict__ coefficientGlobal,
+(const real * __restrict__ coefficientGlobal,
  real * __restrict__ gridGlobal, real * __restrict__ thetaGlobal, const int * __restrict__ idxGlobal,
              const pme_gpu_const_parameters constants)
 {
@@ -554,7 +551,7 @@ __global__ void pme_spread_kernel
 
     // SPREAD
     spread_charges<order, particlesPerBlock>(coefficient, gridGlobal, constants, globalIndex, localIndex,
-                                            pny, pnz, idx, theta);
+                                            idx, theta);
 }
 
 template <
@@ -854,12 +851,9 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
                 {
                     pme_gpu_timing_start(pme, ewcsPME_SPREAD);
 
-                    pme_spread_kernel<4, blockSize / 4 / 4> <<<nBlocksSpread, dimBlockSpread, 0, s>>>
-                                                                            (/*pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,*/
-                                                                             pny, pnz,
-                                                                             pme->gpu->coefficients,
-                                                                             pme->gpu->grid, theta_d, idx_d,
-                                                                             pme->gpu->constants);
+                    pme_spread_kernel<4, blockSize / 4 / 4> <<<nBlocksSpread, dimBlockSpread, 0, s>>>(pme->gpu->coefficients,
+                                                                                                     pme->gpu->grid, theta_d, idx_d,
+                                                                                                     pme->gpu->constants);
 
                     CU_LAUNCH_ERR("pme_spread_kernel");
 
@@ -879,9 +873,7 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
                         if (bSpread)
                         {
                             pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, FALSE, TRUE> <<<nBlocksSpread, dimBlockSpread, 0, s>>>
-                                  (pme->pmegrid_start_ix, pme->pmegrid_start_iy, pme->pmegrid_start_iz,
-                                   pny, pnz,
-                                   nnOffset,
+                                  (nnOffset,
 #if PME_USE_TEXTURES
 #if USE_TEXOBJ
                                    nnTexture, fshTexture,
