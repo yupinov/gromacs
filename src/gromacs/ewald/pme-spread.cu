@@ -47,12 +47,12 @@
 #include "pme-cuda.cuh"
 
 #define PME_GPU_PARALLEL_SPLINE 1
-// this define affects the spline calculation in the spreading kernel
-// 0: a single thread handles a single dimension of a single particle (calculating and storing (order) spline values and derivatives)
-// 1: (order) threads work on the same task, each one stores only a single theta and single dtheta into global arrays
-// the only efficiency difference is less global store operations - and it matters!
-// also, in a second case a data[order] was abusing local cache => replaced by shared array
-// with PME_GPU_PARALLEL_SPLINE==1  the kernel is faster, but it doesn't guarantee that the whole program is faster!
+/*
+    This define affects the spline calculation in the spreading kernel.
+    0: a single GPU thread handles a single dimension of a single particle (calculating and storing (order) spline values and derivatives).
+    1: (order) threads work on the same task, each one stores only a single theta and single dtheta into global arrays.
+    The only efficiency difference is less global store operations, countered by more redundant spline computation.
+*/
 
 //yupinov - describe theta layout properly somewhere!
 /*
@@ -85,6 +85,10 @@ texture<float, 1, cudaReadModeElementType> fshTextureRef;
 #endif
 #endif
 
+
+/* This is the PME GPU spline calculation .
+ * It corresponds to the CPU codepath functions calc_interpolation_idx and make_bsplines.
+ */
 template <
         const int order,
         const int particlesPerBlock,
@@ -115,13 +119,15 @@ __device__ __forceinline__ void calculate_splines(const int3 nnOffset,
                                         const int orderIndex)
 {
 
-    // fractional coordinates
+    /* Fractional coordinates */
     __shared__ real fractX[PME_SPREADGATHER_BLOCK_DATA_SIZE];
 
     const int sharedMemoryIndex = localIndexCalc * DIM + dimIndex;
 
     const int dataSize = PME_GPU_PARALLEL_SPLINE ? PME_SPREADGATHER_BLOCK_DATA_SIZE : 1;
     const int dataOffset = PME_GPU_PARALLEL_SPLINE ? sharedMemoryIndex : 0;
+
+    /* Spline parameter storage, shared for PME_GPU_PARALLEL_SPLINE==1 to not overuse the local memory */
 #if PME_GPU_PARALLEL_SPLINE
     __shared__
 #endif
@@ -130,17 +136,20 @@ __device__ __forceinline__ void calculate_splines(const int3 nnOffset,
     const int localLimit = (dimIndex < DIM) && (orderIndex < (PME_GPU_PARALLEL_SPLINE ? order : 1));
     const int globalLimit = (globalIndexCalc < constants.nAtoms);
 
-    // INTERPOLATION INDICES
     if (localLimit && globalLimit)
     {
+        /* Indices interpolation */
+
         if (orderIndex == 0)
         {
             int constIndex, tInt;
             real n, t;
             const float3 x = coordinates[localIndexCalc];
-            // accessing fields in nnOffset/nXYZ/recipbox/... with dimIndex offset
-            // puts them into local memory (!) instead of accessing the constant memory directly
-            // that's the reason for the switch
+            /* Accessing fields in nnOffset/nXYZ/recipbox/... with dimIndex offset
+             * puts them into local memory(!) instead of accessing the constant memory directly.
+             * That's the reason for the switch, to unroll explicitly.
+             * The commented parts correspond to the 0 components of the recipbox.
+             */
             switch (dimIndex)
             {
                 case 0:
@@ -161,11 +170,8 @@ __device__ __forceinline__ void calculate_splines(const int3 nnOffset,
                 t = /*x.x * constants.recipbox[dimIndex].x + x.y * constants.recipbox[dimIndex].y + */ x.z * constants.recipbox[dimIndex].z;
                 break;
             }
-            // parts of multiplication are commented because these components are actually 0
-            // thus, excessive constant memory
-            // should refactor if settling for this approach...
 
-            // Fractional coordinates along box vectors, add 2.0 to make 100% sure we are positive for triclinic boxes
+            /* Fractional coordinates along box vectors, adding 2.0 to make 100% sure we are positive for triclinic boxes */
             t = (t + 2.0f) * n;
             tInt = (int)t;
             fractX[sharedMemoryIndex] = t - tInt;
@@ -183,11 +189,11 @@ __device__ __forceinline__ void calculate_splines(const int3 nnOffset,
             fractX[sharedMemoryIndex] += fsh[constIndex];
             idx[sharedMemoryIndex] = nn[constIndex];
 #endif
-            // staging for both parts
+
             idxGlobal[globalIndexBase * DIM + sharedMemoryIndex] = idx[sharedMemoryIndex];
         }
 
-        // MAKE BSPLINES
+        /* B-spline calculation */
 
         if (bCalcAlways || (coefficient[localIndexCalc] != 0.0f))
         {
@@ -198,8 +204,8 @@ __device__ __forceinline__ void calculate_splines(const int3 nnOffset,
 
             /* dr is relative offset from lower cell limit */
             data[(order - 1) * dataSize + dataOffset] = 0.0f;
-            data[1 * dataSize + dataOffset]         = dr;
-            data[0 * dataSize + dataOffset]         = 1.0f - dr;
+            data[1 * dataSize + dataOffset]           = dr;
+            data[0 * dataSize + dataOffset]           = 1.0f - dr;
 
 #pragma unroll
             for (int k = 3; k < order; k++)
@@ -215,12 +221,11 @@ __device__ __forceinline__ void calculate_splines(const int3 nnOffset,
             }
 
             const int particleWarpIndex = localIndexCalc % PARTICLES_PER_WARP;
-            const int warpIndex = localIndexCalc / PARTICLES_PER_WARP; // should be just a real warp index!
+            const int warpIndex = localIndexCalc / PARTICLES_PER_WARP;
 
             const int thetaGlobalOffsetBase = globalIndexBase * DIM * order;
 
-            /* differentiate */
-            // store dtheta to global
+            /* Differentiation and storing the spline derivatives (dtheta) */
 #if PME_GPU_PARALLEL_SPLINE
             k = orderIndex;
 #else
@@ -244,8 +249,7 @@ __device__ __forceinline__ void calculate_splines(const int3 nnOffset,
             }
             data[0 * dataSize + dataOffset] = div * (1.0f - dr) * data[0 * dataSize + dataOffset];
 
-            // store theta to shared and global
-
+            /* Storing the spline values (theta) */
 #if PME_GPU_PARALLEL_SPLINE
             k = orderIndex;
 #else
