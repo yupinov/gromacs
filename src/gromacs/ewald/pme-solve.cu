@@ -65,7 +65,7 @@ __global__ void pme_solve_kernel
  const int localOffsetMinor, const int localOffsetMajor, const int localOffsetMiddle,
  const int localSizeMinor, /*const int localSizeMajor,*/ const int localSizeMiddle,
 
- const real elfac, const real ewaldFactor,
+ const real elfac,
  const real * __restrict__ BSplineModuleMinor,
  const real * __restrict__ BSplineModuleMajor,
  const real * __restrict__ BSplineModuleMiddle,
@@ -167,7 +167,7 @@ __global__ void pme_solve_kernel
 
             m2k        = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
             real denom = m2k * real(M_PI) * constants.volume * BSplineModuleMajor[kMajor] * BSplineModuleMiddle[kMiddle] * BSplineModuleMinor[kMinor];
-            real tmp1  = -ewaldFactor * m2k;
+            real tmp1  = -constants.ewaldFactor * m2k;
 
             denom = 1.0f / denom;
             tmp1 = expf(tmp1);
@@ -183,7 +183,7 @@ __global__ void pme_solve_kernel
             {
                 real tmp1k = 2.0f * (gridValue.x * oldGridValue.x + gridValue.y * oldGridValue.y);
 
-                real vfactor = (ewaldFactor + 1.0f / m2k) * 2.0f;
+                real vfactor = (constants.ewaldFactor + 1.0f / m2k) * 2.0f;
                 real ets2 = corner_fac * tmp1k;
                 energy = ets2;
 
@@ -293,7 +293,6 @@ __global__ void pme_solve_kernel
 }
 
 void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
-                       real ewaldcoeff,
                        gmx_bool bEnerVir)
 {
     /* do recip sum over local cells in grid */
@@ -334,7 +333,6 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     {
         cu_copy_H2D_async(grid_d, grid, gridSize, s);
     }
-    const real ewaldFactor = (M_PI * M_PI) / (ewaldcoeff * ewaldcoeff);
 
     // Z-dimension is too small in CUDA limitations (64 on CC30?), so instead of major-middle-minor sizing we do minor-middle-major
     const int maxBlockSize = THREADS_PER_BLOCK;
@@ -359,7 +357,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
               (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim],
                local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
                local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-               elfac, ewaldFactor,
+               elfac,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d,
                pme->gpu->constants,
@@ -369,7 +367,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
               (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
                local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
                local_size[minorDim], /*local_size[majorDim],*/local_size[middleDim],
-               elfac, ewaldFactor,
+               elfac,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d,
                pme->gpu->constants,
@@ -382,7 +380,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
               (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim],
                local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
                local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-               elfac, ewaldFactor,
+               elfac,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d,
                pme->gpu->constants,
@@ -392,7 +390,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
               (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
                local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
                local_size[minorDim], /*local_size[majorDim],*/local_size[middleDim],
-               elfac, ewaldFactor,
+               elfac,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d,
                pme->gpu->constants,

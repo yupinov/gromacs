@@ -1768,9 +1768,10 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
     }
 
     gmx::invertBoxMatrix(box, pme->recipbox);
-    pme->volume = box[XX][XX]*box[YY][YY]*box[ZZ][ZZ];
 
     bFirst = TRUE;
+
+    pme_gpu_set_constants(pme, box, ewaldcoeff_q);
     pme_gpu_step_init(pme);
 
     /* For simplicity, we construct the splines for all particles if
@@ -1918,7 +1919,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                 {
                     if (pme_gpu_performs_solve(pme))
                     {
-                        solve_pme_gpu(pme, cfftgrid, ewaldcoeff_q, bCalcEnerVir);
+                        solve_pme_gpu(pme, cfftgrid, bCalcEnerVir);
                     }
                     else
 #pragma omp parallel num_threads(pme->nthread) private(thread)

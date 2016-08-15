@@ -29,6 +29,50 @@ void pme_gpu_copy_recipbox(gmx_pme_t *pme)
 }
 
 
+/* Copies the grid sizes for overlapping (used in the current shabby PME wrap/unwrap code) */
+void pme_gpu_copy_wrap_zones(gmx_pme_t *pme)
+{
+    const int nx = pme->nkx;
+    const int ny = pme->nky;
+    const int nz = pme->nkz;
+    const int overlap = pme->pme_order - 1;
+
+    // cell count in 7 parts of overlap
+    const int3 zoneSizes_h[OVERLAP_ZONES] =
+    {
+        {     nx,        ny,   overlap},
+        {     nx,   overlap,        nz},
+        {overlap,        ny,        nz},
+        {     nx,   overlap,   overlap},
+        {overlap,        ny,   overlap},
+        {overlap,   overlap,        nz},
+        {overlap,   overlap,   overlap}
+    };
+
+    const int2 zoneSizesYZ_h[OVERLAP_ZONES] =
+    {
+        {     ny,   overlap},
+        {overlap,        nz},
+        {     ny,        nz},
+        {overlap,   overlap},
+        {     ny,   overlap},
+        {overlap,        nz},
+        {overlap,   overlap}
+    };
+
+    int cellsAccumCount_h[OVERLAP_ZONES];
+    for (int i = 0; i < OVERLAP_ZONES; i++)
+        cellsAccumCount_h[i] = zoneSizes_h[i].x * zoneSizes_h[i].y * zoneSizes_h[i].z;
+    // accumulate
+    for (int i = 1; i < OVERLAP_ZONES; i++)
+    {
+        cellsAccumCount_h[i] = cellsAccumCount_h[i] + cellsAccumCount_h[i - 1];
+    }
+    memcpy(pme->gpu->overlap.overlapSizes, zoneSizesYZ_h, sizeof(zoneSizesYZ_h));
+    memcpy(pme->gpu->overlap.overlapCellCounts, cellsAccumCount_h, sizeof(cellsAccumCount_h));
+}
+
+
 void pme_gpu_step_reinit(gmx_pme_t *pme)
 {
     // this is ran at the end of MD step + at the DD init
@@ -233,17 +277,29 @@ void pme_gpu_deinit(//gmx_pme_gpu_t **pmeGPU,
     (*pme)->gpu = NULL;
 }
 
+void pme_gpu_set_constants(gmx_pme_t *pme, const matrix box, const real ewaldCoeff)
+{
+    // this is ran at the beginning of MD step
+    if (!pme->bGPU)
+        return;
+
+    /* Assuming the recipbox is calculated already */
+    pme_gpu_copy_recipbox(pme); // could use some boolean checks to know if it should run each time, like pressure coupling?
+
+    pme->gpu->constants.volume = box[XX][XX] * box[YY][YY] * box[ZZ][ZZ];
+    assert(pme->gpu->constants.volume != 0.0f);
+
+    pme->gpu->constants.ewaldFactor = (M_PI * M_PI) / (ewaldCoeff * ewaldCoeff);
+}
+
+
 void pme_gpu_step_init(gmx_pme_t *pme)
 {
     // this is ran at the beginning of MD step
     // should ideally be empty
+    //and now there is also setparam call?
     if (!pme->bGPU)
         return;
-
-    // a separate setparam method maybe?
-    pme->gpu->constants.volume = pme->volume;
-    assert(pme->gpu->constants.volume != 0.0f);
-    pme_gpu_copy_recipbox(pme); // could use some boolean checks, like pressure coupling?
 
     pme_gpu_copy_coordinates(pme);
 }
@@ -307,48 +363,6 @@ void pme_gpu_sync_grid(gmx_pme_t *pme, gmx_fft_direction dir)
             (dir == GMX_FFT_REAL_TO_COMPLEX) ? pme->gpu->syncSpreadGridD2H : pme->gpu->syncSolveGridD2H, 0);
         CU_RET_ERR(stat, "error while waiting for the GPU grid");
     }
-}
-
-void pme_gpu_copy_wrap_zones(gmx_pme_t *pme)
-{
-    const int nx = pme->nkx;
-    const int ny = pme->nky;
-    const int nz = pme->nkz;
-    const int overlap = pme->pme_order - 1;
-
-    // cell count in 7 parts of overlap
-    const int3 zoneSizes_h[OVERLAP_ZONES] =
-    {
-        {     nx,        ny,   overlap},
-        {     nx,   overlap,        nz},
-        {overlap,        ny,        nz},
-        {     nx,   overlap,   overlap},
-        {overlap,        ny,   overlap},
-        {overlap,   overlap,        nz},
-        {overlap,   overlap,   overlap}
-    };
-
-    const int2 zoneSizesYZ_h[OVERLAP_ZONES] =
-    {
-        {     ny,   overlap},
-        {overlap,        nz},
-        {     ny,        nz},
-        {overlap,   overlap},
-        {     ny,   overlap},
-        {overlap,        nz},
-        {overlap,   overlap}
-    };
-
-    int cellsAccumCount_h[OVERLAP_ZONES];
-    for (int i = 0; i < OVERLAP_ZONES; i++)
-        cellsAccumCount_h[i] = zoneSizes_h[i].x * zoneSizes_h[i].y * zoneSizes_h[i].z;
-    // accumulate
-    for (int i = 1; i < OVERLAP_ZONES; i++)
-    {
-        cellsAccumCount_h[i] = cellsAccumCount_h[i] + cellsAccumCount_h[i - 1];
-    }
-    memcpy(pme->gpu->overlap.overlapSizes, zoneSizesYZ_h, sizeof(zoneSizesYZ_h));
-    memcpy(pme->gpu->overlap.overlapCellCounts, cellsAccumCount_h, sizeof(cellsAccumCount_h));
 }
 
 // wrappers just for the pme.cpp host calls - a PME GPU code that should ideally be in this file as well

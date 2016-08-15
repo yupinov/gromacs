@@ -104,8 +104,9 @@ struct pme_gpu_const_parameters
     int3 localGridSizePadded; /* padding includes (order - 1) overlap and possibly some alignment in Z? */
     /* Number of local atoms */
     int nAtoms;
-    /* Solving parameters - maybe they should be in a seperate structure as we likely won't use GPU solve much in multi-rank PME? */
+    /* Solving parameters - maybe they should be in a separate structure as we likely won't use GPU solve much in multi-rank PME? */
     float volume; /* The unit cell volume */
+    float ewaldFactor; /* (M_PI / ewaldCoeff)^2 */
 };
 
 /* The main PME GPU structure, included in the PME CPU structure by pointer */

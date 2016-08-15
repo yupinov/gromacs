@@ -17,10 +17,6 @@ struct gmx_gpu_opt_t;
 
 // internal data handling
 
-// copies the grid sizes for overlapping (used in PME wrap/unwrap)
-CUDA_FUNC_QUALIFIER void pme_gpu_copy_wrap_zones(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
-
-
 // copies the bspline moduli to the device (used in PME solve)
 CUDA_FUNC_QUALIFIER void pme_gpu_copy_bspline_moduli(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
@@ -82,7 +78,6 @@ CUDA_FUNC_QUALIFIER void gather_f_bsplines_gpu(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme
 CUDA_FUNC_QUALIFIER void solve_pme_gpu(
                   gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
                   t_complex *CUDA_FUNC_ARGUMENT(grid),
-                  const real CUDA_FUNC_ARGUMENT(ewaldcoeff),
                   const gmx_bool CUDA_FUNC_ARGUMENT(bEnerVir)) CUDA_FUNC_TERM
 
 
@@ -113,6 +108,12 @@ CUDA_FUNC_QUALIFIER void pme_gpu_deinit(//gmx_pme_gpu_t **CUDA_FUNC_ARGUMENT(pme
 
 /*! \brief Initializes the PME GPU step. */
 CUDA_FUNC_QUALIFIER void pme_gpu_step_init(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+
+/*! \brief Sets the PME GPU constants. Is there any reason for this to be separate from the pme_gpu_step_init? */
+CUDA_FUNC_QUALIFIER void pme_gpu_set_constants(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
+                                               const matrix CUDA_FUNC_ARGUMENT(box),
+                                               const real CUDA_FUNC_ARGUMENT(ewaldCoeff)) CUDA_FUNC_TERM
+
 
 /*! \brief Finishes the PME GPU step, copying back the forces and/or energy/virial. */
 CUDA_FUNC_QUALIFIER void pme_gpu_step_end(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
