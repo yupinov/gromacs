@@ -15,6 +15,20 @@
 #include "pme-cuda.cuh"
 #include "pme-gpu.h"
 
+/* Copies the reciprocal box to the device (used in PME spread/solve/gather)*/
+void pme_gpu_copy_recipbox(gmx_pme_t *pme)
+{
+    const float3 box[3] =
+    {
+        {pme->recipbox[XX][XX], pme->recipbox[YY][XX], pme->recipbox[ZZ][XX]},
+        {                  0.0, pme->recipbox[YY][YY], pme->recipbox[ZZ][YY]},
+        {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
+    };
+    assert(pme->recipbox[XX][XX] != 0.0);
+    memcpy(pme->gpu->constants.recipbox, box, sizeof(box));
+}
+
+
 void pme_gpu_step_reinit(gmx_pme_t *pme)
 {
     // this is ran at the end of MD step + at the DD init
@@ -226,6 +240,9 @@ void pme_gpu_step_init(gmx_pme_t *pme)
     if (!pme->bGPU)
         return;
 
+    // a separate setparam method maybe?
+    pme->gpu->constants.volume = pme->volume;
+    assert(pme->gpu->constants.volume != 0.0f);
     pme_gpu_copy_recipbox(pme); // could use some boolean checks, like pressure coupling?
 
     pme_gpu_copy_coordinates(pme);
@@ -249,18 +266,6 @@ void pme_gpu_step_end(gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCal
     pme_gpu_update_timings(pme);
 
     pme_gpu_step_reinit(pme);
-}
-
-void pme_gpu_copy_recipbox(gmx_pme_t *pme)
-{
-    const float3 box[3] =
-    {
-        {pme->recipbox[XX][XX], pme->recipbox[YY][XX], pme->recipbox[ZZ][XX]},
-        {                  0.0, pme->recipbox[YY][YY], pme->recipbox[ZZ][YY]},
-        {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
-    };
-    assert(pme->recipbox[XX][XX] != 0.0);
-    memcpy(pme->gpu->constants.recipbox, box, sizeof(box));
 }
 
 void pme_gpu_copy_coordinates(gmx_pme_t *pme)

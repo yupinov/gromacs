@@ -1768,6 +1768,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
     }
 
     gmx::invertBoxMatrix(box, pme->recipbox);
+    pme->volume = box[XX][XX]*box[YY][YY]*box[ZZ][ZZ];
 
     bFirst = TRUE;
     pme_gpu_step_init(pme);
@@ -1917,8 +1918,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                 {
                     if (pme_gpu_performs_solve(pme))
                     {
-                        solve_pme_gpu(pme, cfftgrid, ewaldcoeff_q,
-                                      box[XX][XX]*box[YY][YY]*box[ZZ][ZZ], bCalcEnerVir);
+                        solve_pme_gpu(pme, cfftgrid, ewaldcoeff_q, bCalcEnerVir);
                     }
                     else
 #pragma omp parallel num_threads(pme->nthread) private(thread)

@@ -305,6 +305,7 @@ typedef struct gmx_pme_t {
 
     pme_atomcomm_t            atc[2]; /* Indexed on decomposition index */
     matrix                    recipbox;
+    real                      volume; /* The unit cell volume - only used in the GPU code!*/
     splinevec                 bsp_mod;
     /* Buffers to store data for local atoms for L-B combination rule
      * calculations in LJ-PME. lb_buf1 stores either the coefficients

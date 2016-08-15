@@ -20,8 +20,6 @@ struct gmx_gpu_opt_t;
 // copies the grid sizes for overlapping (used in PME wrap/unwrap)
 CUDA_FUNC_QUALIFIER void pme_gpu_copy_wrap_zones(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
-// copies the reciprocal box to the device (used in PME spread/solve/gather)
-CUDA_FUNC_QUALIFIER void pme_gpu_copy_recipbox(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 // copies the bspline moduli to the device (used in PME solve)
 CUDA_FUNC_QUALIFIER void pme_gpu_copy_bspline_moduli(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
@@ -85,7 +83,6 @@ CUDA_FUNC_QUALIFIER void solve_pme_gpu(
                   gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
                   t_complex *CUDA_FUNC_ARGUMENT(grid),
                   const real CUDA_FUNC_ARGUMENT(ewaldcoeff),
-                  const real CUDA_FUNC_ARGUMENT(vol),
                   const gmx_bool CUDA_FUNC_ARGUMENT(bEnerVir)) CUDA_FUNC_TERM
 
 

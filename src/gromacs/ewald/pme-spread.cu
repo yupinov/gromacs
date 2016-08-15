@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013-2015, by the GROMACS development team, led by
+ * Copyright (c) 2013-2016, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -44,12 +44,11 @@
 #include "pme-cuda.cuh"
 
 #define PME_GPU_PARALLEL_SPLINE 1
-/*
-    This define affects the spline calculation in the spreading kernel.
-    0: a single GPU thread handles a single dimension of a single particle (calculating and storing (order) spline values and derivatives).
-    1: (order) threads work on the same task, each one stores only a single theta and single dtheta into global arrays.
-    The only efficiency difference is less global store operations, countered by more redundant spline computation.
-*/
+/* This define affects the spline calculation in the spreading kernel.
+ * 0: a single GPU thread handles a single dimension of a single particle (calculating and storing (order) spline values and derivatives).
+ * 1: (order) threads work on the same task, each one stores only a single theta and single dtheta into global arrays.
+ * The only efficiency difference is less global store operations, countered by more redundant spline computation.
+ */
 
 //yupinov - describe theta layout properly somewhere!
 /*

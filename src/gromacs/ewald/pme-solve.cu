@@ -70,7 +70,6 @@ __global__ void pme_solve_kernel
  const real * __restrict__ BSplineModuleMajor,
  const real * __restrict__ BSplineModuleMiddle,
  float2 * __restrict__ globalGrid,
- const real volume,
     const struct pme_gpu_const_parameters constants,
  real * __restrict__ virialAndEnergy)
 {
@@ -84,12 +83,9 @@ __global__ void pme_solve_kernel
     const int blockSize = THREADS_PER_BLOCK;
     //const int threadId = blockId * blockSize + threadLocalId;
 
-
-    // should use constants.NXYZ here as well;
     const int nMinor = !YZXOrdering ? constants.localGridSize.z : constants.localGridSize.x; //yupinov fix all pme->nkx and such
     const int nMajor = !YZXOrdering ? constants.localGridSize.x : constants.localGridSize.y;
     const int nMiddle = !YZXOrdering ? constants.localGridSize.y : constants.localGridSize.z;
-
 
     int maxkMajor = (nMajor + 1) / 2; //X or Y
     int maxkMiddle = (nMiddle + 1) / 2; //Y OR Z => only check for !YZX
@@ -170,7 +166,7 @@ __global__ void pme_solve_kernel
             mhzk       = mX * constants.recipbox[XX].z + mY * constants.recipbox[YY].z + mZ * constants.recipbox[ZZ].z;
 
             m2k        = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
-            real denom = m2k * real(M_PI) * volume * BSplineModuleMajor[kMajor] * BSplineModuleMiddle[kMiddle] * BSplineModuleMinor[kMinor];
+            real denom = m2k * real(M_PI) * constants.volume * BSplineModuleMajor[kMajor] * BSplineModuleMiddle[kMiddle] * BSplineModuleMinor[kMinor];
             real tmp1  = -ewaldFactor * m2k;
 
             denom = 1.0f / denom;
@@ -297,7 +293,7 @@ __global__ void pme_solve_kernel
 }
 
 void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
-                       real ewaldcoeff, real vol,
+                       real ewaldcoeff,
                        gmx_bool bEnerVir)
 {
     /* do recip sum over local cells in grid */
@@ -365,7 +361,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
                elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
-               grid_d, vol,
+               grid_d,
                pme->gpu->constants,
                pme->gpu->energyAndVirial);
         else
@@ -375,7 +371,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                local_size[minorDim], /*local_size[majorDim],*/local_size[middleDim],
                elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
-               grid_d, vol,
+               grid_d,
                pme->gpu->constants,
                pme->gpu->energyAndVirial);
     }
@@ -388,7 +384,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
                elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
-               grid_d, vol,
+               grid_d,
                pme->gpu->constants,
                pme->gpu->energyAndVirial);
         else
@@ -398,7 +394,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                local_size[minorDim], /*local_size[majorDim],*/local_size[middleDim],
                elfac, ewaldFactor,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
-               grid_d, vol,
+               grid_d,
                pme->gpu->constants,
                pme->gpu->energyAndVirial);
     }

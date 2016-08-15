@@ -90,21 +90,25 @@ struct pme_gpu_overlap_t
     int overlapCellCounts[OVERLAP_ZONES];
 };
 
-// this is a structure for storing common constants accessed within GPU kernels by value
+/* A structure for storing common constants accessed within GPU kernels by value.
+ * Not everything here is constant for the entire run ...
+ */
 struct pme_gpu_const_parameters
 {
-    // reciprocal box
+    /* Reciprocal box */
     //yupinov specify column or row
     float3 recipbox[DIM];
-    // grid sizes
+    /* Grid sizes */
     int3 localGridSize;
     float3 localGridSizeFP;
-    int3 localGridSizePadded; // padding includes (order - 1) overlap and possibly some alignment in Z?
-    // number of local particles
+    int3 localGridSizePadded; /* padding includes (order - 1) overlap and possibly some alignment in Z? */
+    /* Number of local atoms */
     int nAtoms;
+    /* Solving parameters - maybe they should be in a seperate structure as we likely won't use GPU solve much in multi-rank PME? */
+    float volume; /* The unit cell volume */
 };
 
-// the main PME GPU structure
+/* The main PME GPU structure, included in the PME CPU structure by pointer */
 struct gmx_pme_cuda_t
 {
     cudaStream_t pmeStream;
