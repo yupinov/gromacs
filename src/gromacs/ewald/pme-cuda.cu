@@ -28,7 +28,6 @@ void pme_gpu_copy_recipbox(gmx_pme_t *pme)
     memcpy(pme->gpu->constants.recipbox, box, sizeof(box));
 }
 
-
 /* Copies the grid sizes for overlapping (used in the current shabby PME wrap/unwrap code) */
 void pme_gpu_copy_wrap_zones(gmx_pme_t *pme)
 {
@@ -72,6 +71,15 @@ void pme_gpu_copy_wrap_zones(gmx_pme_t *pme)
     memcpy(pme->gpu->overlap.overlapCellCounts, cellsAccumCount_h, sizeof(cellsAccumCount_h));
 }
 
+/* Copies the coordinates to the device (used in PME spread) */
+void pme_gpu_copy_coordinates(gmx_pme_t *pme)
+{
+    const size_t coordinatesSize = DIM * pme->gpu->constants.nAtoms * sizeof(real);
+    float3 *coordinates_h = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_HOST);
+    memcpy(coordinates_h, pme->atc[0].x, coordinatesSize);
+    pme->gpu->coordinates = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_DEVICE);
+    cu_copy_H2D_async(pme->gpu->coordinates, coordinates_h, coordinatesSize, pme->gpu->pmeStream);
+}
 
 void pme_gpu_step_reinit(gmx_pme_t *pme)
 {
@@ -322,26 +330,6 @@ void pme_gpu_step_end(gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCal
     pme_gpu_update_timings(pme);
 
     pme_gpu_step_reinit(pme);
-}
-
-void pme_gpu_copy_coordinates(gmx_pme_t *pme)
-{
-    // coordinates
-    const size_t coordinatesSize = DIM * pme->gpu->constants.nAtoms * sizeof(real);
-    float3 *coordinates_h = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_HOST);
-    memcpy(coordinates_h, pme->atc[0].x, coordinatesSize);
-    pme->gpu->coordinates = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_DEVICE);
-    cu_copy_H2D_async(pme->gpu->coordinates, coordinates_h, coordinatesSize, pme->gpu->pmeStream);
-    /*
-    float4 *xptr_h = (float4 *)PMEMemoryFetch(pme, PME_ID_XPTR, 4 * n_blocked * sizeof(real), ML_HOST);
-    memset(xptr_h, 0, 4 * n_blocked * sizeof(real));
-    for (int i = 0; i < pme->gpu->constants.nAtoms; i++)
-    {
-       memcpy(xptr_h + i, atc->x + i, sizeof(rvec));
-    }
-    xptr_d = (float4 *)PMEMemoryFetch(pme, PME_ID_XPTR, 4 * n_blocked * sizeof(real), ML_DEVICE);
-    PMECopy(pme->gpu->coordinates, xptr_h, 4 * n_blocked * sizeof(real), ML_DEVICE, pme->gpu->pmeStream);
-    */
 }
 
 void pme_gpu_copy_charges(gmx_pme_t *pme)
