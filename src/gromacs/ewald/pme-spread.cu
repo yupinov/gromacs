@@ -40,9 +40,6 @@
 
 #include "gromacs/utility/fatalerror.h"
 
-#include "gromacs/gpu_utils/cudautils.cuh"
-#include "gromacs/gpu_utils/cuda_arch_utils.cuh"
-
 #include "pme-timings.cuh"
 #include "pme-cuda.cuh"
 

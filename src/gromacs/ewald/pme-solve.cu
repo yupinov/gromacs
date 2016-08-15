@@ -1,24 +1,9 @@
-#include "pme.h"
-
-#include "gromacs/utility/basedefinitions.h"
-
-#include "gromacs/utility/gmxassert.h"
-
 #include "gromacs/math/units.h"
-#include "gromacs/gpu_utils/cuda_arch_utils.cuh"
-
-#include <cuda.h>
-
-#include <assert.h>
-
-#include "pme-timings.cuh"
-
-
+#include "gromacs/utility/gmxassert.h"
 #include "pme-cuda.cuh"
+#include "pme-gpu.h" //?
 #include "pme-internal.h"
-#include "pme-solve.h"
-
-#define SQRT_M_PI real(2.0f / M_2_SQRTPI)
+#include "pme-solve.h" //? some work structure reliance?
 
 void pme_gpu_alloc_energy_virial(gmx_pme_t *pme, const int gmx_unused grid_index)
 {
@@ -121,32 +106,32 @@ __global__ void pme_solve_kernel
 
     if ((indexMajor < localCountMajor) && (indexMiddle < localCountMiddle) && (indexMinor < localCountMinor))
     {
+        /* The offset should be equal to the global thread index */
+        float2 *globalGridPtr = globalGrid + (indexMajor * localSizeMiddle + indexMiddle) * localSizeMinor + indexMinor;
+
         const int kMajor = indexMajor + localOffsetMajor;
-        // check X in XYZ or Y in YZX
+        /* Checking either X in XYZ, or Y in YZX cases */
         const real mMajor = (kMajor < maxkMajor) ? kMajor : (kMajor - nMajor);
 
         const int kMiddle = indexMiddle + localOffsetMiddle;
         real mMiddle = kMiddle;
-
-        // check Y in XYZ
+        /* Checking Y in XYZ case */
         if (!YZXOrdering)
+        {
             mMiddle = (kMiddle < maxkMiddle) ? kMiddle : (kMiddle - nMiddle);
-
-        const real bMajorMiddle = real(M_PI) * volume * BSplineModuleMajor[kMajor] * BSplineModuleMiddle[kMiddle];
-
-        // global complex grid pointer
-        // the offset should be equal to threadId
-        float2 *p0 = globalGrid + (indexMajor * localSizeMiddle + indexMiddle) * localSizeMinor + indexMinor;
-
+        }
         /* We should skip the k-space point (0,0,0) */
 
         const int kMinor = localOffsetMinor + indexMinor;
         const gmx_bool notZeroPoint = (kMinor > 0 || kMajor > 0 || kMiddle > 0);
         real mMinor = kMinor, mhxk, mhyk, mhzk, m2k;
 
-        // check X in YZX
+        /* Checking X in YZX case */
         if (YZXOrdering)
+        {
             mMinor = (kMinor < maxkMinor) ? kMinor : (kMinor - nMinor);
+        }
+
         real mX, mY, mZ;
         if (YZXOrdering)
         {
@@ -160,8 +145,6 @@ __global__ void pme_solve_kernel
             mY = mMiddle;
             mZ = mMinor;
         }
-
-        const gmx_bool debugPrint = false;//(mX== 7) && (mY == 7) && (mZ == 7);
 
         /* 0.5 correction for corner points of a minor dimension */
         real corner_fac = 1.0f;
@@ -182,30 +165,23 @@ __global__ void pme_solve_kernel
 
         if (notZeroPoint)
         {     
-            mhxk      = mX * constants.recipbox[XX].x;
-            mhyk      = mX * constants.recipbox[XX].y + mY * constants.recipbox[YY].y;
-            mhzk      = mX * constants.recipbox[XX].z + mY * constants.recipbox[YY].z + mZ * constants.recipbox[ZZ].z;
+            mhxk       = mX * constants.recipbox[XX].x;
+            mhyk       = mX * constants.recipbox[XX].y + mY * constants.recipbox[YY].y;
+            mhzk       = mX * constants.recipbox[XX].z + mY * constants.recipbox[YY].z + mZ * constants.recipbox[ZZ].z;
 
-            m2k       = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
-            real denom = m2k * bMajorMiddle * BSplineModuleMinor[kMinor];
+            m2k        = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
+            real denom = m2k * real(M_PI) * volume * BSplineModuleMajor[kMajor] * BSplineModuleMiddle[kMiddle] * BSplineModuleMinor[kMinor];
             real tmp1  = -ewaldFactor * m2k;
 
             denom = 1.0f / denom;
             tmp1 = expf(tmp1);
             real etermk = elfac * tmp1 * denom;
 
-            float2 gridValue = *p0;
-
-            if (debugPrint)
-                printf("grid %g %g\n", gridValue.x, gridValue.y);
-
+            float2 gridValue = *globalGridPtr;
             float2 oldGridValue = gridValue;
             gridValue.x *= etermk;
             gridValue.y *= etermk;
-            *p0 = gridValue;
-
-            if (debugPrint)
-                printf("grid %g %g\n", gridValue.x, gridValue.y);
+            *globalGridPtr = gridValue;
 
             if (bEnerVir)
             {
@@ -214,9 +190,6 @@ __global__ void pme_solve_kernel
                 real vfactor = (ewaldFactor + 1.0f / m2k) * 2.0f;
                 real ets2 = corner_fac * tmp1k;
                 energy = ets2;
-
-                if (debugPrint)// ||isnan(energy))
-                    printf("energy %g %g %g %g\n", energy, mX, mY, mZ);
 
                 real ets2vf  = ets2 * vfactor;
 
@@ -232,12 +205,14 @@ __global__ void pme_solve_kernel
 
     if (bEnerVir)
     {
-        // reduction
+        /* The energy and virial reduction */
 
 #if (GMX_PTX_ARCH >= 300)
-        // there should be a shuffle reduction here
+        /* There really should be a shuffle reduction here!
+         * (only for orders of power of 2)
+         */
         /*
-        if (!(blockSize & (blockSize - 1))) // only for orders of power of 2
+        if (!(blockSize & (blockSize - 1)))
         {
 
         }

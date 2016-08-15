@@ -1,6 +1,5 @@
 #include <assert.h>
 
-#include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 #include "pme-cuda.cuh"
 
 // allocate the GPU output buffer for the resulting PME forces

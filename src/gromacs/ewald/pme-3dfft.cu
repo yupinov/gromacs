@@ -7,7 +7,6 @@
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/gpu_utils/cudautils.cuh"
-#include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 
 struct gmx_parallel_3dfft_gpu
 {
