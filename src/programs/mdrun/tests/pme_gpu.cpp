@@ -60,7 +60,7 @@
 namespace
 {
 
-//! a basic PME GPU sanity test
+//! A basic PME GPU sanity test
 class PMEGPUTest:
     public gmx::test::MdrunTestFixture,
     public ::testing::WithParamInterface<const char *>
@@ -68,25 +68,26 @@ class PMEGPUTest:
 
 };
 
-/* Ensure grompp and mdrun run and potential energy converges in an expected way.*/
+/* Ensure 2 mdruns with CPU and GPU PME produce same reciprocal energies.*/
 TEST_F(PMEGPUTest, ReproducesEnergies)
 {
-    std::string theMdpFile = gmx::formatString("coulombtype     = PME\n"
-                                   "verlet-buffer-tolerance =-1\n"
-                                   "rvdw            = 0.9\n"
-                                   "rlist           = 0.9\n"
-                                   "rcoulomb        = 0.9\n"
-                                   //"fourierspacing  = 0.12\n"
-                                   //"ewald-rtol      = 1e-5\n"
-                                   "pme-order       = 4\n"
-                                   "nsteps          = 20\n");
+    int nsteps = 20;
+    std::string theMdpFile = gmx::formatString("coulombtype             = PME\n"
+                                               "nstcalcenergy   = 1\n"
+                                               "nstenergy       = 1\n"
+                                               "pme-order       = 4\n"
+                                               "nsteps          = %d\n",
+                                               nsteps);
 
     runner_.useStringAsMdpFile(theMdpFile);
 
-    const std::string inputFile = "spc216";
+    const std::string inputFile = "spc2";
     runner_.useTopGroAndNdxFromDatabase(inputFile.c_str());
 
-    // grompp should run without error
+    const real approximateCoulomb = 7.5; // Coulomb reciprocal energy value for spc2
+    const real relativeTolerance = 1e-4;
+    const gmx::test::FloatingPointTolerance tol = gmx::test::relativeToleranceAsFloatingPoint(approximateCoulomb, relativeTolerance);
+
     EXPECT_EQ(0, runner_.callGrompp());
 
     std::vector<std::string> PMEModes;
@@ -100,30 +101,24 @@ TEST_F(PMEGPUTest, ReproducesEnergies)
         runner_.edrFileName_ = fileManager_.getTemporaryFilePath(inputFile + "_" + it + ".edr");
 
         ::gmx::test::CommandLine PMECommandLine;
-        //PMECommandLine.addOption("-ntmpi", 1); // already declared?
+        // PMECommandLine.addOption("-ntmpi", 1); /* already declared? */
         PMECommandLine.addOption("-pme", it);
-        //PMECommandLine.addOption("-notunepme", ...
 
-        // assert that mdrun is finished without error
         ASSERT_EQ(0, runner_.callMdrun(PMECommandLine));
 
-        energyReadersByMode[it] = gmx::test::openEnergyFileToReadFields(runner_.edrFileName_, {{"Potential"}});
+        energyReadersByMode[it] = gmx::test::openEnergyFileToReadFields(runner_.edrFileName_, {{"Coul. recip."}}); /*, {"Conserved En."}});*/
     }
-    /*
-    gmx::test::TestReferenceData    data;
-    gmx::test::TestReferenceChecker checker(data.rootChecker());
 
-
-    checker.setDefaultTolerance(gmx::test::relativeToleranceAsFloatingPoint(1.0, 1e-6));
-    */
-    for (int i = 0; i < 20; i++) //runner_.nsteps
+    for (int i = 0; i <= nsteps; i++)
     {
         for (auto &it: PMEModes)
-            energyReadersByMode[it]->readNextFrame(); // +1?
+        {
+            energyReadersByMode[it]->readNextFrame();
+        }
 
         gmx::test::compareFrames(std::make_pair(energyReadersByMode[PMEModes[0]]->frame(),
                                                 energyReadersByMode[PMEModes[1]]->frame()),
-                                 gmx::test::relativeToleranceAsUlp(1.0, 7));//defaultRealTolerance());
+                                 tol);
     }
 }
 
