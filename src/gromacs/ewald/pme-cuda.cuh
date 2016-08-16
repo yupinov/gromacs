@@ -91,7 +91,9 @@ struct pme_gpu_overlap_t
 };
 
 /* A structure for storing common constants accessed within GPU kernels by value.
- * Not everything here is constant for the entire run ...
+ * Some things are really constant, some things change every step => more splitting?
+ * Ideally, as there are many PME kernels, this should not be a kernel parameter,
+ * but rather a constant memory copied once per step.
  */
 struct pme_gpu_const_parameters
 {
@@ -104,9 +106,12 @@ struct pme_gpu_const_parameters
     int3 localGridSizePadded; /* padding includes (order - 1) overlap and possibly some alignment in Z? */
     /* Number of local atoms */
     int nAtoms;
-    /* Solving parameters - maybe they should be in a separate structure as we likely won't use GPU solve much in multi-rank PME? */
+
+    /* Solving parameters - maybe they should be in a separate structure,
+     * as we likely won't use GPU solve much in multi-rank PME? */
     float volume; /* The unit cell volume */
     float ewaldFactor; /* (M_PI / ewaldCoeff)^2 */
+    float elFactor; /* ONE_4PI_EPS0 / pme->epsilon_r */
 };
 
 /* The main PME GPU structure, included in the PME CPU structure by pointer */
@@ -137,10 +142,11 @@ struct gmx_pme_cuda_t
 
     gmx_bool bTiming; /* Enable timing using CUDA events */
 
-    gmx_bool useTextureObjects; /* If false, then use references */
+    gmx_bool useTextureObjects; /* If false, then use references */ //unused!
 
     // constant structures for arguments
     pme_gpu_overlap_t overlap;
+    pme_gpu_const_parameters constants;
 
     gmx_device_info_t *deviceInfo;
 
@@ -180,8 +186,6 @@ struct gmx_pme_cuda_t
     // forces and coordinates should be shared with nonbondeds!
     float3 *coordinates;
     real *coefficients;
-
-    pme_gpu_const_parameters constants;
 };
 
 // allocate memory; size == 0 => just fetch the current pointer

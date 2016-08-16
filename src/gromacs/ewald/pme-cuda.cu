@@ -3,7 +3,7 @@
 #include <vector>
 
 #include "gromacs/gpu_utils/cudautils.cuh"
-
+#include "gromacs/math/units.h"
 #include "gromacs/utility/smalloc.h"
 
 // for GPU init
@@ -298,6 +298,8 @@ void pme_gpu_set_constants(gmx_pme_t *pme, const matrix box, const real ewaldCoe
     assert(pme->gpu->constants.volume != 0.0f);
 
     pme->gpu->constants.ewaldFactor = (M_PI * M_PI) / (ewaldCoeff * ewaldCoeff);
+
+    pme->gpu->constants.elFactor = ONE_4PI_EPS0 / pme->epsilon_r;
 }
 
 

@@ -1,4 +1,3 @@
-#include "gromacs/math/units.h"
 #include "gromacs/utility/gmxassert.h"
 #include "pme-cuda.cuh"
 #include "pme-gpu.h" //?
@@ -64,8 +63,6 @@ __global__ void pme_solve_kernel
 (const int localCountMajor, const int localCountMiddle, const int localCountMinor,
  const int localOffsetMinor, const int localOffsetMajor, const int localOffsetMiddle,
  const int localSizeMinor, /*const int localSizeMajor,*/ const int localSizeMiddle,
-
- const real elfac,
  const real * __restrict__ BSplineModuleMinor,
  const real * __restrict__ BSplineModuleMajor,
  const real * __restrict__ BSplineModuleMiddle,
@@ -171,7 +168,7 @@ __global__ void pme_solve_kernel
 
             denom = 1.0f / denom;
             tmp1 = expf(tmp1);
-            real etermk = elfac * tmp1 * denom;
+            real etermk = constants.elFactor * tmp1 * denom;
 
             float2 gridValue = *globalGridPtr;
             float2 oldGridValue = gridValue;
@@ -324,8 +321,6 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     const real *bspModMiddle_d = (real *)PMEMemoryFetch(pme, !YZXOrdering ? PME_ID_BSP_MOD_YY : PME_ID_BSP_MOD_ZZ, 0, ML_DEVICE);
     const real *bspModMajor_d = (real *)PMEMemoryFetch(pme, !YZXOrdering ? PME_ID_BSP_MOD_XX : PME_ID_BSP_MOD_YY, 0, ML_DEVICE);
 
-    const real elfac = ONE_4PI_EPS0 / pme->epsilon_r; // make it a constant as well
-
     const int gridSize = local_size[XX] * local_size[YY] * local_size[ZZ] * sizeof(float2);
 
     float2 *grid_d = (float2 *)pme->gpu->fourierGrid;
@@ -357,7 +352,6 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
               (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim],
                local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
                local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-               elfac,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d,
                pme->gpu->constants,
@@ -367,7 +361,6 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
               (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
                local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
                local_size[minorDim], /*local_size[majorDim],*/local_size[middleDim],
-               elfac,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d,
                pme->gpu->constants,
@@ -380,7 +373,6 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
               (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim],
                local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
                local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-               elfac,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d,
                pme->gpu->constants,
@@ -390,7 +382,6 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
               (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
                local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
                local_size[minorDim], /*local_size[majorDim],*/local_size[middleDim],
-               elfac,
                bspModMinor_d, bspModMajor_d, bspModMiddle_d,
                grid_d,
                pme->gpu->constants,
