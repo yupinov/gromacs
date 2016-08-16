@@ -72,7 +72,7 @@ class PMEGPUTest:
 TEST_F(PMEGPUTest, ReproducesEnergies)
 {
     int nsteps = 20;
-    std::string theMdpFile = gmx::formatString("coulombtype             = PME\n"
+    std::string theMdpFile = gmx::formatString("coulombtype     = PME\n"
                                                "nstcalcenergy   = 1\n"
                                                "nstenergy       = 1\n"
                                                "pme-order       = 4\n"
@@ -84,9 +84,9 @@ TEST_F(PMEGPUTest, ReproducesEnergies)
     const std::string inputFile = "spc2";
     runner_.useTopGroAndNdxFromDatabase(inputFile.c_str());
 
-    const real approximateCoulomb = 7.5; // Coulomb reciprocal energy value for spc2
+    const real approximateEnergy = 7.5; /* Coulomb reciprocal energy value for spc2 */
     const real relativeTolerance = 1e-4;
-    const gmx::test::FloatingPointTolerance tol = gmx::test::relativeToleranceAsFloatingPoint(approximateCoulomb, relativeTolerance);
+    const gmx::test::FloatingPointTolerance tol = gmx::test::relativeToleranceAsFloatingPoint(approximateEnergy , relativeTolerance);
 
     EXPECT_EQ(0, runner_.callGrompp());
 
