@@ -190,9 +190,5 @@ struct gmx_pme_cuda_t
 
 // allocate memory; size == 0 => just fetch the current pointer
 void *PMEMemoryFetch(gmx_pme_t *pme, PMEDataID id, size_t size, MemLocType location);
-// deallocate memory
-void PMEMemoryFree(gmx_pme_t *pme, PMEDataID id, MemLocType location);
-
-void PMECopyConstant(const void *dest, const void *src, size_t size, cudaStream_t s); // H2D
 
 #endif

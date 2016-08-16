@@ -6,7 +6,7 @@
 
 void pme_gpu_alloc_energy_virial(gmx_pme_t *pme, const int gmx_unused grid_index)
 {
-    pme->gpu->energyAndVirialSize = 7 * sizeof(real); // 6 virial components + energy
+    pme->gpu->energyAndVirialSize = 7 * sizeof(real); /* 6 virial components + energy */
     pme->gpu->energyAndVirial = (real *)PMEMemoryFetch(pme, PME_ID_ENERGY_AND_VIRIAL, pme->gpu->energyAndVirialSize, ML_DEVICE);
 }
 
