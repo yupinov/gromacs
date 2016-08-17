@@ -41,26 +41,14 @@
  */
 #include "gmxpre.h"
 
-#include <vector>
-#include <utility>
-
-#include <gtest/gtest.h>
-
 #include "gromacs/utility/stringutil.h"
-#include "gromacs/utility/textwriter.h"
-
-#include "testutils/cmdlinetest.h" //yupinov
-
-
-#include "testutils/refdata.h"
-
 #include "energyreader.h"
 #include "moduletest.h"
 
 namespace
 {
 
-//! A basic PME GPU sanity test
+//! A basic PME GPU test
 class PMEGPUTest:
     public gmx::test::MdrunTestFixture,
     public ::testing::WithParamInterface<const char *>
@@ -68,7 +56,7 @@ class PMEGPUTest:
 
 };
 
-/* Ensure 2 mdruns with CPU and GPU PME produce same reciprocal energies.*/
+/* Ensure 2 mdruns with CPU and GPU PME produce same reciprocal and conserved energies. */
 TEST_F(PMEGPUTest, ReproducesEnergies)
 {
     int nsteps = 20;
@@ -76,6 +64,10 @@ TEST_F(PMEGPUTest, ReproducesEnergies)
                                                "nstcalcenergy   = 1\n"
                                                "nstenergy       = 1\n"
                                                "pme-order       = 4\n"
+                                               "tcoupl          = v-rescale\n"
+                                               "tau_t           = 0.1\n"
+                                               "ref_t           = 300\n"
+                                               "tc_grps         = system\n"
                                                "nsteps          = %d\n",
                                                nsteps);
 
@@ -84,9 +76,8 @@ TEST_F(PMEGPUTest, ReproducesEnergies)
     const std::string inputFile = "spc2";
     runner_.useTopGroAndNdxFromDatabase(inputFile.c_str());
 
-    const real approximateEnergy = 7.5; /* Coulomb reciprocal energy value for spc2 */
-    const real relativeTolerance = 1e-4;
-    const gmx::test::FloatingPointTolerance tol = gmx::test::relativeToleranceAsFloatingPoint(approximateEnergy , relativeTolerance);
+    /* For spc2 Coulomb reciprocal energy is ~7.5, conserved is ~1.3 => abs. tolerance of 3e-4 is OK for both */
+    const gmx::test::FloatingPointTolerance tolerance = gmx::test::relativeToleranceAsFloatingPoint(3.0, 1e-4);
 
     EXPECT_EQ(0, runner_.callGrompp());
 
@@ -106,7 +97,7 @@ TEST_F(PMEGPUTest, ReproducesEnergies)
 
         ASSERT_EQ(0, runner_.callMdrun(PMECommandLine));
 
-        energyReadersByMode[it] = gmx::test::openEnergyFileToReadFields(runner_.edrFileName_, {{"Coul. recip."}}); /*, {"Conserved En."}});*/
+        energyReadersByMode[it] = gmx::test::openEnergyFileToReadFields(runner_.edrFileName_, {{"Coul. recip."}, {"Conserved En."}});
     }
 
     for (int i = 0; i <= nsteps; i++)
@@ -118,7 +109,7 @@ TEST_F(PMEGPUTest, ReproducesEnergies)
 
         gmx::test::compareFrames(std::make_pair(energyReadersByMode[PMEModes[0]]->frame(),
                                                 energyReadersByMode[PMEModes[1]]->frame()),
-                                 tol);
+                                 tolerance);
     }
 }
 
