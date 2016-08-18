@@ -33,12 +33,27 @@
  * the research papers on the package. Check out http://www.gromacs.org.
  */
 
+/*! \libinternal \file
+ *  \brief Defines the GPU timing event class in CUDA.
+ *
+ *  \author Aleksei Iupinov <a.yupinov@gmail.com>
+ */
+
 #ifndef PME_TIMINGS_CUH
 #define PME_TIMINGS_CUH
 
 #include "pme-internal.h"
 #include "gromacs/timing/gpu_timing.h"
 
+/*! \libinternal
+ * \brief
+ * This is a GPU timing class, based on CUDA events.
+ *
+ * Note that the data reported by CUDA events is not really reliable with multiple CUDA streams (e.g. PME and NB).
+ * Therefore, it might be not that useful.
+ *
+ * \ingroup module_ewald
+ */
 class pme_gpu_timing
 {
     bool         initialized;
