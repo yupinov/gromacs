@@ -35,6 +35,14 @@
  * the research papers on the package. Check out http://www.gromacs.org.
  */
 
+/*! \internal \file
+ *  \brief Implements PME GPU spline calculation and charge spreading in CUDA.
+ *
+ *  \author Aleksei Iupinov <a.yupinov@gmail.com>
+ */
+
+#include "gmxpre.h"
+
 #include "pme.h"
 #include "pme-internal.h"
 
@@ -427,7 +435,7 @@ __global__ void pme_spline_and_spread_kernel
 
            const int thetaOffsetBase = localIndexCalc * DIM + dimIndex;
            const int thetaGlobalOffsetBase = globalIndexBase * DIM * order;
-#pragma unroll
+           #pragma unroll
            for (int k = 0; k < order; k++)
            {
             const int thetaIndex = thetaOffsetBase + k * thetaStride;

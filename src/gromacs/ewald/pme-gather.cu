@@ -32,6 +32,17 @@
  * To help us fund GROMACS development, we humbly ask that you cite
  * the research papers on the package. Check out http://www.gromacs.org.
  */
+
+/*! \internal \file
+ *  \brief Implements PME GPU charge gathering in CUDA.
+ *
+ *  \author Aleksei Iupinov <a.yupinov@gmail.com>
+ */
+
+#include "gmxpre.h"
+
+#include "gmxpre.h"
+
 #include <assert.h>
 
 #include "pme-cuda.cuh"

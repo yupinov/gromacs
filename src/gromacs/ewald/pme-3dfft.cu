@@ -32,6 +32,15 @@
  * To help us fund GROMACS development, we humbly ask that you cite
  * the research papers on the package. Check out http://www.gromacs.org.
  */
+
+/*! \internal \file
+ *  \brief Implements CUDA FFT routines for PME GPU.
+ *
+ *  \author Aleksei Iupinov <a.yupinov@gmail.com>
+ */
+
+#include "gmxpre.h"
+
 #include <assert.h>
 #include <cufft.h>
 #include "pme-gpu.h"
