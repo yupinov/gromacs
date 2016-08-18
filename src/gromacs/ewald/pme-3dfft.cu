@@ -10,13 +10,13 @@
 
 struct gmx_parallel_3dfft_gpu
 {
-    ivec ndata_real;
-    ivec size_real;
-    ivec size_complex;
+    ivec          ndata_real;
+    ivec          size_real;
+    ivec          size_complex;
 
-    cufftHandle planR2C;
-    cufftHandle planC2R;
-    cufftReal *realGrid;
+    cufftHandle   planR2C;
+    cufftHandle   planC2R;
+    cufftReal    *realGrid;
     cufftComplex *complexGrid;
 
     /* unused */
@@ -25,7 +25,7 @@ struct gmx_parallel_3dfft_gpu
 
 void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndata, gmx_pme_t *pme)
 {
-    cufftResult_t result;
+    cufftResult_t            result;
     gmx_parallel_3dfft_gpu_t setup;
     snew(setup, 1);
 
@@ -42,7 +42,9 @@ void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndat
         ndata[ZZ] = pme->pmegrid_nz;
     }
     else
+    {
         gmx_fatal(FARGS, "FFT size choice not implemented");
+    }
 
     memcpy(setup->size_real, ndata, sizeof(setup->size_real));
 
@@ -52,7 +54,7 @@ void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndat
     // this is alright because Z includes overlap
 
     const int gridSizeComplex = setup->size_complex[XX] * setup->size_complex[YY] * setup->size_complex[ZZ];
-    const int gridSizeReal = setup->size_real[XX] * setup->size_real[YY] * setup->size_real[ZZ];
+    const int gridSizeReal    = setup->size_real[XX] * setup->size_real[YY] * setup->size_real[ZZ];
 
     memset(setup->local_offset, 0, sizeof(setup->local_offset)); //!
 
@@ -61,61 +63,75 @@ void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndat
     setup->complexGrid = (cufftComplex *)pme->gpu->fourierGrid;
 
     /*
-    result = cufftPlan3d(&setup->planR2C, setup->ndata_real[XX], setup->ndata_real[YY], setup->ndata_real[ZZ], CUFFT_R2C);
-    if (result != CUFFT_SUCCESS)
+       result = cufftPlan3d(&setup->planR2C, setup->ndata_real[XX], setup->ndata_real[YY], setup->ndata_real[ZZ], CUFFT_R2C);
+       if (result != CUFFT_SUCCESS)
         gmx_fatal(FARGS, "cufftPlan3d R2C error %d\n", result);
 
-    result = cufftPlan3d(&setup->planC2R, setup->ndata_real[XX], setup->ndata_real[YY], setup->ndata_real[ZZ], CUFFT_C2R);
-    if (result != CUFFT_SUCCESS)
+       result = cufftPlan3d(&setup->planC2R, setup->ndata_real[XX], setup->ndata_real[YY], setup->ndata_real[ZZ], CUFFT_C2R);
+       if (result != CUFFT_SUCCESS)
         gmx_fatal(FARGS, "cufftPlan3d C2R error %d\n", result);
-    */
+     */
 
 
     const int rank = 3, batch = 1;
     result = cufftPlanMany(&setup->planR2C, rank, setup->ndata_real,
-                                       setup->size_real, 1, gridSizeReal,
-                                       setup->size_complex, 1, gridSizeComplex,
-                                       CUFFT_R2C,
-                                       batch);
+                           setup->size_real, 1, gridSizeReal,
+                           setup->size_complex, 1, gridSizeComplex,
+                           CUFFT_R2C,
+                           batch);
     if (result != CUFFT_SUCCESS)
+    {
         gmx_fatal(FARGS, "cufftPlanMany R2C error %d\n", result);
+    }
 
     result = cufftPlanMany(&setup->planC2R, rank, setup->ndata_real,
-                                       setup->size_complex, 1, gridSizeComplex,
-                                       setup->size_real, 1, gridSizeReal,
-                                       CUFFT_C2R,
-                                       batch);
+                           setup->size_complex, 1, gridSizeComplex,
+                           setup->size_real, 1, gridSizeReal,
+                           CUFFT_C2R,
+                           batch);
     if (result != CUFFT_SUCCESS)
+    {
         gmx_fatal(FARGS, "cufftPlanMany C2R error %d\n", result);
+    }
 
     cudaStream_t s = pme->gpu->pmeStream;
     assert(s);
     result = cufftSetStream(setup->planR2C, s);
     if (result != CUFFT_SUCCESS)
+    {
         gmx_fatal(FARGS, "cufftSetStream R2C error %d\n", result);
+    }
 
     result = cufftSetStream(setup->planC2R, s);
     if (result != CUFFT_SUCCESS)
+    {
         gmx_fatal(FARGS, "cufftSetStream C2R error %d\n", result);
+    }
 }
 
 void gmx_parallel_3dfft_real_limits_gpu(gmx_parallel_3dfft_gpu_t      setup,
-                                       ivec                      local_ndata,
-                                       ivec                      local_offset,
-                                       ivec                      local_size)
+                                        ivec                          local_ndata,
+                                        ivec                          local_offset,
+                                        ivec                          local_size)
 {
     if (local_ndata)
+    {
         memcpy(local_ndata, setup->ndata_real, sizeof(setup->ndata_real));
+    }
     if (local_size)
+    {
         memcpy(local_size, setup->size_real, sizeof(setup->size_real));
+    }
     if (local_offset)
+    {
         memcpy(local_offset, setup->local_offset, sizeof(setup->local_offset));
+    }
 }
 
 void gmx_parallel_3dfft_complex_limits_gpu(gmx_parallel_3dfft_gpu_t      setup,
-                                          ivec                      local_ndata,
-                                          ivec                      local_offset,
-                                          ivec                      local_size)
+                                           ivec                          local_ndata,
+                                           ivec                          local_offset,
+                                           ivec                          local_size)
 {
     if (local_ndata)
     {
@@ -123,23 +139,27 @@ void gmx_parallel_3dfft_complex_limits_gpu(gmx_parallel_3dfft_gpu_t      setup,
         local_ndata[ZZ] = local_ndata[ZZ] / 2 + 1;
     }
     if (local_size)
+    {
         memcpy(local_size, setup->size_complex, sizeof(setup->size_complex));
+    }
     if (local_offset)
+    {
         memcpy(local_offset, setup->local_offset, sizeof(setup->local_offset));
+    }
 }
 
-void gmx_parallel_3dfft_execute_gpu(gmx_pme_t *pme,
-                                   gmx_fft_direction dir,
-                                   const int grid_index)
+void gmx_parallel_3dfft_execute_gpu(gmx_pme_t        *pme,
+                                    gmx_fft_direction dir,
+                                    const int         grid_index)
 {
     /*
-    const int gridSizeComplex = setup->size_complex[XX] * setup->size_complex[YY] * setup->size_complex[ZZ] * sizeof(cufftComplex);
-    const int gridSizeReal = setup->size_real[XX] * setup->size_real[YY] * setup->size_real[ZZ] * sizeof(cufftReal);
-    */
+       const int gridSizeComplex = setup->size_complex[XX] * setup->size_complex[YY] * setup->size_complex[ZZ] * sizeof(cufftComplex);
+       const int gridSizeReal = setup->size_real[XX] * setup->size_real[YY] * setup->size_real[ZZ] * sizeof(cufftReal);
+     */
     gmx_parallel_3dfft_gpu_t setup = pme->gpu->pfft_setup_gpu[grid_index];
 
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
-    {      
+    {
         //if (!pme->gpu->keepGPUDataBetweenSpreadAndR2C)
         //    cu_copy_H2D(setup->realGrid, setup->hostRealGrid, gridSizeReal);
         // CPU spread and GPU FFT? unlikely, only for debug
@@ -151,7 +171,9 @@ void gmx_parallel_3dfft_execute_gpu(gmx_pme_t *pme,
         pme_gpu_timing_stop(pme, ewcsPME_FFT_R2C);
 
         if (result)
+        {
             fprintf(stderr, "cufft R2C error %d\n", result);
+        }
     }
     else
     {
@@ -166,22 +188,24 @@ void gmx_parallel_3dfft_execute_gpu(gmx_pme_t *pme,
         pme_gpu_timing_stop(pme, ewcsPME_FFT_C2R);
 
         if (result)
+        {
             fprintf(stderr, "cufft C2R error %d\n", result);
+        }
     }
     /*
-    if (dir == GMX_FFT_REAL_TO_COMPLEX)
-    {
+       if (dir == GMX_FFT_REAL_TO_COMPLEX)
+       {
         // GPU FFT and CPU solve - unlikely, only for debug
         if (!pme->gpu->keepGPUDataBetweenR2CAndSolve)
             cu_copy_D2H(setup->hostComplexGrid, setup->complexGrid, gridSizeComplex);
-    }
-    else
-    {
+       }
+       else
+       {
         //GPU FFT and CPU gather - unlikely, only for debug
         if (!pme->gpu->keepGPUDataBetweenC2RAndGather)
             cu_copy_D2H(setup->hostRealGrid, setup->realGrid, gridSizeReal);
-    }
-    */
+       }
+     */
 }
 
 void gmx_parallel_3dfft_destroy_gpu(const gmx_parallel_3dfft_gpu_t &pfft_setup)
@@ -192,10 +216,14 @@ void gmx_parallel_3dfft_destroy_gpu(const gmx_parallel_3dfft_gpu_t &pfft_setup)
 
         result = cufftDestroy(pfft_setup->planR2C);
         if (result != CUFFT_SUCCESS)
+        {
             gmx_fatal(FARGS, "cufftDestroy R2C error %d\n", result);
+        }
         result = cufftDestroy(pfft_setup->planC2R);
         if (result != CUFFT_SUCCESS)
+        {
             gmx_fatal(FARGS, "cufftDestroy C2R error %d\n", result);
+        }
 
         sfree(pfft_setup);
     }

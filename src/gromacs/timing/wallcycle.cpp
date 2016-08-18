@@ -943,9 +943,9 @@ void wallcycle_print(FILE *fplog, const gmx::MDLogger &mdlog, int nnodes, int np
             if (gpu_t->pme.timing[k].c)
             {
                 print_gputimes(fplog, PMEStageNames[k],
-                        gpu_t->pme.timing[k].c,
-                        gpu_t->pme.timing[k].t,
-                        tot_gpu);
+                               gpu_t->pme.timing[k].c,
+                               gpu_t->pme.timing[k].t,
+                               tot_gpu);
             }
         }
 

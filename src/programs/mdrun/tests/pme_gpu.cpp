@@ -49,7 +49,7 @@ namespace
 {
 
 //! A basic PME GPU test
-class PMEGPUTest:
+class PMEGPUTest :
     public gmx::test::MdrunTestFixture,
     public ::testing::WithParamInterface<const char *>
 {
@@ -59,7 +59,7 @@ class PMEGPUTest:
 /* Ensure 2 mdruns with CPU and GPU PME produce same reciprocal and conserved energies. */
 TEST_F(PMEGPUTest, ReproducesEnergies)
 {
-    int nsteps = 20;
+    int         nsteps     = 20;
     std::string theMdpFile = gmx::formatString("coulombtype     = PME\n"
                                                "nstcalcenergy   = 1\n"
                                                "nstenergy       = 1\n"
@@ -87,7 +87,7 @@ TEST_F(PMEGPUTest, ReproducesEnergies)
 
     std::map<std::string, gmx::test::EnergyFrameReaderPtr> energyReadersByMode;
 
-    for (auto &it: PMEModes)
+    for (auto &it : PMEModes)
     {
         runner_.edrFileName_ = fileManager_.getTemporaryFilePath(inputFile + "_" + it + ".edr");
 
@@ -102,7 +102,7 @@ TEST_F(PMEGPUTest, ReproducesEnergies)
 
     for (int i = 0; i <= nsteps; i++)
     {
-        for (auto &it: PMEModes)
+        for (auto &it : PMEModes)
         {
             energyReadersByMode[it]->readNextFrame();
         }

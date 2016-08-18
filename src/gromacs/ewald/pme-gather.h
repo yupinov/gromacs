@@ -50,21 +50,29 @@ gather_energy_bsplines(struct gmx_pme_t *pme, real *grid,
                        pme_atomcomm_t *atc);
 
 inline void gather_f_bsplines_wrapper(struct gmx_pme_t *pme, real *grid,
-                          gmx_bool bClearF, pme_atomcomm_t *atc,
-                          splinedata_t *spline,
-                          real scale, gmx_wallcycle_t wcycle, int thread)
+                                      gmx_bool bClearF, pme_atomcomm_t *atc,
+                                      splinedata_t *spline,
+                                      real scale, gmx_wallcycle_t wcycle, int thread)
 {
     if (thread == 0)
+    {
         wallcycle_sub_start(wcycle, ewcsPME_GATHER);
+    }
     if (pme->bGPU)
     {
         if (thread == 0)
+        {
             gather_f_bsplines_gpu(pme, grid, atc, scale, bClearF);
+        }
     }
     else
+    {
         gather_f_bsplines(pme, grid, bClearF, atc, spline, scale);
+    }
     if (thread == 0)
+    {
         wallcycle_sub_stop(wcycle, ewcsPME_GATHER);
+    }
 }
 
 #endif

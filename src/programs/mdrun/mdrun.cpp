@@ -515,7 +515,9 @@ int gmx_mdrun(int argc, char *argv[])
     handleRestart(cr, bTryToAppendFiles, NFILE, fnm, &bDoAppendFiles, &bStartFromCpt);
 
     if (bPMEGPU)
+    {
         pme_opt[0] = pme_opt[3];
+    }
 
     Flags = opt2bSet("-rerun", NFILE, fnm) ? MD_RERUN : 0;
     Flags = Flags | (bDDBondCheck  ? MD_DDBONDCHECK  : 0);

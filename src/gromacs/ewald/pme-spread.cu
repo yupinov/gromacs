@@ -64,7 +64,7 @@
     so each data chunk for a single warp is 24 floats - goes both for theta and dtheta
     24 = 2 particles per warp *  order 4 * 3 dimensions
     48 floats (1.5 warp size) per warp in total
-*/
+ */
 
 #define THREADS_PER_BLOCK   (4 * warp_size)
 #define MIN_BLOCKS_PER_MP   (16)
@@ -76,7 +76,7 @@
 cudaTextureObject_t nnTexture;
 cudaTextureObject_t fshTexture;
 #else
-texture<int, 1, cudaReadModeElementType> nnTextureRef;
+texture<int, 1, cudaReadModeElementType>   nnTextureRef;
 texture<float, 1, cudaReadModeElementType> fshTextureRef;
 #endif
 #endif
@@ -86,42 +86,42 @@ texture<float, 1, cudaReadModeElementType> fshTextureRef;
  * It corresponds to the CPU codepath functions calc_interpolation_idx and make_bsplines.
  */
 template <
-        const int order,
-        const int particlesPerBlock,
-        const gmx_bool bCalcAlways
-        >
-__device__ __forceinline__ void calculate_splines(const int3 nnOffset,
+    const int order,
+    const int particlesPerBlock,
+    const gmx_bool bCalcAlways
+    >
+__device__ __forceinline__ void calculate_splines(const int3                     nnOffset,
 #if PME_USE_TEXTURES
 #if USE_TEXOBJ
-                                        cudaTextureObject_t nnTexture,
-                                        cudaTextureObject_t fshTexture,
+                                                  cudaTextureObject_t            nnTexture,
+                                                  cudaTextureObject_t            fshTexture,
 #endif
 #else
-                                        const int * __restrict__ nn,
-                                        const real * __restrict__ fsh,
+                                                  const int * __restrict__       nn,
+                                                  const real * __restrict__      fsh,
 #endif
-                                        const float3 * __restrict__ coordinates,
-                                        real * __restrict__ coefficient,
-                                        real * __restrict__ thetaGlobal,
-                                        real * __restrict__ theta,
-                                        real * __restrict__ dthetaGlobal,
-                                        int * __restrict__ idxGlobal,
-                                        int * __restrict__ idx,
-                                        const pme_gpu_const_parameters constants,
-                                        const int globalIndexCalc,
-                                        const int localIndexCalc,
-                                        const int globalIndexBase,
-                                        const int dimIndex,
-                                        const int orderIndex)
+                                                  const float3 * __restrict__    coordinates,
+                                                  real * __restrict__            coefficient,
+                                                  real * __restrict__            thetaGlobal,
+                                                  real * __restrict__            theta,
+                                                  real * __restrict__            dthetaGlobal,
+                                                  int * __restrict__             idxGlobal,
+                                                  int * __restrict__             idx,
+                                                  const pme_gpu_const_parameters constants,
+                                                  const int                      globalIndexCalc,
+                                                  const int                      localIndexCalc,
+                                                  const int                      globalIndexBase,
+                                                  const int                      dimIndex,
+                                                  const int                      orderIndex)
 {
 
     /* Fractional coordinates */
     __shared__ real fractX[PME_SPREADGATHER_BLOCK_DATA_SIZE];
 
-    const int sharedMemoryIndex = localIndexCalc * DIM + dimIndex;
+    const int       sharedMemoryIndex = localIndexCalc * DIM + dimIndex;
 
-    const int dataSize = PME_GPU_PARALLEL_SPLINE ? PME_SPREADGATHER_BLOCK_DATA_SIZE : 1;
-    const int dataOffset = PME_GPU_PARALLEL_SPLINE ? sharedMemoryIndex : 0;
+    const int       dataSize   = PME_GPU_PARALLEL_SPLINE ? PME_SPREADGATHER_BLOCK_DATA_SIZE : 1;
+    const int       dataOffset = PME_GPU_PARALLEL_SPLINE ? sharedMemoryIndex : 0;
 
     /* Spline parameter storage, shared for PME_GPU_PARALLEL_SPLINE==1 to not overuse the local memory */
 #if PME_GPU_PARALLEL_SPLINE
@@ -129,7 +129,7 @@ __device__ __forceinline__ void calculate_splines(const int3 nnOffset,
 #endif
     real data[dataSize * order];
 
-    const int localLimit = (dimIndex < DIM) && (orderIndex < (PME_GPU_PARALLEL_SPLINE ? order : 1));
+    const int localLimit  = (dimIndex < DIM) && (orderIndex < (PME_GPU_PARALLEL_SPLINE ? order : 1));
     const int globalLimit = (globalIndexCalc < constants.nAtoms);
 
     if (localLimit && globalLimit)
@@ -138,8 +138,8 @@ __device__ __forceinline__ void calculate_splines(const int3 nnOffset,
 
         if (orderIndex == 0)
         {
-            int constIndex, tInt;
-            real n, t;
+            int          constIndex, tInt;
+            real         n, t;
             const float3 x = coordinates[localIndexCalc];
             /* Accessing fields in nnOffset/nXYZ/recipbox/... with dimIndex offset
              * puts them into local memory(!) instead of accessing the constant memory directly.
@@ -149,41 +149,41 @@ __device__ __forceinline__ void calculate_splines(const int3 nnOffset,
             switch (dimIndex)
             {
                 case 0:
-                constIndex = nnOffset.x;
-                n = constants.localGridSizeFP.x;
-                t = x.x * constants.recipbox[dimIndex].x + x.y * constants.recipbox[dimIndex].y + x.z * constants.recipbox[dimIndex].z;
-                break;
+                    constIndex = nnOffset.x;
+                    n          = constants.localGridSizeFP.x;
+                    t          = x.x * constants.recipbox[dimIndex].x + x.y * constants.recipbox[dimIndex].y + x.z * constants.recipbox[dimIndex].z;
+                    break;
 
                 case 1:
-                constIndex = nnOffset.y;
-                n = constants.localGridSizeFP.y;
-                t = /*x.x * constants.recipbox[dimIndex].x + */ x.y * constants.recipbox[dimIndex].y + x.z * constants.recipbox[dimIndex].z;
-                break;
+                    constIndex = nnOffset.y;
+                    n          = constants.localGridSizeFP.y;
+                    t          = /*x.x * constants.recipbox[dimIndex].x + */ x.y * constants.recipbox[dimIndex].y + x.z * constants.recipbox[dimIndex].z;
+                    break;
 
                 case 2:
-                constIndex = nnOffset.z;
-                n = constants.localGridSizeFP.z;
-                t = /*x.x * constants.recipbox[dimIndex].x + x.y * constants.recipbox[dimIndex].y + */ x.z * constants.recipbox[dimIndex].z;
-                break;
+                    constIndex = nnOffset.z;
+                    n          = constants.localGridSizeFP.z;
+                    t          = /*x.x * constants.recipbox[dimIndex].x + x.y * constants.recipbox[dimIndex].y + */ x.z * constants.recipbox[dimIndex].z;
+                    break;
             }
 
             /* Fractional coordinates along box vectors, adding 2.0 to make 100% sure we are positive for triclinic boxes */
-            t = (t + 2.0f) * n;
+            t    = (t + 2.0f) * n;
             tInt = (int)t;
             fractX[sharedMemoryIndex] = t - tInt;
-            constIndex += tInt;
+            constIndex               += tInt;
 
 #if PME_USE_TEXTURES
 #if USE_TEXOBJ
             fractX[sharedMemoryIndex] += tex1Dfetch<real>(fshTexture, constIndex);
-            idx[sharedMemoryIndex] = tex1Dfetch<int>(nnTexture, constIndex);
+            idx[sharedMemoryIndex]     = tex1Dfetch<int>(nnTexture, constIndex);
 #else
             fractX[sharedMemoryIndex] += tex1Dfetch(fshTextureRef, constIndex);
-            idx[sharedMemoryIndex] = tex1Dfetch(nnTextureRef, constIndex);
+            idx[sharedMemoryIndex]     = tex1Dfetch(nnTextureRef, constIndex);
 #endif
 #else
             fractX[sharedMemoryIndex] += fsh[constIndex];
-            idx[sharedMemoryIndex] = nn[constIndex];
+            idx[sharedMemoryIndex]     = nn[constIndex];
 #endif
 
             idxGlobal[globalIndexBase * DIM + sharedMemoryIndex] = idx[sharedMemoryIndex];
@@ -193,8 +193,8 @@ __device__ __forceinline__ void calculate_splines(const int3 nnOffset,
 
         if (bCalcAlways || (coefficient[localIndexCalc] != 0.0f))
         {
-            real div;
-            int k;
+            real       div;
+            int        k;
 
             const real dr = fractX[sharedMemoryIndex];
 
@@ -217,7 +217,7 @@ __device__ __forceinline__ void calculate_splines(const int3 nnOffset,
             }
 
             const int particleWarpIndex = localIndexCalc % PARTICLES_PER_WARP;
-            const int warpIndex = localIndexCalc / PARTICLES_PER_WARP;
+            const int warpIndex         = localIndexCalc / PARTICLES_PER_WARP;
 
             const int thetaGlobalOffsetBase = globalIndexBase * DIM * order;
 
@@ -229,8 +229,8 @@ __device__ __forceinline__ void calculate_splines(const int3 nnOffset,
             for (k = 0; k < order; k++)
 #endif
             {
-                const int thetaIndex = PME_SPLINE_THETA_STRIDE * (((k + order * warpIndex) * DIM + dimIndex) * PARTICLES_PER_WARP + particleWarpIndex);
-                const int thetaGlobalIndex = thetaGlobalOffsetBase + thetaIndex;
+                const int  thetaIndex       = PME_SPLINE_THETA_STRIDE * (((k + order * warpIndex) * DIM + dimIndex) * PARTICLES_PER_WARP + particleWarpIndex);
+                const int  thetaGlobalIndex = thetaGlobalOffsetBase + thetaIndex;
 
                 const real dtheta = ((k > 0) ? data[(k - 1) * dataSize + dataOffset] : 0.0f) - data[k * dataSize + dataOffset];
                 dthetaGlobal[thetaGlobalIndex] = dtheta;
@@ -253,10 +253,10 @@ __device__ __forceinline__ void calculate_splines(const int3 nnOffset,
             for (k = 0; k < order; k++)
 #endif
             {
-                const int thetaIndex = PME_SPLINE_THETA_STRIDE * (((k + order * warpIndex) * DIM + dimIndex) * PARTICLES_PER_WARP + particleWarpIndex);
+                const int thetaIndex       = PME_SPLINE_THETA_STRIDE * (((k + order * warpIndex) * DIM + dimIndex) * PARTICLES_PER_WARP + particleWarpIndex);
                 const int thetaGlobalIndex = thetaGlobalOffsetBase + thetaIndex;
 
-                theta[thetaIndex] = data[k * dataSize + dataOffset];
+                theta[thetaIndex]             = data[k * dataSize + dataOffset];
                 thetaGlobal[thetaGlobalIndex] = data[k * dataSize + dataOffset];
             }
         }
@@ -264,29 +264,29 @@ __device__ __forceinline__ void calculate_splines(const int3 nnOffset,
 }
 
 template <
-        const int order,
-        const int particlesPerBlock
-        >
-__device__ __forceinline__ void spread_charges(const real * __restrict__ coefficient,
-                                              real * __restrict__ gridGlobal,
-                                              const pme_gpu_const_parameters constants,
-                                              const int globalIndex,
-                                              const int localIndex,
-                                              const int * __restrict__ idx,
-                                              const real * __restrict__ theta)
+    const int order,
+    const int particlesPerBlock
+    >
+__device__ __forceinline__ void spread_charges(const real * __restrict__      coefficient,
+                                               real * __restrict__            gridGlobal,
+                                               const pme_gpu_const_parameters constants,
+                                               const int                      globalIndex,
+                                               const int                      localIndex,
+                                               const int * __restrict__       idx,
+                                               const real * __restrict__      theta)
 {
     const int pny = constants.localGridSizePadded.y;
     const int pnz = constants.localGridSizePadded.z;
 
     /*
-    pnx = pmegrid->s[XX];
-    pny = pmegrid->s[YY];
-    pnz = pmegrid->s[ZZ];
+       pnx = pmegrid->s[XX];
+       pny = pmegrid->s[YY];
+       pnz = pmegrid->s[ZZ];
 
-    offx = pmegrid->offset[XX];
-    offy = pmegrid->offset[YY];
-    offz = pmegrid->offset[ZZ];
-    */
+       offx = pmegrid->offset[XX];
+       offy = pmegrid->offset[YY];
+       offz = pmegrid->offset[ZZ];
+     */
     const int offx = 0, offy = 0, offz = 0;
     // unused for now
 
@@ -295,22 +295,22 @@ __device__ __forceinline__ void spread_charges(const real * __restrict__ coeffic
         // spline Y/Z coordinates
         const int ithy = threadIdx.y;
         const int ithz = threadIdx.x; //?
-        const int ix = idx[localIndex * DIM + XX] - offx;
-        const int iy = idx[localIndex * DIM + YY] - offy;
-        const int iz = idx[localIndex * DIM + ZZ] - offz;
+        const int ix   = idx[localIndex * DIM + XX] - offx;
+        const int iy   = idx[localIndex * DIM + YY] - offy;
+        const int iz   = idx[localIndex * DIM + ZZ] - offz;
 
         // copy
-        const int particleWarpIndex = localIndex % PARTICLES_PER_WARP; // index of particle w.r.t. the warp (so, 0 or 1)
-        const int warpIndex = localIndex / PARTICLES_PER_WARP; // should be just a normal warp index, actually!
-        const int dimStride = PME_SPLINE_THETA_STRIDE * PARTICLES_PER_WARP;
-        const int orderStride = dimStride * DIM;
-        const int thetaOffsetBase = orderStride * order * warpIndex + particleWarpIndex;
+        const int   particleWarpIndex = localIndex % PARTICLES_PER_WARP; // index of particle w.r.t. the warp (so, 0 or 1)
+        const int   warpIndex         = localIndex / PARTICLES_PER_WARP; // should be just a normal warp index, actually!
+        const int   dimStride         = PME_SPLINE_THETA_STRIDE * PARTICLES_PER_WARP;
+        const int   orderStride       = dimStride * DIM;
+        const int   thetaOffsetBase   = orderStride * order * warpIndex + particleWarpIndex;
 
-        const real thz = theta[thetaOffsetBase + ithz * orderStride + ZZ * dimStride];
-        const real thy = theta[thetaOffsetBase + ithy * orderStride + YY * dimStride];
-        const real constVal = thz * thy * coefficient[localIndex];
-        const int constOffset = (iy + ithy) * pnz + (iz + ithz);
-        const real *thx = theta + (thetaOffsetBase + XX * dimStride);
+        const real  thz         = theta[thetaOffsetBase + ithz * orderStride + ZZ * dimStride];
+        const real  thy         = theta[thetaOffsetBase + ithy * orderStride + YY * dimStride];
+        const real  constVal    = thz * thy * coefficient[localIndex];
+        const int   constOffset = (iy + ithy) * pnz + (iz + ithz);
+        const real *thx         = theta + (thetaOffsetBase + XX * dimStride);
 
 #pragma unroll
         for (int ithx = 0; (ithx < order); ithx++)
@@ -322,60 +322,64 @@ __device__ __forceinline__ void spread_charges(const real * __restrict__ coeffic
 }
 
 template <
-        const int particlesPerBlock
-        >
-__device__ __forceinline__ void stage_charges(const int threadLocalId,
-                                              real * __restrict__ coefficient,
+    const int particlesPerBlock
+    >
+__device__ __forceinline__ void stage_charges(const int                 threadLocalId,
+                                              real * __restrict__       coefficient,
                                               const real * __restrict__ coefficientGlobal)
 {
     const int globalIndexBase = blockIdx.x * particlesPerBlock;
     if (threadLocalId < particlesPerBlock)
+    {
         coefficient[threadLocalId] = coefficientGlobal[globalIndexBase + threadLocalId];
+    }
 }
 
 template <
-        const int particlesPerBlock
-        >
-__device__ __forceinline__ void stage_coordinates(const int threadLocalId,
-                                              real * __restrict__ coordinates,
-                                              const real * __restrict__ coordinatesGlobal)
+    const int particlesPerBlock
+    >
+__device__ __forceinline__ void stage_coordinates(const int                 threadLocalId,
+                                                  real * __restrict__       coordinates,
+                                                  const real * __restrict__ coordinatesGlobal)
 {
     const int globalIndexBase = blockIdx.x * particlesPerBlock * DIM;
-    const int index = threadLocalId - 1 * particlesPerBlock;
+    const int index           = threadLocalId - 1 * particlesPerBlock;
     if ((index >= 0) && (index < DIM * particlesPerBlock))
+    {
         coordinates[index] = coordinatesGlobal[globalIndexBase + index];
+    }
 }
 
 template <
-        const int order,
-        const int particlesPerBlock,
-        const gmx_bool bCalcSplines, // first part
-        const gmx_bool bCalcAlways,   // bypassing conditional in the first part
-        const gmx_bool bSpread       // second part
-        >
+    const int order,
+    const int particlesPerBlock,
+    const gmx_bool bCalcSplines,     // first part
+    const gmx_bool bCalcAlways,      // bypassing conditional in the first part
+    const gmx_bool bSpread           // second part
+    >
 //#if GMX_PTX_ARCH <= 300
 __launch_bounds__(THREADS_PER_BLOCK, MIN_BLOCKS_PER_MP)
 //#endif
 //yupinov put bounds on separate kernels as well
 __global__ void pme_spline_and_spread_kernel
-(const int3 nnOffset,
+    (const int3 nnOffset,
 #if PME_USE_TEXTURES
 #if USE_TEXOBJ
- cudaTextureObject_t nnTexture,
- cudaTextureObject_t fshTexture,
+    cudaTextureObject_t nnTexture,
+    cudaTextureObject_t fshTexture,
 #endif
 #else
- const int * __restrict__ nn,
- const real * __restrict__ fsh,
+    const int * __restrict__ nn,
+    const real * __restrict__ fsh,
 #endif
- const float3 * __restrict__ coordinatesGlobal,
- const real * __restrict__ coefficientGlobal,
- real * __restrict__ gridGlobal, real * __restrict__ thetaGlobal,
- real * __restrict__ dthetaGlobal, int * __restrict__ idxGlobal,
- const pme_gpu_const_parameters constants)
+    const float3 * __restrict__ coordinatesGlobal,
+    const real * __restrict__ coefficientGlobal,
+    real * __restrict__ gridGlobal, real * __restrict__ thetaGlobal,
+    real * __restrict__ dthetaGlobal, int * __restrict__ idxGlobal,
+    const pme_gpu_const_parameters constants)
 {
     // gridline indices
-    __shared__ int idx[PME_SPREADGATHER_BLOCK_DATA_SIZE];
+    __shared__ int  idx[PME_SPREADGATHER_BLOCK_DATA_SIZE];
     // charges
     __shared__ real coefficient[particlesPerBlock];
     // spline parameters
@@ -383,18 +387,18 @@ __global__ void pme_spline_and_spread_kernel
 
 
     const int threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
-            + (threadIdx.y * blockDim.x)
-            + threadIdx.x;
+        + (threadIdx.y * blockDim.x)
+        + threadIdx.x;
 
     const int globalParticleIndexBase = blockIdx.x * particlesPerBlock;
 
-    const int warpIndex = threadLocalId / warp_size;
-    const int threadWarpIndex = threadLocalId % warp_size;
+    const int warpIndex         = threadLocalId / warp_size;
+    const int threadWarpIndex   = threadLocalId % warp_size;
     const int particleWarpIndex = threadWarpIndex % PARTICLES_PER_WARP;
-    const int localCalcIndex = warpIndex * PARTICLES_PER_WARP + particleWarpIndex;
-    const int globalCalcIndex = globalParticleIndexBase + localCalcIndex;
-    const int orderCalcIndex = threadWarpIndex / (PARTICLES_PER_WARP * DIM); // should be checked against order
-    const int dimCalcIndex = (threadWarpIndex - orderCalcIndex * (PARTICLES_PER_WARP * DIM)) / PARTICLES_PER_WARP;
+    const int localCalcIndex    = warpIndex * PARTICLES_PER_WARP + particleWarpIndex;
+    const int globalCalcIndex   = globalParticleIndexBase + localCalcIndex;
+    const int orderCalcIndex    = threadWarpIndex / (PARTICLES_PER_WARP * DIM); // should be checked against order
+    const int dimCalcIndex      = (threadWarpIndex - orderCalcIndex * (PARTICLES_PER_WARP * DIM)) / PARTICLES_PER_WARP;
 
     if (bCalcSplines)
     {
@@ -405,32 +409,32 @@ __global__ void pme_spline_and_spread_kernel
         stage_coordinates<particlesPerBlock>(threadLocalId, coordinates, (const real *)coordinatesGlobal);
         __syncthreads();
         calculate_splines<order, particlesPerBlock, bCalcAlways>(nnOffset, (const float3 *)coordinates, coefficient,
-                                                               thetaGlobal, theta, dthetaGlobal, idxGlobal, idx,
-                                                               constants,
-                                                               globalCalcIndex,
-                                                               localCalcIndex,
-                                                               globalParticleIndexBase,
-                                                               dimCalcIndex,
-                                                               orderCalcIndex);
+                                                                 thetaGlobal, theta, dthetaGlobal, idxGlobal, idx,
+                                                                 constants,
+                                                                 globalCalcIndex,
+                                                                 localCalcIndex,
+                                                                 globalParticleIndexBase,
+                                                                 dimCalcIndex,
+                                                                 orderCalcIndex);
     }
     else if (bSpread) // staging for spread
     {
         //yupinov - unmaintained
-            /*
-        if ((globalIndexCalc < n) && (dimIndex < DIM) && (localIndexCalc < particlesPerBlock))
-        {
-            idx[localIndexCalc * DIM + dimIndex] = idxGlobal[globalIndexCalc * DIM + dimIndex];
+        /*
+           if ((globalIndexCalc < n) && (dimIndex < DIM) && (localIndexCalc < particlesPerBlock))
+           {
+           idx[localIndexCalc * DIM + dimIndex] = idxGlobal[globalIndexCalc * DIM + dimIndex];
 
-            const int thetaOffsetBase = localIndexCalc * DIM + dimIndex;
-            const int thetaGlobalOffsetBase = globalIndexBase * DIM * order;
+           const int thetaOffsetBase = localIndexCalc * DIM + dimIndex;
+           const int thetaGlobalOffsetBase = globalIndexBase * DIM * order;
 #pragma unroll
-            for (int k = 0; k < order; k++)
-            {
-                const int thetaIndex = thetaOffsetBase + k * thetaStride;
-                theta[thetaIndex] = thetaGlobal[thetaGlobalOffsetBase + thetaIndex];
-            }
-        }
-        */
+           for (int k = 0; k < order; k++)
+           {
+            const int thetaIndex = thetaOffsetBase + k * thetaStride;
+            theta[thetaIndex] = thetaGlobal[thetaGlobalOffsetBase + thetaIndex];
+           }
+           }
+         */
         stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal);
         __syncthreads();
     }
@@ -438,10 +442,10 @@ __global__ void pme_spline_and_spread_kernel
     // SPREAD
     if (bSpread)
     {
-        const int localSpreadIndex = threadIdx.z;
+        const int localSpreadIndex  = threadIdx.z;
         const int globalSpreadIndex = globalParticleIndexBase + localSpreadIndex;
         spread_charges<order, particlesPerBlock>(coefficient, gridGlobal, constants, globalSpreadIndex, localSpreadIndex,
-                                                idx, theta);
+                                                 idx, theta);
     }
 }
 
@@ -449,28 +453,28 @@ __global__ void pme_spline_and_spread_kernel
 // pme_spline_and_spread split into pme_spline and pme_spread - as an experiment
 
 template <
-        const int order,
-        const int particlesPerBlock,
-        const gmx_bool bCalcAlways
-        >
+    const int order,
+    const int particlesPerBlock,
+    const gmx_bool bCalcAlways
+    >
 __global__ void pme_spline_kernel
-(const int3 nnOffset,
+    (const int3 nnOffset,
 #if PME_USE_TEXTURES
 #if USE_TEXOBJ
-  cudaTextureObject_t nnTexture,
-  cudaTextureObject_t fshTexture,
+    cudaTextureObject_t nnTexture,
+    cudaTextureObject_t fshTexture,
 #endif
 #else
-  const int * __restrict__ nn,
-  const real * __restrict__ fsh,
+    const int * __restrict__ nn,
+    const real * __restrict__ fsh,
 #endif
- const float3 * __restrict__ coordinatesGlobal,
- const real * __restrict__ coefficientGlobal,
- real * __restrict__ thetaGlobal, real * __restrict__ dthetaGlobal, int * __restrict__ idxGlobal,
- const pme_gpu_const_parameters constants)
+    const float3 * __restrict__ coordinatesGlobal,
+    const real * __restrict__ coefficientGlobal,
+    real * __restrict__ thetaGlobal, real * __restrict__ dthetaGlobal, int * __restrict__ idxGlobal,
+    const pme_gpu_const_parameters constants)
 {
     // gridline indices
-    __shared__ int idx[PME_SPREADGATHER_BLOCK_DATA_SIZE];
+    __shared__ int  idx[PME_SPREADGATHER_BLOCK_DATA_SIZE];
     // charges
     __shared__ real coefficient[particlesPerBlock];
     // coordinates
@@ -478,15 +482,15 @@ __global__ void pme_spline_kernel
     // spline parameters
     __shared__ real theta[PME_SPREADGATHER_BLOCK_DATA_SIZE * order];
 
-    const int globalIndexBase = blockIdx.x * particlesPerBlock;
+    const int       globalIndexBase = blockIdx.x * particlesPerBlock;
 
-    const int threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
-            + (threadIdx.y * blockDim.x)
-            + threadIdx.x;
+    const int       threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
+        + (threadIdx.y * blockDim.x)
+        + threadIdx.x;
 
-    const int localIndexCalc = threadIdx.x;
-    const int orderIndex = threadIdx.x; //yupinov - this is broken!
-    const int dimIndex = threadIdx.y;
+    const int localIndexCalc  = threadIdx.x;
+    const int orderIndex      = threadIdx.x; //yupinov - this is broken!
+    const int dimIndex        = threadIdx.y;
     const int globalIndexCalc = globalIndexBase + localIndexCalc;
 
     stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal);
@@ -494,43 +498,43 @@ __global__ void pme_spline_kernel
     __syncthreads();
 
     calculate_splines<order, particlesPerBlock, bCalcAlways>(nnOffset, (const float3 *)coordinates, coefficient,
-                                                           thetaGlobal, theta, dthetaGlobal, idxGlobal, idx,
-                                                           constants,
-                                                           globalIndexCalc,
-                                                           localIndexCalc,
-                                                           globalIndexBase,
-                                                           dimIndex,
-                                                           orderIndex);
+                                                             thetaGlobal, theta, dthetaGlobal, idxGlobal, idx,
+                                                             constants,
+                                                             globalIndexCalc,
+                                                             localIndexCalc,
+                                                             globalIndexBase,
+                                                             dimIndex,
+                                                             orderIndex);
 }
 
 
 template
 <const int order, const int particlesPerBlock>
 __global__ void pme_spread_kernel
-(const real * __restrict__ coefficientGlobal,
- real * __restrict__ gridGlobal, real * __restrict__ thetaGlobal, const int * __restrict__ idxGlobal,
-             const pme_gpu_const_parameters constants)
+    (const real * __restrict__ coefficientGlobal,
+    real * __restrict__ gridGlobal, real * __restrict__ thetaGlobal, const int * __restrict__ idxGlobal,
+    const pme_gpu_const_parameters constants)
 {
-    __shared__ int idx[PME_SPREADGATHER_BLOCK_DATA_SIZE];
+    __shared__ int  idx[PME_SPREADGATHER_BLOCK_DATA_SIZE];
     __shared__ real coefficient[particlesPerBlock];
 
     __shared__ real theta[PME_SPREADGATHER_BLOCK_DATA_SIZE * order];
 
-    const int localIndex = threadIdx.x;
-    const int globalParticleIndexBase = blockIdx.x * particlesPerBlock;
-    const int globalIndex = globalParticleIndexBase + localIndex;
+    const int       localIndex              = threadIdx.x;
+    const int       globalParticleIndexBase = blockIdx.x * particlesPerBlock;
+    const int       globalIndex             = globalParticleIndexBase + localIndex;
 
 
     //yupinov - staging
     const int threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
-            + (threadIdx.y * blockDim.x)
-            + threadIdx.x;
+        + (threadIdx.y * blockDim.x)
+        + threadIdx.x;
 
     stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal);
     __syncthreads();
 
-    const int localIndexCalc = threadLocalId / DIM;
-    const int dimIndex = threadLocalId - localIndexCalc * DIM;
+    const int localIndexCalc  = threadLocalId / DIM;
+    const int dimIndex        = threadLocalId - localIndexCalc * DIM;
     const int globalIndexCalc = globalParticleIndexBase + localIndexCalc;
 
     if ((globalIndexCalc < constants.nAtoms) && (dimIndex < DIM) && (localIndexCalc < particlesPerBlock))
@@ -538,7 +542,7 @@ __global__ void pme_spread_kernel
         idx[localIndexCalc * DIM + dimIndex] = idxGlobal[globalIndexCalc * DIM + dimIndex];
 
         //unmaintained...
-        const int thetaOffsetBase = localIndexCalc * DIM + dimIndex;
+        const int thetaOffsetBase       = localIndexCalc * DIM + dimIndex;
         const int thetaGlobalOffsetBase = globalParticleIndexBase * DIM * order;
 #pragma unroll
         for (int k = 0; k < order; k++)
@@ -551,35 +555,35 @@ __global__ void pme_spread_kernel
 
     // SPREAD
     spread_charges<order, particlesPerBlock>(coefficient, gridGlobal, constants, globalIndex, localIndex,
-                                            idx, theta);
+                                             idx, theta);
 }
 
 template <
     const int order
     >
 __global__ void pme_wrap_kernel(const pme_gpu_const_parameters constants,
-    const pme_gpu_overlap_t OVERLAP,
-     real * __restrict__ grid
-     )
+                                const pme_gpu_overlap_t        OVERLAP,
+                                real * __restrict__            grid
+                                )
 {
     const int blockId = blockIdx.x
-                 + blockIdx.y * gridDim.x
-                 + gridDim.x * gridDim.y * blockIdx.z;
+        + blockIdx.y * gridDim.x
+        + gridDim.x * gridDim.y * blockIdx.z;
     const int threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
-            + (threadIdx.y * blockDim.x)
-            + threadIdx.x;
+        + (threadIdx.y * blockDim.x)
+        + threadIdx.x;
     const int threadId = blockId * (blockDim.x * blockDim.y * blockDim.z) + threadLocalId;
 
-    const int nx = constants.localGridSize.x;
-    const int ny = constants.localGridSize.y;
-    const int nz = constants.localGridSize.z;
+    const int nx  = constants.localGridSize.x;
+    const int ny  = constants.localGridSize.y;
+    const int nz  = constants.localGridSize.z;
     const int pny = constants.localGridSizePadded.y;
     const int pnz = constants.localGridSizePadded.z;
 
     // should use ldg.128
 
     if (threadId < OVERLAP.overlapCellCounts[OVERLAP_ZONES - 1])
-    {   
+    {
         int zoneIndex = -1;
         do
         {
@@ -588,17 +592,17 @@ __global__ void pme_wrap_kernel(const pme_gpu_const_parameters constants,
         while (threadId >= OVERLAP.overlapCellCounts[zoneIndex]);
         const int2 zoneSizeYZ = OVERLAP.overlapSizes[zoneIndex];
         // this is the overlapped cells's index relative to the current zone
-        const int cellIndex = (zoneIndex > 0) ? (threadId - OVERLAP.overlapCellCounts[zoneIndex - 1]) : threadId;
+        const int  cellIndex = (zoneIndex > 0) ? (threadId - OVERLAP.overlapCellCounts[zoneIndex - 1]) : threadId;
 
         // replace integer division/modular arithmetics - a big performance hit
         // try int_fastdiv?
-        const int ixy = cellIndex / zoneSizeYZ.y; //yupinov check expensive integer divisions everywhere!
-        const int iz = cellIndex - zoneSizeYZ.y * ixy;
-        const int ix = ixy / zoneSizeYZ.x;
-        const int iy = ixy - zoneSizeYZ.x * ix;
+        const int ixy         = cellIndex / zoneSizeYZ.y; //yupinov check expensive integer divisions everywhere!
+        const int iz          = cellIndex - zoneSizeYZ.y * ixy;
+        const int ix          = ixy / zoneSizeYZ.x;
+        const int iy          = ixy - zoneSizeYZ.x * ix;
         const int targetIndex = (ix * pny + iy) * pnz + iz;
 
-        int sourceOffset = 0;
+        int       sourceOffset = 0;
 
         // stage those bits in constant memory as well
         const int overlapZ = ((zoneIndex == 0) || (zoneIndex == 3) || (zoneIndex == 4) || (zoneIndex == 6)) ? 1 : 0;
@@ -619,16 +623,20 @@ __global__ void pme_wrap_kernel(const pme_gpu_const_parameters constants,
         const int sourceIndex = targetIndex + sourceOffset;
 
         /* // condition for atomic seems a bit excessive - test on different hardware?
-        const int targetOverlapX = (ix < overlap) ? 1 : 0;
-        const int targetOverlapY = (iy < overlap) ? 1 : 0;
-        const int targetOverlapZ = (iz < overlap) ? 1 : 0;
-        const int useAtomic = ((targetOverlapX + targetOverlapY + targetOverlapZ) > 1) ? 1 : 0;
-        */
+           const int targetOverlapX = (ix < overlap) ? 1 : 0;
+           const int targetOverlapY = (iy < overlap) ? 1 : 0;
+           const int targetOverlapZ = (iz < overlap) ? 1 : 0;
+           const int useAtomic = ((targetOverlapX + targetOverlapY + targetOverlapZ) > 1) ? 1 : 0;
+         */
         const int useAtomic = 1;
         if (useAtomic)
+        {
             atomicAdd(grid + targetIndex, grid[sourceIndex]);
+        }
         else
+        {
             grid[targetIndex] += grid[sourceIndex];
+        }
     }
 }
 
@@ -636,22 +644,22 @@ void pme_gpu_copy_calcspline_constants(gmx_pme_t *pme)
 {
     cudaStream_t s = pme->gpu->pmeStream;
 
-    cudaError_t stat;
+    cudaError_t  stat;
 
-    const int nx = pme->nkx;
-    const int ny = pme->nky;
-    const int nz = pme->nkz;
+    const int    nx = pme->nkx;
+    const int    ny = pme->nky;
+    const int    nz = pme->nkz;
 
-    const int fshSize = 5 * (nx + ny + nz) * sizeof(real);
-    real *fshArray = pme->gpu->fshArray = (real *)PMEMemoryFetch(pme, PME_ID_FSH, fshSize, ML_DEVICE);
-    cu_copy_H2D_async(fshArray                , pme->fshx, 5 * nx * sizeof(real), s);
-    cu_copy_H2D_async(fshArray + 5 * nx       , pme->fshy, 5 * ny * sizeof(real), s);
+    const int    fshSize  = 5 * (nx + ny + nz) * sizeof(real);
+    real        *fshArray = pme->gpu->fshArray = (real *)PMEMemoryFetch(pme, PME_ID_FSH, fshSize, ML_DEVICE);
+    cu_copy_H2D_async(fshArray, pme->fshx, 5 * nx * sizeof(real), s);
+    cu_copy_H2D_async(fshArray + 5 * nx, pme->fshy, 5 * ny * sizeof(real), s);
     cu_copy_H2D_async(fshArray + 5 * (nx + ny), pme->fshz, 5 * nz * sizeof(real), s);
 
-    const int nnSize = 5 * (nx + ny + nz) * sizeof(int);
-    int *nnArray = pme->gpu->nnArray = (int *)PMEMemoryFetch(pme, PME_ID_NN, nnSize, ML_DEVICE);
-    cu_copy_H2D_async(nnArray                , pme->nnx, 5 * nx * sizeof(int), s);
-    cu_copy_H2D_async(nnArray + 5 * nx       , pme->nny, 5 * ny * sizeof(int), s);
+    const int nnSize  = 5 * (nx + ny + nz) * sizeof(int);
+    int      *nnArray = pme->gpu->nnArray = (int *)PMEMemoryFetch(pme, PME_ID_NN, nnSize, ML_DEVICE);
+    cu_copy_H2D_async(nnArray, pme->nnx, 5 * nx * sizeof(int), s);
+    cu_copy_H2D_async(nnArray + 5 * nx, pme->nny, 5 * ny * sizeof(int), s);
     cu_copy_H2D_async(nnArray + 5 * (nx + ny), pme->nnz, 5 * nz * sizeof(int), s);
 
 #if PME_USE_TEXTURES
@@ -660,7 +668,7 @@ void pme_gpu_copy_calcspline_constants(gmx_pme_t *pme)
     // should check device info here for CC >= 3.0
     {
         cudaResourceDesc rd;
-        cudaTextureDesc td;
+        cudaTextureDesc  td;
 
         memset(&rd, 0, sizeof(rd));
         rd.resType                  = cudaResourceTypeLinear;
@@ -703,49 +711,55 @@ void pme_gpu_copy_calcspline_constants(gmx_pme_t *pme)
 
 void pme_gpu_alloc_grids(gmx_pme_t *pme, const int gmx_unused grid_index)
 {
-    const int pnx = pme->pmegrid_nx;
-    const int pny = pme->pmegrid_ny;
-    const int pnz = pme->pmegrid_nz;
+    const int pnx      = pme->pmegrid_nx;
+    const int pny      = pme->pmegrid_ny;
+    const int pnz      = pme->pmegrid_nz;
     const int gridSize = pnx * pny * pnz * sizeof(real);
 
     pme->gpu->grid = (real *)PMEMemoryFetch(pme, PME_ID_REAL_GRID, gridSize, ML_DEVICE);
     if (pme->gpu->bOutOfPlaceFFT)
+    {
         pme->gpu->fourierGrid = (t_complex *)PMEMemoryFetch(pme, PME_ID_COMPLEX_GRID, gridSize, ML_DEVICE);
+    }
     else
+    {
         pme->gpu->fourierGrid = (t_complex *)pme->gpu->grid;
+    }
 }
 
 void pme_gpu_clear_grid(gmx_pme_t *pme, const int gmx_unused grid_index)
 {
     /*
-    pmegrid_t *pmegrid = &(pme->pmegrid[grid_index].grid);
-    const int pnx = pmegrid->n[XX];
-    const int pny = pmegrid->n[YY];
-    const int pnz = pmegrid->n[ZZ];
-    */
+       pmegrid_t *pmegrid = &(pme->pmegrid[grid_index].grid);
+       const int pnx = pmegrid->n[XX];
+       const int pny = pmegrid->n[YY];
+       const int pnz = pmegrid->n[ZZ];
+     */
 
-    const int pnx = pme->pmegrid_nx;
-    const int pny = pme->pmegrid_ny;
-    const int pnz = pme->pmegrid_nz;
-    const int gridSize = pnx * pny * pnz * sizeof(real);
+    const int    pnx      = pme->pmegrid_nx;
+    const int    pny      = pme->pmegrid_ny;
+    const int    pnz      = pme->pmegrid_nz;
+    const int    gridSize = pnx * pny * pnz * sizeof(real);
 
     cudaStream_t s = pme->gpu->pmeStream;
 
-    cudaError_t stat = cudaMemsetAsync(pme->gpu->grid, 0, gridSize, s);
+    cudaError_t  stat = cudaMemsetAsync(pme->gpu->grid, 0, gridSize, s);
     CU_RET_ERR(stat, "cudaMemsetAsync spread error");
 }
 
 void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
-         const int gmx_unused grid_index,
-         pmegrid_t *pmegrid,
-         const gmx_bool bCalcSplines,
-         const gmx_bool bSpread,
-         const gmx_bool bDoSplines)
+                        const int gmx_unused grid_index,
+                        pmegrid_t *pmegrid,
+                        const gmx_bool bCalcSplines,
+                        const gmx_bool bSpread,
+                        const gmx_bool bDoSplines)
 {
     const gmx_bool bSeparateKernels = false;  // significantly slower if true
     if (!bCalcSplines && !bSpread)
+    {
         gmx_fatal(FARGS, "No splining or spreading to be done?"); //yupinov use of gmx_fatal
 
+    }
     //yupinov
     // bCalcSplines is always true - untested, unfinished
     // bDoSplines is always false - untested
@@ -754,65 +768,65 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
     cudaStream_t s = pme->gpu->pmeStream;
 
     //int nx = pmegrid->s[XX], ny = pmegrid->s[YY], nz = pmegrid->s[ZZ];
-    const int order = pmegrid->order;
+    const int order   = pmegrid->order;
     const int overlap = order - 1;
 
     /*
-    ivec local_ndata, local_size, local_offset;
-    gmx_parallel_3dfft_real_limits_gpu(pme, grid_index, local_ndata, local_offset, local_size);
-    const int pnx = local_size[XX];
-    const int pny = local_size[YY];
-    const int pnz = local_size[ZZ];
-    const int nx = local_ndata[XX];
-    const int ny = local_ndata[YY];
-    const int nz = local_ndata[ZZ];
-    */
+       ivec local_ndata, local_size, local_offset;
+       gmx_parallel_3dfft_real_limits_gpu(pme, grid_index, local_ndata, local_offset, local_size);
+       const int pnx = local_size[XX];
+       const int pny = local_size[YY];
+       const int pnz = local_size[ZZ];
+       const int nx = local_ndata[XX];
+       const int ny = local_ndata[YY];
+       const int nz = local_ndata[ZZ];
+     */
     const int pnx = pmegrid->n[XX];
     const int pny = pmegrid->n[YY];
     const int pnz = pmegrid->n[ZZ];
-    const int nx = pme->nkx;
-    const int ny = pme->nky;
-    const int nz = pme->nkz;
+    const int nx  = pme->nkx;
+    const int ny  = pme->nky;
+    const int nz  = pme->nkz;
 
     const int n = pme->gpu->constants.nAtoms;
 
     const int gridSize = pnx * pny * pnz * sizeof(real);
 
-    int size_order = order * n * sizeof(real);
-    int size_order_dim = size_order * DIM;
-    real *theta_d = (real *)PMEMemoryFetch(pme, PME_ID_THETA, size_order_dim, ML_DEVICE);
-    real *dtheta_d = (real *)PMEMemoryFetch(pme, PME_ID_DTHETA, size_order_dim, ML_DEVICE);
+    int       size_order     = order * n * sizeof(real);
+    int       size_order_dim = size_order * DIM;
+    real     *theta_d        = (real *)PMEMemoryFetch(pme, PME_ID_THETA, size_order_dim, ML_DEVICE);
+    real     *dtheta_d       = (real *)PMEMemoryFetch(pme, PME_ID_DTHETA, size_order_dim, ML_DEVICE);
 
     // IDXPTR
-    int idx_size = n * DIM * sizeof(int);
-    int *idx_d = (int *)PMEMemoryFetch(pme, PME_ID_IDXPTR, idx_size, ML_DEVICE);
+    int        idx_size = n * DIM * sizeof(int);
+    int       *idx_d    = (int *)PMEMemoryFetch(pme, PME_ID_IDXPTR, idx_size, ML_DEVICE);
 
     const int3 nnOffset = {0, 5 * nx, 5 * (nx + ny)};
 
 
     if (bCalcSplines)
     {
-         /*
-        const size_t coordinatesSize = DIM * n_blocked * sizeof(real);
-        float3 *xptr_h = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_HOST);
-        memcpy(xptr_h, atc->x, coordinatesSize);
-        xptr_d = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_DEVICE);
-        cu_copy_H2D_async(xptr_d, xptr_h, coordinatesSize, ML_DEVICE, pme->gpu->pmeStream);
-        */
+        /*
+           const size_t coordinatesSize = DIM * n_blocked * sizeof(real);
+           float3 *xptr_h = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_HOST);
+           memcpy(xptr_h, atc->x, coordinatesSize);
+           xptr_d = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_DEVICE);
+           cu_copy_H2D_async(xptr_d, xptr_h, coordinatesSize, ML_DEVICE, pme->gpu->pmeStream);
+         */
     }
 
     // each spread kernel thread works on [order] contiguous x grid points, so we multiply the total number of threads by [order^2]
     // so only [1/order^2] of all kernel threads works on particle splines -> does it make sense to split it like this
 
-    const int blockSize = THREADS_PER_BLOCK;
-    const int particlesPerBlock = blockSize / order / order;
+    const int blockSize               = THREADS_PER_BLOCK;
+    const int particlesPerBlock       = blockSize / order / order;
     const int splineParticlesPerBlock = particlesPerBlock; //blockSize / DIM; - can be easily changed, just have to pass spread theta stride to the spline kernel!
     // duplicated below!
 
     dim3 nBlocksSpread((n + blockSize - 1) / blockSize * order * order);
     dim3 nBlocksSpline((n + splineParticlesPerBlock - 1) / splineParticlesPerBlock);
     dim3 dimBlockSpread(order, order, particlesPerBlock); // used for spline_and_spread / spread
-    dim3 dimBlockSpline(splineParticlesPerBlock, DIM); // used for spline
+    dim3 dimBlockSpline(splineParticlesPerBlock, DIM);    // used for spline
     switch (order)
     {
         case 4:
@@ -823,22 +837,24 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
                     pme_gpu_timing_start(pme, ewcsPME_SPLINE);
 
                     if (bDoSplines)
+                    {
                         gmx_fatal(FARGS, "the code for bDoSplines==true was not tested!");
+                    }
                     else
                     {
-                        pme_spline_kernel<4, blockSize / 4 / 4, FALSE> <<<nBlocksSpline, dimBlockSpline, 0, s>>>
-                                                                                                   (nnOffset,
+                        pme_spline_kernel<4, blockSize / 4 / 4, FALSE> <<< nBlocksSpline, dimBlockSpline, 0, s>>>
+                        (nnOffset,
 #if PME_USE_TEXTURES
 #if USE_TEXOBJ
-                                                                                                    nnTexture, fshTexture,
+                         nnTexture, fshTexture,
 #endif
 #else
-                                                                                                    pme->gpu->nnArray, pme->gpu->fshArray,
+                         pme->gpu->nnArray, pme->gpu->fshArray,
 #endif
-                                                                                                    pme->gpu->coordinates,
-                                                                                                    pme->gpu->coefficients,
-                                                                                                    theta_d, dtheta_d, idx_d,
-                                                                                                    pme->gpu->constants);
+                         pme->gpu->coordinates,
+                         pme->gpu->coefficients,
+                         theta_d, dtheta_d, idx_d,
+                         pme->gpu->constants);
 
 
                     }
@@ -851,9 +867,9 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
                 {
                     pme_gpu_timing_start(pme, ewcsPME_SPREAD);
 
-                    pme_spread_kernel<4, blockSize / 4 / 4> <<<nBlocksSpread, dimBlockSpread, 0, s>>>(pme->gpu->coefficients,
-                                                                                                     pme->gpu->grid, theta_d, idx_d,
-                                                                                                     pme->gpu->constants);
+                    pme_spread_kernel<4, blockSize / 4 / 4> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (pme->gpu->coefficients,
+                                                                                                        pme->gpu->grid, theta_d, idx_d,
+                                                                                                        pme->gpu->constants);
 
                     CU_LAUNCH_ERR("pme_spread_kernel");
 
@@ -867,29 +883,35 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
                 if (bCalcSplines)
                 {
                     if (bDoSplines)
+                    {
                         gmx_fatal(FARGS, "the code for bDoSplines==true was not tested!");
+                    }
                     else
                     {
                         if (bSpread)
                         {
-                            pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, FALSE, TRUE> <<<nBlocksSpread, dimBlockSpread, 0, s>>>
-                                  (nnOffset,
+                            pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, FALSE, TRUE> <<< nBlocksSpread, dimBlockSpread, 0, s>>>
+                            (nnOffset,
 #if PME_USE_TEXTURES
 #if USE_TEXOBJ
-                                   nnTexture, fshTexture,
+                             nnTexture, fshTexture,
 #endif
 #else
-                                   pme->gpu->nnArray, pme->gpu->fshArray,
+                             pme->gpu->nnArray, pme->gpu->fshArray,
 #endif
-                                   pme->gpu->coordinates, pme->gpu->coefficients, pme->gpu->grid, theta_d, dtheta_d, idx_d,
-                                   pme->gpu->constants);
+                             pme->gpu->coordinates, pme->gpu->coefficients, pme->gpu->grid, theta_d, dtheta_d, idx_d,
+                             pme->gpu->constants);
                         }
                         else
+                        {
                             gmx_fatal(FARGS, "the code for bSpread==false was not tested!");
+                        }
                     }
                 }
                 else
+                {
                     gmx_fatal(FARGS, "the code for bCalcSplines==false was not tested!");
+                }
                 CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
 
                 pme_gpu_timing_stop(pme, ewcsPME_SPLINEANDSPREAD);
@@ -897,15 +919,15 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
             if (bSpread && pme->gpu->bGPUSingle)
             {
                 // wrap on GPU as a separate small kernel - we need a complete grid first!
-                const int blockSize = 4 * warp_size; //yupinov this is everywhere! and architecture-specific
+                const int blockSize       = 4 * warp_size; //yupinov this is everywhere! and architecture-specific
                 const int overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
-                const int nBlocks = (overlappedCells + blockSize - 1) / blockSize;
+                const int nBlocks         = (overlappedCells + blockSize - 1) / blockSize;
 
                 pme_gpu_timing_start(pme, ewcsPME_WRAP);
 
-                pme_wrap_kernel<4> <<<nBlocks, blockSize, 0, s>>>(pme->gpu->constants,
-                                                                  pme->gpu->overlap,
-                                                                  pme->gpu->grid);
+                pme_wrap_kernel<4> <<< nBlocks, blockSize, 0, s>>> (pme->gpu->constants,
+                                                                    pme->gpu->overlap,
+                                                                    pme->gpu->grid);
 
                 CU_LAUNCH_ERR("pme_wrap_kernel");
 
@@ -935,4 +957,3 @@ void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
         cu_copy_D2H_async(atc->idx, idx_d, idx_size, s);
     }
 }
-

@@ -59,11 +59,13 @@ static gmx_bool debugMemoryPrint = false;
 void PMEMemoryFree(gmx_pme_t *pme, PMEDataID id, MemLocType location)
 {
     cudaError_t stat;
-    size_t i = location * PME_ID_END_INVALID + id;
+    size_t      i = location * PME_ID_END_INVALID + id;
     if (pme->gpu->StoragePointers[i])
     {
         if (debugMemoryPrint)
+        {
             printf("free! %p %d %d\n", pme->gpu->StoragePointers[i], id, location);
+        }
         if (location == ML_DEVICE)
         {
             stat = cudaFree(pme->gpu->StoragePointers[i]);
@@ -87,7 +89,7 @@ void *PMEMemoryFetch(gmx_pme_t *pme, PMEDataID id, size_t size, MemLocType locat
 
     assert(pme->gpu);
     cudaError_t stat = cudaSuccess;
-    size_t i = location * PME_ID_END_INVALID + id;
+    size_t      i    = location * PME_ID_END_INVALID + id;
 
     if (debugMemoryPrint && (pme->gpu->StorageSizes[i] > 0) && (size > 0) && (size > pme->gpu->StorageSizes[i]))
     {
@@ -141,9 +143,9 @@ void pme_gpu_copy_recipbox(gmx_pme_t *pme)
 /* Copies the grid sizes for overlapping (used in the current shabby PME wrap/unwrap code) */
 void pme_gpu_copy_wrap_zones(gmx_pme_t *pme)
 {
-    const int nx = pme->nkx;
-    const int ny = pme->nky;
-    const int nz = pme->nkz;
+    const int nx      = pme->nkx;
+    const int ny      = pme->nky;
+    const int nz      = pme->nkz;
     const int overlap = pme->pme_order - 1;
 
     // cell count in 7 parts of overlap
@@ -171,7 +173,9 @@ void pme_gpu_copy_wrap_zones(gmx_pme_t *pme)
 
     int cellsAccumCount_h[OVERLAP_ZONES];
     for (int i = 0; i < OVERLAP_ZONES; i++)
+    {
         cellsAccumCount_h[i] = zoneSizes_h[i].x * zoneSizes_h[i].y * zoneSizes_h[i].z;
+    }
     /* Accumulation */
     for (int i = 1; i < OVERLAP_ZONES; i++)
     {
@@ -185,7 +189,7 @@ void pme_gpu_copy_wrap_zones(gmx_pme_t *pme)
 void pme_gpu_copy_coordinates(gmx_pme_t *pme)
 {
     const size_t coordinatesSize = DIM * pme->gpu->constants.nAtoms * sizeof(real);
-    float3 *coordinates_h = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_HOST);
+    float3      *coordinates_h   = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_HOST);
     memcpy(coordinates_h, pme->atc[0].x, coordinatesSize);
     pme->gpu->coordinates = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_DEVICE);
     cu_copy_H2D_async(pme->gpu->coordinates, coordinates_h, coordinatesSize, pme->gpu->pmeStream);
@@ -210,7 +214,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
 
     const int grid_index = 0;
 
-    gmx_bool firstInit = !*pmeGPU;
+    gmx_bool  firstInit = !*pmeGPU;
     if (firstInit)
     {
         snew(*pmeGPU, 1);
@@ -218,12 +222,12 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
 
         /* GPU selection copied from non-bondeds */
         const int PMEGPURank = pme->nodeid;
-        char gpu_err_str[STRLEN];
+        char      gpu_err_str[STRLEN];
         assert(hwinfo);
         assert(hwinfo->gpu_info.gpu_dev);
         assert(gpu_opt->dev_use);
 
-        int forcedGpuId = -1;
+        int   forcedGpuId     = -1;
         char *forcedGpuIdHack = getenv("GMX_PME_GPU_ID");
         if (forcedGpuIdHack)
         {
@@ -237,7 +241,9 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
             (*pmeGPU)->deviceInfo = &hwinfo->gpu_info.gpu_dev[gpu_opt->dev_use[PMEGPURank]];
             const gmx::MDLogger temp;
             if (!init_gpu(temp, PMEGPURank, gpu_err_str, &hwinfo->gpu_info, gpu_opt))
+            {
                 gmx_fatal(FARGS, "Could not select GPU %d for PME rank %d\n", (*pmeGPU)->deviceInfo->id, PMEGPURank);
+            }
         }
 
         // fallback instead?
@@ -284,9 +290,9 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         stat = cudaDeviceGetStreamPriorityRange(&lowest_priority, &highest_priority);
         CU_RET_ERR(stat, "PME cudaDeviceGetStreamPriorityRange failed");
         stat = cudaStreamCreateWithPriority(&(*pmeGPU)->pmeStream,
-                                                //cudaStreamNonBlocking,
-                                                cudaStreamDefault,
-                                                highest_priority);
+                                            //cudaStreamNonBlocking,
+                                            cudaStreamDefault,
+                                            highest_priority);
 
         CU_RET_ERR(stat, "cudaStreamCreateWithPriority on PME stream failed");
 #else
@@ -313,16 +319,16 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         pme_gpu_alloc_energy_virial(pme, grid_index);
     }
 
-    const bool gridSizeChanged = true;
+    const bool gridSizeChanged            = true;
     const bool localParticleNumberChanged = firstInit; /* Should be triggered on PME DD as well! */
 
     if (gridSizeChanged)
     {
-        const int3 localGridSize = {pme->nkx, pme->nky, pme->nkz};
+        const int3   localGridSize = {pme->nkx, pme->nky, pme->nkz};
         memcpy(&pme->gpu->constants.localGridSize, &localGridSize, sizeof(localGridSize));
         const float3 localGridSizeFP = {(real)localGridSize.x, (real)localGridSize.y, (real)localGridSize.z};
         memcpy(&pme->gpu->constants.localGridSizeFP, &localGridSizeFP, sizeof(localGridSizeFP));
-        const int3 localGridSizePadded = {pme->pmegrid_nx, pme->pmegrid_ny, pme->pmegrid_nz};
+        const int3   localGridSizePadded = {pme->pmegrid_nx, pme->pmegrid_ny, pme->pmegrid_nz};
         memcpy(&pme->gpu->constants.localGridSizePadded, &localGridSizePadded, sizeof(localGridSizePadded));
 
         pme_gpu_copy_wrap_zones(pme);
@@ -353,7 +359,9 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
 void pme_gpu_deinit(gmx_pme_t **pme)
 {
     if (!(*pme)->bGPU) /* We're assuming this boolean doesn't change during the run */
+    {
         return;
+    }
 
     stopGpuProfiler();
 
@@ -404,7 +412,9 @@ void pme_gpu_set_constants(gmx_pme_t *pme, const matrix box, const real ewaldCoe
 {
     // this is ran at the beginning of MD step
     if (!pme->bGPU)
+    {
         return;
+    }
 
     /* Assuming the recipbox is calculated already */
     pme_gpu_copy_recipbox(pme); // could use some boolean checks to know if it should run each time, like pressure coupling?
@@ -424,7 +434,9 @@ void pme_gpu_step_init(gmx_pme_t *pme)
     // should ideally be empty
     //and now there is also setparam call?
     if (!pme->bGPU)
+    {
         return;
+    }
 
     pme_gpu_copy_coordinates(pme);
 }
@@ -433,16 +445,22 @@ void pme_gpu_step_end(gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCal
 {
     // this is ran at the end of MD step
     if (!pme->bGPU)
+    {
         return;
+    }
 
     cudaError_t stat = cudaStreamSynchronize(pme->gpu->pmeStream);
     // needed for timings and for copy back events
     CU_RET_ERR(stat, "failed to synchronize the PME GPU stream!");
 
     if (bCalcF)
+    {
         pme_gpu_get_forces(pme);
+    }
     if (bCalcEnerVir)
+    {
         pme_gpu_get_energy_virial(pme);
+    }
 
     pme_gpu_update_timings(pme);
 
@@ -452,7 +470,7 @@ void pme_gpu_step_end(gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCal
 void pme_gpu_copy_charges(gmx_pme_t *pme)
 {
     const size_t coefficientSize = pme->gpu->constants.nAtoms * sizeof(real);
-    real *coefficients_h = (real *)PMEMemoryFetch(pme, PME_ID_COEFFICIENT, coefficientSize, ML_HOST);
+    real        *coefficients_h  = (real *)PMEMemoryFetch(pme, PME_ID_COEFFICIENT, coefficientSize, ML_HOST);
     memcpy(coefficients_h, pme->atc[0].coefficient, coefficientSize); // why not just register host memory?
     pme->gpu->coefficients = (real *)PMEMemoryFetch(pme, PME_ID_COEFFICIENT, coefficientSize, ML_DEVICE);
     cu_copy_H2D_async(pme->gpu->coefficients, coefficients_h, coefficientSize, pme->gpu->pmeStream);
@@ -460,11 +478,11 @@ void pme_gpu_copy_charges(gmx_pme_t *pme)
 
 void pme_gpu_sync_grid(gmx_pme_t *pme, gmx_fft_direction dir)
 {
-    gmx_bool syncGPUGrid = pme->bGPU && ((dir == GMX_FFT_REAL_TO_COMPLEX) ? true: pme->gpu->bGPUSolve);
+    gmx_bool syncGPUGrid = pme->bGPU && ((dir == GMX_FFT_REAL_TO_COMPLEX) ? true : pme->gpu->bGPUSolve);
     if (syncGPUGrid)
     {
         cudaError_t stat = cudaStreamWaitEvent(pme->gpu->pmeStream,
-            (dir == GMX_FFT_REAL_TO_COMPLEX) ? pme->gpu->syncSpreadGridD2H : pme->gpu->syncSolveGridD2H, 0);
+                                               (dir == GMX_FFT_REAL_TO_COMPLEX) ? pme->gpu->syncSpreadGridD2H : pme->gpu->syncSolveGridD2H, 0);
         CU_RET_ERR(stat, "error while waiting for the GPU grid");
     }
 }

@@ -872,9 +872,9 @@ static void dump_grid(FILE *fp,
                       int sx, int sy, int sz, int nx, int ny, int nz,
                       int mx, int my, int mz, const real *g, const gmx_unused gmx_pme_t *pme)
 {
-    int x, y, z;
+    int            x, y, z;
 
-    const gmx_bool YZXadjust = true;// ((g == (real *)pme->cfftgrid[0]) && (!pme->bGPUFFT));
+    const gmx_bool YZXadjust = true; // ((g == (real *)pme->cfftgrid[0]) && (!pme->bGPUFFT));
 
     for (x = 0; x < nx; x++)
     {
@@ -884,10 +884,14 @@ static void dump_grid(FILE *fp,
             {
                 size_t index = (x*my + y)*mz + z;
                 if (YZXadjust)
+                {
                     index = (y*mz + z)*mx + x;
+                }
                 if (g[index] != 0.0)
+                {
                     fprintf(fp, "%2d %2d %2d %10.2e\n",
-                        sx+x, sy+y, sz+z, g[index]);
+                            sx+x, sy+y, sz+z, g[index]);
+                }
             }
         }
     }
@@ -897,19 +901,19 @@ static void dump_grid(FILE *fp,
    that is commented out. */
 void dump_local_fftgrid(struct gmx_pme_t *pme, const real *fftgrid)
 {
-    int grid_index = 0;
+    int  grid_index = 0;
     ivec local_fft_ndata, local_fft_offset, local_fft_size;
     if (fftgrid == pme->fftgrid[grid_index])
     {
         fprintf(stderr, "fftgrid");
         gmx_parallel_3dfft_real_limits(pme->pfft_setup[grid_index], local_fft_ndata, local_fft_offset, local_fft_size);
     }
-    else if((t_complex *)fftgrid == pme->cfftgrid[grid_index])
+    else if ((t_complex *)fftgrid == pme->cfftgrid[grid_index])
     {
         ivec complex_order;
         fprintf(stderr, "cfftgrid");
         gmx_parallel_3dfft_complex_limits(pme->pfft_setup[grid_index], complex_order, local_fft_ndata, local_fft_offset, local_fft_size);
-        local_fft_size[ZZ] *= 2;
+        local_fft_size[ZZ]  *= 2;
         local_fft_ndata[ZZ] *= 2;
     }
     fprintf(stderr, " %p", fftgrid);
@@ -931,8 +935,8 @@ void dump_local_fftgrid(struct gmx_pme_t *pme, const real *fftgrid)
               local_fft_size[ZZ],
               fftgrid, pme);
 //
-   // pmeidx          = ix*(pme->pmegrid_ny*pme->pmegrid_nz)+iy*(pme->pmegrid_nz)+iz;
-  //  fftidx          = ix*(local_fft_size[YY]*local_fft_size[ZZ])+iy*(local_fft_size[ZZ])+iz;
+// pmeidx          = ix*(pme->pmegrid_ny*pme->pmegrid_nz)+iy*(pme->pmegrid_nz)+iz;
+//  fftidx          = ix*(local_fft_size[YY]*local_fft_size[ZZ])+iy*(local_fft_size[ZZ])+iz;
 
 
 }

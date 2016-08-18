@@ -40,7 +40,7 @@ enum PMEDataID
     PME_ID_DTHETA,
 
     // grids
-    PME_ID_REAL_GRID, // functions as pme_grid with overlap and as fftgrid
+    PME_ID_REAL_GRID,    // functions as pme_grid with overlap and as fftgrid
     PME_ID_COMPLEX_GRID, // used only for out-of-place cuFFT, functions as cfftgrid
 
     // spread (spline)
@@ -87,7 +87,7 @@ struct pme_gpu_overlap_t
 {
 #define OVERLAP_ZONES 7
     int2 overlapSizes[OVERLAP_ZONES];
-    int overlapCellCounts[OVERLAP_ZONES];
+    int  overlapCellCounts[OVERLAP_ZONES];
 };
 
 /* A structure for storing common constants accessed within GPU kernels by value.
@@ -101,17 +101,17 @@ struct pme_gpu_const_parameters
     //yupinov specify column or row
     float3 recipbox[DIM];
     /* Grid sizes */
-    int3 localGridSize;
+    int3   localGridSize;
     float3 localGridSizeFP;
-    int3 localGridSizePadded; /* padding includes (order - 1) overlap and possibly some alignment in Z? */
+    int3   localGridSizePadded; /* padding includes (order - 1) overlap and possibly some alignment in Z? */
     /* Number of local atoms */
-    int nAtoms;
+    int    nAtoms;
 
     /* Solving parameters - maybe they should be in a separate structure,
      * as we likely won't use GPU solve much in multi-rank PME? */
-    float volume; /* The unit cell volume */
+    float volume;      /* The unit cell volume */
     float ewaldFactor; /* (M_PI / ewaldCoeff)^2 */
-    float elFactor; /* ONE_4PI_EPS0 / pme->epsilon_r */
+    float elFactor;    /* ONE_4PI_EPS0 / pme->epsilon_r */
 };
 
 /* The main PME GPU structure, included in the PME CPU structure by pointer */
@@ -120,39 +120,39 @@ struct gmx_pme_cuda_t
     cudaStream_t pmeStream;
 
     // synchronization events
-    cudaEvent_t syncEnerVirD2H; // energy and virial have already been calculated in pme-solve, and have been copied to host
-    cudaEvent_t syncForcesD2H;  // forces have already been calculated in pme-gather, and have been copied to host
+    cudaEvent_t syncEnerVirD2H;    // energy and virial have already been calculated in pme-solve, and have been copied to host
+    cudaEvent_t syncForcesD2H;     // forces have already been calculated in pme-gather, and have been copied to host
     cudaEvent_t syncSpreadGridD2H; // the grid has been copied to the host after the spreading for CPU FFT
-    cudaEvent_t syncSolveGridD2H; // the grid has been copied to the host after the solve for CPU FFT
+    cudaEvent_t syncSolveGridD2H;  // the grid has been copied to the host after the solve for CPU FFT
 
     // some other permanent settings set on init
 
     // gmx_bool bGPUSpread;
     // spread being on a GPU is a given - it's the main effort
 
-    gmx_bool bGPUSolve; /* Are we doing the solve stage on the GPU? */
+    gmx_bool bGPUSolve;                                             /* Are we doing the solve stage on the GPU? */
 
-    gmx_bool bGPUGather; /* Are we doing the gather stage on the GPU? */
+    gmx_bool bGPUGather;                                            /* Are we doing the gather stage on the GPU? */
 
-    gmx_bool bGPUFFT; /* Are we using cuFFT as well? Currently only for a single rank */
+    gmx_bool bGPUFFT;                                               /* Are we using cuFFT as well? Currently only for a single rank */
 
-    gmx_bool bGPUSingle; /* Are we using the single GPU rank? A convenience variable */
+    gmx_bool bGPUSingle;                                            /* Are we using the single GPU rank? A convenience variable */
 
-    gmx_bool bOutOfPlaceFFT; /* If true, then an additional grid of the same size is used for R2C/solve/C2R */
+    gmx_bool bOutOfPlaceFFT;                                        /* If true, then an additional grid of the same size is used for R2C/solve/C2R */
 
-    gmx_bool bTiming; /* Enable timing using CUDA events */
+    gmx_bool bTiming;                                               /* Enable timing using CUDA events */
 
     gmx_bool useTextureObjects; /* If false, then use references */ //unused!
 
     // constant structures for arguments
-    pme_gpu_overlap_t overlap;
-    pme_gpu_const_parameters constants;
+    pme_gpu_overlap_t             overlap;
+    pme_gpu_const_parameters      constants;
 
-    gmx_device_info_t *deviceInfo;
+    gmx_device_info_t            *deviceInfo;
 
     std::vector<pme_gpu_timing *> timingEvents;
 
-    gmx_parallel_3dfft_gpu_t *pfft_setup_gpu;
+    gmx_parallel_3dfft_gpu_t     *pfft_setup_gpu;
 
 
     // internal host/device pointers storage
@@ -166,7 +166,7 @@ struct gmx_pme_cuda_t
     // fractional shifts (pme->fsh*)
     real *fshArray;
     // indices (pme->nn*)
-    int *nnArray;
+    int  *nnArray;
 
     // real grid - used everywhere
     real *grid;
@@ -176,7 +176,7 @@ struct gmx_pme_cuda_t
 
     // solve
     // 6 virial components, energy => 7 elements
-    real *energyAndVirial;
+    real  *energyAndVirial;
     size_t energyAndVirialSize; // bytes
 
     // gather
@@ -185,7 +185,7 @@ struct gmx_pme_cuda_t
 
     // forces and coordinates should be shared with nonbondeds!
     float3 *coordinates;
-    real *coefficients;
+    real   *coefficients;
 };
 
 // allocate memory; size == 0 => just fetch the current pointer

@@ -63,15 +63,15 @@ void pme_gpu_timing::stop_recording(cudaStream_t s)
 void pme_gpu_timing::reset()
 {
     total_milliseconds = 0.0;
-    call_count = 0;
+    call_count         = 0;
 }
 
 void pme_gpu_timing::update()
 {
     if (initialized && (call_count > 0)) // only touched events needed
     {
-        real milliseconds = 0.0;
-        cudaError_t stat = cudaEventElapsedTime(&milliseconds, event_start, event_stop);
+        real        milliseconds = 0.0;
+        cudaError_t stat         = cudaEventElapsedTime(&milliseconds, event_start, event_stop);
         CU_RET_ERR(stat, "PME timing cudaEventElapsedTime fail");
         total_milliseconds += milliseconds;
     }
@@ -125,7 +125,9 @@ void pme_gpu_update_timings(gmx_pme_t *pme)
     if (pme_gpu_enabled(pme))
     {
         for (size_t i = 0; i < pme->gpu->timingEvents.size(); i++)
+        {
             pme->gpu->timingEvents[i]->update();
+        }
     }
 }
 
@@ -147,7 +149,9 @@ void pme_gpu_destroy_timings(gmx_pme_t *pme)
     if (pme_gpu_enabled(pme))
     {
         for (size_t i = 0; i < pme->gpu->timingEvents.size(); i++)
+        {
             delete pme->gpu->timingEvents[i];
+        }
         pme->gpu->timingEvents.resize(0);
     }
 }
@@ -157,6 +161,8 @@ void pme_gpu_reset_timings(gmx_pme_t *pme)
     if (pme_gpu_enabled(pme))
     {
         for (size_t i = 0; i < pme->gpu->timingEvents.size(); i++)
+        {
             pme->gpu->timingEvents[i]->reset();
+        }
     }
 }
