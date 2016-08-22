@@ -59,10 +59,12 @@ void pme_gpu_clear_energy_virial(gmx_pme_t *pme, const int gmx_unused grid_index
     CU_RET_ERR(stat, "PME solve energies/virial cudaMemsetAsync");
 }
 
+/*! \brief
+ *
+ * Copies the pre-computed B-spline modules to the GPU
+ */
 void pme_gpu_copy_bspline_moduli(gmx_pme_t *pme)
 {
-    //yupinov make it textures
-
     for (int i = 0; i < DIM; i++)
     {
         int       gridSize;
