@@ -1691,8 +1691,8 @@ int gmx_pme_do(struct gmx_pme_t *pme,
     return 0;
 }
 
-// a slimmed down GPU version of the gmx_pme_do
-// will only work with 1 grid for now
+// a GPU version of the gmx_pme_do
+// the commented parts correspond to the features not-yet-implemented in PME GPU
 
 #define UNUSED_CPU_CODE_MARKER 0
 
@@ -2343,7 +2343,7 @@ void gmx_pme_gpu_launch_gather(gmx_pme_t *pme,
                                gmx_wallcycle_t wcycle,
                                real gmx_unused lambda_q, real gmx_unused lambda_lj, gmx_bool bClearF)
 {
-    if (!pme || !pme->bGPU)
+    if (!pme_gpu_performs_gather(pme))
     {
         return;
     }

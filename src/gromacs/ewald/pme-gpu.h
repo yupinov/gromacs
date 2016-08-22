@@ -33,6 +33,14 @@
  * the research papers on the package. Check out http://www.gromacs.org.
  */
 
+/*! \libinternal \file
+ *
+ * \brief This file contains function definitions for performing the PME calculations on GPU.
+ *
+ * \author Aleksei Iupinov <a.yupinov@gmail.com>
+ * \ingroup module_ewald
+ */
+
 #ifndef PMEGPU_H
 #define PMEGPU_H
 
