@@ -2343,22 +2343,20 @@ void gmx_pme_gpu_launch_gather(gmx_pme_t *pme,
                                gmx_wallcycle_t wcycle,
                                real lambda_q, real lambda_lj, gmx_bool bClearF)
 {
-    if (!pme || !pme->bGPU) // what the hell, why would pme be NULL
+    if (!pme || !pme->bGPU)
     {
         return;
     }
-    const int grid_index = 0;
-    //const gmx_bool bFirst = (grid_index == 0);
 
+    const int grid_index = 0;
     real            lambda  = grid_index < DO_Q ? lambda_q : lambda_lj;
-    const int       thread  = 0;
-    pme_atomcomm_t *atc     = pme->atc;
+    real            scale   = pme->bFEP ? (grid_index % 2 == 0 ? (1.0 - lambda) : lambda) : 1.0;
     pmegrids_t     *pmegrid = &pme->pmegrid[grid_index];
     real           *grid    = pmegrid->grid.grid;
 
-    gather_f_bsplines_wrapper(pme, grid, bClearF, atc,
-                              &atc->spline[thread],
-                              pme->bFEP ? (grid_index % 2 == 0 ? (1.0 - lambda) : lambda) : 1.0, wcycle, thread);
+    wallcycle_sub_start(wcycle, ewcsPME_GATHER);
+    gather_f_bsplines_gpu(pme, grid, pme->atc, scale, bClearF);
+    wallcycle_sub_stop(wcycle, ewcsPME_GATHER);
 }
 
 // this function should just fetch results

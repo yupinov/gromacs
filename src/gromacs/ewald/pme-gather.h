@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2016, by the GROMACS development team, led by
+ * Copyright (c) 2014,2015, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -37,7 +37,7 @@
 
 #include "gromacs/utility/real.h"
 
-#include "pme-gpu.h"
+#include "pme-internal.h"
 
 void
 gather_f_bsplines(struct gmx_pme_t *pme, real *grid,
@@ -48,31 +48,5 @@ gather_f_bsplines(struct gmx_pme_t *pme, real *grid,
 real
 gather_energy_bsplines(struct gmx_pme_t *pme, real *grid,
                        pme_atomcomm_t *atc);
-
-inline void gather_f_bsplines_wrapper(struct gmx_pme_t *pme, real *grid,
-                                      gmx_bool bClearF, pme_atomcomm_t *atc,
-                                      splinedata_t *spline,
-                                      real scale, gmx_wallcycle_t wcycle, int thread)
-{
-    if (thread == 0)
-    {
-        wallcycle_sub_start(wcycle, ewcsPME_GATHER);
-    }
-    if (pme->bGPU)
-    {
-        if (thread == 0)
-        {
-            gather_f_bsplines_gpu(pme, grid, atc, scale, bClearF);
-        }
-    }
-    else
-    {
-        gather_f_bsplines(pme, grid, bClearF, atc, spline, scale);
-    }
-    if (thread == 0)
-    {
-        wallcycle_sub_stop(wcycle, ewcsPME_GATHER);
-    }
-}
 
 #endif
