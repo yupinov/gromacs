@@ -123,10 +123,10 @@ CUDA_FUNC_QUALIFIER void pme_gpu_get_forces(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) 
 CUDA_FUNC_QUALIFIER void pme_gpu_get_energy_virial(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 // these should not really be external - only used in GPU launch code which is stuck in pme.cpp
-CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_gather(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
-CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_FFT(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
-CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_wrapping(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
-CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_solve(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_gather(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
+CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_FFT(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
+CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_wrapping(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
+CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_solve(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
 CUDA_FUNC_QUALIFIER void pme_gpu_sync_grid(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme), enum gmx_fft_direction CUDA_FUNC_ARGUMENT(dir)) CUDA_FUNC_TERM
 
 // nice external functions
