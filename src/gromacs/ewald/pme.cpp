@@ -2032,7 +2032,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
             /*
                lambda  = grid_index < DO_Q ? lambda_q : lambda_lj;
                bClearF = (bFirst && PAR(cr));
-#pragma omp parallel for num_threads(pme->nthread) schedule(static)
+               #pragma omp parallel for num_threads(pme->nthread) schedule(static)
                for (thread = 0; thread < pme->nthread; thread++)
                {
                 try
@@ -2341,21 +2341,15 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
 // launch the gather kernel, copy the result back
 void gmx_pme_gpu_launch_gather(gmx_pme_t *pme,
                                gmx_wallcycle_t wcycle,
-                               real lambda_q, real lambda_lj, gmx_bool bClearF)
+                               real gmx_unused lambda_q, real gmx_unused lambda_lj, gmx_bool bClearF)
 {
     if (!pme || !pme->bGPU)
     {
         return;
     }
 
-    const int grid_index = 0;
-    real            lambda  = grid_index < DO_Q ? lambda_q : lambda_lj;
-    real            scale   = pme->bFEP ? (grid_index % 2 == 0 ? (1.0 - lambda) : lambda) : 1.0;
-    pmegrids_t     *pmegrid = &pme->pmegrid[grid_index];
-    real           *grid    = pmegrid->grid.grid;
-
     wallcycle_sub_start(wcycle, ewcsPME_GATHER);
-    gather_f_bsplines_gpu(pme, grid, pme->atc, scale, bClearF);
+    gather_f_bsplines_gpu(pme, bClearF);
     wallcycle_sub_stop(wcycle, ewcsPME_GATHER);
 }
 

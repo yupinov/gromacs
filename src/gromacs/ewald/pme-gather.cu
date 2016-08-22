@@ -375,12 +375,10 @@ __global__ void pme_unwrap_kernel
     }
 }
 
-void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
-                           pme_atomcomm_t *atc,
-                           real scale,
-                           const gmx_bool bOverwriteForces)
+void gather_f_bsplines_gpu(struct gmx_pme_t *pme,
+                           const gmx_bool    bOverwriteForces)
 {
-    int nAtoms = pme->gpu->constants.nAtoms; //spline->n;
+    int nAtoms = pme->gpu->constants.nAtoms;
     if (!nAtoms)
     {
         return;
@@ -397,18 +395,19 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
 
     cudaStream_t s = pme->gpu->pmeStream;
 
-    //pme_atomcomm_t atc = pme->atc[0];
-    real     *atc_coefficient = atc->coefficient;
+    const int    order = pme->pme_order;
 
-    const int order = pme->pme_order;
-
-    const int nx       = pme->gpu->constants.localGridSize.x;
-    const int ny       = pme->gpu->constants.localGridSize.y;
-    const int nz       = pme->gpu->constants.localGridSize.z;
-    const int gridSize = pme->gpu->constants.localGridSizePadded.x *
+    const int    nx       = pme->gpu->constants.localGridSize.x;
+    const int    ny       = pme->gpu->constants.localGridSize.y;
+    const int    nz       = pme->gpu->constants.localGridSize.z;
+    const int    gridSize = pme->gpu->constants.localGridSizePadded.x *
         pme->gpu->constants.localGridSizePadded.y * pme->gpu->constants.localGridSizePadded.z * sizeof(real);
     if (!pme->gpu->bGPUFFT)
     {
+        const int       grid_index = 0;
+        pmegrids_t     *pmegrid    = &pme->pmegrid[grid_index];
+        real           *grid       = pmegrid->grid.grid;
+
         cu_copy_H2D_async(pme->gpu->grid, grid, gridSize, s);
     }
 
@@ -445,13 +444,13 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
 
     real *atc_f_h = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
 
-    for (int i = 0; i < nAtoms; i++)
-    {
-        // coefficients
-        atc_coefficient[i] *= scale;
-    }
+    /* These are the unused coefficient scales for LJ/free energy */
+    /*
+       real            lambda  = grid_index < DO_Q ? lambda_q : lambda_lj;
+       real            scale   = pme->bFEP ? (grid_index % 2 == 0 ? (1.0 - lambda) : lambda) : 1.0;
+     */
 
-    // thetas
+    /* Spline parameters */
     real *theta_d  = (real *)PMEMemoryFetch(pme, PME_ID_THETA, DIM * size_splines, ML_DEVICE);
     real *dtheta_d = (real *)PMEMemoryFetch(pme, PME_ID_DTHETA, DIM * size_splines, ML_DEVICE);
 
@@ -490,7 +489,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme, real *grid,
     }
     else
     {
-        gmx_fatal(FARGS, "gather: orders other than 4 untested!");
+        gmx_fatal(FARGS, "PME gather: orders other than 4 were not tested!");
     }
     CU_LAUNCH_ERR("pme_gather_kernel");
 

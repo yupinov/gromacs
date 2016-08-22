@@ -153,7 +153,9 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
 // so there is no reason not to put this call directly back into gmx_pme_gpu_launch for bClearF == true
 void gmx_pme_gpu_launch_gather(gmx_pme_t *pme,
                                gmx_wallcycle_t wcycle,
-                               real lambda_q, real lambda_lj, gmx_bool bClearF);
+                               real gmx_unused lambda_q,
+                               real gmx_unused lambda_lj,
+                               gmx_bool bClearF);
 
 int gmx_pme_gpu_get_results(struct gmx_pme_t *pme,
                             t_commrec gmx_unused *cr,
