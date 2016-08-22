@@ -52,7 +52,7 @@
 
 #include "gromacs/math/units.h"
 #include "gromacs/utility/smalloc.h"
-#include "pme-cuda.cuh"
+#include "pme.cuh"
 #include "pme-gpu.h"
 
 static gmx_bool debugMemoryPrint = false;

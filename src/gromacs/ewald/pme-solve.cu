@@ -42,7 +42,7 @@
 #include "gmxpre.h"
 
 #include "gromacs/utility/gmxassert.h"
-#include "pme-cuda.cuh"
+#include "pme.cuh"
 #include "pme-gpu.h"   //?
 #include "pme-internal.h"
 #include "pme-solve.h" //? some work structure reliance?

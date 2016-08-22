@@ -43,7 +43,7 @@
 
 #include <assert.h>
 
-#include "pme-cuda.cuh"
+#include "pme.cuh"
 
 /*! \brief
  * Allocate the GPU output buffer for the resulting PME forces.

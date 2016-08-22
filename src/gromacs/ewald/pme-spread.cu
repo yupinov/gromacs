@@ -49,7 +49,7 @@
 #include "gromacs/utility/fatalerror.h"
 
 #include "pme-timings.cuh"
-#include "pme-cuda.cuh"
+#include "pme.cuh"
 
 #define PME_GPU_PARALLEL_SPLINE 1
 /* This define affects the spline calculation in the spreading kernel.
