@@ -39,6 +39,13 @@
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
 
+
+/*! \brief \internal
+ *
+ * This is a CPU PME solver internal work unit structure.
+ * For uniformity purpose, the GPU code puts result into the same single thread structure.
+ * Hence, exposure of the structure in the header file.
+ */
 struct pme_solve_work_t
 {
     /* work data for solve_pme */
