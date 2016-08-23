@@ -223,6 +223,18 @@ struct gmx_pme_cuda_t
 };
 
 // allocate memory; size == 0 => just fetch the current pointer
-void *PMEMemoryFetch(gmx_pme_t *pme, PMEDataID id, size_t size, MemLocType location);
+void *PMEMemoryFetch(const gmx_pme_t *pme, PMEDataID id, size_t size, MemLocType location);
+
+
+// dumping all the CUDA-specific PME functions here...
+
+// copies the bspline moduli to the device (used in PME solve)
+void pme_gpu_copy_bspline_moduli(gmx_pme_t *pme);
+
+/*! \brief Copies the charges to the GPU */
+void pme_gpu_copy_charges(const gmx_pme_t *pme);
+
+
+void gmx_parallel_3dfft_destroy_gpu(const gmx_parallel_3dfft_gpu_t &pfft_setup);
 
 #endif

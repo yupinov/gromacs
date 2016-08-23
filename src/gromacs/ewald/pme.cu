@@ -58,7 +58,7 @@
 static gmx_bool debugMemoryPrint = false;
 
 /* A GPU/host memory deallocation routine */
-void PMEMemoryFree(gmx_pme_t *pme, PMEDataID id, MemLocType location)
+void PMEMemoryFree(const gmx_pme_t *pme, PMEDataID id, MemLocType location)
 {
     cudaError_t stat;
     size_t      i = location * PME_ID_END_INVALID + id;
@@ -82,20 +82,20 @@ void PMEMemoryFree(gmx_pme_t *pme, PMEDataID id, MemLocType location)
     }
 }
 
-/* A GPU/host memory allocation/fetching routine
+/* \brief
+ *
+ * A GPU/host memory allocation/fetching routine.
  * If size is 0, it just returns the current pointer.
  */
-void *PMEMemoryFetch(gmx_pme_t *pme, PMEDataID id, size_t size, MemLocType location)
+void *PMEMemoryFetch(const gmx_pme_t *pme, PMEDataID id, size_t size, MemLocType location)
 {
-    // size == 0 => just return a current pointer
-
     assert(pme->gpu);
     cudaError_t stat = cudaSuccess;
     size_t      i    = location * PME_ID_END_INVALID + id;
 
     if (debugMemoryPrint && (pme->gpu->StorageSizes[i] > 0) && (size > 0) && (size > pme->gpu->StorageSizes[i]))
     {
-        printf("asked to realloc %lu into %lu with ID %d\n", pme->gpu->StorageSizes[i], size, id);
+        printf("Asked to reallocate %lu into %lu with ID %d\n", pme->gpu->StorageSizes[i], size, id);
     }
 
     if (pme->gpu->StorageSizes[i] < size)
@@ -105,7 +105,7 @@ void *PMEMemoryFetch(gmx_pme_t *pme, PMEDataID id, size_t size, MemLocType locat
         {
             if (debugMemoryPrint)
             {
-                printf("asked to alloc %lu", size);
+                printf("Asked to alloc %lu", size);
             }
             if (location == ML_DEVICE)
             {
@@ -443,6 +443,19 @@ void pme_gpu_step_init(gmx_pme_t *pme)
     pme_gpu_copy_coordinates(pme);
 }
 
+void pme_gpu_grid_init(const gmx_pme_t *pme, const int gmx_unused grid_index)
+{
+    // this is ran at the beginning of MD step
+    // should ideally be empty
+    //and now there is also setparam call?
+    if (!pme_gpu_enabled(pme))
+    {
+        return;
+    }
+
+    pme_gpu_copy_charges(pme);
+}
+
 void pme_gpu_step_end(gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCalcEnerVir)
 {
     // this is ran at the end of MD step
@@ -469,7 +482,7 @@ void pme_gpu_step_end(gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCal
     pme_gpu_step_reinit(pme);
 }
 
-void pme_gpu_copy_charges(gmx_pme_t *pme)
+void pme_gpu_copy_charges(const gmx_pme_t *pme)
 {
     const size_t coefficientSize = pme->gpu->constants.nAtoms * sizeof(real);
     real        *coefficients_h  = (real *)PMEMemoryFetch(pme, PME_ID_COEFFICIENT, coefficientSize, ML_HOST);
@@ -478,7 +491,7 @@ void pme_gpu_copy_charges(gmx_pme_t *pme)
     cu_copy_H2D_async(pme->gpu->coefficients, coefficients_h, coefficientSize, pme->gpu->pmeStream);
 }
 
-void pme_gpu_sync_grid(gmx_pme_t *pme, gmx_fft_direction dir)
+void pme_gpu_sync_grid(const gmx_pme_t *pme, gmx_fft_direction dir)
 {
     gmx_bool syncGPUGrid = pme->bGPU && ((dir == GMX_FFT_REAL_TO_COMPLEX) ? true : pme->gpu->bGPUSolve);
     if (syncGPUGrid)
@@ -489,25 +502,32 @@ void pme_gpu_sync_grid(gmx_pme_t *pme, gmx_fft_direction dir)
     }
 }
 
+
+gmx_bool pme_gpu_enabled(const gmx_pme_t *pme)
+{
+    return (pme != NULL) && pme->bGPU;
+}
+
+
 // wrappers just for the pme.cpp host calls - a PME GPU code that should ideally be in this file as well
 // C++11 not supported in CUDA host code by default => the code stays there for now
 
-gmx_bool pme_gpu_performs_gather(gmx_pme_t *pme)
+gmx_bool pme_gpu_performs_gather(const gmx_pme_t *pme)
 {
-    return pme && pme->bGPU && pme->gpu->bGPUGather;
+    return pme_gpu_enabled(pme) && pme->gpu->bGPUGather;
 }
 
-gmx_bool pme_gpu_performs_FFT(gmx_pme_t *pme)
+gmx_bool pme_gpu_performs_FFT(const gmx_pme_t *pme)
 {
-    return pme && pme->bGPU && pme->gpu->bGPUFFT;
+    return pme_gpu_enabled(pme) && pme->gpu->bGPUFFT;
 }
 
-gmx_bool pme_gpu_performs_wrapping(gmx_pme_t *pme)
+gmx_bool pme_gpu_performs_wrapping(const gmx_pme_t *pme)
 {
-    return pme && pme->bGPU && pme->gpu->bGPUSingle;
+    return pme_gpu_enabled(pme) && pme->gpu->bGPUSingle;
 }
 
-gmx_bool pme_gpu_performs_solve(gmx_pme_t *pme)
+gmx_bool pme_gpu_performs_solve(const gmx_pme_t *pme)
 {
-    return pme && pme->bGPU && pme->gpu->bGPUSolve;
+    return pme_gpu_enabled(pme) && pme->gpu->bGPUSolve;
 }

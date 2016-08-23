@@ -60,11 +60,6 @@ struct gmx_gpu_opt_t;
 
 // internal data handling
 
-// copies the bspline moduli to the device (used in PME solve)
-CUDA_FUNC_QUALIFIER void pme_gpu_copy_bspline_moduli(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
-
-// copies the charges to the device (used in PME spread/gather)
-CUDA_FUNC_QUALIFIER void pme_gpu_copy_charges(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 
 
@@ -123,16 +118,16 @@ CUDA_FUNC_QUALIFIER void pme_gpu_get_forces(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) 
 CUDA_FUNC_QUALIFIER void pme_gpu_get_energy_virial(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 // these should not really be external - only used in GPU launch code which is stuck in pme.cpp
-CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_gather(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
-CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_FFT(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
-CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_wrapping(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
-CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_solve(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
-CUDA_FUNC_QUALIFIER void pme_gpu_sync_grid(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme), enum gmx_fft_direction CUDA_FUNC_ARGUMENT(dir)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_gather(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
+CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_FFT(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
+CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_wrapping(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
+CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_solve(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
+CUDA_FUNC_QUALIFIER void pme_gpu_sync_grid(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme), enum gmx_fft_direction CUDA_FUNC_ARGUMENT(dir)) CUDA_FUNC_TERM
 
 // nice external functions
 
-/*! \brief Resets PME GPU timings. */
-CUDA_FUNC_QUALIFIER void pme_gpu_reset_timings(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+/*! \brief Finds out if PME is ran on GPU currently. */
+CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_enabled(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
 
 /*! \brief Initializes the PME GPU data at the beginning or on DD. */
 CUDA_FUNC_QUALIFIER void pme_gpu_init(gmx_pme_gpu_t      **CUDA_FUNC_ARGUMENT(pmeGPU),
@@ -140,17 +135,20 @@ CUDA_FUNC_QUALIFIER void pme_gpu_init(gmx_pme_gpu_t      **CUDA_FUNC_ARGUMENT(pm
                                       const gmx_hw_info_t *CUDA_FUNC_ARGUMENT(hwinfo),
                                       const gmx_gpu_opt_t *CUDA_FUNC_ARGUMENT(gpu_opt)) CUDA_FUNC_TERM
 
-/*! \brief Destroys the PME GPU data at the end. */
-CUDA_FUNC_QUALIFIER void pme_gpu_deinit( //gmx_pme_gpu_t **CUDA_FUNC_ARGUMENT(pmeGPU),
-        gmx_pme_t **CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+/*! \brief Destroys the PME GPU data at the end of the run. */
+CUDA_FUNC_QUALIFIER void pme_gpu_deinit(gmx_pme_t **CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 /*! \brief Initializes the PME GPU step. */
 CUDA_FUNC_QUALIFIER void pme_gpu_step_init(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
-/*! \brief Sets the PME GPU constants. Is there any reason for this to be separate from the pme_gpu_step_init? */
+/*! \brief Sets the PME GPU constants. Currently it is called together with the pme_gpu_step_init, but can possibly be decoupled? */
 CUDA_FUNC_QUALIFIER void pme_gpu_set_constants(gmx_pme_t   *CUDA_FUNC_ARGUMENT(pme),
                                                const matrix CUDA_FUNC_ARGUMENT(box),
                                                const real   CUDA_FUNC_ARGUMENT(ewaldCoeff)) CUDA_FUNC_TERM
+
+/*! \brief Initializes the single grid in the PME GPU step. */
+CUDA_FUNC_QUALIFIER void pme_gpu_grid_init(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme), const int CUDA_FUNC_ARGUMENT(grid_index)) CUDA_FUNC_TERM
+
 
 
 /*! \brief Finishes the PME GPU step, copying back the forces and/or energy/virial. */
@@ -158,7 +156,8 @@ CUDA_FUNC_QUALIFIER void pme_gpu_step_end(gmx_pme_t     *CUDA_FUNC_ARGUMENT(pme)
                                           const gmx_bool CUDA_FUNC_ARGUMENT(bCalcF),
                                           const gmx_bool CUDA_FUNC_ARGUMENT(bCalcEnerVir)) CUDA_FUNC_TERM
 
-CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_destroy_gpu(const gmx_parallel_3dfft_gpu_t &CUDA_FUNC_ARGUMENT(pfft_setup)) CUDA_FUNC_TERM
+/*! \brief Resets the PME GPU timings. */
+CUDA_FUNC_QUALIFIER void pme_gpu_reset_timings(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 
 CUDA_FUNC_QUALIFIER void pme_gpu_get_timings(gmx_wallclock_gpu_t **CUDA_FUNC_ARGUMENT(timings), gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM

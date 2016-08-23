@@ -146,11 +146,6 @@ void gmx_parallel_3dfft_execute_gpu_wrapper(gmx_pme_t              *pme,
     wallcycle_sub_stop(wcycle, wsubcycle_id);
 }
 
-gmx_bool pme_gpu_enabled(const gmx_pme_t *pme)
-{
-    return (pme != NULL) && pme->bGPU;
-}
-
 // unused openMP reduction of 2 force buffers
 void pme_gpu_sloppy_force_reduction(const gmx_pme_t *pme, const real *forcesGPU)
 {
@@ -1857,7 +1852,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
             wallcycle_stop(wcycle, ewcPME_REDISTXF);
         }
 
-        pme_gpu_copy_charges(pme); //yupinov why is it here
+        pme_gpu_grid_init(pme, grid_index);
 
         if (debug)
         {
