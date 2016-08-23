@@ -86,9 +86,6 @@ void pme_gpu_get_forces(const gmx_pme_t *pme)
     const size_t forcesSize = DIM * n * sizeof(real);
     real        *forces     = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
     memcpy(pme->atc[0].f, forces, forcesSize);
-
-    //pme_gpu_sloppy_force_reduction(pme, forces);
-    // Reduction is now done on the GPU instead by passing bOverwriteForces = FALSE to the gather_f_bsplines_gpu
 }
 
 /*! \brief

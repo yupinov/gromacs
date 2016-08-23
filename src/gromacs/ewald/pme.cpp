@@ -146,19 +146,6 @@ void gmx_parallel_3dfft_execute_gpu_wrapper(gmx_pme_t              *pme,
     wallcycle_sub_stop(wcycle, wsubcycle_id);
 }
 
-// unused openMP reduction of 2 force buffers
-void pme_gpu_sloppy_force_reduction(const gmx_pme_t *pme, const real *forcesGPU)
-{
-#pragma omp parallel for num_threads(pme->nthread)
-    for (int i = 0; i < pme->atc[0].n; i++)
-    {
-        for (int j = 0; j < DIM; j++)
-        {
-            pme->atc[0].f[i][j] += forcesGPU[i * DIM + j];
-        }
-    }
-}
-
 /*! \brief Number of bytes in a cache line.
  *
  * Must also be a multiple of the SIMD and SIMD4 register size, to
