@@ -2339,7 +2339,7 @@ void gmx_pme_gpu_launch_gather(gmx_pme_t *pme,
 
 int gmx_pme_gpu_get_results(const gmx_pme_t *pme,
                             t_commrec gmx_unused *cr,
-                            gmx_wallcycle_t wcycle,
+                            gmx_wallcycle_t gmx_unused wcycle,
                             matrix vir_q,
                             matrix vir_lj,
                             real *energy_q,  real *energy_lj,
@@ -2360,9 +2360,8 @@ int gmx_pme_gpu_get_results(const gmx_pme_t *pme,
     real                 energy_AB[4];
     matrix               vir_AB[4];
 
-    //wallcycle_start(wcycle, ewcPME_WAITGPU);
+    /* FIXME: there should be a waiting wallycle here, which would not conflict with the NB waiting */
     pme_gpu_step_end(pme, bCalcF, bCalcEnerVir);
-    //wallcycle_stop(wcycle, ewcPME_WAITGPU);
 
     // copied from up there in the loop...
     assert(grid_index == 0);

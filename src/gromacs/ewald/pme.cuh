@@ -40,7 +40,6 @@
 #include "pme-internal.h"  //?
 #include "pme-timings.cuh" //?
 
-
 #include <vector>
 
 #define PME_USE_TEXTURES 1
