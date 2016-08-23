@@ -262,7 +262,10 @@ typedef struct gmx_pme_t {
     int            pme_order;
     real           epsilon_r;
 
-    gmx_bool       bGPU;                    /* Are we using the GPU acceleration for PME purposes? */
+    gmx_bool       bGPU;                    /* Are we using the GPU acceleration for PME purposes?
+                                             * A permanent variable, should be read using pme_gpu_enabled.
+                                             */
+
     gmx_pme_gpu_t *gpu;                     /* pointer to GPU data     */
 
     int            ljpme_combination_rule;  /* Type of combination rule in LJ-PME */

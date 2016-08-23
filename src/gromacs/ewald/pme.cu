@@ -209,7 +209,7 @@ void pme_gpu_step_reinit(gmx_pme_t *pme)
 void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *hwinfo,
                   const gmx_gpu_opt_t *gpu_opt)
 {
-    if (!pme->bGPU)
+    if (!pme_gpu_enabled(pme))
     {
         return;
     }
@@ -251,9 +251,9 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         // fallback instead?
         // first init and either of the hw structures NULL => should also fall back to CPU
 
-        /* Some permanent settings follow */
+        /* Some permanent settings are set here */
 
-        (*pmeGPU)->bGPUSingle = pme->bGPU && (pme->nnodes == 1);
+        (*pmeGPU)->bGPUSingle = pme_gpu_enabled(pme) && (pme->nnodes == 1);
         /* A convenience variable. */
 
         (*pmeGPU)->bGPUFFT = (*pmeGPU)->bGPUSingle && !getenv("GMX_PME_GPU_FFTW");
@@ -360,7 +360,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
 /* The PME GPU destructor function that is called at the end of the run*/
 void pme_gpu_deinit(gmx_pme_t **pme)
 {
-    if (!(*pme)->bGPU) /* We're assuming this boolean doesn't change during the run */
+    if (!pme_gpu_enabled(*pme)) /* Assuming this boolean doesn't change during the run */
     {
         return;
     }
@@ -413,7 +413,7 @@ void pme_gpu_deinit(gmx_pme_t **pme)
 void pme_gpu_set_constants(gmx_pme_t *pme, const matrix box, const real ewaldCoeff)
 {
     // this is ran at the beginning of MD step
-    if (!pme->bGPU)
+    if (!pme_gpu_enabled(pme))
     {
         return;
     }
@@ -435,7 +435,7 @@ void pme_gpu_step_init(gmx_pme_t *pme)
     // this is ran at the beginning of MD step
     // should ideally be empty
     //and now there is also setparam call?
-    if (!pme->bGPU)
+    if (!pme_gpu_enabled(pme))
     {
         return;
     }
@@ -459,7 +459,7 @@ void pme_gpu_grid_init(const gmx_pme_t *pme, const int gmx_unused grid_index)
 void pme_gpu_step_end(gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCalcEnerVir)
 {
     // this is ran at the end of MD step
-    if (!pme->bGPU)
+    if (!pme_gpu_enabled(pme))
     {
         return;
     }
@@ -493,7 +493,7 @@ void pme_gpu_copy_charges(const gmx_pme_t *pme)
 
 void pme_gpu_sync_grid(const gmx_pme_t *pme, gmx_fft_direction dir)
 {
-    gmx_bool syncGPUGrid = pme->bGPU && ((dir == GMX_FFT_REAL_TO_COMPLEX) ? true : pme->gpu->bGPUSolve);
+    gmx_bool syncGPUGrid = pme_gpu_enabled(pme) && ((dir == GMX_FFT_REAL_TO_COMPLEX) ? true : pme->gpu->bGPUSolve);
     if (syncGPUGrid)
     {
         cudaError_t stat = cudaStreamWaitEvent(pme->gpu->pmeStream,
@@ -507,7 +507,6 @@ gmx_bool pme_gpu_enabled(const gmx_pme_t *pme)
 {
     return (pme != NULL) && pme->bGPU;
 }
-
 
 // wrappers just for the pme.cpp host calls - a PME GPU code that should ideally be in this file as well
 // C++11 not supported in CUDA host code by default => the code stays there for now

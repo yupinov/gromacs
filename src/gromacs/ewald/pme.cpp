@@ -726,14 +726,14 @@ int gmx_pme_init(struct gmx_pme_t   **pmedata,
     snew(pme->bsp_mod[YY], pme->nky);
     snew(pme->bsp_mod[ZZ], pme->nkz);
 
-    pme->gpu = pmeGPU; // carrying over the same GPU structure
+    pme->gpu = pmeGPU; /* Carrying over the single GPU structure */
 
     pme->bGPU = bPMEGPU && (pme->nodeid == 0);
-    // only the first rank should do PME GPU for now.
-    // unrelated: the PP/PME GPU selection logic is silly: currently PME always runs on the same GPU as PP runs/would run on
+    //yupinov: only the first rank should do PME GPU for now.
 
-    if (pme->bGPU) // safeguards
+    if (pme_gpu_enabled(pme)) // safeguards
     {
+        //yupinov: fatal vs. assert
         GMX_RELEASE_ASSERT(pme->nnodes == 1, "PME GPU is only implemented for a single rank");
         // only a single rank
         GMX_RELEASE_ASSERT(!pme->bFEP, "PME GPU is only implemented for a single grid");
@@ -761,7 +761,7 @@ int gmx_pme_init(struct gmx_pme_t   **pmedata,
     pme->pmegrid_nz_base = pme->nkz;
     pme->pmegrid_nz      = pme->pmegrid_nz_base + pme->pme_order - 1;
     set_grid_alignment(&pme->pmegrid_nz, pme->pme_order);
-    if (pme->bGPU)
+    if (pme_gpu_enabled(pme))
     {
         const int alignment = 2; // for complex grid of the same size - would only be useful for inplace, actually
         pme->pmegrid_nz = (pme->pmegrid_nz + alignment - 1) / alignment * alignment;
@@ -820,7 +820,7 @@ int gmx_pme_init(struct gmx_pme_t   **pmedata,
                           pme->overlap[0].s2g1[pme->nodeid_major]-pme->overlap[0].s2g0[pme->nodeid_major+1],
                           pme->overlap[1].s2g1[pme->nodeid_minor]-pme->overlap[1].s2g0[pme->nodeid_minor+1]);
             /* This routine will allocate the grid data to fit the FFTs */
-            //if (!pme->bGPU)
+            //if (!pme_gpu_enabled(pme))
             gmx_parallel_3dfft_init(&pme->pfft_setup[i], ndata,
                                     &pme->fftgrid[i], &pme->cfftgrid[i],
                                     pme->mpi_comm_d,
@@ -890,7 +890,7 @@ int gmx_pme_reinit(struct gmx_pme_t **pmedata,
     }
 
     ret = gmx_pme_init(pmedata, cr, pme_src->nnodes_major, pme_src->nnodes_minor,
-                       &irc, homenr, pme_src->bFEP_q, pme_src->bFEP_lj, FALSE, pme_src->nthread, pme_src->bGPU, pme_src->gpu);
+                       &irc, homenr, pme_src->bFEP_q, pme_src->bFEP_lj, FALSE, pme_src->nthread, pme_gpu_enabled(pme_src), pme_src->gpu);
 
     if (ret == 0)
     {
@@ -915,7 +915,7 @@ void gmx_pme_calc_energy(struct gmx_pme_t *pme, int n, rvec *x, real *q, real *V
     {
         gmx_incons("gmx_pme_calc_energy with free energy");
     }
-    if (pme->bGPU)
+    if (pme_gpu_enabled(pme))
     {
         gmx_incons("gmx_pme_calc_energy not implemented on GPU");
     }
@@ -986,7 +986,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                real *dvdlambda_q, real *dvdlambda_lj,
                int flags)
 {
-    if (pme->bGPU)
+    if (pme_gpu_enabled(pme))
     {
         return 0;
     }
@@ -1706,7 +1706,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                        real gmx_unused lambda_q,   real gmx_unused lambda_lj,
                        int flags)
 {
-    if (!pme->bGPU)
+    if (!pme_gpu_enabled(pme))
     {
         return 0;
     }
@@ -2360,7 +2360,7 @@ int gmx_pme_gpu_get_results(struct gmx_pme_t *pme,
                             real *dvdlambda_q, real *dvdlambda_lj,
                             int flags)
 {
-    if (!pme->bGPU)
+    if (!pme_gpu_enabled(pme))
     {
         return 0;
     }

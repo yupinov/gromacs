@@ -75,6 +75,7 @@
 #include "gromacs/utility/smalloc.h"
 
 #include "pme-internal.h"
+#include "pme.h"
 
 /*! \brief Parameters and settings for one PP-PME setup */
 struct pme_setup_t {
@@ -822,7 +823,7 @@ pme_load_balance(pme_load_balancing_t      *pme_lb,
         // that is the reason for the bGPU conditional
         // this can lead to a lot of reallocations on PME GPU
         // would be nicer if the allocated grid list was hidden within a single pmedata structure
-        if ((pme_lb->setup[pme_lb->cur].pmedata == NULL) || pme_lb->setup[pme_lb->cur].pmedata->bGPU)
+        if ((pme_lb->setup[pme_lb->cur].pmedata == NULL) || pme_gpu_enabled(pme_lb->setup[pme_lb->cur].pmedata))
         {
             /* Generate a new PME data structure,
              * copying part of the old pointers.
