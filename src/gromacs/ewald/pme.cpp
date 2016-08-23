@@ -2350,7 +2350,7 @@ void gmx_pme_gpu_launch_gather(gmx_pme_t *pme,
 
 // this function should just fetch results
 
-int gmx_pme_gpu_get_results(struct gmx_pme_t *pme,
+int gmx_pme_gpu_get_results(const gmx_pme_t *pme,
                             t_commrec gmx_unused *cr,
                             gmx_wallcycle_t wcycle,
                             matrix vir_q,

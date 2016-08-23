@@ -47,13 +47,13 @@
 #include "pme-internal.h"
 #include "pme-solve.h" //? some work structure reliance?
 
-void pme_gpu_alloc_energy_virial(gmx_pme_t *pme, const int gmx_unused grid_index)
+void pme_gpu_alloc_energy_virial(const gmx_pme_t *pme, const int gmx_unused grid_index)
 {
     pme->gpu->energyAndVirialSize = 7 * sizeof(real); /* 6 virial components + energy */
     pme->gpu->energyAndVirial     = (real *)PMEMemoryFetch(pme, PME_ID_ENERGY_AND_VIRIAL, pme->gpu->energyAndVirialSize, ML_DEVICE);
 }
 
-void pme_gpu_clear_energy_virial(gmx_pme_t *pme, const int gmx_unused grid_index)
+void pme_gpu_clear_energy_virial(const gmx_pme_t *pme, const int gmx_unused grid_index)
 {
     cudaError_t stat = cudaMemsetAsync(pme->gpu->energyAndVirial, 0, pme->gpu->energyAndVirialSize, pme->gpu->pmeStream);
     CU_RET_ERR(stat, "PME solve energies/virial cudaMemsetAsync");
@@ -63,7 +63,7 @@ void pme_gpu_clear_energy_virial(gmx_pme_t *pme, const int gmx_unused grid_index
  *
  * Copies the pre-computed B-spline modules to the GPU
  */
-void pme_gpu_copy_bspline_moduli(gmx_pme_t *pme)
+void pme_gpu_copy_bspline_moduli(const gmx_pme_t *pme)
 {
     for (int i = 0; i < DIM; i++)
     {
@@ -468,7 +468,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     }
 }
 
-void pme_gpu_get_energy_virial(gmx_pme_t *pme)
+void pme_gpu_get_energy_virial(const gmx_pme_t *pme)
 {
     cudaStream_t             s = pme->gpu->pmeStream;
 

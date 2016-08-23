@@ -198,7 +198,7 @@ void pme_gpu_copy_coordinates(gmx_pme_t *pme)
 }
 
 /* The PME GPU reinitialization function that is called both at the end of any MD step and on any DD step */
-void pme_gpu_step_reinit(gmx_pme_t *pme)
+void pme_gpu_step_reinit(const gmx_pme_t *pme)
 {
     const int grid_index = 0;
     pme_gpu_clear_grid(pme, grid_index);
@@ -456,7 +456,7 @@ void pme_gpu_grid_init(const gmx_pme_t *pme, const int gmx_unused grid_index)
     pme_gpu_copy_charges(pme);
 }
 
-void pme_gpu_step_end(gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCalcEnerVir)
+void pme_gpu_step_end(const gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCalcEnerVir)
 {
     // this is ran at the end of MD step
     if (!pme_gpu_enabled(pme))

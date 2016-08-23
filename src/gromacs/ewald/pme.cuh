@@ -229,12 +229,30 @@ void *PMEMemoryFetch(const gmx_pme_t *pme, PMEDataID id, size_t size, MemLocType
 // dumping all the CUDA-specific PME functions here...
 
 // copies the bspline moduli to the device (used in PME solve)
-void pme_gpu_copy_bspline_moduli(gmx_pme_t *pme);
+void pme_gpu_copy_bspline_moduli(const gmx_pme_t *pme);
 
 /*! \brief Copies the charges to the GPU */
 void pme_gpu_copy_charges(const gmx_pme_t *pme);
 
 
 void gmx_parallel_3dfft_destroy_gpu(const gmx_parallel_3dfft_gpu_t &pfft_setup);
+
+
+
+// copies the nn and fsh to the device (used in PME spread(spline))
+void pme_gpu_copy_calcspline_constants(const gmx_pme_t *pme);
+
+// clearing
+void pme_gpu_clear_grid(const gmx_pme_t *pme, const int grid_index);
+void pme_gpu_clear_energy_virial(const gmx_pme_t *pme, const int grid_index);
+
+// allocating
+void pme_gpu_alloc_grids(const gmx_pme_t *pme, const int grid_index);
+void pme_gpu_alloc_energy_virial(const gmx_pme_t *pme, const int grid_index);
+void pme_gpu_alloc_gather_forces(const gmx_pme_t *pme);
+
+void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup,
+                                 ivec                      ndata,
+                                 const gmx_pme_t          *pme);
 
 #endif

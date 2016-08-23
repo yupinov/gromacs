@@ -648,7 +648,7 @@ __global__ void pme_wrap_kernel(const pme_gpu_const_parameters constants,
     }
 }
 
-void pme_gpu_copy_calcspline_constants(gmx_pme_t *pme)
+void pme_gpu_copy_calcspline_constants(const gmx_pme_t *pme)
 {
     cudaStream_t s = pme->gpu->pmeStream;
 
@@ -717,7 +717,7 @@ void pme_gpu_copy_calcspline_constants(gmx_pme_t *pme)
 #endif
 }
 
-void pme_gpu_alloc_grids(gmx_pme_t *pme, const int gmx_unused grid_index)
+void pme_gpu_alloc_grids(const gmx_pme_t *pme, const int gmx_unused grid_index)
 {
     const int pnx      = pme->pmegrid_nx;
     const int pny      = pme->pmegrid_ny;
@@ -735,7 +735,7 @@ void pme_gpu_alloc_grids(gmx_pme_t *pme, const int gmx_unused grid_index)
     }
 }
 
-void pme_gpu_clear_grid(gmx_pme_t *pme, const int gmx_unused grid_index)
+void pme_gpu_clear_grid(const gmx_pme_t *pme, const int gmx_unused grid_index)
 {
     /*
        pmegrid_t *pmegrid = &(pme->pmegrid[grid_index].grid);
@@ -755,7 +755,7 @@ void pme_gpu_clear_grid(gmx_pme_t *pme, const int gmx_unused grid_index)
     CU_RET_ERR(stat, "cudaMemsetAsync spread error");
 }
 
-void spread_on_grid_gpu(gmx_pme_t *pme, pme_atomcomm_t *atc,
+void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t *atc,
                         const int gmx_unused grid_index,
                         pmegrid_t *pmegrid,
                         const gmx_bool bCalcSplines,

@@ -48,7 +48,7 @@
 /*! \brief
  * Allocate the GPU output buffer for the resulting PME forces.
  */
-void pme_gpu_alloc_gather_forces(gmx_pme_t *pme)
+void pme_gpu_alloc_gather_forces(const gmx_pme_t *pme)
 {
     const int    n = pme->gpu->constants.nAtoms;
     assert(n > 0);
@@ -75,7 +75,7 @@ void pme_gpu_copy_forces(gmx_pme_t *pme)
 /*! \brief
  * Wait for the PME GPU resulting forces on the CPU, and copy to the original CPU buffer (pme->atc[0].f).
  */
-void pme_gpu_get_forces(gmx_pme_t *pme)
+void pme_gpu_get_forces(const gmx_pme_t *pme)
 {
     cudaStream_t s    = pme->gpu->pmeStream;
     cudaError_t  stat = cudaStreamWaitEvent(s, pme->gpu->syncForcesD2H, 0);

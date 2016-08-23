@@ -66,7 +66,7 @@ struct gmx_parallel_3dfft_gpu
     ivec                      local_offset;
 };
 
-void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndata, gmx_pme_t *pme)
+void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndata, const gmx_pme_t *pme)
 {
     cufftResult_t            result;
     gmx_parallel_3dfft_gpu_t setup;

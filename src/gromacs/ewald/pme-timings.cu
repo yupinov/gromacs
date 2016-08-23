@@ -132,17 +132,17 @@ unsigned int pme_gpu_timing::get_call_count()
 
 // general functions
 
-void pme_gpu_timing_start(gmx_pme_t *pme, int PMEStageId)
+void pme_gpu_timing_start(const gmx_pme_t *pme, int PMEStageId)
 {
     pme->gpu->timingEvents[PMEStageId]->start_recording(pme->gpu->pmeStream);
 }
 
-void pme_gpu_timing_stop(gmx_pme_t *pme, int PMEStageId)
+void pme_gpu_timing_stop(const gmx_pme_t *pme, int PMEStageId)
 {
     pme->gpu->timingEvents[PMEStageId]->stop_recording(pme->gpu->pmeStream);
 }
 
-void pme_gpu_get_timings(gmx_wallclock_gpu_t **timings, gmx_pme_t *pme)
+void pme_gpu_get_timings(gmx_wallclock_gpu_t **timings, const gmx_pme_t *pme)
 {
     if (pme_gpu_enabled(pme))
     {
@@ -163,7 +163,7 @@ void pme_gpu_get_timings(gmx_wallclock_gpu_t **timings, gmx_pme_t *pme)
     }
 }
 
-void pme_gpu_update_timings(gmx_pme_t *pme)
+void pme_gpu_update_timings(const gmx_pme_t *pme)
 {
     if (pme_gpu_enabled(pme))
     {
@@ -174,7 +174,7 @@ void pme_gpu_update_timings(gmx_pme_t *pme)
     }
 }
 
-void pme_gpu_init_timings(gmx_pme_t *pme)
+void pme_gpu_init_timings(const gmx_pme_t *pme)
 {
     if (pme_gpu_enabled(pme))
     {
@@ -187,7 +187,7 @@ void pme_gpu_init_timings(gmx_pme_t *pme)
     }
 }
 
-void pme_gpu_destroy_timings(gmx_pme_t *pme)
+void pme_gpu_destroy_timings(const gmx_pme_t *pme)
 {
     if (pme_gpu_enabled(pme))
     {
@@ -199,7 +199,7 @@ void pme_gpu_destroy_timings(gmx_pme_t *pme)
     }
 }
 
-void pme_gpu_reset_timings(gmx_pme_t *pme)
+void pme_gpu_reset_timings(const gmx_pme_t *pme)
 {
     if (pme_gpu_enabled(pme))
     {

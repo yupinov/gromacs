@@ -62,23 +62,6 @@ struct gmx_gpu_opt_t;
 
 
 
-
-// copies the nn and fsh to the device (used in PME spread(spline))
-CUDA_FUNC_QUALIFIER void pme_gpu_copy_calcspline_constants(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
-
-// clearing
-CUDA_FUNC_QUALIFIER void pme_gpu_clear_grid(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme), const int CUDA_FUNC_ARGUMENT(grid_index)) CUDA_FUNC_TERM
-CUDA_FUNC_QUALIFIER void pme_gpu_clear_energy_virial(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme), const int CUDA_FUNC_ARGUMENT(grid_index)) CUDA_FUNC_TERM
-
-// allocating
-CUDA_FUNC_QUALIFIER void pme_gpu_alloc_grids(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme), const int CUDA_FUNC_ARGUMENT(grid_index)) CUDA_FUNC_TERM
-CUDA_FUNC_QUALIFIER void pme_gpu_alloc_energy_virial(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme), const int CUDA_FUNC_ARGUMENT(grid_index)) CUDA_FUNC_TERM
-CUDA_FUNC_QUALIFIER void pme_gpu_alloc_gather_forces(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
-
-CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *CUDA_FUNC_ARGUMENT(pfft_setup),
-                                                     ivec                      CUDA_FUNC_ARGUMENT(ndata),
-                                                     gmx_pme_t                *CUDA_FUNC_ARGUMENT(pme))  CUDA_FUNC_TERM
-
 CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_real_limits_gpu(
         gmx_parallel_3dfft_gpu_t CUDA_FUNC_ARGUMENT(pfft_setup),
         ivec                     CUDA_FUNC_ARGUMENT(local_ndata),
@@ -96,13 +79,13 @@ CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_execute_gpu(gmx_pme_t             *C
                                                         const int              CUDA_FUNC_ARGUMENT(grid_index)) CUDA_FUNC_TERM
 
 
-CUDA_FUNC_QUALIFIER void spread_on_grid_gpu(gmx_pme_t      *CUDA_FUNC_ARGUMENT(pme),
-                                            pme_atomcomm_t *CUDA_FUNC_ARGUMENT(atc),
-                                            const int       CUDA_FUNC_ARGUMENT(grid_index),
-                                            pmegrid_t      *CUDA_FUNC_ARGUMENT(pmegrid),
-                                            const gmx_bool  CUDA_FUNC_ARGUMENT(bCalcSplines),
-                                            const gmx_bool  CUDA_FUNC_ARGUMENT(bSpread),
-                                            const gmx_bool  CUDA_FUNC_ARGUMENT(bDoSplines)
+CUDA_FUNC_QUALIFIER void spread_on_grid_gpu(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
+                                            pme_atomcomm_t  *CUDA_FUNC_ARGUMENT(atc),
+                                            const int        CUDA_FUNC_ARGUMENT(grid_index),
+                                            pmegrid_t       *CUDA_FUNC_ARGUMENT(pmegrid),
+                                            const gmx_bool   CUDA_FUNC_ARGUMENT(bCalcSplines),
+                                            const gmx_bool   CUDA_FUNC_ARGUMENT(bSpread),
+                                            const gmx_bool   CUDA_FUNC_ARGUMENT(bDoSplines)
                                             ) CUDA_FUNC_TERM
 
 CUDA_FUNC_QUALIFIER void gather_f_bsplines_gpu(gmx_pme_t      *CUDA_FUNC_ARGUMENT(pme),
@@ -114,8 +97,8 @@ CUDA_FUNC_QUALIFIER void solve_pme_gpu(
         const gmx_bool CUDA_FUNC_ARGUMENT(bEnerVir)) CUDA_FUNC_TERM
 
 
-CUDA_FUNC_QUALIFIER void pme_gpu_get_forces(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
-CUDA_FUNC_QUALIFIER void pme_gpu_get_energy_virial(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_get_forces(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_get_energy_virial(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 // these should not really be external - only used in GPU launch code which is stuck in pme.cpp
 CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_gather(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
@@ -152,14 +135,14 @@ CUDA_FUNC_QUALIFIER void pme_gpu_grid_init(const gmx_pme_t *CUDA_FUNC_ARGUMENT(p
 
 
 /*! \brief Finishes the PME GPU step, copying back the forces and/or energy/virial. */
-CUDA_FUNC_QUALIFIER void pme_gpu_step_end(gmx_pme_t     *CUDA_FUNC_ARGUMENT(pme),
-                                          const gmx_bool CUDA_FUNC_ARGUMENT(bCalcF),
-                                          const gmx_bool CUDA_FUNC_ARGUMENT(bCalcEnerVir)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_step_end(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
+                                          const gmx_bool   CUDA_FUNC_ARGUMENT(bCalcF),
+                                          const gmx_bool   CUDA_FUNC_ARGUMENT(bCalcEnerVir)) CUDA_FUNC_TERM
 
 /*! \brief Resets the PME GPU timings. */
-CUDA_FUNC_QUALIFIER void pme_gpu_reset_timings(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_reset_timings(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 
-CUDA_FUNC_QUALIFIER void pme_gpu_get_timings(gmx_wallclock_gpu_t **CUDA_FUNC_ARGUMENT(timings), gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_get_timings(gmx_wallclock_gpu_t **CUDA_FUNC_ARGUMENT(timings), const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 #endif // PMEGPU_H
