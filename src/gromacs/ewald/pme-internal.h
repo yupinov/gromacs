@@ -394,7 +394,4 @@ void gmx_pme_send_force_vir_ener(struct gmx_pme_pp *pme_pp,
                                  real dvdlambda_q, real dvdlambda_lj,
                                  float cycles);
 
-// unused openMP reduction of 2 force buffers
-void pme_gpu_sloppy_force_reduction(const gmx_pme_t *pme, const real *forcesGPU);
-
 #endif
