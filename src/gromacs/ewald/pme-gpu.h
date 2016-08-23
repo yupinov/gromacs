@@ -51,9 +51,8 @@
 #include "gromacs/timing/gpu_timing.h"
 
 //yupinov add author info everywhere
-// gmx_unused
 
-#include "pme-internal.h"
+#include "pme-internal.h" //????
 
 struct gmx_hw_info_t;
 struct gmx_gpu_opt_t;
