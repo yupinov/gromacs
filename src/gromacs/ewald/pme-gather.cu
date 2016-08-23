@@ -46,7 +46,8 @@
 #include "pme.cuh"
 
 /*! \brief
- * Allocate the GPU output buffer for the resulting PME forces.
+ *
+ * Allocates the GPU output buffer for the resulting PME forces.
  */
 void pme_gpu_alloc_gather_forces(const gmx_pme_t *pme)
 {
@@ -57,13 +58,12 @@ void pme_gpu_alloc_gather_forces(const gmx_pme_t *pme)
 }
 
 /*! \brief
- * Copy the CPU buffer with forces to the GPU to reduce it with the PME GPU result forces.
+ *
+ * Copies the forces from the CPU buffer (pme->atc[0].f) to the GPU (to reduce them with the PME GPU gathered forces).
+ * To be called after the bonded calculations.
  */
 void pme_gpu_copy_forces(gmx_pme_t *pme)
 {
-    // host-to-device copy of the forces to be reduced with the gather results
-    // we have to be sure that the atc forces (listed and such) are already calculated
-
     const int n = pme->gpu->constants.nAtoms;
     assert(n > 0);
     const int forcesSize = DIM * n * sizeof(real);
@@ -73,6 +73,7 @@ void pme_gpu_copy_forces(gmx_pme_t *pme)
 }
 
 /*! \brief
+ *
  * Wait for the PME GPU resulting forces on the CPU, and copy to the original CPU buffer (pme->atc[0].f).
  */
 void pme_gpu_get_forces(const gmx_pme_t *pme)
@@ -89,6 +90,7 @@ void pme_gpu_get_forces(const gmx_pme_t *pme)
 }
 
 /*! \brief
+ *
  * An inline CUDA function: unroll the dynamic index accesses to the constant grid sizes to avoid local memory operations.
  */
 __device__ __forceinline__ real read_grid_size(const pme_gpu_const_parameters constants, const int dimIndex)
@@ -104,21 +106,38 @@ __device__ __forceinline__ real read_grid_size(const pme_gpu_const_parameters co
 }
 
 /*! \brief
+ *
  * A CUDA kernel: gathers the forces from the grid in the last PME GPU stage.
+ *
+ * Template parameters:
+ * order                            The PME order (currently always 4).
+ * particlesPerBlock                The number of particles processed by a single block;
+ *                                  currently this is (warp_size / order^2) * (number of warps in a block) = (32 / 16) * 4 = 8.
+ * bOverwriteForces                 TRUE: the forces are written to the output buffer;
+ *                                  FALSE: the forces are added non-atomically to the output buffer (e.g. to the bonded forces).
+ *
+ * Normal parameters:
+ * \param[in] constants             Various PME GPU (semi-?)constants.
+ * \param[in] gridGlobal            The grid to gather the forces from, unwrapped.
+ * \param[in] thetaGlobal           Spline values formed by a spreading kernel, sorted by the spline data layout.
+ * \param[in] dthetaGlobal          Spline derivatives formed by a spreading kernel, sorted by the spline data layout.
+ * \param[in] coefficientGlobal     The float particle charges, sorted by particles.
+ * \param[in] idxGlobal             The ivec indices for accessing the grid, sorted by particles.
+ * \param[out] forcesGlobal         The rvec forces for the output, sorted by particles.
  */
 template <
-    const int order,                        // the PME interpolation order - assumed to be 4
-    const int particlesPerBlock,            // the number of particles in a block - assumed to be (2 * number of warps) for order of 4
-    const gmx_bool bOverwriteForces         // true: forces are written into the output, false: forces are added to the output
+    const int order,
+    const int particlesPerBlock,
+    const gmx_bool bOverwriteForces
     >
 __launch_bounds__(4 * warp_size, 16)
-__global__ void pme_gather_kernel(const real * __restrict__      gridGlobal,     // global grid after the solving, overlap of (order - 1) included
-                                  const pme_gpu_const_parameters constants,
+__global__ void pme_gather_kernel(const pme_gpu_const_parameters constants,
+                                  const real * __restrict__      gridGlobal,
                                   const real * __restrict__      thetaGlobal,
                                   const real * __restrict__      dthetaGlobal,
-                                  real * __restrict__            forcesGlobal,
                                   const real * __restrict__      coefficientGlobal,
-                                  const int * __restrict__       idxGlobal
+                                  const int * __restrict__       idxGlobal,
+                                  real * __restrict__            forcesGlobal
                                   )
 {
     /* These are the particle indices - for the shared and global memory */
@@ -132,20 +151,20 @@ __global__ void pme_gather_kernel(const real * __restrict__      gridGlobal,    
     const int         thetaSize = PME_SPREADGATHER_BLOCK_DATA_SIZE * order;
     const int         idxSize   = PME_SPREADGATHER_BLOCK_DATA_SIZE;
     __shared__ int    idx[idxSize];
-    __shared__ float2 splineParams[thetaSize]; // theta/dtheta pairs
+    __shared__ float2 splineParams[thetaSize]; /* Theta/dtheta pairs */
 
-    // spline Y/Z coordinates
+    /* Spline Y/Z coordinates */
     const int ithy = threadIdx.y;
     const int ithz = threadIdx.x;
-    // these are spline contribution indices in shared memory
-    const int splineIndex = threadIdx.y * blockDim.x + threadIdx.x;                  // relative to the current particle
-    const int lineIndex   = (threadIdx.z * (blockDim.x * blockDim.y)) + splineIndex; // and to all the block's particles
+    /* These are the spline contribution indices in shared memory */
+    const int splineIndex = threadIdx.y * blockDim.x + threadIdx.x;                  /* Relative to the current particle , 0..15 for order 4 */
+    const int lineIndex   = (threadIdx.z * (blockDim.x * blockDim.y)) + splineIndex; /* And to all the block's particles */
 
-
-    int threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
+    int       threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
         + (threadIdx.y * blockDim.x)
         + threadIdx.x;
 
+    /* Staging */
     if (threadLocalId < idxSize)
     {
         idx[threadLocalId] = idxGlobal[blockIdx.x * idxSize + threadLocalId];
@@ -155,8 +174,6 @@ __global__ void pme_gather_kernel(const real * __restrict__      gridGlobal,    
         splineParams[threadLocalId].x = thetaGlobal[blockIdx.x * thetaSize + threadLocalId];
         splineParams[threadLocalId].y = dthetaGlobal[blockIdx.x * thetaSize + threadLocalId];
     }
-
-    //locality?
     __syncthreads();
 
     real fx = 0.0f;
@@ -169,11 +186,11 @@ __global__ void pme_gather_kernel(const real * __restrict__      gridGlobal,    
         const int    pnz = constants.localGridSizePadded.z;
 
         const int    particleWarpIndex = localIndex % PARTICLES_PER_WARP;
-        const int    warpIndex         = localIndex / PARTICLES_PER_WARP; // should be just a real warp index!
+        const int    warpIndex         = localIndex / PARTICLES_PER_WARP;
 
         const int    thetaOffsetBase = PME_SPLINE_THETA_STRIDE * order * warpIndex * DIM * PARTICLES_PER_WARP + particleWarpIndex;
         const int    orderStride     = PME_SPLINE_THETA_STRIDE * DIM * PARTICLES_PER_WARP; // PME_SPLINE_ORDER_STRIDE
-        const int    dimStride       = PME_SPLINE_THETA_STRIDE * PARTICLES_PER_WARP;       // ?
+        const int    dimStride       = PME_SPLINE_THETA_STRIDE * PARTICLES_PER_WARP;
 
         const int    thetaOffsetY = thetaOffsetBase + ithy * orderStride + YY * dimStride;
         const float2 tdy          = splineParams[thetaOffsetY];
@@ -456,9 +473,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme,
     real *dtheta_d = (real *)PMEMemoryFetch(pme, PME_ID_DTHETA, DIM * size_splines, ML_DEVICE);
 
     // indices
-    int *idx_d = (int *)PMEMemoryFetch(pme, PME_ID_IDXPTR, DIM * size_indices, ML_DEVICE);
-
-
+    int      *idx_d = (int *)PMEMemoryFetch(pme, PME_ID_IDXPTR, DIM * size_indices, ML_DEVICE);
 
     const int blockSize         = 4 * warp_size;
     const int particlesPerBlock = blockSize / order / order;
@@ -472,20 +487,12 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme,
         if (bOverwriteForces)
         {
             pme_gather_kernel<4, blockSize / 4 / 4, TRUE> <<< nBlocks, dimBlock, 0, s>>>
-            (pme->gpu->grid,
-             pme->gpu->constants,
-             theta_d, dtheta_d,
-             pme->gpu->forces, pme->gpu->coefficients,
-             idx_d);
+            (pme->gpu->constants, pme->gpu->grid, theta_d, dtheta_d, pme->gpu->coefficients, idx_d, pme->gpu->forces);
         }
         else
         {
             pme_gather_kernel<4, blockSize / 4 / 4, FALSE> <<< nBlocks, dimBlock, 0, s>>>
-            (pme->gpu->grid,
-             pme->gpu->constants,
-             theta_d, dtheta_d,
-             pme->gpu->forces, pme->gpu->coefficients,
-             idx_d);
+            (pme->gpu->constants, pme->gpu->grid, theta_d, dtheta_d, pme->gpu->coefficients, idx_d, pme->gpu->forces);
         }
     }
     else

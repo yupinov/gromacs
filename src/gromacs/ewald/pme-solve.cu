@@ -45,14 +45,23 @@
 #include "pme.cuh"
 #include "pme-gpu.h"   //?
 #include "pme-internal.h"
-#include "pme-solve.h" //? some work structure reliance?
+#include "pme-solve.h"
 
+/*! \brief
+ *
+ * Allocates the energy + virial memory on GPU (7 floats).
+ */
 void pme_gpu_alloc_energy_virial(const gmx_pme_t *pme, const int gmx_unused grid_index)
 {
     pme->gpu->energyAndVirialSize = 7 * sizeof(real); /* 6 virial components + energy */
     pme->gpu->energyAndVirial     = (real *)PMEMemoryFetch(pme, PME_ID_ENERGY_AND_VIRIAL, pme->gpu->energyAndVirialSize, ML_DEVICE);
 }
 
+/*! \brief
+ *
+ * Clears the energy + virial memory on GPU with 0.
+ * Should be called at the end of the energy/virial calculation step.
+ */
 void pme_gpu_clear_energy_virial(const gmx_pme_t *pme, const int gmx_unused grid_index)
 {
     cudaError_t stat = cudaMemsetAsync(pme->gpu->energyAndVirial, 0, pme->gpu->energyAndVirialSize, pme->gpu->pmeStream);
@@ -61,7 +70,8 @@ void pme_gpu_clear_energy_virial(const gmx_pme_t *pme, const int gmx_unused grid
 
 /*! \brief
  *
- * Copies the pre-computed B-spline modules to the GPU
+ * Copies the pre-computed B-spline modules to the GPU.
+ * FIXME: currently uses just a global memory, should be using texture memory.
  */
 void pme_gpu_copy_bspline_moduli(const gmx_pme_t *pme)
 {
@@ -96,6 +106,12 @@ void pme_gpu_copy_bspline_moduli(const gmx_pme_t *pme)
 
 
 #define THREADS_PER_BLOCK (4 * warp_size)
+
+/*! \brief
+ *
+ * Copies the pre-computed B-spline modules to the GPU.
+ * FIXME: currently uses just a global memory, should be using texture memory.
+ */
 
 template<
     const gmx_bool bEnerVir,
