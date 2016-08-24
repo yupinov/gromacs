@@ -32,6 +32,15 @@
  * To help us fund GROMACS development, we humbly ask that you cite
  * the research papers on the package. Check out http://www.gromacs.org.
  */
+
+/*! \internal \file
+ * \brief This file defines the PME CUDA data structures,
+ * various compile-time constants shared among the PME CUDA kernels,
+ * and also names a bunch of the PME CUDA memory management routines.
+ *
+ *  \author Aleksei Iupinov <a.yupinov@gmail.com>
+ */
+
 #ifndef PME_CUDA_H
 #define PME_CUDA_H
 
@@ -39,23 +48,36 @@
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 #include "pme-timings.cuh"
 
-#include <vector>
+/*
+    Here is a current memory layout for the theta/dtheta B-spline float parameter arrays.
+    This is the data in global memory used both by spreading and gathering kernels (with same scheduling).
+    This example has PME order 4 and 2 particles per warp/data chunk.
+    Each particle has 16 threads assigned to it, each thread works on 4 non-sequential global grid contributions.
+
+    ----------------------------------------------------------------------------
+    particles 0, 1                                        | particles 2, 3     | ...
+    ----------------------------------------------------------------------------
+    order index 0           | index 1 | index 2 | index 3 | order 0 .....
+    ----------------------------------------------------------------------------
+    tx0 tx1 ty0 ty1 tz0 tz1 | ..........
+    ----------------------------------------------------------------------------
+
+    Each data chunk for a single warp is 24 floats. This goes both for theta and dtheta.
+    24 = 2 particles per warp *  order 4 * 3 dimensions. 48 floats (1.5 warp size) per warp in total.
+    I have also tried intertwining theta and theta in a single array (they are used in pairs in gathering stage anwyay)
+    and it didn't seem to make a performance difference.
+
+    The corresponding defines follow.
+ */
+#define PME_SPLINE_THETA_STRIDE 1
+#define PME_SPLINE_ORDER_STRIDE (DIM)
+
 
 #define PME_USE_TEXTURES 1
 // using textures instead of global memory
 
 // particles per block and block sizes should also be here....
 
-// the hierarchy of the global spline data was for some silly reason order -> particle -> dimension
-//#define PME_SPLINE_ORDER_STRIDE (particlesPerBlock * DIM)
-//#define PME_SPLINE_PARTICLE_STRIDE (DIM)
-
-// particles should be on top, so now it's particle -> order -> dimension
-// that means switching the particle and order indices
-#define PME_SPLINE_ORDER_STRIDE (DIM)
-#define PME_SPLINE_PARTICLE_STRIDE (DIM * order)
-
-#define PME_SPLINE_THETA_STRIDE 1
 // should be 2 for float2 theta/dtheta storage
 
 #define PME_SPREADGATHER_BLOCK_DATA_SIZE (particlesPerBlock * DIM)

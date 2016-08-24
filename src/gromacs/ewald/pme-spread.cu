@@ -51,26 +51,10 @@
 #include "pme.cuh"
 
 #define PME_GPU_PARALLEL_SPLINE 1
-/* This define affects the spline calculation in the spreading kernel.
+/* This define affects the spline calculation behaviour in the spreading kernel.
  * 0: a single GPU thread handles a single dimension of a single particle (calculating and storing (order) spline values and derivatives).
- * 1: (order) threads work on the same task, each one stores only a single theta and single dtheta into global arrays.
+ * 1: (order) threads do redundant work on this same task, each one stores only a single theta and single dtheta into global arrays.
  * The only efficiency difference is less global store operations, countered by more redundant spline computation.
- */
-
-//yupinov - describe theta layout properly somewhere!
-/*
-    here is a current memory layout for theta/dtheta spline parameter arrays
-    this example has PME order 4 (the only order implemented and tested) and 2 particles per warp/data chunk
-    ----------------------------------------------------------------------------
-    particles 0, 1                                        | particles 2, 3 | ...
-    ----------------------------------------------------------------------------
-    order index 0           | index 1 | index 2 | index 3 | order 0 .....
-    ----------------------------------------------------------------------------
-    tx1 tx2 ty1 ty2 tz1 tz2 | ..........
-    ----------------------------------------------------------------------------
-    so each data chunk for a single warp is 24 floats - goes both for theta and dtheta
-    24 = 2 particles per warp *  order 4 * 3 dimensions
-    48 floats (1.5 warp size) per warp in total
  */
 
 #define THREADS_PER_BLOCK   (4 * warp_size)
