@@ -45,7 +45,6 @@
 
 #include "pme.h"
 #include "pme.cuh"
-#include "pme-timings.cuh"
 #include "gromacs/timing/gpu_timing.h"
 #include "gromacs/timing/wallcycle.h"
 #include "gromacs/utility/gmxassert.h"

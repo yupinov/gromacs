@@ -44,7 +44,6 @@
 #include <assert.h>
 #include <cufft.h>
 #include "pme-gpu.h"
-#include "pme-timings.cuh"
 #include "pme.cuh"
 
 #include "gromacs/utility/gmxassert.h"

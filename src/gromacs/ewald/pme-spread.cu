@@ -48,7 +48,6 @@
 
 #include "gromacs/utility/fatalerror.h"
 
-#include "pme-timings.cuh"
 #include "pme.cuh"
 
 #define PME_GPU_PARALLEL_SPLINE 1
