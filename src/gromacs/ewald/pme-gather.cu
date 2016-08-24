@@ -185,12 +185,12 @@ __global__ void pme_gather_kernel(const pme_gpu_const_parameters constants,
         const int    pny = constants.localGridSizePadded.y;
         const int    pnz = constants.localGridSizePadded.z;
 
-        const int    particleWarpIndex = localIndex % PARTICLES_PER_WARP;
-        const int    warpIndex         = localIndex / PARTICLES_PER_WARP;
+        const int    particleWarpIndex = localIndex % PME_SPREADGATHER_PARTICLES_PER_WARP;
+        const int    warpIndex         = localIndex / PME_SPREADGATHER_PARTICLES_PER_WARP;
 
-        const int    thetaOffsetBase = PME_SPLINE_THETA_STRIDE * order * warpIndex * DIM * PARTICLES_PER_WARP + particleWarpIndex;
-        const int    orderStride     = PME_SPLINE_THETA_STRIDE * DIM * PARTICLES_PER_WARP; // PME_SPLINE_ORDER_STRIDE
-        const int    dimStride       = PME_SPLINE_THETA_STRIDE * PARTICLES_PER_WARP;
+        const int    thetaOffsetBase = PME_SPLINE_THETA_STRIDE * order * warpIndex * DIM * PME_SPREADGATHER_PARTICLES_PER_WARP + particleWarpIndex;
+        const int    orderStride     = PME_SPLINE_THETA_STRIDE * DIM * PME_SPREADGATHER_PARTICLES_PER_WARP; // PME_SPLINE_ORDER_STRIDE
+        const int    dimStride       = PME_SPLINE_THETA_STRIDE * PME_SPREADGATHER_PARTICLES_PER_WARP;
 
         const int    thetaOffsetY = thetaOffsetBase + ithy * orderStride + YY * dimStride;
         const float2 tdy          = splineParams[thetaOffsetY];

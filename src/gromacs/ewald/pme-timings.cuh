@@ -34,7 +34,7 @@
  */
 
 /*! \libinternal \file
- *  \brief Defines the GPU timing event class in CUDA.
+ *  \brief Defines the GPU timing event class in CUDA, and the PME GPU timing functions.
  *
  *  \author Aleksei Iupinov <a.yupinov@gmail.com>
  */
@@ -56,18 +56,33 @@
  */
 class pme_gpu_timing
 {
-    bool         initialized;
-    cudaEvent_t  event_start, event_stop;
-    unsigned int call_count;
-    real         total_milliseconds;
+    bool         initialized;             /* Starts at false, set to true once */
+    cudaEvent_t  event_start, event_stop; /* The internal timing events */
+    unsigned int call_count;              /* Stars at 0, increased by stop_recording */
+    real         total_milliseconds;      /* Starts at 0.0, increased by update */
 
     public:
         pme_gpu_timing();
         ~pme_gpu_timing();
 
-        // to be called every MD step if needed
+        /*! \brief
+         * To be called before the kernel/transfer launch.
+         *
+         * \param[in] s   The CUDA stream where the event being measured takes place.
+         */
         void start_recording(cudaStream_t s);
+
+        /*! \brief
+         * To be called after the kernel/transfer launch.
+         *
+         * \param[in] s   The CUDA stream where the event being measured took place.
+         */
         void stop_recording(cudaStream_t s);
+
+        /*! \brief
+         * To be called after stop_recording and the CUDA stream of the event has been synchronised.
+         *
+         */
         void update();
 
         // to be called once if needed
@@ -77,10 +92,51 @@ class pme_gpu_timing
         unsigned int get_call_count();
 };
 
+/*! \libinternal
+ * \brief
+ *
+ * Allocates and initializes the PME GPU timings.
+ *
+ * \param[in] pme            The PME data structure.
+ */
 void pme_gpu_init_timings(const gmx_pme_t *pme);
-void pme_gpu_timing_start(const gmx_pme_t *pme, int PMEStageId);
-void pme_gpu_timing_stop(const gmx_pme_t *pme, int PMEStageId);
-void pme_gpu_update_timings(const gmx_pme_t *pme);
+
+/*! \libinternal
+ * \brief
+ *
+ * Destroys the PME GPU timings.
+ *
+ * \param[in] pme            The PME data structure.
+ */
 void pme_gpu_destroy_timings(const gmx_pme_t *pme);
+
+/*! \libinternal
+ * \brief
+ *
+ * Starts timing the certain PME GPU stage in a single step.
+ *
+ * \param[in] pme            The PME data structure.
+ * \param[in] PMEStageId     The PME GPU stage gtPME_ index from the enum in src/gromacs/timing/gpu_timing.h
+ */
+void pme_gpu_timing_start(const gmx_pme_t *pme, int PMEStageId);
+
+/*! \libinternal
+ * \brief
+ *
+ * Stops timing the certain PME GPU stage in a single step.
+ *
+ * \param[in] pme            The PME data structure.
+ * \param[in] PMEStageId     The PME GPU stage gtPME_ index from the enum in src/gromacs/timing/gpu_timing.h
+ */
+void pme_gpu_timing_stop(const gmx_pme_t *pme, int PMEStageId);
+
+/*! \libinternal
+ * \brief
+ *
+ * Finalizes all the PEM GPU stage timings for the current step. Should be called at the end of every step.
+ *
+ * \param[in] pme            The PME data structure.
+ */
+void pme_gpu_update_timings(const gmx_pme_t *pme);
 
 #endif

@@ -277,8 +277,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
          * and NB should check for PME GPU!
          */
 
-        (*pmeGPU)->useTextureObjects = forcedGpuIdHack ? false : ((*pmeGPU)->deviceInfo->prop.major >= 3);
-        // if false, texture references are used instead
+        /* (*pmeGPU)->useTextureObjects = forcedGpuIdHack ? false : ((*pmeGPU)->deviceInfo->prop.major >= 3); */
         //yupinov - have to fix this GPU id selection for good
 
         size_t pointerStorageSize = ML_END_INVALID * PME_ID_END_INVALID;

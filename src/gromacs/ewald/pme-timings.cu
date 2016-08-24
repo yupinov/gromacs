@@ -51,6 +51,8 @@
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/gpu_utils/cudautils.cuh"
 
+/* The pme_gpu_timing class implementation */
+
 pme_gpu_timing::pme_gpu_timing()
 {
     initialized = false;
@@ -110,7 +112,7 @@ void pme_gpu_timing::reset()
 
 void pme_gpu_timing::update()
 {
-    if (initialized && (call_count > 0)) // only touched events needed
+    if (initialized && (call_count > 0)) /* Only the touched events needed */
     {
         real        milliseconds = 0.0;
         cudaError_t stat         = cudaEventElapsedTime(&milliseconds, event_start, event_stop);
@@ -129,7 +131,7 @@ unsigned int pme_gpu_timing::get_call_count()
     return call_count;
 }
 
-// general functions
+/* The general PME GPU timing functions */
 
 void pme_gpu_timing_start(const gmx_pme_t *pme, int PMEStageId)
 {
@@ -145,7 +147,7 @@ void pme_gpu_get_timings(gmx_wallclock_gpu_t **timings, const gmx_pme_t *pme)
 {
     if (pme_gpu_enabled(pme))
     {
-        GMX_ASSERT(timings, "Null GPU timing pointer");
+        GMX_RELEASE_ASSERT(timings, "Null GPU timing pointer");
         if (!*timings)
         {
             // alloc for PME-only run

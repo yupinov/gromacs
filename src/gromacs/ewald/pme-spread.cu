@@ -207,8 +207,8 @@ __device__ __forceinline__ void calculate_splines(const int3                    
                 data[0 * dataSize + dataOffset] = div * (1.0f - dr) * data[0 * dataSize + dataOffset];
             }
 
-            const int particleWarpIndex = localIndexCalc % PARTICLES_PER_WARP;
-            const int warpIndex         = localIndexCalc / PARTICLES_PER_WARP;
+            const int particleWarpIndex = localIndexCalc % PME_SPREADGATHER_PARTICLES_PER_WARP;
+            const int warpIndex         = localIndexCalc / PME_SPREADGATHER_PARTICLES_PER_WARP;
 
             const int thetaGlobalOffsetBase = globalIndexBase * DIM * order;
 
@@ -220,7 +220,7 @@ __device__ __forceinline__ void calculate_splines(const int3                    
             for (k = 0; k < order; k++)
 #endif
             {
-                const int  thetaIndex       = PME_SPLINE_THETA_STRIDE * (((k + order * warpIndex) * DIM + dimIndex) * PARTICLES_PER_WARP + particleWarpIndex);
+                const int  thetaIndex       = PME_SPLINE_THETA_STRIDE * (((k + order * warpIndex) * DIM + dimIndex) * PME_SPREADGATHER_PARTICLES_PER_WARP + particleWarpIndex);
                 const int  thetaGlobalIndex = thetaGlobalOffsetBase + thetaIndex;
 
                 const real dtheta = ((k > 0) ? data[(k - 1) * dataSize + dataOffset] : 0.0f) - data[k * dataSize + dataOffset];
@@ -244,7 +244,7 @@ __device__ __forceinline__ void calculate_splines(const int3                    
             for (k = 0; k < order; k++)
 #endif
             {
-                const int thetaIndex       = PME_SPLINE_THETA_STRIDE * (((k + order * warpIndex) * DIM + dimIndex) * PARTICLES_PER_WARP + particleWarpIndex);
+                const int thetaIndex       = PME_SPLINE_THETA_STRIDE * (((k + order * warpIndex) * DIM + dimIndex) * PME_SPREADGATHER_PARTICLES_PER_WARP + particleWarpIndex);
                 const int thetaGlobalIndex = thetaGlobalOffsetBase + thetaIndex;
 
                 theta[thetaIndex]             = data[k * dataSize + dataOffset];
@@ -291,9 +291,9 @@ __device__ __forceinline__ void spread_charges(const real * __restrict__      co
         const int iz   = idx[localIndex * DIM + ZZ] - offz;
 
         // copy
-        const int   particleWarpIndex = localIndex % PARTICLES_PER_WARP; // index of particle w.r.t. the warp (so, 0 or 1)
-        const int   warpIndex         = localIndex / PARTICLES_PER_WARP; // should be just a normal warp index, actually!
-        const int   dimStride         = PME_SPLINE_THETA_STRIDE * PARTICLES_PER_WARP;
+        const int   particleWarpIndex = localIndex % PME_SPREADGATHER_PARTICLES_PER_WARP; // index of particle w.r.t. the warp (so, 0 or 1)
+        const int   warpIndex         = localIndex / PME_SPREADGATHER_PARTICLES_PER_WARP; // should be just a normal warp index, actually!
+        const int   dimStride         = PME_SPLINE_THETA_STRIDE * PME_SPREADGATHER_PARTICLES_PER_WARP;
         const int   orderStride       = dimStride * DIM;
         const int   thetaOffsetBase   = orderStride * order * warpIndex + particleWarpIndex;
 
@@ -385,11 +385,11 @@ __global__ void pme_spline_and_spread_kernel
 
     const int warpIndex         = threadLocalId / warp_size;
     const int threadWarpIndex   = threadLocalId % warp_size;
-    const int particleWarpIndex = threadWarpIndex % PARTICLES_PER_WARP;
-    const int localCalcIndex    = warpIndex * PARTICLES_PER_WARP + particleWarpIndex;
+    const int particleWarpIndex = threadWarpIndex % PME_SPREADGATHER_PARTICLES_PER_WARP;
+    const int localCalcIndex    = warpIndex * PME_SPREADGATHER_PARTICLES_PER_WARP + particleWarpIndex;
     const int globalCalcIndex   = globalParticleIndexBase + localCalcIndex;
-    const int orderCalcIndex    = threadWarpIndex / (PARTICLES_PER_WARP * DIM); // should be checked against order
-    const int dimCalcIndex      = (threadWarpIndex - orderCalcIndex * (PARTICLES_PER_WARP * DIM)) / PARTICLES_PER_WARP;
+    const int orderCalcIndex    = threadWarpIndex / (PME_SPREADGATHER_PARTICLES_PER_WARP * DIM); // should be checked against order
+    const int dimCalcIndex      = (threadWarpIndex - orderCalcIndex * (PME_SPREADGATHER_PARTICLES_PER_WARP * DIM)) / PME_SPREADGATHER_PARTICLES_PER_WARP;
 
     if (bCalcSplines)
     {

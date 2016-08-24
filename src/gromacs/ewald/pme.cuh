@@ -69,34 +69,38 @@
 
     The corresponding defines follow.
  */
+
+/* This is the distance between the neighbour theta elements - would be 2 for the intertwining layout */
 #define PME_SPLINE_THETA_STRIDE 1
-#define PME_SPLINE_ORDER_STRIDE (DIM)
 
+/* FIXME: This could be used in the code as well, but actually isn't now, only in the outdated separate spline/spread kernels */
+#define PME_SPLINE_ORDER_STRIDE DIM
 
-#define PME_USE_TEXTURES 1
-// using textures instead of global memory
+/* The spread/gather constant; 2 particles per warp for order of 4, depends on the templated order parameter */
+#define PME_SPREADGATHER_PARTICLES_PER_WARP (warp_size / order / order)
 
-// particles per block and block sizes should also be here....
-
-// should be 2 for float2 theta/dtheta storage
-
+/* FIXME: this is the shared memory size constant;
+ * it depends on particlesPerBlock is another templated parameter = (BLOCK_SIZE / warp_size) * PME_SPREADGATHER_PARTICLES_PER_WARP.
+ * There is a redundancy going on here.
+ */
 #define PME_SPREADGATHER_BLOCK_DATA_SIZE (particlesPerBlock * DIM)
 
-#define PARTICLES_PER_WARP (warp_size / order / order)
-// there is some redundancy here!
-// what do I do when order > 5?
 
-//yupinov - document spline param layout (2 particles -> order -> dim -> particle 1, 2)
+// and block sizes should also be here....
 
-// internal identifiers for PME data stored on GPU and host
+
+/* Using textures instead of global memory. Only in spread now, but B-spline moduli in solving should also be texturized. */
+#define PME_USE_TEXTURES 1
+
+/* The internal identifiers for PME data stored on GPU and host - can be eliminated eventually */
 enum PMEDataID
 {
     PME_ID_THETA = 0,
     PME_ID_DTHETA,
 
     // grids
-    PME_ID_REAL_GRID,    // functions as pme_grid with overlap and as fftgrid
-    PME_ID_COMPLEX_GRID, // used only for out-of-place cuFFT, functions as cfftgrid
+    PME_ID_REAL_GRID,    /* Functions as pme_grid with overlap and as fftgrid */
+    PME_ID_COMPLEX_GRID, /* used only for out-of-place cuFFT, functions as cfftgrid */
 
     // spread (spline)
     PME_ID_FSH,
@@ -104,7 +108,7 @@ enum PMEDataID
 
     // spread
     PME_ID_XPTR,
-    PME_ID_COEFFICIENT, // atc->coefficient
+    PME_ID_COEFFICIENT,
 
     // gather
     PME_ID_FORCES,
@@ -112,18 +116,15 @@ enum PMEDataID
     // spread and gather
     PME_ID_IDXPTR, // grid indices as in atc->idx
 
-    // solve_lj
-    PME_ID_ENERGY,
-    PME_ID_VIRIAL,
-
     // solve
     PME_ID_ENERGY_AND_VIRIAL,
-    PME_ID_BSP_MOD_XX, PME_ID_BSP_MOD_YY, PME_ID_BSP_MOD_ZZ, // B-spline moduli
+    PME_ID_BSP_MOD_XX, PME_ID_BSP_MOD_YY, PME_ID_BSP_MOD_ZZ, /* B-spline moduli */
 
     // end
     PME_ID_END_INVALID
 };
 
+/* The host/GPU memory tag */
 enum MemLocType
 {
     ML_HOST = 0, ML_DEVICE, ML_END_INVALID
@@ -172,32 +173,23 @@ struct pme_gpu_const_parameters
 /* The main PME GPU structure, included in the PME CPU structure by pointer */
 struct gmx_pme_cuda_t
 {
+    /* The CUDA stream where everything with PME happens */
     cudaStream_t pmeStream;
 
-    // synchronization events
-    cudaEvent_t syncEnerVirD2H;    // energy and virial have already been calculated in pme-solve, and have been copied to host
-    cudaEvent_t syncForcesD2H;     // forces have already been calculated in pme-gather, and have been copied to host
-    cudaEvent_t syncSpreadGridD2H; // the grid has been copied to the host after the spreading for CPU FFT
-    cudaEvent_t syncSolveGridD2H;  // the grid has been copied to the host after the solve for CPU FFT
+    /* Synchronization events */
+    cudaEvent_t syncEnerVirD2H;    /* energy and virial have already been calculated in pme-solve, and have been copied to host */
+    cudaEvent_t syncForcesD2H;     /* forces have already been calculated in pme-gather, and have been copied to host */
+    cudaEvent_t syncSpreadGridD2H; /* the grid has been copied to the host after the spreading for CPU FFT */
+    cudaEvent_t syncSolveGridD2H;  /* the grid has been copied to the host after the solve for CPU FFT */
 
-    // some other permanent settings set on init
-
-    // gmx_bool bGPUSpread;
-    // spread being on a GPU is a given - it's the main effort
-
-    gmx_bool bGPUSolve;                                             /* Are we doing the solve stage on the GPU? */
-
-    gmx_bool bGPUGather;                                            /* Are we doing the gather stage on the GPU? */
-
-    gmx_bool bGPUFFT;                                               /* Are we using cuFFT as well? Currently only for a single rank */
-
+    /* Permanent settings set on initialization */
+    gmx_bool bGPUSolve;                                             /* Are we doing the solve stage on the GPU? Currently always TRUE */
+    gmx_bool bGPUGather;                                            /* Are we doing the gather stage on the GPU? Currently always TRUE */
+    gmx_bool bGPUFFT;                                               /* Are we using cuFFT as well? Currently only enabled for a single rank */
     gmx_bool bGPUSingle;                                            /* Are we using the single GPU rank? A convenience variable */
-
     gmx_bool bOutOfPlaceFFT;                                        /* If true, then an additional grid of the same size is used for R2C/solve/C2R */
-
     gmx_bool bTiming;                                               /* Enable timing using CUDA events */
-
-    gmx_bool useTextureObjects; /* If false, then use references */ //unused!
+    /* gmx_bool useTextureObjects; */ /* If false, then use references [unused] */
 
     // constant structures for arguments
     pme_gpu_overlap_t             overlap;
