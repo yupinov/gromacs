@@ -63,13 +63,12 @@ struct gmx_wallclock_gpu_pme_t
     std::vector<gmx_nbnxn_kernel_timing_data_t> timing;
 };
 
-
 /*! \internal \brief
  *
  * PME GPU stages timing events indices, corresponding to the PMEGPUStages in wallcycle.cpp.
  */
-/* This feels clumsy; find a better spot? */
-enum {
+enum
+{
     gtPME_SPLINE = 0,
     gtPME_SPREAD,
     gtPME_SPLINEANDSPREAD,
