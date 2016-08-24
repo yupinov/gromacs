@@ -179,7 +179,7 @@ void pme_gpu_init_timings(const gmx_pme_t *pme)
     if (pme_gpu_enabled(pme))
     {
         cudaStreamSynchronize(pme->gpu->pmeStream);
-        for (size_t i = 0; i < ewcsPME_END_INVALID; i++)
+        for (size_t i = 0; i < gtPME_END_INVALID; i++)
         {
             pme->gpu->timingEvents.push_back(new pme_gpu_timing());
             pme->gpu->timingEvents[i]->enable();

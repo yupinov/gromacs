@@ -412,7 +412,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
                 (local_ndata[middleDim] + gridLinesPerBlock - 1) / gridLinesPerBlock, // rounded up middle dimension block number
                 local_ndata[majorDim]);
 
-    pme_gpu_timing_start(pme, ewcsPME_SOLVE);
+    pme_gpu_timing_start(pme, gtPME_SOLVE);
 
     if (YZXOrdering)
     {
@@ -466,7 +466,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     }
     CU_LAUNCH_ERR("pme_solve_kernel");
 
-    pme_gpu_timing_stop(pme, ewcsPME_SOLVE);
+    pme_gpu_timing_stop(pme, gtPME_SOLVE);
 
     if (bEnerVir)
     {

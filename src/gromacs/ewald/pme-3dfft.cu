@@ -207,11 +207,11 @@ void gmx_parallel_3dfft_execute_gpu(gmx_pme_t        *pme,
         //    cu_copy_H2D(setup->realGrid, setup->hostRealGrid, gridSizeReal);
         // CPU spread and GPU FFT? unlikely, only for debug
 
-        pme_gpu_timing_start(pme, ewcsPME_FFT_R2C);
+        pme_gpu_timing_start(pme, gtPME_FFT_R2C);
 
         cufftResult_t result = cufftExecR2C(setup->planR2C, setup->realGrid, setup->complexGrid);
 
-        pme_gpu_timing_stop(pme, ewcsPME_FFT_R2C);
+        pme_gpu_timing_stop(pme, gtPME_FFT_R2C);
 
         if (result)
         {
@@ -224,11 +224,11 @@ void gmx_parallel_3dfft_execute_gpu(gmx_pme_t        *pme,
         //    cu_copy_H2D(setup->complexGrid, setup->hostComplexGrid, gridSizeComplex);
         // CPU solve and GPU FFT? unlikely, only for debug
 
-        pme_gpu_timing_start(pme, ewcsPME_FFT_C2R);
+        pme_gpu_timing_start(pme, gtPME_FFT_C2R);
 
         cufftResult_t result = cufftExecC2R(setup->planC2R, setup->complexGrid, setup->realGrid);
 
-        pme_gpu_timing_stop(pme, ewcsPME_FFT_C2R);
+        pme_gpu_timing_stop(pme, gtPME_FFT_C2R);
 
         if (result)
         {

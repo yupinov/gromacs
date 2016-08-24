@@ -439,7 +439,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme,
             const int overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
             const int nBlocks         = (overlappedCells + blockSize - 1) / blockSize;
 
-            pme_gpu_timing_start(pme, ewcsPME_UNWRAP);
+            pme_gpu_timing_start(pme, gtPME_UNWRAP);
 
             pme_unwrap_kernel<4> <<< nBlocks, blockSize, 0, s>>> (pme->gpu->constants,
                                                                   pme->gpu->overlap,
@@ -447,7 +447,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme,
 
             CU_LAUNCH_ERR("pme_unwrap_kernel");
 
-            pme_gpu_timing_stop(pme, ewcsPME_UNWRAP);
+            pme_gpu_timing_stop(pme, gtPME_UNWRAP);
 
         }
         else
@@ -480,7 +480,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme,
     dim3 nBlocks((nAtoms + blockSize - 1) / blockSize * order * order);
     dim3 dimBlock(order, order, particlesPerBlock);
 
-    pme_gpu_timing_start(pme, ewcsPME_GATHER);
+    pme_gpu_timing_start(pme, gtPME_GATHER);
 
     if (order == 4)
     {
@@ -501,7 +501,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme,
     }
     CU_LAUNCH_ERR("pme_gather_kernel");
 
-    pme_gpu_timing_stop(pme, ewcsPME_GATHER);
+    pme_gpu_timing_stop(pme, gtPME_GATHER);
 
     cu_copy_D2H_async(atc_f_h, pme->gpu->forces, forcesSize, s);
     cudaError_t stat = cudaEventRecord(pme->gpu->syncForcesD2H, s);

@@ -59,8 +59,27 @@ struct gmx_nbnxn_kernel_timing_data_t
 /*! \internal \brief GPU timings for PME. */
 struct gmx_wallclock_gpu_pme_t
 {
-    // a separate PME structure to avoid refactoring the NB code for gmx_wallclock_gpu_t
+    /* A separate PME structure to avoid refactoring the NB code for gmx_wallclock_gpu_t */
     std::vector<gmx_nbnxn_kernel_timing_data_t> timing;
+};
+
+
+/*! \internal \brief
+ *
+ * PME GPU stages timing events indices, corresponding to the PMEGPUStages in wallcycle.cpp.
+ */
+/* This feels clumsy; find a better spot? */
+enum {
+    gtPME_SPLINE = 0,
+    gtPME_SPREAD,
+    gtPME_SPLINEANDSPREAD,
+    gtPME_WRAP,
+    gtPME_FFT_R2C,
+    gtPME_SOLVE,
+    gtPME_FFT_C2R,
+    gtPME_UNWRAP,
+    gtPME_GATHER,
+    gtPME_END_INVALID
 };
 
 /*! \internal \brief GPU timings for kernels and H2d/D2H transfers. */

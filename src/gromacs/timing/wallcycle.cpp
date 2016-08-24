@@ -126,13 +126,12 @@ static const char *wcsn[ewcsNR] =
     "NB F buffer ops.",
 };
 
+/* PME GPU timing events' names - correspond to the enum in the gpu_timing.h */
 static const char *PMEStageNames[] =
 {
-    "Interpolation",
     "Spline",
     "Spread",
     "Spline/spread",
-    "Int./spline/spread",
     "Wrap",
     "FFT r2c",
     "Solve",

@@ -123,10 +123,8 @@ void gmx_parallel_3dfft_execute_gpu_wrapper(gmx_pme_t              *pme,
     int thread;
 
     int wcycle_id    = ewcPME_FFT;
-    int wsubcycle_id = (dir == GMX_FFT_REAL_TO_COMPLEX) ? ewcsPME_FFT_R2C : ewcsPME_FFT_C2R;
 
     wallcycle_start(wcycle, wcycle_id);
-    wallcycle_sub_start(wcycle, wsubcycle_id);
     // is this alright, to start and stop wallcycles aroudn the OpenMP region?
 
     if (pme_gpu_performs_FFT(pme))
@@ -143,7 +141,6 @@ void gmx_parallel_3dfft_execute_gpu_wrapper(gmx_pme_t              *pme,
     }
 
     wallcycle_stop(wcycle, wcycle_id);
-    wallcycle_sub_stop(wcycle, wsubcycle_id);
 }
 
 /*! \brief Number of bytes in a cache line.
@@ -1855,9 +1852,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
             wallcycle_start(wcycle, ewcPME_SPREADGATHER);
 
             /* Spread the coefficients on a grid */
-            wallcycle_sub_start(wcycle, ewcsPME_INTERPCALCSPLINEANDSPREAD);
             spread_on_grid_gpu(pme, &pme->atc[0], grid_index, &pmegrid->grid, bFirst, TRUE, bDoSplines);
-            wallcycle_sub_stop(wcycle, ewcsPME_INTERPCALCSPLINEANDSPREAD);
 
 #if UNUSED_CPU_CODE_MARKER
             if (bFirst)
@@ -1905,7 +1900,6 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                 if (thread == 0)
                 {
                     wallcycle_start(wcycle, (grid_index < DO_Q ? ewcPME_SOLVE : ewcLJPME));
-                    wallcycle_sub_start(wcycle, ewcsPME_SOLVE);
                 }
                 if (grid_index < DO_Q)
                 {
@@ -1937,7 +1931,6 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                 if (thread == 0)
                 {
                     wallcycle_stop(wcycle, (grid_index < DO_Q ? ewcPME_SOLVE : ewcLJPME));
-                    wallcycle_sub_stop(wcycle, ewcsPME_SOLVE);
 #if UNUSED_CPU_CODE_MARKER
                     inc_nrnb(nrnb, eNR_SOLVEPME, loop_count);
 #endif
@@ -2322,7 +2315,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
 // this will only copy the forces buffer (with results from listed calculations, etc.) to the GPU (for bClearF == false),
 // launch the gather kernel, copy the result back
 void gmx_pme_gpu_launch_gather(gmx_pme_t *pme,
-                               gmx_wallcycle_t wcycle,
+                               gmx_wallcycle_t gmx_unused wcycle,
                                real gmx_unused lambda_q, real gmx_unused lambda_lj, gmx_bool bClearF)
 {
     if (!pme_gpu_performs_gather(pme))
@@ -2330,9 +2323,7 @@ void gmx_pme_gpu_launch_gather(gmx_pme_t *pme,
         return;
     }
 
-    wallcycle_sub_start(wcycle, ewcsPME_GATHER);
     gather_f_bsplines_gpu(pme, bClearF);
-    wallcycle_sub_stop(wcycle, ewcsPME_GATHER);
 }
 
 // this function should just fetch results

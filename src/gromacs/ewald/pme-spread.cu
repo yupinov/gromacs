@@ -842,7 +842,7 @@ void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t *atc,
             {
                 if (bCalcSplines)
                 {
-                    pme_gpu_timing_start(pme, ewcsPME_SPLINE);
+                    pme_gpu_timing_start(pme, gtPME_SPLINE);
 
                     if (bDoSplines)
                     {
@@ -869,11 +869,11 @@ void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t *atc,
 
                     CU_LAUNCH_ERR("pme_spline_kernel");
 
-                    pme_gpu_timing_stop(pme, ewcsPME_SPLINE);
+                    pme_gpu_timing_stop(pme, gtPME_SPLINE);
                 }
                 if (bSpread)
                 {
-                    pme_gpu_timing_start(pme, ewcsPME_SPREAD);
+                    pme_gpu_timing_start(pme, gtPME_SPREAD);
 
                     pme_spread_kernel<4, blockSize / 4 / 4> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (pme->gpu->coefficients,
                                                                                                         pme->gpu->grid, theta_d, idx_d,
@@ -881,12 +881,12 @@ void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t *atc,
 
                     CU_LAUNCH_ERR("pme_spread_kernel");
 
-                    pme_gpu_timing_stop(pme, ewcsPME_SPREAD);
+                    pme_gpu_timing_stop(pme, gtPME_SPREAD);
                 }
             }
             else // a single monster kernel here
             {
-                pme_gpu_timing_start(pme, ewcsPME_SPLINEANDSPREAD);
+                pme_gpu_timing_start(pme, gtPME_SPLINEANDSPREAD);
 
                 if (bCalcSplines)
                 {
@@ -922,7 +922,7 @@ void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t *atc,
                 }
                 CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
 
-                pme_gpu_timing_stop(pme, ewcsPME_SPLINEANDSPREAD);
+                pme_gpu_timing_stop(pme, gtPME_SPLINEANDSPREAD);
             }
             if (bSpread && pme->gpu->bGPUSingle)
             {
@@ -931,7 +931,7 @@ void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t *atc,
                 const int overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
                 const int nBlocks         = (overlappedCells + blockSize - 1) / blockSize;
 
-                pme_gpu_timing_start(pme, ewcsPME_WRAP);
+                pme_gpu_timing_start(pme, gtPME_WRAP);
 
                 pme_wrap_kernel<4> <<< nBlocks, blockSize, 0, s>>> (pme->gpu->constants,
                                                                     pme->gpu->overlap,
@@ -939,7 +939,7 @@ void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t *atc,
 
                 CU_LAUNCH_ERR("pme_wrap_kernel");
 
-                pme_gpu_timing_stop(pme, ewcsPME_WRAP);
+                pme_gpu_timing_stop(pme, gtPME_WRAP);
             }
             break;
 
