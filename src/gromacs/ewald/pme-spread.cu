@@ -317,12 +317,15 @@ template <
     >
 __device__ __forceinline__ void stage_charges(const int                 threadLocalId,
                                               real * __restrict__       coefficient,
-                                              const real * __restrict__ coefficientGlobal)
+                                              const real * __restrict__ coefficientGlobal,
+                                              const int                 nAtoms)
 {
     const int globalIndexBase = blockIdx.x * particlesPerBlock;
-    if (threadLocalId < particlesPerBlock)
+    const int index           = threadLocalId;
+    const int globalIndex     = globalIndexBase + index;
+    if ((index < particlesPerBlock) && (globalIndex < nAtoms))
     {
-        coefficient[threadLocalId] = coefficientGlobal[globalIndexBase + threadLocalId];
+        coefficient[threadLocalId] = coefficientGlobal[globalIndex];
     }
 }
 
@@ -331,13 +334,15 @@ template <
     >
 __device__ __forceinline__ void stage_coordinates(const int                 threadLocalId,
                                                   real * __restrict__       coordinates,
-                                                  const real * __restrict__ coordinatesGlobal)
+                                                  const real * __restrict__ coordinatesGlobal,
+                                                  const int                 nAtoms)
 {
     const int globalIndexBase = blockIdx.x * particlesPerBlock * DIM;
     const int index           = threadLocalId - 1 * particlesPerBlock;
-    if ((index >= 0) && (index < DIM * particlesPerBlock))
+    const int globalIndex     = globalIndexBase + index;
+    if ((index >= 0) && (index < DIM * particlesPerBlock) && (globalIndex < DIM * nAtoms))
     {
-        coordinates[index] = coordinatesGlobal[globalIndexBase + index];
+        coordinates[index] = coordinatesGlobal[globalIndex];
     }
 }
 
@@ -396,8 +401,8 @@ __global__ void pme_spline_and_spread_kernel
         // coordinates
         __shared__ real coordinates[DIM * particlesPerBlock];
 
-        stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal);
-        stage_coordinates<particlesPerBlock>(threadLocalId, coordinates, (const real *)coordinatesGlobal);
+        stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal, constants.nAtoms);
+        stage_coordinates<particlesPerBlock>(threadLocalId, coordinates, (const real *)coordinatesGlobal, constants.nAtoms);
         __syncthreads();
         calculate_splines<order, particlesPerBlock, bCalcAlways>(nnOffset, (const float3 *)coordinates, coefficient,
                                                                  thetaGlobal, theta, dthetaGlobal, idxGlobal, idx,
@@ -426,7 +431,7 @@ __global__ void pme_spline_and_spread_kernel
            }
            }
          */
-        stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal);
+        stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal, constants.nAtoms);
         __syncthreads();
     }
 
@@ -484,8 +489,8 @@ __global__ void pme_spline_kernel
     const int dimIndex        = threadIdx.y;
     const int globalIndexCalc = globalIndexBase + localIndexCalc;
 
-    stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal);
-    stage_coordinates<particlesPerBlock>(threadLocalId, coordinates, (const real *)coordinatesGlobal);
+    stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal, constants.nAtoms);
+    stage_coordinates<particlesPerBlock>(threadLocalId, coordinates, (const real *)coordinatesGlobal, constants.nAtoms);
     __syncthreads();
 
     calculate_splines<order, particlesPerBlock, bCalcAlways>(nnOffset, (const float3 *)coordinates, coefficient,
@@ -521,7 +526,7 @@ __global__ void pme_spread_kernel
         + (threadIdx.y * blockDim.x)
         + threadIdx.x;
 
-    stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal);
+    stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal, constants.nAtoms);
     __syncthreads();
 
     const int localIndexCalc  = threadLocalId / DIM;

@@ -165,11 +165,12 @@ __global__ void pme_gather_kernel(const pme_gpu_const_parameters constants,
         + threadIdx.x;
 
     /* Staging */
-    if (threadLocalId < idxSize)
+    int particlesTillTheEnd = constants.nAtoms - blockIdx.x * blockDim.z;
+    if ((threadLocalId < idxSize) && (threadLocalId < DIM * particlesTillTheEnd))
     {
         idx[threadLocalId] = idxGlobal[blockIdx.x * idxSize + threadLocalId];
     }
-    if ((threadLocalId < thetaSize))
+    if ((threadLocalId < thetaSize) && (threadLocalId < DIM * order * particlesTillTheEnd))
     {
         splineParams[threadLocalId].x = thetaGlobal[blockIdx.x * thetaSize + threadLocalId];
         splineParams[threadLocalId].y = dthetaGlobal[blockIdx.x * thetaSize + threadLocalId];
@@ -282,7 +283,7 @@ __global__ void pme_gather_kernel(const pme_gpu_const_parameters constants,
     __syncthreads();
 
     //reduce by components, again
-    if (threadLocalId < DIM * particlesPerBlock)
+    if ((threadLocalId < DIM * particlesPerBlock) && (threadLocalId < DIM * particlesTillTheEnd))
     {
         // new, different particle indices
         const int    localIndexFinal = threadLocalId / DIM;
