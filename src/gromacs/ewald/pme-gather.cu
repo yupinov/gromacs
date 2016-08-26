@@ -165,12 +165,14 @@ __global__ void pme_gather_kernel(const pme_gpu_const_parameters constants,
         + threadIdx.x;
 
     /* Staging */
-    int particlesTillTheEnd = constants.nAtoms - blockIdx.x * blockDim.z;
-    if ((threadLocalId < idxSize) && (threadLocalId < DIM * particlesTillTheEnd))
+    const int particlesTillTheRangeEnd = constants.nAtoms - blockIdx.x * blockDim.z;
+    assert(particlesTillTheRangeEnd > 0);
+
+    if ((threadLocalId < idxSize) && (threadLocalId < DIM * particlesTillTheRangeEnd))
     {
         idx[threadLocalId] = idxGlobal[blockIdx.x * idxSize + threadLocalId];
     }
-    if ((threadLocalId < thetaSize) && (threadLocalId < DIM * order * particlesTillTheEnd))
+    if ((threadLocalId < thetaSize) && (threadLocalId < DIM * order * particlesTillTheRangeEnd))
     {
         splineParams[threadLocalId].x = thetaGlobal[blockIdx.x * thetaSize + threadLocalId];
         splineParams[threadLocalId].y = dthetaGlobal[blockIdx.x * thetaSize + threadLocalId];
@@ -283,7 +285,7 @@ __global__ void pme_gather_kernel(const pme_gpu_const_parameters constants,
     __syncthreads();
 
     //reduce by components, again
-    if ((threadLocalId < DIM * particlesPerBlock) && (threadLocalId < DIM * particlesTillTheEnd))
+    if ((threadLocalId < DIM * particlesPerBlock) && (threadLocalId < DIM * particlesTillTheRangeEnd))
     {
         // new, different particle indices
         const int    localIndexFinal = threadLocalId / DIM;
@@ -453,7 +455,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme,
         }
         else
         {
-            gmx_fatal(FARGS, "gather: orders other than 4 untested!");
+            gmx_fatal(FARGS, "PME GPU unwrapping: orders other than 4 not implemented!");
         }
     }
 
@@ -478,7 +480,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme,
 
     const int blockSize         = 4 * warp_size;
     const int particlesPerBlock = blockSize / order / order;
-    dim3 nBlocks((nAtoms + blockSize - 1) / blockSize * order * order);
+    dim3 nBlocks((nAtoms + particlesPerBlock - 1) / particlesPerBlock);
     dim3 dimBlock(order, order, particlesPerBlock);
 
     pme_gpu_timing_start(pme, gtPME_GATHER);
@@ -498,7 +500,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme,
     }
     else
     {
-        gmx_fatal(FARGS, "PME gather: orders other than 4 were not tested!");
+        gmx_fatal(FARGS, "PME GPU gathering: orders other than 4 not implemented!");
     }
     CU_LAUNCH_ERR("pme_gather_kernel");
 
