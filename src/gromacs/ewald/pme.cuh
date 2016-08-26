@@ -48,6 +48,8 @@
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 #include "pme-timings.cuh"
 
+#include "pme-gpu.h"
+
 /*
     Here is a current memory layout for the theta/dtheta B-spline float parameter arrays.
     This is the data in global memory used both by spreading and gathering kernels (with same scheduling).
@@ -247,14 +249,10 @@ void pme_gpu_copy_bspline_moduli(const gmx_pme_t *pme);
 /*! \brief Copies the charges to the GPU */
 void pme_gpu_copy_charges(const gmx_pme_t *pme);
 
-/*
-   gmx_inline gmx_bool pme_gpu_timings_enabled(const gmx_pme_t *pme)
-   {
+gmx_inline gmx_bool pme_gpu_timings_enabled(const gmx_pme_t *pme)
+{
     return pme_gpu_enabled(pme) && pme->gpu->bTiming;
-   };
- */
-gmx_bool pme_gpu_timings_enabled(const gmx_pme_t *pme);
-
+}
 
 void gmx_parallel_3dfft_destroy_gpu(const gmx_parallel_3dfft_gpu_t &pfft_setup);
 

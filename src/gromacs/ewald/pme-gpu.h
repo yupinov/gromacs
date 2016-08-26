@@ -109,7 +109,10 @@ CUDA_FUNC_QUALIFIER void pme_gpu_sync_grid(const gmx_pme_t *CUDA_FUNC_ARGUMENT(p
 // nice external functions
 
 /*! \brief Finds out if PME is set to run on GPU. */
-CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_enabled(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
+gmx_inline gmx_bool pme_gpu_enabled(const gmx_pme_t *pme)
+{
+    return (pme != NULL) && pme->bGPU;
+}
 
 /*! \brief Initializes the PME GPU data at the beginning or on DD. */
 CUDA_FUNC_QUALIFIER void pme_gpu_init(gmx_pme_gpu_t      **CUDA_FUNC_ARGUMENT(pmeGPU),

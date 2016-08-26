@@ -500,16 +500,6 @@ void pme_gpu_sync_grid(const gmx_pme_t *pme, gmx_fft_direction dir)
 
 // TODO: use gmx_inline for small functions
 
-gmx_bool pme_gpu_enabled(const gmx_pme_t *pme)
-{
-    return (pme != NULL) && pme->bGPU;
-}
-
-gmx_bool pme_gpu_timings_enabled(const gmx_pme_t *pme)
-{
-    return pme_gpu_enabled(pme) && pme->gpu->bTiming;
-}
-
 // wrappers just for the pme.cpp host calls - a PME GPU code that should ideally be in this file as well
 // C++11 not supported in CUDA host code by default => the code stays there for now
 
