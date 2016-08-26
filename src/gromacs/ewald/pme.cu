@@ -311,10 +311,7 @@ void pme_gpu_init(gmx_pme_gpu_t **pmeGPU, gmx_pme_t *pme, const gmx_hw_info_t *h
         stat = cudaEventCreateWithFlags(&(*pmeGPU)->syncSolveGridD2H, cudaEventDisableTiming);
         CU_RET_ERR(stat, "cudaEventCreate on syncSolveGridH2D failed");
 
-        if ((pme->gpu)->bTiming)
-        {
-            pme_gpu_init_timings(pme);
-        }
+        pme_gpu_init_timings(pme);
 
         /* This has a constant size of 6 + 1 floats */
         pme_gpu_alloc_energy_virial(pme, grid_index);
@@ -506,6 +503,11 @@ void pme_gpu_sync_grid(const gmx_pme_t *pme, gmx_fft_direction dir)
 gmx_bool pme_gpu_enabled(const gmx_pme_t *pme)
 {
     return (pme != NULL) && pme->bGPU;
+}
+
+gmx_bool pme_gpu_timings_enabled(const gmx_pme_t *pme)
+{
+    return pme_gpu_enabled(pme) && pme->gpu->bTiming;
 }
 
 // wrappers just for the pme.cpp host calls - a PME GPU code that should ideally be in this file as well

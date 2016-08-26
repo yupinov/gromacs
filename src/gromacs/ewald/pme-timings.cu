@@ -135,17 +135,23 @@ unsigned int pme_gpu_timing::get_call_count()
 
 void pme_gpu_timing_start(const gmx_pme_t *pme, int PMEStageId)
 {
-    pme->gpu->timingEvents[PMEStageId]->start_recording(pme->gpu->pmeStream);
+    if (pme_gpu_timings_enabled(pme))
+    {
+        pme->gpu->timingEvents[PMEStageId]->start_recording(pme->gpu->pmeStream);
+    }
 }
 
 void pme_gpu_timing_stop(const gmx_pme_t *pme, int PMEStageId)
 {
-    pme->gpu->timingEvents[PMEStageId]->stop_recording(pme->gpu->pmeStream);
+    if (pme_gpu_timings_enabled(pme))
+    {
+        pme->gpu->timingEvents[PMEStageId]->stop_recording(pme->gpu->pmeStream);
+    }
 }
 
 void pme_gpu_get_timings(gmx_wallclock_gpu_t **timings, const gmx_pme_t *pme)
 {
-    if (pme_gpu_enabled(pme))
+    if (pme_gpu_timings_enabled(pme))
     {
         GMX_RELEASE_ASSERT(timings, "Null GPU timing pointer");
         if (!*timings)
@@ -166,7 +172,7 @@ void pme_gpu_get_timings(gmx_wallclock_gpu_t **timings, const gmx_pme_t *pme)
 
 void pme_gpu_update_timings(const gmx_pme_t *pme)
 {
-    if (pme_gpu_enabled(pme))
+    if (pme_gpu_timings_enabled(pme))
     {
         for (size_t i = 0; i < pme->gpu->timingEvents.size(); i++)
         {
@@ -177,7 +183,7 @@ void pme_gpu_update_timings(const gmx_pme_t *pme)
 
 void pme_gpu_init_timings(const gmx_pme_t *pme)
 {
-    if (pme_gpu_enabled(pme))
+    if (pme_gpu_timings_enabled(pme))
     {
         cudaStreamSynchronize(pme->gpu->pmeStream);
         for (size_t i = 0; i < gtPME_END_INVALID; i++)
@@ -190,7 +196,7 @@ void pme_gpu_init_timings(const gmx_pme_t *pme)
 
 void pme_gpu_destroy_timings(const gmx_pme_t *pme)
 {
-    if (pme_gpu_enabled(pme))
+    if (pme_gpu_timings_enabled(pme))
     {
         for (size_t i = 0; i < pme->gpu->timingEvents.size(); i++)
         {
@@ -202,7 +208,7 @@ void pme_gpu_destroy_timings(const gmx_pme_t *pme)
 
 void pme_gpu_reset_timings(const gmx_pme_t *pme)
 {
-    if (pme_gpu_enabled(pme))
+    if (pme_gpu_timings_enabled(pme))
     {
         for (size_t i = 0; i < pme->gpu->timingEvents.size(); i++)
         {
