@@ -40,9 +40,8 @@
  */
 
 #include "gmxpre.h"
-
 #include <assert.h>
-
+#include "gromacs/utility/gmxassert.h"
 #include "pme.cuh"
 
 /*! \brief
@@ -86,6 +85,10 @@ void pme_gpu_get_forces(const gmx_pme_t *pme)
     assert(n > 0);
     const size_t forcesSize = DIM * n * sizeof(real);
     real        *forces     = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
+    for (size_t i = 0; i < DIM * n; i++)
+    {
+        GMX_RELEASE_ASSERT(!isnan(forces[i]), "PME GPU - wrong forces");
+    }
     memcpy(pme->atc[0].f, forces, forcesSize);
 }
 
@@ -179,11 +182,16 @@ __global__ void pme_gather_kernel(const pme_gpu_const_parameters constants,
     }
     __syncthreads();
 
-    real fx = 0.0f;
-    real fy = 0.0f;
-    real fz = 0.0f;
+    real           fx = 0.0f;
+    real           fy = 0.0f;
+    real           fz = 0.0f;
 
-    if (globalIndex < constants.nAtoms)
+    const gmx_bool particleRangeCheck = (globalIndex < constants.nAtoms);
+
+    //yupinov stage coefficient into a shared/local mem?
+    // this particle skipping conditional should be synchronized between spline and gather
+    // (garbage and NaNs might live in spline params for skipped particles)
+    if (particleRangeCheck && (coefficientGlobal[globalIndex] != 0.0f))
     {
         const int    pny = constants.localGridSizePadded.y;
         const int    pnz = constants.localGridSizePadded.z;
@@ -267,9 +275,9 @@ __global__ void pme_gather_kernel(const pme_gpu_const_parameters constants,
     {
         // lazy 3-thread reduction in shared memory inspired by reduce_force_j_generic
         __shared__ real fSharedArray[DIM * blockSize];
-        fSharedArray[lineIndex]                 = fx;
-        fSharedArray[lineIndex + blockSize]     = fy;
-        fSharedArray[lineIndex + 2 * blockSize] = fz;
+        fSharedArray[XX * blockSize + lineIndex] = fx;
+        fSharedArray[YY * blockSize + lineIndex] = fy;
+        fSharedArray[ZZ * blockSize + lineIndex] = fz;
 
         if (splineIndex < 3)
         {
@@ -284,8 +292,7 @@ __global__ void pme_gather_kernel(const pme_gpu_const_parameters constants,
     }
     __syncthreads();
 
-    //reduce by components, again
-    if ((threadLocalId < DIM * particlesPerBlock) && (threadLocalId < DIM * particlesTillTheRangeEnd))
+    if (threadLocalId < DIM * particlesPerBlock)
     {
         // new, different particle indices
         const int    localIndexFinal = threadLocalId / DIM;
@@ -310,15 +317,20 @@ __global__ void pme_gather_kernel(const pme_gpu_const_parameters constants,
                 contrib = constants.recipbox[XX].z * fSum.x + constants.recipbox[YY].z * fSum.y + constants.recipbox[ZZ].z * fSum.z;
                 break;
         }
+
         contrib *= -coefficient;
+        assert(!isnan(contrib));
+
+        const int globalForceIndex = blockIdx.x * PME_SPREADGATHER_BLOCK_DATA_SIZE + threadLocalId;
+        assert(globalForceIndex < DIM * constants.nAtoms);
 
         if (bOverwriteForces)
         {
-            forcesGlobal[blockIdx.x * PME_SPREADGATHER_BLOCK_DATA_SIZE + threadLocalId] = contrib;
+            forcesGlobal[globalForceIndex] = contrib;
         }
         else
         {
-            forcesGlobal[blockIdx.x * PME_SPREADGATHER_BLOCK_DATA_SIZE + threadLocalId] += contrib;
+            forcesGlobal[globalForceIndex] += contrib;
         }
     }
 }

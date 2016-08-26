@@ -182,7 +182,7 @@ __device__ __forceinline__ void calculate_splines(const int3                    
 
         /* B-spline calculation */
 
-        if (bCalcAlways || (coefficient[localIndexCalc] != 0.0f))
+        if (bCalcAlways || (coefficient[localIndexCalc] != 0.0f)) //yupinov thsi conditional should be same in spread and gather!
         {
             real       div;
             int        k;
