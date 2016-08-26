@@ -306,7 +306,6 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
                         /* We don't calculate f, but we do want the potential */
                         pme_flags |= GMX_PME_CALC_POT;
                     }
-                    wallcycle_start(wcycle, ewcPMEMESH);
                     status = gmx_pme_gpu_launch(fr->pmedata,
                                                 0, md->homenr - fr->n_tpi,
                                                 x, fr->f_novirsum,
@@ -322,7 +321,6 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
                                                 //fr->ewaldcoeff_lj,
                                                 lambda[efptCOUL], lambda[efptVDW],
                                                 pme_flags);
-                    *cycles_pme = wallcycle_stop(wcycle, ewcPMEMESH);
                     if (status != 0)
                     {
                         gmx_fatal(FARGS, "Error %d in reciprocal PME GPU routine", status);
@@ -378,7 +376,7 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
 
 void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                        t_idef     *idef,    t_commrec  *cr,
-                       t_nrnb     *nrnb,    gmx_wallcycle_t wcycle,
+                       t_nrnb     *nrnb,    gmx_wallcycle_t gmx_unused wcycle,
                        t_mdatoms  *md,
                        rvec       x[],      history_t  *hist,
                        rvec       f[],
@@ -770,7 +768,10 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                         pme_flags |= GMX_PME_CALC_POT;
                     }
 
-                    wallcycle_start(wcycle, ewcPMEMESH);
+                    if (!pme_gpu_enabled(fr->pmedata))
+                    {
+                        wallcycle_start(wcycle, ewcPMEMESH);
+                    }
                     status = gmx_pme_do(fr->pmedata,
                                         0, md->homenr - fr->n_tpi,
                                         x, fr->f_novirsum,
@@ -786,7 +787,10 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                                         &Vlr_q, &Vlr_lj,
                                         lambda[efptCOUL], lambda[efptVDW],
                                         &dvdl_long_range_q, &dvdl_long_range_lj, pme_flags);
-                    *cycles_pme = wallcycle_stop(wcycle, ewcPMEMESH);
+                    if (!pme_gpu_enabled(fr->pmedata))
+                    {
+                        *cycles_pme = wallcycle_stop(wcycle, ewcPMEMESH);
+                    }
                     if (status != 0)
                     {
                         gmx_fatal(FARGS, "Error %d in reciprocal PME routine", status);

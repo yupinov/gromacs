@@ -122,9 +122,14 @@ void gmx_parallel_3dfft_execute_gpu_wrapper(gmx_pme_t              *pme,
 {
     int thread;
 
-    int wcycle_id    = ewcPME_FFT;
-
-    wallcycle_start(wcycle, wcycle_id);
+    if (pme_gpu_performs_FFT(pme))
+    {
+        wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
+    }
+    else
+    {
+        wallcycle_start(wcycle, ewcPME_FFT);
+    }
     // is this alright, to start and stop wallcycles aroudn the OpenMP region?
 
     if (pme_gpu_performs_FFT(pme))
@@ -140,7 +145,14 @@ void gmx_parallel_3dfft_execute_gpu_wrapper(gmx_pme_t              *pme,
         }
     }
 
-    wallcycle_stop(wcycle, wcycle_id);
+    if (pme_gpu_performs_FFT(pme))
+    {
+        wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
+    }
+    else
+    {
+        wallcycle_stop(wcycle, ewcPME_FFT);
+    }
 }
 
 /*! \brief Number of bytes in a cache line.
@@ -1756,8 +1768,10 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
 
     bFirst = TRUE;
 
+    wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME);
     pme_gpu_set_constants(pme, box, ewaldcoeff_q);
     pme_gpu_step_init(pme);
+    wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
 
     /* For simplicity, we construct the splines for all particles if
      * more than one PME calculations is needed. Some optimization
@@ -1836,7 +1850,10 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
             wallcycle_stop(wcycle, ewcPME_REDISTXF);
         }
 
+        // TODO call this conditionally
+        wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
         pme_gpu_grid_init(pme, grid_index);
+        wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
 
         if (debug)
         {
@@ -1849,10 +1866,13 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
 
         if (flags & GMX_PME_SPREAD)
         {
-            wallcycle_start(wcycle, ewcPME_SPREADGATHER);
+            // XXX wallcycle_start(wcycle, ewcPME_SPREADGATHER);
 
             /* Spread the coefficients on a grid */
+            wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
+            // TODO rename: consider using the "pme_gpu" prefix here
             spread_on_grid_gpu(pme, &pme->atc[0], grid_index, &pmegrid->grid, bFirst, TRUE, bDoSplines);
+            wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
 
 #if UNUSED_CPU_CODE_MARKER
             if (bFirst)
@@ -1884,7 +1904,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                 }
             }
 
-            wallcycle_stop(wcycle, ewcPME_SPREADGATHER);
+            // XXX wallcycle_stop(wcycle, ewcPME_SPREADGATHER);
         }
 
         try
@@ -1897,7 +1917,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                 where();
 
                 /* solve in k-space for our local cells */
-                if (thread == 0)
+                if (thread == 0 && !pme_gpu_enabled(pme))
                 {
                     wallcycle_start(wcycle, (grid_index < DO_Q ? ewcPME_SOLVE : ewcLJPME));
                 }
@@ -1905,7 +1925,9 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                 {
                     if (pme_gpu_performs_solve(pme))
                     {
+                        wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
                         solve_pme_gpu(pme, cfftgrid, bCalcEnerVir);
+                        wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
                     }
                     else
 #pragma omp parallel num_threads(pme->nthread) private(thread)
@@ -1928,7 +1950,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                                          pme->nthread, thread);
                 }
 #endif
-                if (thread == 0)
+                if (thread == 0 && !pme_gpu_enabled(pme))
                 {
                     wallcycle_stop(wcycle, (grid_index < DO_Q ? ewcPME_SOLVE : ewcLJPME));
 #if UNUSED_CPU_CODE_MARKER
@@ -1963,7 +1985,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
                     /* Note: this wallcycle region is closed below
                        outside an OpenMP region, so take care if
                        refactoring code here. */
-                    wallcycle_start(wcycle, ewcPME_SPREADGATHER);
+                    // XX  wallcycle_start(wcycle, ewcPME_SPREADGATHER);
                 }
                 if (!pme_gpu_performs_FFT(pme) || !pme_gpu_performs_gather(pme))
                 {
@@ -2028,7 +2050,7 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
 #endif
             /* Note: this wallcycle region is opened above inside an OpenMP
                region, so take care if refactoring code here. */
-            wallcycle_stop(wcycle, ewcPME_SPREADGATHER);
+            // XXX wallcycle_stop(wcycle, ewcPME_SPREADGATHER);
         }
 #if UNUSED_CPU_CODE_MARKER
         if (bCalcEnerVir)
@@ -2316,14 +2338,16 @@ int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
 // launch the gather kernel, copy the result back
 void gmx_pme_gpu_launch_gather(gmx_pme_t *pme,
                                gmx_wallcycle_t gmx_unused wcycle,
-                               real gmx_unused lambda_q, real gmx_unused lambda_lj, gmx_bool bClearF)
+                               real gmx_unused lambda_q, real lambda_lj, gmx_bool bClearF)
 {
     if (!pme_gpu_performs_gather(pme))
     {
         return;
     }
 
+    wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
     gather_f_bsplines_gpu(pme, bClearF);
+    wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
 }
 
 // this function should just fetch results
@@ -2352,7 +2376,9 @@ int gmx_pme_gpu_get_results(const gmx_pme_t *pme,
     matrix               vir_AB[4];
 
     /* FIXME: there should be a waiting wallycle here, which would not conflict with the NB waiting */
+    wallcycle_sub_start_nocount(wcycle, ewcsWAIT_GPU_PME);
     pme_gpu_step_end(pme, bCalcF, bCalcEnerVir);
+    wallcycle_sub_stop(wcycle, ewcsWAIT_GPU_PME);
 
     // copied from up there in the loop...
     assert(grid_index == 0);

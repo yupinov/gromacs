@@ -501,6 +501,7 @@ void pme_gpu_sync_grid(const gmx_pme_t *pme, gmx_fft_direction dir)
     }
 }
 
+// TODO: use gmx_inline for small functions
 
 gmx_bool pme_gpu_enabled(const gmx_pme_t *pme)
 {
