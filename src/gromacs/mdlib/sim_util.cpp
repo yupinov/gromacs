@@ -1073,9 +1073,7 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
                       //nrnb,
                       wcycle, mdatoms,
                       x, box,
-                      lambda,
-                      flags,
-                      &cycles_pme);
+                      flags);
 
     if (bUseGPU)
     {

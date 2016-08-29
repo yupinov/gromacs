@@ -222,14 +222,11 @@ void do_force_lowlevel(t_forcerec   *fr,
 void do_pme_gpu_launch(t_forcerec     *fr,
                        t_inputrec     *ir,
                        t_commrec      *cr,
-                       //t_nrnb       *nrnb,
                        gmx_wallcycle_t wcycle,
                        t_mdatoms      *md,
                        rvec            x[],
                        matrix          box,
-                       real           *lambda,
-                       int             flags,
-                       float          *cycles_pme);
+                       int             flags);
 
 void free_gpu_resources(const t_forcerec            *fr,
                         const t_commrec             *cr,

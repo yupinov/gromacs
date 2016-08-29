@@ -132,30 +132,22 @@ int gmx_pme_do(struct gmx_pme_t *pme,
 
 // launches first part of PME GPU - from spread up to and including FFT C2R
 // and copying energy/virial back
-int gmx_pme_gpu_launch(struct gmx_pme_t *pme,
-                       int start,       int homenr,
-                       rvec x[],        rvec f[],
-                       real chargeA[],  real chargeB[],
-                       real c6A[],      real c6B[],
-                       //real sigmaA[],   real sigmaB[],
-                       matrix box,      t_commrec *cr,
-                       //int  maxshift_x, int maxshift_y,
-                       //t_nrnb *nrnb,
-                       gmx_wallcycle_t wcycle,
-                       real ewaldcoeff_q,
-                       //real ewaldcoeff_lj,
-                       real lambda_q,   real lambda_lj,
-                       int flags);
+void gmx_pme_gpu_launch(struct gmx_pme_t *pme,
+                        int start,       int homenr,
+                        rvec x[],        rvec f[],
+                        real chargeA[],
+                        matrix box,
+                        gmx_wallcycle_t wcycle,
+                        real ewaldcoeff_q,
+                        int flags);
 
 // launches the rest of the PME GPU:
 // copying calculated forces (e.g. listed) onto GPU (only for bClearF == false), gather, copying forces back
 // for separate PME ranks there is no precalculated forces, so bClearF has to be true
 // so there is no reason not to put this call directly back into gmx_pme_gpu_launch for bClearF == true
-void gmx_pme_gpu_launch_gather(gmx_pme_t *pme,
+void gmx_pme_gpu_launch_gather(gmx_pme_t      *pme,
                                gmx_wallcycle_t wcycle,
-                               real gmx_unused lambda_q,
-                               real gmx_unused lambda_lj,
-                               gmx_bool bClearF);
+                               gmx_bool        bClearF);
 
 int gmx_pme_gpu_get_results(const gmx_pme_t *pme,
                             t_commrec gmx_unused *cr,

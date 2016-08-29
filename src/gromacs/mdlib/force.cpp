@@ -129,14 +129,11 @@ static void reduce_thread_energies(tensor vir_q, tensor vir_lj,
 
 void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
                        t_commrec  *cr,
-                       //t_nrnb     *nrnb,
                        gmx_wallcycle_t wcycle,
                        t_mdatoms  *md,
                        rvec       x[],
                        matrix     box,
-                       real       *lambda,
-                       int        flags,
-                       float      *cycles_pme)
+                       int        flags)
 {
     // yupinov check GPU condition here
 
@@ -160,7 +157,6 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
 
     if (EEL_FULL(fr->eeltype) || EVDW_PME(fr->vdwtype))
     {
-        int  status            = 0;
 #if UNUSED_COPYPASTED_CODE_MARKER
         real Vlr_q             = 0, Vlr_lj = 0, Vcorr_q = 0, Vcorr_lj = 0;
         real dvdl_long_range_q = 0, dvdl_long_range_lj = 0;
@@ -306,25 +302,14 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
                         /* We don't calculate f, but we do want the potential */
                         pme_flags |= GMX_PME_CALC_POT;
                     }
-                    status = gmx_pme_gpu_launch(fr->pmedata,
-                                                0, md->homenr - fr->n_tpi,
-                                                x, fr->f_novirsum,
-                                                md->chargeA, md->chargeB,
-                                                md->sqrt_c6A, md->sqrt_c6B,
-                                                //md->sigmaA, md->sigmaB,
-                                                bSB ? boxs : box, cr,
-                                                //DOMAINDECOMP(cr) ? dd_pme_maxshift_x(cr->dd) : 0,
-                                                //DOMAINDECOMP(cr) ? dd_pme_maxshift_y(cr->dd) : 0,
-                                                //nrnb,
-                                                wcycle,
-                                                fr->ewaldcoeff_q,
-                                                //fr->ewaldcoeff_lj,
-                                                lambda[efptCOUL], lambda[efptVDW],
-                                                pme_flags);
-                    if (status != 0)
-                    {
-                        gmx_fatal(FARGS, "Error %d in reciprocal PME GPU routine", status);
-                    }
+                    gmx_pme_gpu_launch(fr->pmedata,
+                                       0, md->homenr - fr->n_tpi,
+                                       x, fr->f_novirsum,
+                                       md->chargeA,
+                                       bSB ? boxs : box,
+                                       wcycle,
+                                       fr->ewaldcoeff_q,
+                                       pme_flags);
                 }
 #if UNUSED_COPYPASTED_CODE_MARKER
                 if (fr->n_tpi > 0)
@@ -734,7 +719,7 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                                                    fr->vir_el_recip);
             }
 
-            gmx_pme_gpu_launch_gather(fr->pmedata, wcycle, lambda[efptCOUL], lambda[efptVDW], false);
+            gmx_pme_gpu_launch_gather(fr->pmedata, wcycle, false);
 
             enerd->dvdl_lin[efptCOUL] += dvdl_long_range_correction_q;
             enerd->dvdl_lin[efptVDW]  += dvdl_long_range_correction_lj;
