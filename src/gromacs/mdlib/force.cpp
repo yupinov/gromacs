@@ -135,8 +135,6 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
                        matrix     box,
                        int        flags)
 {
-    // yupinov check GPU condition here
-
     int         i;
     gmx_bool    bSB;
     int         pme_flags;
@@ -152,16 +150,9 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
         box_size[i] = box[i][i];
     }
 
-    // copypasted from do_force_lowlevel, partially commented with #if UNUSED_COPYPASTED_CODE_MARKER
-#define UNUSED_COPYPASTED_CODE_MARKER 0
-
+    /* The code below was copypasted from do_force_lowlevel and cleared of LJ code, etc. */
     if (EEL_FULL(fr->eeltype) || EVDW_PME(fr->vdwtype))
     {
-#if UNUSED_COPYPASTED_CODE_MARKER
-        real Vlr_q             = 0, Vlr_lj = 0, Vcorr_q = 0, Vcorr_lj = 0;
-        real dvdl_long_range_q = 0, dvdl_long_range_lj = 0;
-#endif
-
         bSB = (ir->nwall == 2);
         if (bSB)
         {
@@ -172,108 +163,6 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
 
         if (EEL_PME_EWALD(fr->eeltype) || EVDW_PME(fr->vdwtype))
         {
-#if UNUSED_COPYPASTED_CODE_MARKER
-            real dvdl_long_range_correction_q   = 0;
-            real dvdl_long_range_correction_lj  = 0;
-            /* With the Verlet scheme exclusion forces are calculated
-             * in the non-bonded kernel.
-             */
-            /* The TPI molecule does not have exclusions with the rest
-             * of the system and no intra-molecular PME grid
-             * contributions will be calculated in
-             * gmx_pme_calc_energy.
-             */
-
-            if ((ir->cutoff_scheme == ecutsGROUP && fr->n_tpi == 0) ||
-                ir->ewald_geometry != eewg3D ||
-                ir->epsilon_surface != 0)
-            {
-                int nthreads, t;
-
-                wallcycle_sub_start(wcycle, ewcsEWALD_CORRECTION);
-
-                if (fr->n_tpi > 0)
-                {
-                    gmx_fatal(FARGS, "TPI with PME currently only works in a 3D geometry with tin-foil boundary conditions");
-                }
-
-                nthreads = fr->nthread_ewc;
-#pragma omp parallel for num_threads(nthreads) schedule(static)
-                for (t = 0; t < nthreads; t++)
-                {
-                    try
-                    {
-                        tensor *vir_q, *vir_lj;
-                        real   *Vcorrt_q, *Vcorrt_lj, *dvdlt_q, *dvdlt_lj;
-                        if (t == 0)
-                        {
-                            vir_q     = &fr->vir_el_recip;
-                            vir_lj    = &fr->vir_lj_recip;
-                            Vcorrt_q  = &Vcorr_q;
-                            Vcorrt_lj = &Vcorr_lj;
-                            dvdlt_q   = &dvdl_long_range_correction_q;
-                            dvdlt_lj  = &dvdl_long_range_correction_lj;
-                        }
-                        else
-                        {
-                            vir_q     = &fr->ewc_t[t].vir_q;
-                            vir_lj    = &fr->ewc_t[t].vir_lj;
-                            Vcorrt_q  = &fr->ewc_t[t].Vcorr_q;
-                            Vcorrt_lj = &fr->ewc_t[t].Vcorr_lj;
-                            dvdlt_q   = &fr->ewc_t[t].dvdl[efptCOUL];
-                            dvdlt_lj  = &fr->ewc_t[t].dvdl[efptVDW];
-                            clear_mat(*vir_q);
-                            clear_mat(*vir_lj);
-                        }
-                        *dvdlt_q  = 0;
-                        *dvdlt_lj = 0;
-
-                        /* Threading is only supported with the Verlet cut-off
-                         * scheme and then only single particle forces (no
-                         * exclusion forces) are calculated, so we can store
-                         * the forces in the normal, single fr->f_novirsum array.
-                         */
-                        ewald_LRcorrection(fr->excl_load[t], fr->excl_load[t+1],
-                                           cr, t, fr,
-                                           md->chargeA, md->chargeB,
-                                           md->sqrt_c6A, md->sqrt_c6B,
-                                           md->sigmaA, md->sigmaB,
-                                           md->sigma3A, md->sigma3B,
-                                           md->nChargePerturbed || md->nTypePerturbed,
-                                           ir->cutoff_scheme != ecutsVERLET,
-                                           excl, x, bSB ? boxs : box, mu_tot,
-                                           ir->ewald_geometry,
-                                           ir->epsilon_surface,
-                                           fr->f_novirsum, *vir_q, *vir_lj,
-                                           Vcorrt_q, Vcorrt_lj,
-                                           lambda[efptCOUL], lambda[efptVDW],
-                                           dvdlt_q, dvdlt_lj);
-                    }
-                    GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
-                }
-                if (nthreads > 1)
-                {
-                    reduce_thread_energies(fr->vir_el_recip, fr->vir_lj_recip,
-                                           &Vcorr_q, &Vcorr_lj,
-                                           &dvdl_long_range_correction_q,
-                                           &dvdl_long_range_correction_lj,
-                                           nthreads, fr->ewc_t);
-                }
-                wallcycle_sub_stop(wcycle, ewcsEWALD_CORRECTION);
-            }
-
-            if (EEL_PME_EWALD(fr->eeltype) && fr->n_tpi == 0)
-            {
-                /* This is not in a subcounter because it takes a
-                   negligible and constant-sized amount of time */
-                Vcorr_q += ewald_charge_correction(cr, fr, lambda[efptCOUL], box,
-                                                   &dvdl_long_range_correction_q,
-                                                   fr->vir_el_recip);
-            }
-
-            enerd->dvdl_lin[efptCOUL] += dvdl_long_range_correction_q;
-            enerd->dvdl_lin[efptVDW]  += dvdl_long_range_correction_lj;
-#endif
             if ((EEL_PME(fr->eeltype) || EVDW_PME(fr->vdwtype)) && (cr->duty & DUTY_PME))
             {
                 /* Do reciprocal PME for Coulomb and/or LJ. */
@@ -311,51 +200,8 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
                                        fr->ewaldcoeff_q,
                                        pme_flags);
                 }
-#if UNUSED_COPYPASTED_CODE_MARKER
-                if (fr->n_tpi > 0)
-                {
-                    if (EVDW_PME(ir->vdwtype))
-                    {
-                        gmx_fatal(FARGS, "Test particle insertion not implemented with LJ-PME");
-                    }
-
-                    /* Determine the PME grid energy of the test molecule
-                     * with the PME grid potential of the other charges.
-                     */
-                    gmx_pme_calc_energy(fr->pmedata, fr->n_tpi,
-                                        x + md->homenr - fr->n_tpi,
-                                        md->chargeA + md->homenr - fr->n_tpi,
-                                        &Vlr_q);
-                }
-#endif
             }
         }
-#if UNUSED_COPYPASTED_CODE_MARKER
-        if (!EEL_PME(fr->eeltype) && EEL_PME_EWALD(fr->eeltype))
-        {
-            Vlr_q = do_ewald(ir, x, fr->f_novirsum,
-                             md->chargeA, md->chargeB,
-                             box_size, cr, md->homenr,
-                             fr->vir_el_recip, fr->ewaldcoeff_q,
-                             lambda[efptCOUL], &dvdl_long_range_q, fr->ewald_table);
-        }
-
-        /* Note that with separate PME nodes we get the real energies later */
-        enerd->dvdl_lin[efptCOUL] += dvdl_long_range_q;
-        enerd->dvdl_lin[efptVDW]  += dvdl_long_range_lj;
-        enerd->term[F_COUL_RECIP]  = Vlr_q + Vcorr_q;
-        enerd->term[F_LJ_RECIP]    = Vlr_lj + Vcorr_lj;
-        if (debug)
-        {
-            fprintf(debug, "Vlr_q = %g, Vcorr_q = %g, Vlr_corr_q = %g\n",
-                    Vlr_q, Vcorr_q, enerd->term[F_COUL_RECIP]);
-            pr_rvecs(debug, 0, "vir_el_recip after corr", fr->vir_el_recip, DIM);
-            pr_rvecs(debug, 0, "fshift after LR Corrections", fr->fshift, SHIFTS);
-            fprintf(debug, "Vlr_lj: %g, Vcorr_lj = %g, Vlr_corr_lj = %g\n",
-                    Vlr_lj, Vcorr_lj, enerd->term[F_LJ_RECIP]);
-            pr_rvecs(debug, 0, "vir_lj_recip after corr", fr->vir_lj_recip, DIM);
-        }
-#endif
     }
 }
 
