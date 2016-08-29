@@ -218,6 +218,16 @@ void do_force_lowlevel(t_forcerec   *fr,
                        float        *cycles_pme);
 /* Call all the force routines */
 
+// PME GPU loader
+void do_pme_gpu_launch(t_forcerec     *fr,
+                       t_inputrec     *ir,
+                       t_commrec      *cr,
+                       gmx_wallcycle_t wcycle,
+                       t_mdatoms      *md,
+                       rvec            x[],
+                       matrix          box,
+                       int             flags);
+
 void free_gpu_resources(const t_forcerec            *fr,
                         const t_commrec             *cr,
                         const gmx_gpu_info_t        *gpu_info,

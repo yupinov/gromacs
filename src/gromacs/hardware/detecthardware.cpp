@@ -1383,9 +1383,9 @@ void gmx_select_gpu_ids(const gmx::MDLogger &mdlog, const t_commrec *cr,
                   gmx::getProgramContext().displayName());
     }
 
-    if (!(cr->duty & DUTY_PP))
+    if (!(cr->duty & DUTY_PP) && !(cr->duty & DUTY_PME))
     {
-        /* Our rank is not doing PP, we don't use a GPU */
+        /* so, never? */
         return;
     }
 

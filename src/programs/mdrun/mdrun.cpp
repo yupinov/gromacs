@@ -268,6 +268,7 @@ int gmx_mdrun(int argc, char *argv[])
     gmx_bool          bDDBondCheck  = TRUE;
     gmx_bool          bDDBondComm   = TRUE;
     gmx_bool          bTunePME      = TRUE;
+    gmx_bool          bPMEGPU       = FALSE;
     gmx_bool          bVerbose      = FALSE;
     gmx_bool          bRerunVSite   = FALSE;
     gmx_bool          bConfout      = TRUE;
@@ -297,6 +298,9 @@ int gmx_mdrun(int argc, char *argv[])
     { NULL, "auto", "on", "off", NULL };
     const char       *nbpu_opt[] =
     { NULL, "auto", "cpu", "gpu", "gpu_cpu", NULL };
+    const char       *pme_opt[] =
+    { NULL, "auto", "cpu", "gpu", NULL };
+    // now auto for either of NB and PME options should mean much more than before (which was just for NB); load balancing?
     real              rdd                   = 0.0, rconstr = 0.0, dlb_scale = 0.8, pforce = -1;
     char             *ddcsx                 = NULL, *ddcsy = NULL, *ddcsz = NULL;
     real              cpt_period            = 15.0, max_hours = -1;
@@ -371,6 +375,10 @@ int gmx_mdrun(int argc, char *argv[])
           "Set nstlist when using a Verlet buffer tolerance (0 is guess)" },
         { "-tunepme", FALSE, etBOOL, {&bTunePME},
           "Optimize PME load between PP/PME ranks or GPU/CPU" },
+        { "-pmegpu", FALSE, etBOOL, {&bPMEGPU},
+          "HIDDENUse GPU for PME (deprecated parameter; use -pme)" },
+        { "-pme",      FALSE, etENUM, {&pme_opt},
+          "Perform PME calculations on" },
         { "-v",       FALSE, etBOOL, {&bVerbose},
           "Be loud and noisy" },
         { "-pforce",  FALSE, etREAL, {&pforce},
@@ -506,6 +514,11 @@ int gmx_mdrun(int argc, char *argv[])
 
     handleRestart(cr, bTryToAppendFiles, NFILE, fnm, &bDoAppendFiles, &bStartFromCpt);
 
+    if (bPMEGPU)
+    {
+        pme_opt[0] = pme_opt[3];
+    }
+
     Flags = opt2bSet("-rerun", NFILE, fnm) ? MD_RERUN : 0;
     Flags = Flags | (bDDBondCheck  ? MD_DDBONDCHECK  : 0);
     Flags = Flags | (bDDBondComm   ? MD_DDBONDCOMM   : 0);
@@ -543,7 +556,7 @@ int gmx_mdrun(int argc, char *argv[])
     rc = gmx::mdrunner(&hw_opt, fplog, cr, NFILE, fnm, oenv, bVerbose,
                        nstglobalcomm, ddxyz, dd_rank_order, npme, rdd, rconstr,
                        dddlb_opt[0], dlb_scale, ddcsx, ddcsy, ddcsz,
-                       nbpu_opt[0], nstlist,
+                       nbpu_opt[0], pme_opt[0], nstlist,
                        nsteps, nstepout, resetstep,
                        nmultisim, repl_ex_nst, repl_ex_nex, repl_ex_seed,
                        pforce, cpt_period, max_hours, imdport, Flags);

@@ -156,6 +156,7 @@ struct mdrunner_arglist
     const char             *ddcsy;
     const char             *ddcsz;
     const char             *nbpu_opt;
+    const char             *pme_opt;
     int                     nstlist_cmdline;
     gmx_int64_t             nsteps_cmdline;
     int                     nstepout;
@@ -202,7 +203,7 @@ static void mdrunner_start_fn(void *arg)
                       mc.ddxyz, mc.dd_rank_order, mc.npme, mc.rdd,
                       mc.rconstr, mc.dddlb_opt, mc.dlb_scale,
                       mc.ddcsx, mc.ddcsy, mc.ddcsz,
-                      mc.nbpu_opt, mc.nstlist_cmdline,
+                      mc.nbpu_opt, mc.pme_opt, mc.nstlist_cmdline,
                       mc.nsteps_cmdline, mc.nstepout, mc.resetstep,
                       mc.nmultisim, mc.repl_ex_nst, mc.repl_ex_nex, mc.repl_ex_seed, mc.pforce,
                       mc.cpt_period, mc.max_hours, mc.imdport, mc.Flags);
@@ -223,8 +224,8 @@ static t_commrec *mdrunner_start_threads(gmx_hw_opt_t *hw_opt,
                                          real rdd, real rconstr,
                                          const char *dddlb_opt, real dlb_scale,
                                          const char *ddcsx, const char *ddcsy, const char *ddcsz,
-                                         const char *nbpu_opt, int nstlist_cmdline,
-                                         gmx_int64_t nsteps_cmdline,
+                                         const char *nbpu_opt, const char *pme_opt,
+                                         int nstlist_cmdline, gmx_int64_t nsteps_cmdline,
                                          int nstepout, int resetstep,
                                          int nmultisim, int repl_ex_nst, int repl_ex_nex, int repl_ex_seed,
                                          real pforce, real cpt_period, real max_hours,
@@ -268,6 +269,7 @@ static t_commrec *mdrunner_start_threads(gmx_hw_opt_t *hw_opt,
     mda->ddcsy           = ddcsy;
     mda->ddcsz           = ddcsz;
     mda->nbpu_opt        = nbpu_opt;
+    mda->pme_opt         = pme_opt;
     mda->nstlist_cmdline = nstlist_cmdline;
     mda->nsteps_cmdline  = nsteps_cmdline;
     mda->nstepout        = nstepout;
@@ -698,7 +700,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
              ivec ddxyz, int dd_rank_order, int npme, real rdd, real rconstr,
              const char *dddlb_opt, real dlb_scale,
              const char *ddcsx, const char *ddcsy, const char *ddcsz,
-             const char *nbpu_opt, int nstlist_cmdline,
+             const char *nbpu_opt, const char *pme_opt, int nstlist_cmdline,
              gmx_int64_t nsteps_cmdline, int nstepout, int resetstep,
              int gmx_unused nmultisim, int repl_ex_nst, int repl_ex_nex,
              int repl_ex_seed, real pforce, real cpt_period, real max_hours,
@@ -745,8 +747,8 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
 
     bool doMembed = opt2bSet("-membed", nfile, fnm);
     bRerunMD     = (Flags & MD_RERUN);
-    bForceUseGPU = (strncmp(nbpu_opt, "gpu", 3) == 0);
-    bTryUseGPU   = (strncmp(nbpu_opt, "auto", 4) == 0) || bForceUseGPU;
+    bForceUseGPU = (strncmp(nbpu_opt, "gpu", 3) == 0) || (strncmp(pme_opt, "gpu", 3) == 0);
+    bTryUseGPU   = (strncmp(nbpu_opt, "auto", 4) == 0) || (strncmp(pme_opt, "auto", 4) == 0) || bForceUseGPU;
 
     // Here we assume that SIMMASTER(cr) does not change even after the
     // threads are started.
@@ -796,6 +798,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
                 {
                     gmx_fatal(FARGS, "GPU acceleration requested, but not supported with the given input settings");
                 }
+                //yupinov - PME GPU should check something here as well
                 bUseGPU = FALSE;
             }
 
@@ -867,7 +870,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
                                         oenv, bVerbose, nstglobalcomm,
                                         ddxyz, dd_rank_order, npme, rdd, rconstr,
                                         dddlb_opt, dlb_scale, ddcsx, ddcsy, ddcsz,
-                                        nbpu_opt, nstlist_cmdline,
+                                        nbpu_opt, pme_opt, nstlist_cmdline,
                                         nsteps_cmdline, nstepout, resetstep, nmultisim,
                                         repl_ex_nst, repl_ex_nex, repl_ex_seed, pforce,
                                         cpt_period, max_hours,
@@ -1311,7 +1314,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
         {
             status = gmx_pme_init(pmedata, cr, npme_major, npme_minor, inputrec,
                                   mtop ? mtop->natoms : 0, nChargePerturbed, nTypePerturbed,
-                                  (Flags & MD_REPRODUCIBLE), nthreads_pme);
+                                  (Flags & MD_REPRODUCIBLE), nthreads_pme, strncmp(pme_opt, "cpu", 3), NULL, hwinfo, &hw_opt->gpu_opt);
             if (status != 0)
             {
                 gmx_fatal(FARGS, "Error %d initializing PME", status);
@@ -1405,8 +1408,15 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
     finish_run(fplog, mdlog, cr,
                inputrec, nrnb, wcycle, walltime_accounting,
                fr ? fr->nbv : NULL,
+               fr ? fr->pmedata : NULL,
                EI_DYNAMICS(inputrec->eI) && !MULTISIM(cr));
 
+    // Free PME data (including the GPU)
+    if (pmedata)
+    {
+        gmx_pme_destroy(pmedata);
+        pmedata = NULL;
+    }
 
     /* Free GPU memory and context */
     free_gpu_resources(fr, cr, &hwinfo->gpu_info, fr ? fr->gpu_opt : NULL);

@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015, by the GROMACS development team, led by
+ * Copyright (c) 2014,2015,2016, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -39,7 +39,34 @@
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
 
-struct pme_solve_work_t;
+
+/*! \brief \internal
+ *
+ * This is a CPU PME solver internal work unit structure.
+ * For uniformity purpose, the GPU code puts result into the same single thread structure.
+ * Hence, exposure of the structure in the header file.
+ */
+struct pme_solve_work_t
+{
+    /* work data for solve_pme */
+    int      nalloc;
+    real *   mhx;
+    real *   mhy;
+    real *   mhz;
+    real *   m2;
+    real *   denom;
+    real *   tmp1_alloc;
+    real *   tmp1;
+    real *   tmp2;
+    real *   eterm;
+    real *   m2inv;
+
+    real     energy_q;
+    matrix   vir_q;
+    real     energy_lj;
+    matrix   vir_lj;
+};
+
 struct gmx_pme_t;
 
 /*! \brief Allocates array of work structures

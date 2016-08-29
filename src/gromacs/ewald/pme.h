@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -59,6 +59,8 @@
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
 
+#include "pme-gpu.h"
+
 struct t_commrec;
 struct t_inputrec;
 
@@ -74,13 +76,14 @@ int gmx_pme_init(struct gmx_pme_t **pmedata, struct t_commrec *cr,
                  int nnodes_major, int nnodes_minor,
                  t_inputrec *ir, int homenr,
                  gmx_bool bFreeEnergy_q, gmx_bool bFreeEnergy_lj,
-                 gmx_bool bReproducible, int nthread);
+                 gmx_bool bReproducible, int nthread,
+                 gmx_bool bPMEGPU, gmx_pme_gpu_t *pmeGPU, const gmx_hw_info_t *hwinfo = NULL, const gmx_gpu_opt_t *gpu_opt = NULL);
 
-/*! \brief Destroy the pme data structures resepectively.
+/*! \brief Destroy the PME data structures respectively.
  *
  * \return 0 indicates all well, non zero is an error code.
  */
-int gmx_pme_destroy(FILE *log, struct gmx_pme_t **pmedata);
+int gmx_pme_destroy(struct gmx_pme_t **pmedata);
 
 //@{
 /*! \brief Flag values that control what gmx_pme_do() will calculate
@@ -125,6 +128,37 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                real lambda_q,   real lambda_lj,
                real *dvdlambda_q, real *dvdlambda_lj,
                int flags);
+
+
+// launches first part of PME GPU - from spread up to and including FFT C2R
+// and copying energy/virial back
+void gmx_pme_gpu_launch(struct gmx_pme_t *pme,
+                        int start,       int homenr,
+                        rvec x[],        rvec f[],
+                        real chargeA[],
+                        matrix box,
+                        gmx_wallcycle_t wcycle,
+                        real ewaldcoeff_q,
+                        int flags);
+
+// launches the rest of the PME GPU:
+// copying calculated forces (e.g. listed) onto GPU (only for bClearF == false), gather, copying forces back
+// for separate PME ranks there is no precalculated forces, so bClearF has to be true
+// so there is no reason not to put this call directly back into gmx_pme_gpu_launch for bClearF == true
+void gmx_pme_gpu_launch_gather(gmx_pme_t      *pme,
+                               gmx_wallcycle_t wcycle,
+                               gmx_bool        bClearF);
+
+int gmx_pme_gpu_get_results(const gmx_pme_t *pme,
+                            t_commrec gmx_unused *cr,
+                            gmx_wallcycle_t wcycle,
+                            matrix vir_q,
+                            matrix vir_lj,
+                            real *energy_q,  real *energy_lj,
+                            real lambda_q,   real lambda_lj,
+                            real *dvdlambda_q, real *dvdlambda_lj,
+                            int flags);
+
 
 /*! \brief Called on the nodes that do PME exclusively (as slaves) */
 int gmx_pmeonly(struct gmx_pme_t *pme,

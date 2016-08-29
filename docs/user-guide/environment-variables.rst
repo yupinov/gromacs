@@ -297,6 +297,12 @@ Performance and Run Control
         to a value of 10. Setting this environment variable to any other integer value overrides this hard-coded
         value.
 
+``GMX_PME_GPU_FFTW``
+	enables CPU FFT calculations within PME GPU
+
+``GMX_PME_GPU_ID``
+	the GPU id for a separate PME rank using GPU (default is 0)
+
 ``GMX_PME_NTHREADS``
         set the number of OpenMP or PME threads (overrides the number guessed by
         :ref:`gmx mdrun`.

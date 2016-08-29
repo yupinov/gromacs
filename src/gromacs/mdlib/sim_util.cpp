@@ -51,6 +51,7 @@
 #include "gromacs/domdec/domdec_struct.h"
 #include "gromacs/essentialdynamics/edsam.h"
 #include "gromacs/ewald/pme.h"
+#include "gromacs/ewald/pme-gpu.h"
 #include "gromacs/gmxlib/chargegroup.h"
 #include "gromacs/gmxlib/network.h"
 #include "gromacs/gmxlib/nrnb.h"
@@ -1026,6 +1027,55 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
         wallcycle_stop(wcycle, ewcNB_XF_BUF_OPS);
     }
 
+    /* Moved from further below for the purpose of calling the PME GPU early */
+    wallcycle_start(wcycle, ewcFORCE);
+    if (bDoForces)
+    {
+        /* Reset forces for which the virial is calculated separately:
+         * PME/Ewald forces if necessary */
+        if (fr->bF_NoVirSum)
+        {
+            if (flags & GMX_FORCE_VIRIAL)
+            {
+                fr->f_novirsum = fr->f_novirsum_alloc;
+            }
+            else
+            {
+                /* We are not calculating the pressure so we do not need
+                 * a separate array for forces that do not contribute
+                 * to the pressure.
+                 */
+                fr->f_novirsum = f;
+            }
+        }
+
+        if (fr->bF_NoVirSum)
+        {
+            if (flags & GMX_FORCE_VIRIAL)
+            {
+                if (fr->bDomDec)
+                {
+                    clear_rvecs_omp(fr->f_novirsum_n, fr->f_novirsum);
+                }
+                else
+                {
+                    clear_rvecs_omp(homenr, fr->f_novirsum+start);
+                }
+            }
+        }
+        /* Clear the short- and long-range forces */
+        clear_rvecs_omp(fr->natoms_force_constr, f);
+
+        clear_rvec(fr->vir_diag_posres);
+    }
+    /* Copypaste end */
+    wallcycle_stop(wcycle, ewcFORCE);
+
+    do_pme_gpu_launch(fr, inputrec, cr,
+                      wcycle, mdatoms,
+                      x, box,
+                      flags);
+
     if (bUseGPU)
     {
         wallcycle_start(wcycle, ewcLAUNCH_GPU_NB);
@@ -1179,46 +1229,7 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
      * No parallel communication should occur while this counter is running,
      * since that will interfere with the dynamic load balancing.
      */
-    wallcycle_start(wcycle, ewcFORCE);
-    if (bDoForces)
-    {
-        /* Reset forces for which the virial is calculated separately:
-         * PME/Ewald forces if necessary */
-        if (fr->bF_NoVirSum)
-        {
-            if (flags & GMX_FORCE_VIRIAL)
-            {
-                fr->f_novirsum = fr->f_novirsum_alloc;
-            }
-            else
-            {
-                /* We are not calculating the pressure so we do not need
-                 * a separate array for forces that do not contribute
-                 * to the pressure.
-                 */
-                fr->f_novirsum = f;
-            }
-        }
-
-        if (fr->bF_NoVirSum)
-        {
-            if (flags & GMX_FORCE_VIRIAL)
-            {
-                if (fr->bDomDec)
-                {
-                    clear_rvecs_omp(fr->f_novirsum_n, fr->f_novirsum);
-                }
-                else
-                {
-                    clear_rvecs_omp(homenr, fr->f_novirsum+start);
-                }
-            }
-        }
-        /* Clear the short- and long-range forces */
-        clear_rvecs_omp(fr->natoms_force_constr, f);
-
-        clear_rvec(fr->vir_diag_posres);
-    }
+    wallcycle_start_nocount(wcycle, ewcFORCE);
 
     if (inputrec->bPull && pull_have_constraint(inputrec->pull_work))
     {
@@ -1441,6 +1452,7 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
             /* now clear the GPU outputs while we finish the step on the CPU */
             wallcycle_start_nocount(wcycle, ewcLAUNCH_GPU_NB);
             nbnxn_gpu_clear_outputs(nbv->gpu_nbv, flags);
+            // GPU PME after-step clearing could be moved here as well
             wallcycle_stop(wcycle, ewcLAUNCH_GPU_NB);
         }
         else
@@ -1810,6 +1822,7 @@ void do_force_cutsGROUP(FILE *fplog, t_commrec *cr,
 
         clear_rvec(fr->vir_diag_posres);
     }
+
     if (inputrec->bPull && pull_have_constraint(inputrec->pull_work))
     {
         clear_pull_forces(inputrec->pull_work);
@@ -2574,6 +2587,7 @@ void finish_run(FILE *fplog, const gmx::MDLogger &mdlog, t_commrec *cr,
                 t_nrnb nrnb[], gmx_wallcycle_t wcycle,
                 gmx_walltime_accounting_t walltime_accounting,
                 nonbonded_verlet_t *nbv,
+                gmx_pme_t *pme,
                 gmx_bool bWriteStat)
 {
     t_nrnb *nrnb_tot = NULL;
@@ -2645,6 +2659,10 @@ void finish_run(FILE *fplog, const gmx::MDLogger &mdlog, t_commrec *cr,
     if (SIMMASTER(cr))
     {
         struct gmx_wallclock_gpu_t* gputimes = use_GPU(nbv) ? nbnxn_gpu_get_timings(nbv->gpu_nbv) : NULL;
+        if (pme_gpu_enabled(pme))
+        {
+            pme_gpu_get_timings(&gputimes, pme);
+        }
 
         wallcycle_print(fplog, mdlog, cr->nnodes, cr->npmenodes, nthreads_pp, nthreads_pme,
                         elapsed_time_over_all_ranks,

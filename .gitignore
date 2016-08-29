@@ -12,6 +12,10 @@ Makefile
 lib*.pc
 .project
 .cproject
-CMakeLists.txt.user
+CMakeLists.txt.user*
 /VersionInfo*.cmake
 Testing
+CMakeCache.txt
+build*/
+CMakeFiles/
+

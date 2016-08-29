@@ -115,6 +115,46 @@
 #include "pme-spline-work.h"
 #include "pme-spread.h"
 
+void gmx_parallel_3dfft_execute_gpu_wrapper(gmx_pme_t              *pme,
+                                            const int               grid_index,
+                                            enum gmx_fft_direction  dir,
+                                            gmx_wallcycle_t         wcycle)
+{
+    int thread;
+
+    if (pme_gpu_performs_FFT(pme))
+    {
+        wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
+    }
+    else
+    {
+        wallcycle_start(wcycle, ewcPME_FFT);
+    }
+    // is this alright, to start and stop wallcycles aroudn the OpenMP region?
+
+    if (pme_gpu_performs_FFT(pme))
+    {
+        gmx_parallel_3dfft_execute_gpu(pme, dir, grid_index);
+    }
+    else
+    {
+#pragma omp parallel num_threads(pme->nthread) private(thread)
+        {
+            thread = gmx_omp_get_thread_num();
+            gmx_parallel_3dfft_execute(pme->pfft_setup[grid_index], dir, thread, wcycle);
+        }
+    }
+
+    if (pme_gpu_performs_FFT(pme))
+    {
+        wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
+    }
+    else
+    {
+        wallcycle_stop(wcycle, ewcPME_FFT);
+    }
+}
+
 /*! \brief Number of bytes in a cache line.
  *
  * Must also be a multiple of the SIMD and SIMD4 register size, to
@@ -150,35 +190,30 @@ static void setup_coordinate_communication(pme_atomcomm_t *atc)
     }
 }
 
-int gmx_pme_destroy(FILE *log, struct gmx_pme_t **pmedata)
+int gmx_pme_destroy(struct gmx_pme_t **pmedata)
 {
-    int i;
-
-    if (NULL != log)
+    if (*pmedata)
     {
-        fprintf(log, "Destroying PME data structures.\n");
+        sfree((*pmedata)->nnx);
+        sfree((*pmedata)->nny);
+        sfree((*pmedata)->nnz);
+
+        for (int i = 0; i < (*pmedata)->ngrids; ++i)
+        {
+            pmegrids_destroy(&(*pmedata)->pmegrid[i]);
+            gmx_parallel_3dfft_destroy((*pmedata)->pfft_setup[i]);
+        }
+
+        sfree((*pmedata)->lb_buf1);
+        sfree((*pmedata)->lb_buf2);
+
+        pme_free_all_work(&(*pmedata)->solve_work, (*pmedata)->nthread);
+
+        pme_gpu_deinit(&(*pmedata));
+
+        sfree(*pmedata);
+        *pmedata = NULL;
     }
-
-    sfree((*pmedata)->nnx);
-    sfree((*pmedata)->nny);
-    sfree((*pmedata)->nnz);
-
-    for (i = 0; i < (*pmedata)->ngrids; ++i)
-    {
-        pmegrids_destroy(&(*pmedata)->pmegrid[i]);
-        sfree((*pmedata)->fftgrid[i]);
-        sfree((*pmedata)->cfftgrid[i]);
-        gmx_parallel_3dfft_destroy((*pmedata)->pfft_setup[i]);
-    }
-
-    sfree((*pmedata)->lb_buf1);
-    sfree((*pmedata)->lb_buf2);
-
-    pme_free_all_work(&(*pmedata)->solve_work, (*pmedata)->nthread);
-
-    sfree(*pmedata);
-    *pmedata = NULL;
-
     return 0;
 }
 
@@ -460,16 +495,20 @@ static int div_round_up(int enumerator, int denominator)
     return (enumerator + denominator - 1)/denominator;
 }
 
-int gmx_pme_init(struct gmx_pme_t **pmedata,
-                 t_commrec *        cr,
-                 int                nnodes_major,
-                 int                nnodes_minor,
-                 t_inputrec *       ir,
-                 int                homenr,
-                 gmx_bool           bFreeEnergy_q,
-                 gmx_bool           bFreeEnergy_lj,
-                 gmx_bool           bReproducible,
-                 int                nthread)
+int gmx_pme_init(struct gmx_pme_t   **pmedata,
+                 t_commrec   *        cr,
+                 int                  nnodes_major,
+                 int                  nnodes_minor,
+                 t_inputrec   *       ir,
+                 int                  homenr,
+                 gmx_bool             bFreeEnergy_q,
+                 gmx_bool             bFreeEnergy_lj,
+                 gmx_bool             bReproducible,
+                 int                  nthread,
+                 gmx_bool             bPMEGPU,
+                 gmx_pme_gpu_t       *pmeGPU,
+                 const gmx_hw_info_t *hwinfo,
+                 const gmx_gpu_opt_t *gpu_opt)
 {
     struct gmx_pme_t *pme = NULL;
 
@@ -683,6 +722,31 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     snew(pme->bsp_mod[YY], pme->nky);
     snew(pme->bsp_mod[ZZ], pme->nkz);
 
+    pme->gpu = pmeGPU; /* Carrying over the single GPU structure */
+
+    pme->bGPU = bPMEGPU && (pme->nodeid == 0);
+    //yupinov: only the first rank should do PME GPU for now.
+
+    if (pme_gpu_enabled(pme)) // safeguards
+    {
+        //yupinov: fatal vs. assert
+        GMX_RELEASE_ASSERT(pme->nnodes == 1, "PME GPU is only implemented for a single rank");
+        // only a single rank
+        GMX_RELEASE_ASSERT(!pme->bFEP, "PME GPU is only implemented for a single grid");
+        // shouldn't be difficult to extend though
+        GMX_RELEASE_ASSERT(!EVDW_PME(ir->vdwtype), "PME LJ is not implemented on a GPU");
+        // a matter of implementing multiple girds + the PME LJ solve kernel
+        GMX_RELEASE_ASSERT(sizeof(real) == sizeof(float), "No double precision support for PME GPU");
+        // most likely current FFT/solve wouldn't work on double precision
+        GMX_RELEASE_ASSERT(pme->pme_order == 4, "PME GPU is only implemented for the PME order of 4");
+        // what other orders would make sense anyway? 8 would require only a small spread/gather rewrite
+#if GMX_GPU != GMX_GPU_CUDA
+        GMX_RELEASE_ASSERT(false, "PME GPU is only implemented for CUDA");
+#endif
+        // put a log line about our final CPU/GPU decision?
+        // gmx_warning("PME will run on %s", pme->bGPU ? "GPU" : "CPU");
+    }
+
     /* The required size of the interpolation grid, including overlap.
      * The allocated size (pmegrid_n?) might be slightly larger.
      */
@@ -693,7 +757,11 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     pme->pmegrid_nz_base = pme->nkz;
     pme->pmegrid_nz      = pme->pmegrid_nz_base + pme->pme_order - 1;
     set_grid_alignment(&pme->pmegrid_nz, pme->pme_order);
-
+    if (pme_gpu_enabled(pme))
+    {
+        const int alignment = 2; // for complex grid of the same size - would only be useful for inplace, actually
+        pme->pmegrid_nz = (pme->pmegrid_nz + alignment - 1) / alignment * alignment;
+    }
     pme->pmegrid_start_ix = pme->overlap[0].s2g0[pme->nodeid_major];
     pme->pmegrid_start_iy = pme->overlap[1].s2g0[pme->nodeid_minor];
     pme->pmegrid_start_iz = 0;
@@ -748,6 +816,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
                           pme->overlap[0].s2g1[pme->nodeid_major]-pme->overlap[0].s2g0[pme->nodeid_major+1],
                           pme->overlap[1].s2g1[pme->nodeid_minor]-pme->overlap[1].s2g0[pme->nodeid_minor+1]);
             /* This routine will allocate the grid data to fit the FFTs */
+            //if (!pme_gpu_enabled(pme))
             gmx_parallel_3dfft_init(&pme->pfft_setup[i], ndata,
                                     &pme->fftgrid[i], &pme->cfftgrid[i],
                                     pme->mpi_comm_d,
@@ -780,6 +849,8 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
         pme_realloc_atomcomm_things(&pme->atc[0]);
     }
 
+    pme_gpu_init(&pme->gpu, pme, hwinfo, gpu_opt);
+
     pme->lb_buf1       = NULL;
     pme->lb_buf2       = NULL;
     pme->lb_buf_nalloc = 0;
@@ -787,7 +858,6 @@ int gmx_pme_init(struct gmx_pme_t **pmedata,
     pme_init_all_work(&pme->solve_work, pme->nthread, pme->nkx);
 
     *pmedata = pme;
-
     return 0;
 }
 
@@ -816,7 +886,7 @@ int gmx_pme_reinit(struct gmx_pme_t **pmedata,
     }
 
     ret = gmx_pme_init(pmedata, cr, pme_src->nnodes_major, pme_src->nnodes_minor,
-                       &irc, homenr, pme_src->bFEP_q, pme_src->bFEP_lj, FALSE, pme_src->nthread);
+                       &irc, homenr, pme_src->bFEP_q, pme_src->bFEP_lj, FALSE, pme_src->nthread, pme_gpu_enabled(pme_src), pme_src->gpu);
 
     if (ret == 0)
     {
@@ -840,6 +910,10 @@ void gmx_pme_calc_energy(struct gmx_pme_t *pme, int n, rvec *x, real *q, real *V
     if (pme->bFEP_q > 1)
     {
         gmx_incons("gmx_pme_calc_energy with free energy");
+    }
+    if (pme_gpu_enabled(pme))
+    {
+        gmx_incons("gmx_pme_calc_energy not implemented on GPU");
     }
 
     atc            = &pme->atc_energy;
@@ -908,6 +982,11 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                real *dvdlambda_q, real *dvdlambda_lj,
                int flags)
 {
+    if (pme_gpu_enabled(pme))
+    {
+        return 0;
+    }
+
     int                  d, i, j, npme, grid_index, max_grid_index;
     int                  n_d;
     pme_atomcomm_t      *atc        = NULL;
@@ -1585,6 +1664,303 @@ int gmx_pme_do(struct gmx_pme_t *pme,
                 for (i = 0; i < DIM; i++)
                 {
                     for (j = 0; j < DIM; j++)
+                    {
+                        vir_lj[i][j] += (1.0-lambda_lj)*vir_AB[2][i][j] + lambda_lj*vir_AB[3][i][j];
+                    }
+                }
+            }
+            if (debug)
+            {
+                fprintf(debug, "Lennard-Jones PME mesh energy: %g\n", *energy_lj);
+            }
+        }
+        else
+        {
+            *energy_lj = 0;
+        }
+    }
+    return 0;
+}
+
+// a GPU version of the gmx_pme_do (except for gather)
+void gmx_pme_gpu_launch(struct gmx_pme_t *pme,
+                        int start,       int homenr,
+                        rvec x[],        rvec f[],
+                        real chargeA[],
+                        matrix box,
+                        gmx_wallcycle_t wcycle,
+                        real ewaldcoeff_q,
+                        int flags)
+{
+    if (!pme_gpu_enabled(pme))
+    {
+        return;
+    }
+
+    pme_atomcomm_t      *atc         = NULL;
+    pmegrids_t          *pmegrid     = NULL;
+    real                *grid        = NULL;
+    real                *coefficient = NULL;
+    real               * fftgrid;
+    t_complex          * cfftgrid;
+    int                  thread = 0;
+    gmx_bool             bFirst, bDoSplines;
+    const gmx_bool       bCalcEnerVir            = flags & GMX_PME_CALC_ENER_VIR;
+    const gmx_bool       bBackFFT                = flags & (GMX_PME_CALC_F | GMX_PME_CALC_POT);
+
+    assert(pme->nnodes > 0);
+    assert(pme->nnodes == 1 || pme->ndecompdim > 0);
+
+    atc = &pme->atc[0];
+    /* This could be necessary for TPI */
+    pme->atc[0].n = homenr;
+    atc->x        = x;
+    atc->f        = f;
+
+    gmx::invertBoxMatrix(box, pme->recipbox);
+
+    bFirst = TRUE;
+
+    wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME);
+    pme_gpu_set_constants(pme, box, ewaldcoeff_q);
+    pme_gpu_step_init(pme);
+    wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
+
+    /* For simplicity, we construct the splines for all particles if
+     * more than one PME calculations is needed. Some optimization
+     * could be done by keeping track of which atoms have splines
+     * constructed, and construct new splines on each pass for atoms
+     * that don't yet have them.
+     */
+
+    // for GPU this value currently will be false, possibly increasing the divergence in pme_spline_and_spread
+
+    bDoSplines = pme->bFEP || ((flags & GMX_PME_DO_COULOMB) && (flags & GMX_PME_DO_LJ));
+
+    const unsigned int grid_index = 0;
+
+    /* Unpack structure */
+    pmegrid     = &pme->pmegrid[grid_index];
+    fftgrid     = pme->fftgrid[grid_index];
+    cfftgrid    = pme->cfftgrid[grid_index];
+    coefficient = chargeA + start;
+
+    grid = pmegrid->grid.grid;
+
+    atc->coefficient = coefficient;
+
+    // TODO call this conditionally
+    wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
+    pme_gpu_grid_init(pme, grid_index);
+    wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
+
+    // pme->gpu->bGPUSingle && pme->gpu->bGPUFFT should be checked somewhere around here for multi-process
+    // pme->gpu->bGPUSolve &&= (grid_index < DO_Q);  // no LJ support
+    // no bBackFFT, no bCalcF checks
+
+    if (flags & GMX_PME_SPREAD)
+    {
+        // XXX wallcycle_start(wcycle, ewcPME_SPREADGATHER);
+
+        /* Spread the coefficients on a grid */
+        wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
+        // TODO rename: consider using the "pme_gpu" prefix here
+        spread_on_grid_gpu(pme, &pme->atc[0], grid_index, &pmegrid->grid, bFirst, TRUE, bDoSplines);
+        wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
+
+        //if (!pme->bUseThreads)
+        {
+            if (!pme_gpu_performs_wrapping(pme))
+            {
+                wrap_periodic_pmegrid(pme, grid);
+            }
+
+            /* sum contributions to local grid from other nodes */
+#if GMX_MPI
+            if (pme->nnodes > 1)
+            {
+                gmx_sum_qgrid_dd(pme, grid, GMX_SUM_GRID_FORWARD);
+                where();
+            }
+#endif
+            if (!pme_gpu_performs_FFT(pme))
+            {
+                copy_pmegrid_to_fftgrid(pme, grid, fftgrid, grid_index);
+            }
+        }
+
+        // XXX wallcycle_stop(wcycle, ewcPME_SPREADGATHER);
+    }
+
+    try
+    {
+        if (flags & GMX_PME_SOLVE)
+        {
+            /* do 3d-fft */
+            gmx_parallel_3dfft_execute_gpu_wrapper(pme, grid_index, GMX_FFT_REAL_TO_COMPLEX,
+                                                   wcycle);
+
+            /* solve in k-space for our local cells */
+            if (pme_gpu_performs_solve(pme))
+            {
+                wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
+                solve_pme_gpu(pme, cfftgrid, bCalcEnerVir);
+                wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
+            }
+            else
+#pragma omp parallel num_threads(pme->nthread) private(thread)
+            {
+                thread     = gmx_omp_get_thread_num();
+                solve_pme_yzx(pme, cfftgrid, ewaldcoeff_q,
+                              box[XX][XX]*box[YY][YY]*box[ZZ][ZZ],
+                              bCalcEnerVir,
+                              pme->nthread, thread);
+            }
+        }
+
+        if (bBackFFT)
+        {
+            /* do 3d-invfft */
+            gmx_parallel_3dfft_execute_gpu_wrapper(pme, grid_index, GMX_FFT_COMPLEX_TO_REAL,
+                                                   wcycle);
+
+            if (thread == 0)
+            {
+                /* Note: this wallcycle region is closed below
+                   outside an OpenMP region, so take care if
+                   refactoring code here. */
+                // XX  wallcycle_start(wcycle, ewcPME_SPREADGATHER);
+            }
+            if (!pme_gpu_performs_FFT(pme) || !pme_gpu_performs_gather(pme))
+            {
+#pragma omp parallel for num_threads(pme->nthread) schedule(static)
+                for (thread = 0; thread < pme->nthread; thread++)
+                {
+                    copy_fftgrid_to_pmegrid(pme, fftgrid, grid, grid_index, pme->nthread, thread);
+                }
+            }
+        }
+    } GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
+
+    if (bBackFFT)
+    {
+        /* distribute local grid to all nodes */
+        if (!pme_gpu_performs_wrapping(pme))
+        {
+            unwrap_periodic_pmegrid(pme, grid);
+        }
+    }
+}
+
+// this will only copy the forces buffer (with results from listed calculations, etc.) to the GPU (for bClearF == false),
+// launch the gather kernel, copy the result back
+void gmx_pme_gpu_launch_gather(gmx_pme_t                 *pme,
+                               gmx_wallcycle_t gmx_unused wcycle,
+                               gmx_bool                   bClearF)
+{
+    if (!pme_gpu_performs_gather(pme))
+    {
+        return;
+    }
+
+    wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
+    gather_f_bsplines_gpu(pme, bClearF);
+    wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
+}
+
+// this function should just fetch results
+
+int gmx_pme_gpu_get_results(const gmx_pme_t *pme,
+                            t_commrec gmx_unused *cr,
+                            gmx_wallcycle_t gmx_unused wcycle,
+                            matrix vir_q,
+                            matrix vir_lj,
+                            real *energy_q,  real *energy_lj,
+                            real lambda_q,   real lambda_lj,
+                            real *dvdlambda_q, real *dvdlambda_lj,
+                            int flags)
+{
+    if (!pme_gpu_enabled(pme))
+    {
+        return 0;
+    }
+
+    const int            grid_index = 0;
+
+    const gmx_bool       bCalcEnerVir            = flags & GMX_PME_CALC_ENER_VIR;
+    const gmx_bool       bCalcF                  = flags & GMX_PME_CALC_F;
+
+    real                 energy_AB[4];
+    matrix               vir_AB[4];
+
+    /* FIXME: there should be a waiting wallycle here, which would not conflict with the NB waiting */
+    wallcycle_sub_start_nocount(wcycle, ewcsWAIT_GPU_PME);
+    pme_gpu_step_end(pme, bCalcF, bCalcEnerVir);
+    wallcycle_sub_stop(wcycle, ewcsWAIT_GPU_PME);
+
+    // copied from up there in the loop...
+    assert(grid_index == 0);
+    if (bCalcEnerVir)
+    {
+        /* This should only be called on the master thread
+         * and after the threads have synchronized.
+         */
+        if (grid_index < 2)
+        {
+            get_pme_ener_vir_q(pme->solve_work, pme->nthread, &energy_AB[grid_index], vir_AB[grid_index]);
+        }
+        else
+        {
+            get_pme_ener_vir_lj(pme->solve_work, pme->nthread, &energy_AB[grid_index], vir_AB[grid_index]);
+        }
+    }
+
+    if (bCalcEnerVir)
+    {
+        if (flags & GMX_PME_DO_COULOMB)
+        {
+            if (!pme->bFEP_q)
+            {
+                *energy_q = energy_AB[0];
+                m_add(vir_q, vir_AB[0], vir_q);
+            }
+            else
+            {
+                *energy_q       = (1.0-lambda_q)*energy_AB[0] + lambda_q*energy_AB[1];
+                *dvdlambda_q   += energy_AB[1] - energy_AB[0];
+                for (int i = 0; i < DIM; i++)
+                {
+                    for (int j = 0; j < DIM; j++)
+                    {
+                        vir_q[i][j] += (1.0-lambda_q)*vir_AB[0][i][j] +
+                            lambda_q*vir_AB[1][i][j];
+                    }
+                }
+            }
+            if (debug)
+            {
+                fprintf(debug, "Electrostatic PME mesh energy: %g\n", *energy_q);
+            }
+        }
+        else
+        {
+            *energy_q = 0;
+        }
+
+        if (flags & GMX_PME_DO_LJ)
+        {
+            if (!pme->bFEP_lj)
+            {
+                *energy_lj = energy_AB[2];
+                m_add(vir_lj, vir_AB[2], vir_lj);
+            }
+            else
+            {
+                *energy_lj     = (1.0-lambda_lj)*energy_AB[2] + lambda_lj*energy_AB[3];
+                *dvdlambda_lj += energy_AB[3] - energy_AB[2];
+                for (int i = 0; i < DIM; i++)
+                {
+                    for (int j = 0; j < DIM; j++)
                     {
                         vir_lj[i][j] += (1.0-lambda_lj)*vir_AB[2][i][j] + lambda_lj*vir_AB[3][i][j];
                     }

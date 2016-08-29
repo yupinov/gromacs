@@ -55,6 +55,7 @@ gmx_add_gtest_executable(
     swapcoords.cpp
     interactiveMD.cpp
     termination.cpp
+    pme_gpu.cpp
     # pseudo-library for code for testing mdrun
     $<TARGET_OBJECTS:mdrun_test_objlib>
     # pseudo-library for code for mdrun

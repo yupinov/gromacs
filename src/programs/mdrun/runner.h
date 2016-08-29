@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2015, by the GROMACS development team, led by
+ * Copyright (c) 2015,2016, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -98,7 +98,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
              int nstglobalcomm, ivec ddxyz, int dd_rank_order, int npme,
              real rdd, real rconstr, const char *dddlb_opt, real dlb_scale,
              const char *ddcsx, const char *ddcsy, const char *ddcsz,
-             const char *nbpu_opt, int nstlist_cmdline,
+             const char *nbpu_opt, const char *pme_opt, int nstlist_cmdline,
              gmx_int64_t nsteps_cmdline, int nstepout, int resetstep,
              int nmultisim, int repl_ex_nst, int repl_ex_nex,
              int repl_ex_seed, real pforce, real cpt_period, real max_hours,

@@ -59,27 +59,6 @@
 
 using namespace gmx; // TODO: Remove when this file is moved into gmx namespace
 
-struct pme_solve_work_t
-{
-    /* work data for solve_pme */
-    int      nalloc;
-    real *   mhx;
-    real *   mhy;
-    real *   mhz;
-    real *   m2;
-    real *   denom;
-    real *   tmp1_alloc;
-    real *   tmp1;
-    real *   tmp2;
-    real *   eterm;
-    real *   m2inv;
-
-    real     energy_q;
-    matrix   vir_q;
-    real     energy_lj;
-    matrix   vir_lj;
-};
-
 static void realloc_work(struct pme_solve_work_t *work, int nkx)
 {
     if (nkx > work->nalloc)
@@ -159,7 +138,7 @@ void pme_free_all_work(struct pme_solve_work_t **work, int nthread)
     {
         free_work(&(*work)[thread]);
     }
-    sfree(work);
+    sfree(*work);
     *work = NULL;
 }
 
@@ -842,6 +821,7 @@ int solve_pme_lj_yzx(struct gmx_pme_t *pme, t_complex **grid, gmx_bool bLB,
         /* This energy should be corrected for a charged system */
         work->energy_lj = 0.5*energy;
     }
+
     /* Return the loop count */
     return local_ndata[YY]*local_ndata[XX];
 }

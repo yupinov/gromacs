@@ -62,9 +62,12 @@
 #include "gromacs/timing/wallcycle.h"
 #include "gromacs/timing/walltime_accounting.h"
 #include "gromacs/utility/gmxmpi.h"
+#include "pme-gpu-types.h"
 
 struct t_commrec;
 struct t_inputrec;
+
+typedef struct gmx_parallel_3dfft_gpu *gmx_parallel_3dfft_gpu_t;
 
 //@{
 //! Grid indices for A state for charge and Lennard-Jones C6
@@ -240,31 +243,37 @@ typedef struct gmx_pme_t {
     MPI_Datatype  rvec_mpi;      /* the pme vector's MPI type */
 #endif
 
-    gmx_bool   bUseThreads;   /* Does any of the PME ranks have nthread>1 ?  */
-    int        nthread;       /* The number of threads doing PME on our rank */
+    gmx_bool       bUseThreads; /* Does any of the PME ranks have nthread>1 ?  */
+    int            nthread;     /* The number of threads doing PME on our rank */
 
-    gmx_bool   bPPnode;       /* Node also does particle-particle forces */
-    gmx_bool   bFEP;          /* Compute Free energy contribution */
-    gmx_bool   bFEP_q;
-    gmx_bool   bFEP_lj;
-    int        nkx, nky, nkz; /* Grid dimensions */
-    gmx_bool   bP3M;          /* Do P3M: optimize the influence function */
-    int        pme_order;
-    real       epsilon_r;
+    gmx_bool       bPPnode;     /* Node also does particle-particle forces */
+    gmx_bool       bFEP;        /* Compute Free energy contribution */
+    gmx_bool       bFEP_q;
+    gmx_bool       bFEP_lj;
+    int            nkx, nky, nkz; /* Grid dimensions */
+    gmx_bool       bP3M;          /* Do P3M: optimize the influence function */
+    int            pme_order;
+    real           epsilon_r;
 
-    int        ljpme_combination_rule;  /* Type of combination rule in LJ-PME */
+    gmx_bool       bGPU;                    /* Are we using the GPU acceleration for PME purposes?
+                                             * A permanent variable, should be read using pme_gpu_enabled.
+                                             */
 
-    int        ngrids;                  /* number of grids we maintain for pmegrid, (c)fftgrid and pfft_setups*/
+    gmx_pme_gpu_t *gpu;                     /* pointer to GPU data     */
 
-    pmegrids_t pmegrid[DO_Q_AND_LJ_LB]; /* Grids on which we do spreading/interpolation,
-                                         * includes overlap Grid indices are ordered as
-                                         * follows:
-                                         * 0: Coloumb PME, state A
-                                         * 1: Coloumb PME, state B
-                                         * 2-8: LJ-PME
-                                         * This can probably be done in a better way
-                                         * but this simple hack works for now
-                                         */
+    int            ljpme_combination_rule;  /* Type of combination rule in LJ-PME */
+
+    int            ngrids;                  /* number of grids we maintain for pmegrid, (c)fftgrid and pfft_setups*/
+
+    pmegrids_t     pmegrid[DO_Q_AND_LJ_LB]; /* Grids on which we do spreading/interpolation,
+                                             * includes overlap Grid indices are ordered as
+                                             * follows:
+                                             * 0: Coloumb PME, state A
+                                             * 1: Coloumb PME, state B
+                                             * 2-8: LJ-PME
+                                             * This can probably be done in a better way
+                                             * but this simple hack works for now
+                                             */
     /* The PME coefficient spreading grid sizes/strides, includes pme_order-1 */
     int        pmegrid_nx, pmegrid_ny, pmegrid_nz;
     /* pmegrid_nz might be larger than strictly necessary to ensure
