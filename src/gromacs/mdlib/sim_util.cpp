@@ -1027,7 +1027,8 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
         wallcycle_stop(wcycle, ewcNB_XF_BUF_OPS);
     }
 
-    // copypaste from further below begin
+    /* Moved from further below for the purpose of calling the PME GPU early */
+    wallcycle_start(wcycle, ewcFORCE);
     if (bDoForces)
     {
         /* Reset forces for which the virial is calculated separately:
@@ -1067,10 +1068,10 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
 
         clear_rvec(fr->vir_diag_posres);
     }
-    // copypaste end
+    /* Copypaste end */
+    wallcycle_stop(wcycle, ewcFORCE);
 
     do_pme_gpu_launch(fr, inputrec, cr,
-                      //nrnb,
                       wcycle, mdatoms,
                       x, box,
                       flags);
@@ -1228,50 +1229,7 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
      * No parallel communication should occur while this counter is running,
      * since that will interfere with the dynamic load balancing.
      */
-    wallcycle_start(wcycle, ewcFORCE);
-
-#define UNUSED_COPYPASTED_CODE_MARKER 0
-#if UNUSED_COPYPASTED_CODE_MARKER
-    if (bDoForces)
-    {
-        /* Reset forces for which the virial is calculated separately:
-         * PME/Ewald forces if necessary */
-        if (fr->bF_NoVirSum)
-        {
-            if (flags & GMX_FORCE_VIRIAL)
-            {
-                fr->f_novirsum = fr->f_novirsum_alloc;
-            }
-            else
-            {
-                /* We are not calculating the pressure so we do not need
-                 * a separate array for forces that do not contribute
-                 * to the pressure.
-                 */
-                fr->f_novirsum = f;
-            }
-        }
-
-        if (fr->bF_NoVirSum)
-        {
-            if (flags & GMX_FORCE_VIRIAL)
-            {
-                if (fr->bDomDec)
-                {
-                    clear_rvecs_omp(fr->f_novirsum_n, fr->f_novirsum);
-                }
-                else
-                {
-                    clear_rvecs_omp(homenr, fr->f_novirsum+start);
-                }
-            }
-        }
-        /* Clear the short- and long-range forces */
-        clear_rvecs_omp(fr->natoms_force_constr, f);
-
-        clear_rvec(fr->vir_diag_posres);
-    }
-#endif
+    wallcycle_start_nocount(wcycle, ewcFORCE);
 
     if (inputrec->bPull && pull_have_constraint(inputrec->pull_work))
     {
