@@ -96,16 +96,109 @@ void pme_gpu_get_forces(const gmx_pme_t *pme)
  *
  * An inline CUDA function: unroll the dynamic index accesses to the constant grid sizes to avoid local memory operations.
  */
-__device__ __forceinline__ real read_grid_size(const pme_gpu_const_parameters constants, const int dimIndex)
+__device__ __forceinline__ real read_grid_size(const float3 localGridSizeFP,
+                                               const int    dimIndex)
 {
     switch (dimIndex)
     {
-        case XX: return constants.localGridSizeFP.x;
-        case YY: return constants.localGridSizeFP.y;
-        case ZZ: return constants.localGridSizeFP.z;
+        case XX: return localGridSizeFP.x;
+        case YY: return localGridSizeFP.y;
+        case ZZ: return localGridSizeFP.z;
     }
     assert(false);
     return 0.0f;
+}
+
+/*! \brief Reduce the order^2 contributions.
+ *
+ *  \param fSumArray[in]    shared memory array with the partial contributions
+ *  \param localIndex[in]   local index
+ *  \param splineIndex[in]  spline index
+ *  \param lineIndex[in]    line index
+ *  \param localGridSizeFP[in]   local grid zsize constant
+ *  \param fx[out]          force x component
+ *  \param fy[out]          force y component
+ *  \param fz[out]          force z component
+ *
+ */
+template <
+    const int order,
+    const int particleDataSize,
+    const int blockSize
+    >
+__device__ __forceinline__ void reduce_particle_forces(float3        fSumArray[],
+                                                       const int     localIndex,
+                                                       const int     splineIndex,
+                                                       const int     lineIndex,
+                                                       const float3  localGridSizeFP,
+                                                       real         &fx,
+                                                       real         &fy,
+                                                       real         &fz)
+{
+#if (GMX_PTX_ARCH >= 300)
+    if (!(order & (order - 1))) // only for orders of power of 2
+    {
+        // a tricky shuffle reduction inspired by reduce_force_j_warp_shfl
+
+        assert(order == 4); // confused about others and the best data layout so far :(
+        assert(particleDataSize <= warp_size);
+        const int width = particleDataSize;
+        // have to rework for particleDataSize > warp_size (order 8 or larger...)
+
+        fx += __shfl_down(fx, 1, width);
+        fy += __shfl_up  (fy, 1, width);
+        fz += __shfl_down(fz, 1, width);
+
+        if (splineIndex & 1)
+        {
+            fx = fy;
+        }
+
+        fx += __shfl_down(fx, 2, width);
+        fz += __shfl_up  (fz, 2, width);
+
+        if (splineIndex & 2)
+        {
+            fx = fz;
+        }
+
+        // by now fx contains intermediate sums of all 3 components in groups of 4:
+        // splineIndex    0            1            2 and 3      4            5            6 and 7      8...
+        // sum of...      fx0 to fx3   fy0 to fy3   fz0 to fz3   fx4 to fx7   fy4 to fy7   fz4 to fz7   etc.
+
+        // we have to just further reduce those groups of 4
+        for (int delta = 4; delta < particleDataSize; delta <<= 1)
+        {
+            fx += __shfl_down(fx, delta, width);
+        }
+
+        if (splineIndex < 3)
+        {
+            const real n = read_grid_size(localGridSizeFP, splineIndex);
+            *((real *)(&fSumArray[localIndex]) + splineIndex) = fx * n;
+        }
+    }
+    else
+#endif
+    {
+        // TODO (psz): improve the generic reduction
+        // lazy 3-thread reduction in shared memory inspired by reduce_force_j_generic
+        __shared__ real fSharedArray[DIM * blockSize];
+        fSharedArray[XX * blockSize + lineIndex] = fx;
+        fSharedArray[YY * blockSize + lineIndex] = fy;
+        fSharedArray[ZZ * blockSize + lineIndex] = fz;
+
+        if (splineIndex < 3)
+        {
+            const real n = read_grid_size(localGridSizeFP, splineIndex);
+            float      f = 0.0f;
+            for (int j = localIndex * particleDataSize; j < (localIndex + 1) * particleDataSize; j++)
+            {
+                f += fSharedArray[blockSize * splineIndex + j];
+            }
+            *((real *)(&fSumArray[localIndex]) + splineIndex) = f * n;
+        }
+    }
 }
 
 /*! \brief
@@ -224,72 +317,11 @@ __global__ void pme_gather_kernel(const pme_gpu_const_parameters constants,
     __syncthreads();
 
     // now particlesPerBlock particles have to reduce order^2 contributions each
-
     __shared__ float3 fSumArray[particlesPerBlock];
-
-#if (GMX_PTX_ARCH >= 300)
-    if (!(order & (order - 1))) // only for orders of power of 2
-    {
-        // a tricky shuffle reduction inspired by reduce_force_j_warp_shfl
-
-        assert(order == 4); // confused about others and the best data layout so far :(
-        assert(particleDataSize <= warp_size);
-        const int width = particleDataSize;
-        // have to rework for particleDataSize > warp_size (order 8 or larger...)
-
-        fx += __shfl_down(fx, 1, width);
-        fy += __shfl_up  (fy, 1, width);
-        fz += __shfl_down(fz, 1, width);
-
-        if (splineIndex & 1)
-        {
-            fx = fy;
-        }
-
-        fx += __shfl_down(fx, 2, width);
-        fz += __shfl_up  (fz, 2, width);
-
-        if (splineIndex & 2)
-        {
-            fx = fz;
-        }
-
-        // by now fx contains intermediate sums of all 3 components in groups of 4:
-        // splineIndex    0            1            2 and 3      4            5            6 and 7      8...
-        // sum of...      fx0 to fx3   fy0 to fy3   fz0 to fz3   fx4 to fx7   fy4 to fy7   fz4 to fz7   etc.
-
-        // we have to just further reduce those groups of 4
-        for (int delta = 4; delta < particleDataSize; delta <<= 1)
-        {
-            fx += __shfl_down(fx, delta, width);
-        }
-
-        if (splineIndex < 3)
-        {
-            const real n = read_grid_size(constants, splineIndex);
-            *((real *)(&fSumArray[localIndex]) + splineIndex) = fx * n;
-        }
-    }
-    else
-#endif
-    {
-        // lazy 3-thread reduction in shared memory inspired by reduce_force_j_generic
-        __shared__ real fSharedArray[DIM * blockSize];
-        fSharedArray[XX * blockSize + lineIndex] = fx;
-        fSharedArray[YY * blockSize + lineIndex] = fy;
-        fSharedArray[ZZ * blockSize + lineIndex] = fz;
-
-        if (splineIndex < 3)
-        {
-            const real n = read_grid_size(constants, splineIndex);
-            float      f = 0.0f;
-            for (int j = localIndex * particleDataSize; j < (localIndex + 1) * particleDataSize; j++)
-            {
-                f += fSharedArray[blockSize * splineIndex + j];
-            }
-            *((real *)(&fSumArray[localIndex]) + splineIndex) = f * n;
-        }
-    }
+    reduce_particle_forces<order,particleDataSize, blockSize>(fSumArray,
+                                                              localIndex, splineIndex, lineIndex,
+                                                              constants.localGridSizeFP,
+                                                              fx, fy, fz);
     __syncthreads();
 
     if (threadLocalId < DIM * particlesPerBlock)
