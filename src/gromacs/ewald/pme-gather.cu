@@ -85,10 +85,12 @@ void pme_gpu_get_forces(const gmx_pme_t *pme)
     assert(n > 0);
     const size_t forcesSize = DIM * n * sizeof(real);
     real        *forces     = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
-    for (size_t i = 0; i < DIM * n; i++)
+
+    for (int i = 0; i < DIM * n; i++)
     {
-        GMX_RELEASE_ASSERT(!isnan(forces[i]), "PME GPU - wrong forces");
+        GMX_ASSERT(!isnan(forces[i]), "PME GPU - wrong forces");
     }
+
     memcpy(pme->atc[0].f, forces, forcesSize);
 }
 
