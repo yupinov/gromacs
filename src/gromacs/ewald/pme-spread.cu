@@ -404,7 +404,11 @@ __global__ void pme_spline_and_spread_kernel
         stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal, constants.nAtoms);
         stage_coordinates<particlesPerBlock>(threadLocalId, coordinates, (const real *)coordinatesGlobal, constants.nAtoms);
         __syncthreads();
-        calculate_splines<order, particlesPerBlock, bCalcAlways>(nnOffset, (const float3 *)coordinates, coefficient,
+        calculate_splines<order, particlesPerBlock, bCalcAlways>(nnOffset,
+#if !PME_USE_TEXTURES
+                                                                 constants.nnArray, constants.fshArray,
+#endif
+                                                                 (const float3 *)coordinates, coefficient,
                                                                  thetaGlobal, theta, dthetaGlobal, idxGlobal, idx,
                                                                  constants,
                                                                  globalCalcIndex,
@@ -493,7 +497,11 @@ __global__ void pme_spline_kernel
     stage_coordinates<particlesPerBlock>(threadLocalId, coordinates, (const real *)coordinatesGlobal, constants.nAtoms);
     __syncthreads();
 
-    calculate_splines<order, particlesPerBlock, bCalcAlways>(nnOffset, (const float3 *)coordinates, coefficient,
+    calculate_splines<order, particlesPerBlock, bCalcAlways>(nnOffset,
+#if !PME_USE_TEXTURES
+                                                             constants.nnArray, constants.fshArray,
+#endif
+                                                             (const float3 *)coordinates, coefficient,
                                                              thetaGlobal, theta, dthetaGlobal, idxGlobal, idx,
                                                              constants,
                                                              globalIndexCalc,
@@ -640,25 +648,24 @@ void pme_gpu_copy_calcspline_constants(const gmx_pme_t *pme)
 {
     cudaStream_t s = pme->gpu->pmeStream;
 
-    cudaError_t  stat;
-
     const int    nx = pme->nkx;
     const int    ny = pme->nky;
     const int    nz = pme->nkz;
 
     const int    fshSize  = 5 * (nx + ny + nz) * sizeof(real);
-    real        *fshArray = pme->gpu->fshArray = (real *)PMEMemoryFetch(pme, PME_ID_FSH, fshSize, ML_DEVICE);
+    real        *fshArray = pme->gpu->constants.fshArray = (real *)PMEMemoryFetch(pme, PME_ID_FSH, fshSize, ML_DEVICE);
     cu_copy_H2D_async(fshArray, pme->fshx, 5 * nx * sizeof(real), s);
     cu_copy_H2D_async(fshArray + 5 * nx, pme->fshy, 5 * ny * sizeof(real), s);
     cu_copy_H2D_async(fshArray + 5 * (nx + ny), pme->fshz, 5 * nz * sizeof(real), s);
 
     const int nnSize  = 5 * (nx + ny + nz) * sizeof(int);
-    int      *nnArray = pme->gpu->nnArray = (int *)PMEMemoryFetch(pme, PME_ID_NN, nnSize, ML_DEVICE);
+    int      *nnArray = pme->gpu->constants.nnArray = (int *)PMEMemoryFetch(pme, PME_ID_NN, nnSize, ML_DEVICE);
     cu_copy_H2D_async(nnArray, pme->nnx, 5 * nx * sizeof(int), s);
     cu_copy_H2D_async(nnArray + 5 * nx, pme->nny, 5 * ny * sizeof(int), s);
     cu_copy_H2D_async(nnArray + 5 * (nx + ny), pme->nnz, 5 * nz * sizeof(int), s);
 
 #if PME_USE_TEXTURES
+    cudaError_t  stat;
 #if USE_TEXOBJ
     //if (use_texobj(dev_info))
     // should check device info here for CC >= 3.0
@@ -833,7 +840,7 @@ void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                          nnTexture, fshTexture,
 #endif
 #else
-                         pme->gpu->nnArray, pme->gpu->fshArray,
+                         pme->gpu->constants.nnArray, pme->gpu->constants.fshArray,
 #endif
                          pme->gpu->coordinates,
                          pme->gpu->coefficients,
@@ -881,7 +888,7 @@ void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                              nnTexture, fshTexture,
 #endif
 #else
-                             pme->gpu->nnArray, pme->gpu->fshArray,
+                             pme->gpu->constants.nnArray, pme->gpu->constants.fshArray,
 #endif
                              pme->gpu->coordinates, pme->gpu->coefficients, pme->gpu->grid, theta_d, dtheta_d, idx_d,
                              pme->gpu->constants);

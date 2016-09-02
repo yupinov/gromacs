@@ -91,7 +91,7 @@
 // and block sizes should also be here....
 
 
-/* Using textures instead of global memory. Only in spread now, but B-spline moduli in solving should also be texturized. */
+/* Using textures instead of global memory. Only in spread now, but B-spline moduli in solving could also be texturized. */
 #define PME_USE_TEXTURES 1
 
 /*! \brief \internal
@@ -183,6 +183,13 @@ struct pme_gpu_const_parameters
      * This is a permanent constant.
      */
     float elFactor;
+
+    /* Should the pointers really live here ? */
+    // spline calculation
+    // fractional shifts (pme->fsh*)
+    real *fshArray;
+    // indices (pme->nn*)
+    int  *nnArray;
 };
 
 /*! \brief \internal
@@ -249,11 +256,7 @@ struct gmx_pme_cuda_t
 
     /* Some device pointers/objects below (assigned from the PMEStoragePointers by PMEMemoryFetch) */
 
-    // spline calculation
-    // fractional shifts (pme->fsh*)
-    real *fshArray;
-    // indices (pme->nn*)
-    int  *nnArray;
+
 
     // real grid - used everywhere
     real *grid;
