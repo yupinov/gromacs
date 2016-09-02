@@ -36,7 +36,7 @@
 /*! \internal \file
  * \brief This file defines the PME CUDA data structures,
  * various compile-time constants shared among the PME CUDA kernels,
- * and also names a bunch of the PME CUDA memory management routines.
+ * and also names some PME CUDA memory management routines.
  *
  *  \author Aleksei Iupinov <a.yupinov@gmail.com>
  */
@@ -94,51 +94,52 @@
 /* Using textures instead of global memory. Only in spread now, but B-spline moduli in solving should also be texturized. */
 #define PME_USE_TEXTURES 1
 
-/* The internal identifiers for PME data stored on GPU and host - can be eliminated eventually */
+/*! \brief \internal
+ * Internal identifiers for the PME CUDA memory management (gmx_pme_cuda_t::StoragePointers).
+ */
 enum PMEDataID
 {
-    PME_ID_THETA = 0,
-    PME_ID_DTHETA,
-
-    // grids
-    PME_ID_REAL_GRID,    /* Functions as pme_grid with overlap and as fftgrid */
-    PME_ID_COMPLEX_GRID, /* used only for out-of-place cuFFT, functions as cfftgrid */
-
-    // spread (spline)
-    PME_ID_FSH,
-    PME_ID_NN,
-
-    // spread
-    PME_ID_XPTR,
-    PME_ID_COEFFICIENT,
-
-    // gather
-    PME_ID_FORCES,
+    // global grids
+    PME_ID_REAL_GRID = 0,     // Functions as CPU pme_grid with overlap and as fftgrid
+    PME_ID_COMPLEX_GRID,      // Used only for out-of-place cuFFT, functions as CPU cfftgrid
 
     // spread and gather
-    PME_ID_IDXPTR, // grid indices as in atc->idx
+    PME_ID_IDXPTR,            // per-particle gridline indices as in atc->idx
+    PME_ID_THETA,             // B-spline values
+    PME_ID_DTHETA,            // B-spline derivatives
+    PME_ID_COEFFICIENT,       // charges
+
+    // spread (spline)
+    PME_ID_FSH,               // fractional shifts
+    PME_ID_NN,                // gridline indices (including the neighboring cells) - basically, a modulo operation lookup table
+
+    // spread
+    PME_ID_XPTR,              // coordinates
+
+    // gather
+    PME_ID_FORCES,            // forces
 
     // solve
-    PME_ID_ENERGY_AND_VIRIAL,
-    PME_ID_BSP_MOD_XX, PME_ID_BSP_MOD_YY, PME_ID_BSP_MOD_ZZ, /* B-spline moduli */
+    PME_ID_ENERGY_AND_VIRIAL, // energy and virial united storage (7 floats)
+    PME_ID_BSP_MOD_XX,        // B-spline moduli
+    PME_ID_BSP_MOD_YY,        // B-spline moduli
+    PME_ID_BSP_MOD_ZZ,        // B-spline moduli
 
     // end
     PME_ID_END_INVALID
 };
 
-/* The host/GPU memory tag */
+/*! \brief \internal
+ * The host/device memory tag for the PME pointer storage (gmx_pme_cuda_t::StoragePointers).
+ */
 enum MemLocType
 {
-    ML_HOST = 0, ML_DEVICE, ML_END_INVALID
+    ML_HOST = 0,
+    ML_DEVICE,
+    ML_END_INVALID
 };
 
 // PME GPU structures
-
-// spread/solve/gather pme inverted box
-
-// CAREFUL: the box is transposed as compared to the original pme->recipbox
-// basically, spread uses matrix columns (while solve and gather use rows)
-// maybe swap it the other way around?
 
 // wrap/unwrap overlap zones
 struct pme_gpu_overlap_t
@@ -155,42 +156,68 @@ struct pme_gpu_overlap_t
  */
 struct pme_gpu_const_parameters
 {
-    /* Reciprocal box */
-    //yupinov specify column or row
+    /*! \brief
+     * Reciprocal (inverted unit cell) box.
+     *
+     * The box is transposed as compared to the CPU pme->recipbox.
+     * Basically, spread uses matrix columns (while solve and gather use rows).
+     */
     float3 recipbox[DIM];
-    /* Grid sizes */
+    /*! \brief Grid data dimensions - integer. */
     int3   localGridSize;
+    /*! \brief Grid data dimensions - floating point. */
     float3 localGridSizeFP;
-    int3   localGridSizePadded; /* padding includes (order - 1) overlap and possibly some alignment in Z? */
-    /* Number of local atoms */
+    /*! \brief Grid size dimensions - integer. The padding as compared to localGridSize includes the (order - 1) overlap. */
+    int3   localGridSizePadded;
+    /*! \brief Number of local atoms */
     int    nAtoms;
 
     /* Solving parameters - maybe they should be in a separate structure,
      * as we likely won't use GPU solve much in multi-rank PME? */
-    float volume;      /* The unit cell volume */
-    float ewaldFactor; /* (M_PI / ewaldCoeff)^2 */
-    float elFactor;    /* ONE_4PI_EPS0 / pme->epsilon_r */
+
+    /*! \brief The unit cell volume for solving. */
+    float volume;
+    /*! \brief Ewald solving coefficient = (M_PI / ewaldCoeff)^2 */
+    float ewaldFactor;
+    /*! \brief Electrostatics coefficient = ONE_4PI_EPS0 / pme->epsilon_r
+     * This is a permanent constant.
+     */
+    float elFactor;
 };
 
-/* The main PME GPU structure, included in the PME CPU structure by pointer */
+/*! \brief \internal
+ * The main PME CUDA structure, included in the PME CPU structure by pointer.
+ */
 struct gmx_pme_cuda_t
 {
-    /* The CUDA stream where everything with PME happens */
+    /*! \brief The CUDA stream where everything related to the PME happens. */
     cudaStream_t pmeStream;
 
-    /* Synchronization events */
-    cudaEvent_t syncEnerVirD2H;    /* energy and virial have already been calculated in pme-solve, and have been copied to host */
-    cudaEvent_t syncForcesD2H;     /* forces have already been calculated in pme-gather, and have been copied to host */
-    cudaEvent_t syncSpreadGridD2H; /* the grid has been copied to the host after the spreading for CPU FFT */
-    cudaEvent_t syncSolveGridD2H;  /* the grid has been copied to the host after the solve for CPU FFT */
+    /* Synchronization events. */
+    /*! \brief A synchronization event for the energy/virial being copied to the host after the solving stage. */
+    cudaEvent_t syncEnerVirD2H;
+    /*! \brief A synchronization event for the output forces being copied to the host after the gathering stage. */
+    cudaEvent_t syncForcesD2H;
+    /*! \brief A synchronization event for the grid being copied to the host after the spreading stage (for the host-side FFT). */
+    cudaEvent_t syncSpreadGridD2H;
+    /*! \brief A synchronization event for the grid being copied to the host after the solving stage (for the host-side FFT). */
+    cudaEvent_t syncSolveGridD2H;
 
     /* Permanent settings set on initialization */
-    gmx_bool bGPUSolve;                                             /* Are we doing the solve stage on the GPU? Currently always TRUE */
-    gmx_bool bGPUGather;                                            /* Are we doing the gather stage on the GPU? Currently always TRUE */
-    gmx_bool bGPUFFT;                                               /* Are we using cuFFT as well? Currently only enabled for a single rank */
-    gmx_bool bGPUSingle;                                            /* Are we using the single GPU rank? A convenience variable */
-    gmx_bool bOutOfPlaceFFT;                                        /* If true, then an additional grid of the same size is used for R2C/solve/C2R */
-    gmx_bool bTiming;                                               /* Enable timing using CUDA events */
+    /*! \brief A boolean which tells if the solving is performed on GPU. Currently always TRUE */
+    gmx_bool bGPUSolve;
+    /*! \brief A boolean which tells if the gathering is performed on GPU. Currently always TRUE */
+    gmx_bool bGPUGather;
+    /*! \brief A boolean which tells if the FFT is performed on GPU. Currently TRUE for a single MPI rank. */
+    gmx_bool bGPUFFT;
+    /*! \brief A convenience boolean which tells if there is only one PME GPU process. */
+    gmx_bool bGPUSingle;
+    /*! \brief A boolean which tells whether the complex and real grids for FFT are different or same. Currenty TRUE. */
+    gmx_bool bOutOfPlaceFFT;
+    /*! \brief A boolean which tells if the CUDA timing events are enabled.
+     * TRUE by default, disabled by setting the environment variable GMX_DISABLE_CUDA_TIMING.
+     */
+    gmx_bool bTiming;
     /* gmx_bool useTextureObjects; */ /* If false, then use references [unused] */
 
     // constant structures for arguments
@@ -204,12 +231,23 @@ struct gmx_pme_cuda_t
     gmx_parallel_3dfft_gpu_t     *pfft_setup_gpu;
 
 
-    // internal host/device pointers storage
-    std::vector<size_t> StorageSizes;
+    /*! \brief Internal host/device pointers storage, addressed only by the PMEMemoryFetch and PMEMemoryFree routines.*/
     std::vector<void *> StoragePointers;
+    /*! \brief Internal host/device pointers storage (sizes of the corresponding ranges in StoragePointers). */
+    std::vector<size_t> StorageSizes;
+
+    /* These are the host-side input/output pointers */
+    /* TODO: not far in the future there will be a device input/output pointers too */
+    /* Input */
+    real *coordinatesHost;  /* rvec/float3 */
+    real *coefficientsHost; /* real */
+    /* Output (and possibly input if pme_kernel_gather does the reduction) */
+    real *forcesHost;       /* rvec/float3 */
+    /* Should the virial + energy live here as well? */
 
 
-    // some device pointers/objects below - they are assigned from the PMEStoragePointers
+
+    /* Some device pointers/objects below (assigned from the PMEStoragePointers by PMEMemoryFetch) */
 
     // spline calculation
     // fractional shifts (pme->fsh*)
@@ -230,9 +268,8 @@ struct gmx_pme_cuda_t
 
     // gather
     // forces
-    real *forces;
+    real   *forces;
 
-    // forces and coordinates should be shared with nonbondeds!
     float3 *coordinates;
     real   *coefficients;
 };
@@ -245,9 +282,6 @@ void *PMEMemoryFetch(const gmx_pme_t *pme, PMEDataID id, size_t size, MemLocType
 
 // copies the bspline moduli to the device (used in PME solve)
 void pme_gpu_copy_bspline_moduli(const gmx_pme_t *pme);
-
-/*! \brief Copies the charges to the GPU */
-void pme_gpu_copy_charges(const gmx_pme_t *pme);
 
 gmx_inline gmx_bool pme_gpu_timings_enabled(const gmx_pme_t *pme)
 {
@@ -268,10 +302,30 @@ void pme_gpu_clear_energy_virial(const gmx_pme_t *pme, const int grid_index);
 // allocating
 void pme_gpu_alloc_grids(const gmx_pme_t *pme, const int grid_index);
 void pme_gpu_alloc_energy_virial(const gmx_pme_t *pme, const int grid_index);
-void pme_gpu_alloc_gather_forces(const gmx_pme_t *pme);
+void pme_gpu_realloc_gather_forces(const gmx_pme_t *pme);
 
 void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup,
                                  ivec                      ndata,
                                  const gmx_pme_t          *pme);
+
+void gmx_parallel_3dfft_complex_limits_gpu(const gmx_parallel_3dfft_gpu_t pfft_setup,
+                                           ivec                           local_ndata,
+                                           ivec                           local_offset,
+                                           ivec                           local_size);
+
+/*! \brief
+ * Waits for the PME GPU output forces copy to the CPU buffer (pme->gpu->forcesHost) to finish.
+ *
+ * \param[in] pme  The PME structure.
+ */
+void pme_gpu_sync_output_forces(const gmx_pme_t *pme);
+
+
+/*! \brief
+ * Waits for the PME GPU output energy/virial copy to the CPU buffer (????) to finish.
+ *
+ * \param[in] pme  The PME structure.
+ */
+void pme_gpu_sync_energy_virial(const gmx_pme_t *pme);
 
 #endif

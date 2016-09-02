@@ -45,53 +45,41 @@
 #include "pme.cuh"
 
 /*! \brief
+ * Reallocates the GPU output buffer for the resulting PME forces.
  *
- * Allocates the GPU output buffer for the resulting PME forces.
+ *
  */
-void pme_gpu_alloc_gather_forces(const gmx_pme_t *pme)
+void pme_gpu_realloc_gather_forces(const gmx_pme_t *pme)
 {
-    const int    n = pme->gpu->constants.nAtoms;
-    assert(n > 0);
-    const size_t forcesSize = DIM * n * sizeof(real);
+    assert(pme->gpu->constants.nAtoms > 0);
+    const size_t forcesSize = pme->gpu->constants.nAtoms * DIM * sizeof(real);
     pme->gpu->forces = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_DEVICE);
 }
 
 /*! \brief
  *
- * Copies the forces from the CPU buffer (pme->atc[0].f) to the GPU (to reduce them with the PME GPU gathered forces).
+ * Copies the forces from the CPU buffer (pme->gpu->forcesHost) to the GPU
+ * (to reduce them with the PME GPU gathered forces).
  * To be called after the bonded calculations.
  */
-void pme_gpu_copy_forces(gmx_pme_t *pme)
+void pme_gpu_copy_input_forces(gmx_pme_t *pme)
 {
-    const int n = pme->gpu->constants.nAtoms;
-    assert(n > 0);
-    const int forcesSize = DIM * n * sizeof(real);
-    real     *forces     = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
-    memcpy(forces, pme->atc[0].f, forcesSize);
-    cu_copy_H2D_async(pme->gpu->forces, forces, forcesSize, pme->gpu->pmeStream);
+    assert(pme->gpu->constants.nAtoms > 0);
+    assert(pme->gpu->forcesHost);
+    const int forcesSize = DIM * pme->gpu->constants.nAtoms * sizeof(real);
+    cu_copy_H2D_async(pme->gpu->forces, pme->gpu->forcesHost, forcesSize, pme->gpu->pmeStream);
 }
 
-/*! \brief
- *
- * Wait for the PME GPU resulting forces on the CPU, and copy to the original CPU buffer (pme->atc[0].f).
- */
-void pme_gpu_get_forces(const gmx_pme_t *pme)
+void pme_gpu_sync_output_forces(const gmx_pme_t *pme)
 {
     cudaStream_t s    = pme->gpu->pmeStream;
     cudaError_t  stat = cudaStreamWaitEvent(s, pme->gpu->syncForcesD2H, 0);
     CU_RET_ERR(stat, "Error while waiting for the PME GPU forces");
 
-    const int    n = pme->gpu->constants.nAtoms;
-    assert(n > 0);
-    const size_t forcesSize = DIM * n * sizeof(real);
-    real        *forces     = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
-
-    for (int i = 0; i < DIM * n; i++)
+    for (int i = 0; i < DIM * pme->gpu->constants.nAtoms; i++)
     {
-        GMX_ASSERT(!isnan(forces[i]), "PME GPU - wrong forces");
+        GMX_ASSERT(!isnan(pme->gpu->forcesHost[i]), "PME GPU - wrong forces produced.");
     }
-
-    memcpy(pme->atc[0].f, forces, forcesSize);
 }
 
 /*! \brief
@@ -208,10 +196,10 @@ __device__ __forceinline__ void reduce_particle_forces(float3        fSumArray[]
  * A CUDA kernel: gathers the forces from the grid in the last PME GPU stage.
  *
  * Template parameters:
- * order                            The PME order (currently always 4).
- * particlesPerBlock                The number of particles processed by a single block;
+ * \tparam[in] order                The PME order (must be 4).
+ * \tparam[in] particlesPerBlock    The number of particles processed by a single block;
  *                                  currently this is (warp_size / order^2) * (number of warps in a block) = (32 / 16) * 4 = 8.
- * bOverwriteForces                 TRUE: the forces are written to the output buffer;
+ * \tparam[in] bOverwriteForces     TRUE: the forces are written to the output buffer;
  *                                  FALSE: the forces are added non-atomically to the output buffer (e.g. to the bonded forces).
  *
  * Normal parameters:
@@ -320,10 +308,10 @@ __global__ void pme_gather_kernel(const pme_gpu_const_parameters constants,
 
     // now particlesPerBlock particles have to reduce order^2 contributions each
     __shared__ float3 fSumArray[particlesPerBlock];
-    reduce_particle_forces<order,particleDataSize, blockSize>(fSumArray,
-                                                              localIndex, splineIndex, lineIndex,
-                                                              constants.localGridSizeFP,
-                                                              fx, fy, fz);
+    reduce_particle_forces<order, particleDataSize, blockSize>(fSumArray,
+                                                               localIndex, splineIndex, lineIndex,
+                                                               constants.localGridSizeFP,
+                                                               fx, fy, fz);
     __syncthreads();
 
     if (threadLocalId < DIM * particlesPerBlock)
@@ -453,7 +441,7 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme,
 
     if (!bOverwriteForces)
     {
-        pme_gpu_copy_forces(pme);
+        pme_gpu_copy_input_forces(pme);
     }
 
     // false: we use some other GPU forces buffer for the final reduction, so we want to add to that
@@ -505,11 +493,8 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme,
         }
     }
 
-    int   forcesSize   = DIM * nAtoms * sizeof(real);
     int   size_indices = nAtoms * sizeof(int);
     int   size_splines = order * nAtoms * sizeof(int);
-
-    real *atc_f_h = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_HOST);
 
     /* These are the unused coefficient scales for LJ/free energy */
     /*
@@ -552,7 +537,8 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme,
 
     pme_gpu_timing_stop(pme, gtPME_GATHER);
 
-    cu_copy_D2H_async(atc_f_h, pme->gpu->forces, forcesSize, s);
+    size_t      forcesSize   = DIM * nAtoms * sizeof(real);
+    cu_copy_D2H_async(pme->gpu->forcesHost, pme->gpu->forces, forcesSize, s);
     cudaError_t stat = cudaEventRecord(pme->gpu->syncForcesD2H, s);
     CU_RET_ERR(stat, "PME gather forces sync fail");
 }

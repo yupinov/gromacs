@@ -469,8 +469,8 @@ int gmx_pme_recv_coeffs_coords(struct gmx_pme_pp *pme_pp,
     gmx_pme_comm_n_box_t cnb;
     int                  messages;
 
-    cnb.flags  = 0;
-    messages   = 0;
+    cnb.flags       = 0;
+    messages        = 0;
     do
     {
 

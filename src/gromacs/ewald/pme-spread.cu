@@ -743,7 +743,7 @@ void pme_gpu_clear_grid(const gmx_pme_t *pme, const int gmx_unused grid_index)
     CU_RET_ERR(stat, "cudaMemsetAsync spread error");
 }
 
-void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t *atc,
+void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                         const int gmx_unused grid_index,
                         pmegrid_t *pmegrid,
                         const gmx_bool bCalcSplines,
@@ -798,18 +798,6 @@ void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t *atc,
     int       *idx_d    = (int *)PMEMemoryFetch(pme, PME_ID_IDXPTR, idx_size, ML_DEVICE);
 
     const int3 nnOffset = {0, 5 * nx, 5 * (nx + ny)};
-
-
-    if (bCalcSplines)
-    {
-        /*
-           const size_t coordinatesSize = DIM * n_blocked * sizeof(real);
-           float3 *xptr_h = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_HOST);
-           memcpy(xptr_h, atc->x, coordinatesSize);
-           xptr_d = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_DEVICE);
-           cu_copy_H2D_async(xptr_d, xptr_h, coordinatesSize, ML_DEVICE, pme->gpu->pmeStream);
-         */
-    }
 
     // each spread kernel thread works on [order] contiguous x grid points, so we multiply the total number of threads by [order^2]
     // so only [1/order^2] of all kernel threads works on particle splines -> does it make sense to split it like this
@@ -941,15 +929,17 @@ void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t *atc,
         cudaError_t stat = cudaEventRecord(pme->gpu->syncSpreadGridD2H, s);
         CU_RET_ERR(stat, "PME spread grid sync fail");
     }
-    if (!pme->gpu->bGPUGather)
-    {
-        //yupinov - (d)theta layout is not straightforward on GPU, would fail with CPU gather
-        // and no accounting for PME communication (bGPUSingle check?)
+    /*
+       if (!pme->gpu->bGPUGather)
+       {
+        // FIXME: spline parameters layout is not the same on GPU => this would would fail with CPU gather.
+        // Also no accounting for PME communication (bGPUSingle check?)
         for (int j = 0; j < DIM; ++j)
         {
             cu_copy_D2H_async(atc->spline[0].dtheta[j], dtheta_d + j * n * order, size_order, s);
             cu_copy_D2H_async(atc->spline[0].theta[j], theta_d + j * n * order, size_order, s);
         }
         cu_copy_D2H_async(atc->idx, idx_d, idx_size, s);
-    }
+       }
+     */
 }

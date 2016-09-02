@@ -192,7 +192,7 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
                         pme_flags |= GMX_PME_CALC_POT;
                     }
                     gmx_pme_gpu_launch(fr->pmedata,
-                                       0, md->homenr - fr->n_tpi,
+                                       md->homenr - fr->n_tpi,
                                        x, fr->f_novirsum,
                                        md->chargeA,
                                        bSB ? boxs : box,

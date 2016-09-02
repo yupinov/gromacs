@@ -209,7 +209,7 @@ int gmx_pme_destroy(struct gmx_pme_t **pmedata)
 
         pme_free_all_work(&(*pmedata)->solve_work, (*pmedata)->nthread);
 
-        pme_gpu_deinit(&(*pmedata));
+        pme_gpu_deinit(*pmedata);
 
         sfree(*pmedata);
         *pmedata = NULL;
@@ -725,9 +725,9 @@ int gmx_pme_init(struct gmx_pme_t   **pmedata,
     pme->gpu = pmeGPU; /* Carrying over the single GPU structure */
 
     pme->bGPU = bPMEGPU && (pme->nodeid == 0);
-    //yupinov: only the first rank should do PME GPU for now.
+    /* Only the first PME rank should do PME GPU for now. */
 
-    if (pme_gpu_enabled(pme)) // safeguards
+    if (pme_gpu_enabled(pme))
     {
         //yupinov: fatal vs. assert
         GMX_RELEASE_ASSERT(pme->nnodes == 1, "PME GPU is only implemented for a single rank");
@@ -736,10 +736,9 @@ int gmx_pme_init(struct gmx_pme_t   **pmedata,
         // shouldn't be difficult to extend though
         GMX_RELEASE_ASSERT(!EVDW_PME(ir->vdwtype), "PME LJ is not implemented on a GPU");
         // a matter of implementing multiple girds + the PME LJ solve kernel
-        GMX_RELEASE_ASSERT(sizeof(real) == sizeof(float), "No double precision support for PME GPU");
+        GMX_RELEASE_ASSERT(sizeof(real) == sizeof(float), "Only single precision supported for PME GPU");
         // most likely current FFT/solve wouldn't work on double precision
         GMX_RELEASE_ASSERT(pme->pme_order == 4, "PME GPU is only implemented for the PME order of 4");
-        // what other orders would make sense anyway? 8 would require only a small spread/gather rewrite
 #if GMX_GPU != GMX_GPU_CUDA
         GMX_RELEASE_ASSERT(false, "PME GPU is only implemented for CUDA");
 #endif
@@ -849,7 +848,7 @@ int gmx_pme_init(struct gmx_pme_t   **pmedata,
         pme_realloc_atomcomm_things(&pme->atc[0]);
     }
 
-    pme_gpu_init(&pme->gpu, pme, hwinfo, gpu_opt);
+    pme_gpu_init(pme, hwinfo, gpu_opt);
 
     pme->lb_buf1       = NULL;
     pme->lb_buf2       = NULL;
@@ -1683,26 +1682,25 @@ int gmx_pme_do(struct gmx_pme_t *pme,
 }
 
 // a GPU version of the gmx_pme_do (except for gather)
-void gmx_pme_gpu_launch(struct gmx_pme_t *pme,
-                        int start,       int homenr,
-                        rvec x[],        rvec f[],
-                        real chargeA[],
-                        matrix box,
+void gmx_pme_gpu_launch(gmx_pme_t      *pme,
+                        int             nAtoms,
+                        rvec            x[],
+                        rvec            f[],
+                        real            charges[],
+                        matrix          box,
                         gmx_wallcycle_t wcycle,
-                        real ewaldcoeff_q,
-                        int flags)
+                        real            ewaldcoeff_q,
+                        int             flags)
 {
     if (!pme_gpu_enabled(pme))
     {
         return;
     }
 
-    pme_atomcomm_t      *atc         = NULL;
     pmegrids_t          *pmegrid     = NULL;
     real                *grid        = NULL;
-    real                *coefficient = NULL;
-    real               * fftgrid;
-    t_complex          * cfftgrid;
+    real                *fftgrid;
+    t_complex           *cfftgrid;
     int                  thread = 0;
     gmx_bool             bFirst, bDoSplines;
     const gmx_bool       bCalcEnerVir            = flags & GMX_PME_CALC_ENER_VIR;
@@ -1711,18 +1709,14 @@ void gmx_pme_gpu_launch(struct gmx_pme_t *pme,
     assert(pme->nnodes > 0);
     assert(pme->nnodes == 1 || pme->ndecompdim > 0);
 
-    atc = &pme->atc[0];
-    /* This could be necessary for TPI */
-    pme->atc[0].n = homenr;
-    atc->x        = x;
-    atc->f        = f;
-
     gmx::invertBoxMatrix(box, pme->recipbox);
 
     bFirst = TRUE;
 
     wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME);
-    pme_gpu_set_constants(pme, box, ewaldcoeff_q);
+    pme_gpu_set_constants(pme, box, ewaldcoeff_q); // TODO call this conditionally
+    pme_gpu_reinit_atoms(pme, nAtoms, charges);    // TODO call this conditionally
+    pme_gpu_set_io_ranges(pme, x, f);              /* should this be called every step, or on DD/DLB, or on bCalcEnerVir change? */
     pme_gpu_step_init(pme);
     wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
 
@@ -1731,9 +1725,8 @@ void gmx_pme_gpu_launch(struct gmx_pme_t *pme,
      * could be done by keeping track of which atoms have splines
      * constructed, and construct new splines on each pass for atoms
      * that don't yet have them.
+     * For GPU this value currently will be false, possibly increasing the divergence in pme_spline.
      */
-
-    // for GPU this value currently will be false, possibly increasing the divergence in pme_spline_and_spread
 
     bDoSplines = pme->bFEP || ((flags & GMX_PME_DO_COULOMB) && (flags & GMX_PME_DO_LJ));
 
@@ -1743,16 +1736,10 @@ void gmx_pme_gpu_launch(struct gmx_pme_t *pme,
     pmegrid     = &pme->pmegrid[grid_index];
     fftgrid     = pme->fftgrid[grid_index];
     cfftgrid    = pme->cfftgrid[grid_index];
-    coefficient = chargeA + start;
 
     grid = pmegrid->grid.grid;
 
-    atc->coefficient = coefficient;
 
-    // TODO call this conditionally
-    wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
-    pme_gpu_grid_init(pme, grid_index);
-    wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
 
     // pme->gpu->bGPUSingle && pme->gpu->bGPUFFT should be checked somewhere around here for multi-process
     // pme->gpu->bGPUSolve &&= (grid_index < DO_Q);  // no LJ support
@@ -1856,7 +1843,7 @@ void gmx_pme_gpu_launch(struct gmx_pme_t *pme,
 // launch the gather kernel, copy the result back
 void gmx_pme_gpu_launch_gather(gmx_pme_t                 *pme,
                                gmx_wallcycle_t gmx_unused wcycle,
-                               gmx_bool                   bClearF)
+                               gmx_bool                   bClearForces)
 {
     if (!pme_gpu_performs_gather(pme))
     {
@@ -1864,7 +1851,7 @@ void gmx_pme_gpu_launch_gather(gmx_pme_t                 *pme,
     }
 
     wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
-    gather_f_bsplines_gpu(pme, bClearF);
+    gather_f_bsplines_gpu(pme, bClearForces);
     wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
 }
 

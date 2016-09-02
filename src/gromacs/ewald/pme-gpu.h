@@ -49,29 +49,17 @@
 #include "gromacs/math/gmxcomplex.h"
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/timing/gpu_timing.h"
-
-//yupinov add author info everywhere
-
-#include "pme-internal.h" //????
+#include "pme-internal.h"
 
 struct gmx_hw_info_t;
 struct gmx_gpu_opt_t;
 
+
+//yupinov add author info everywhere
+
+
 // internal data handling
 
-
-
-CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_real_limits_gpu(
-        gmx_parallel_3dfft_gpu_t CUDA_FUNC_ARGUMENT(pfft_setup),
-        ivec                     CUDA_FUNC_ARGUMENT(local_ndata),
-        ivec                     CUDA_FUNC_ARGUMENT(local_offset),
-        ivec                     CUDA_FUNC_ARGUMENT(local_size)) CUDA_FUNC_TERM
-
-
-CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_complex_limits_gpu(gmx_parallel_3dfft_gpu_t CUDA_FUNC_ARGUMENT(pfft_setup),
-                                                               ivec                     CUDA_FUNC_ARGUMENT(local_ndata),
-                                                               ivec                     CUDA_FUNC_ARGUMENT(local_offset),
-                                                               ivec                     CUDA_FUNC_ARGUMENT(local_size)) CUDA_FUNC_TERM
 
 CUDA_FUNC_QUALIFIER void gmx_parallel_3dfft_execute_gpu(gmx_pme_t             *CUDA_FUNC_ARGUMENT(pme),
                                                         enum gmx_fft_direction CUDA_FUNC_ARGUMENT(dir),
@@ -95,56 +83,117 @@ CUDA_FUNC_QUALIFIER void solve_pme_gpu(
         t_complex     *CUDA_FUNC_ARGUMENT(grid),
         const gmx_bool CUDA_FUNC_ARGUMENT(bEnerVir)) CUDA_FUNC_TERM
 
-
-CUDA_FUNC_QUALIFIER void pme_gpu_get_forces(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
-CUDA_FUNC_QUALIFIER void pme_gpu_get_energy_virial(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
-
 // these should not really be external - only used in GPU launch code which is stuck in pme.cpp
 CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_gather(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
 CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_FFT(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
 CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_wrapping(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
 CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_solve(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
-CUDA_FUNC_QUALIFIER void pme_gpu_sync_grid(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme), enum gmx_fft_direction CUDA_FUNC_ARGUMENT(dir)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_sync_grid(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme), const gmx_fft_direction CUDA_FUNC_ARGUMENT(dir)) CUDA_FUNC_TERM
 
 // nice external functions
 
-/*! \brief Finds out if PME is set to run on GPU. */
+/*! \brief
+ * Finds out if PME is set to run on GPU.
+ *
+ * \param[in] pme  The PME structure.
+ * \returns        TRUE if PME runs on GPU, FALSE otherwise.
+ */
 gmx_inline gmx_bool pme_gpu_enabled(const gmx_pme_t *pme)
 {
     return (pme != NULL) && pme->bGPU;
 }
 
-/*! \brief Initializes the PME GPU data at the beginning or on DD. */
-CUDA_FUNC_QUALIFIER void pme_gpu_init(gmx_pme_gpu_t      **CUDA_FUNC_ARGUMENT(pmeGPU),
-                                      gmx_pme_t           *CUDA_FUNC_ARGUMENT(pme),
+/*! \brief
+ * Initializes the PME GPU data at the beginning of the run or on DLB. Does nothing on non-CUDA builds.
+ *
+ * \param[in] pme     The PME structure.
+ * \param[in] hwinfo  The hardware information structure.
+ * \param[in] gpu_opt The GPU information structure.
+ */
+CUDA_FUNC_QUALIFIER void pme_gpu_init(gmx_pme_t           *CUDA_FUNC_ARGUMENT(pme),
                                       const gmx_hw_info_t *CUDA_FUNC_ARGUMENT(hwinfo),
                                       const gmx_gpu_opt_t *CUDA_FUNC_ARGUMENT(gpu_opt)) CUDA_FUNC_TERM
 
-/*! \brief Destroys the PME GPU data at the end of the run. */
-CUDA_FUNC_QUALIFIER void pme_gpu_deinit(gmx_pme_t **CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+/*! \brief
+ * Destroys the PME GPU data at the end of the run. Does nothing on non-CUDA builds.
+ *
+ * \param[in] pme     The PME structure.
+ */
+CUDA_FUNC_QUALIFIER void pme_gpu_deinit(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
-/*! \brief Initializes the PME GPU step. */
-CUDA_FUNC_QUALIFIER void pme_gpu_step_init(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+/*! \brief
+ * Initializes the PME GPU step. Does nothing on non-CUDA builds.
+ *
+ * \param[in] pme     The PME structure.
+ */
+CUDA_FUNC_QUALIFIER void pme_gpu_step_init(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
-/*! \brief Sets the PME GPU constants. Currently it is called together with the pme_gpu_step_init, but can possibly be decoupled? */
-CUDA_FUNC_QUALIFIER void pme_gpu_set_constants(gmx_pme_t   *CUDA_FUNC_ARGUMENT(pme),
-                                               const matrix CUDA_FUNC_ARGUMENT(box),
-                                               const real   CUDA_FUNC_ARGUMENT(ewaldCoeff)) CUDA_FUNC_TERM
+/*! \brief
+ * Sets the PME GPU constants. Does nothing on non-CUDA builds.
+ *
+ * \param[in] pme            The PME structure.
+ * \param[in] box            The unit cell - does not necessarily change every step.
+ * \param[in] ewaldCoeff     The Ewald coefficient.
+ *
+ * Currently it is called together with the pme_gpu_step_init, but can possibly be called less often?
+ * (Different constants have different lifetime...).
+ */
+CUDA_FUNC_QUALIFIER void pme_gpu_set_constants(const gmx_pme_t   *CUDA_FUNC_ARGUMENT(pme),
+                                               const matrix       CUDA_FUNC_ARGUMENT(box),
+                                               const real         CUDA_FUNC_ARGUMENT(ewaldCoeff)) CUDA_FUNC_TERM
 
-/*! \brief Initializes the single grid in the PME GPU step. */
-CUDA_FUNC_QUALIFIER void pme_gpu_grid_init(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme), const int CUDA_FUNC_ARGUMENT(grid_index)) CUDA_FUNC_TERM
+/*! \brief
+ * (Re-)initializes the semi-static domain particle data (the number of particles, charges). Does nothing on non-CUDA builds.
+ *
+ * \param[in] pme            The PME structure.
+ * \param[in] nAtoms         The number of particles.
+ * \param[in] coefficients   The pointer to the host-side array of particle charges.
+ *
+ * This is a function that should only be called in the beginning of the run and on domain decomposition.
+ * Should be called before the pme_gpu_set_io_ranges.
+ */
+CUDA_FUNC_QUALIFIER void pme_gpu_reinit_atoms(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
+                                              const int        CUDA_FUNC_ARGUMENT(nAtoms),
+                                              real            *CUDA_FUNC_ARGUMENT(coefficients)) CUDA_FUNC_TERM
 
+/*! \brief
+ * Sets the host-side I/O buffers in the PME GPU. Does nothing on non-CUDA builds.
+ *
+ * \param[in] pme            The PME structure.
+ * \param[in] coordinates    The pointer to the host-side array of particle coordinates in rvec format.
+ * \param[in] forces         The pointer to the host-side array of particle forces.
+ *                           It will be used for output, but can also be used for input,
+ *                           if bClearForces is passed as false to the gmx_pme_gpu_launch_gather.
+ */
+CUDA_FUNC_QUALIFIER void pme_gpu_set_io_ranges(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
+                                               rvec            *CUDA_FUNC_ARGUMENT(coordinates),
+                                               rvec            *CUDA_FUNC_ARGUMENT(forces)) CUDA_FUNC_TERM
 
-
-/*! \brief Finishes the PME GPU step, copying back the forces and/or energy/virial. */
+/*! \brief
+ * Finishes the PME GPU step, copying back the forces and/or energy/virial. Does nothing on non-CUDA builds.
+ *
+ * \param[in] pme            The PME structure.
+ * \param[in] bCalcForces    The left-over flag from the CPU code which tells the function to copy the forces to the CPU side. Should be passed to the launch call instead.
+ * \param[in] bCalcEnerVir   The left-over flag from the CPU code which tells the function to copy the energy/virial to the CPU side. Should be passed to the launch call instead.
+ */
 CUDA_FUNC_QUALIFIER void pme_gpu_step_end(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
-                                          const gmx_bool   CUDA_FUNC_ARGUMENT(bCalcF),
+                                          const gmx_bool   CUDA_FUNC_ARGUMENT(bCalcForces),
                                           const gmx_bool   CUDA_FUNC_ARGUMENT(bCalcEnerVir)) CUDA_FUNC_TERM
 
-/*! \brief Resets the PME GPU timings. */
+/*! \brief
+ * Resets the PME GPU timings. To be called at the reset step. Does nothing on non-CUDA builds.
+ *
+ * \param[in] pme            The PME structure.
+ */
 CUDA_FUNC_QUALIFIER void pme_gpu_reset_timings(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
-
-CUDA_FUNC_QUALIFIER void pme_gpu_get_timings(gmx_wallclock_gpu_t **CUDA_FUNC_ARGUMENT(timings), const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+/*! \brief
+ * Copies the PME GPU timings to the gmx_wallclock_gpu_t structure (for log output). To be called at the run end. Does nothing on non-CUDA builds.
+ *
+ * \param[in] timings           The gmx_wallclock_gpu_t structure (with some shamelessly duplicated fields for the PME GPU timings).
+ * \param[in] pme               The PME structure (why is it a second argument?).
+ */
+CUDA_FUNC_QUALIFIER void pme_gpu_get_timings(gmx_wallclock_gpu_t **CUDA_FUNC_ARGUMENT(timings),
+                                             const gmx_pme_t      *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 #endif // PMEGPU_H

@@ -484,7 +484,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     }
 }
 
-void pme_gpu_get_energy_virial(const gmx_pme_t *pme)
+void pme_gpu_sync_energy_virial(const gmx_pme_t *pme)
 {
     cudaStream_t             s = pme->gpu->pmeStream;
 
@@ -508,7 +508,7 @@ void pme_gpu_get_energy_virial(const gmx_pme_t *pme)
     energy += energyAndVirial_h[j++];
     for (j = 0; j < 7; j++)
     {
-        GMX_RELEASE_ASSERT(!isnan(energyAndVirial_h[j]), "PME GPU is broken - NaN reduction result");
+        GMX_RELEASE_ASSERT(!isnan(energyAndVirial_h[j]), "PME GPU produces incorrect energy.");
     }
 
     work_vir_q[XX][XX] = 0.25 * virxx;
