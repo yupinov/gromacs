@@ -295,8 +295,8 @@ void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo,
 
         pme->gpu->bTiming = (getenv("GMX_DISABLE_CUDA_TIMING") == NULL); /* This should also check for NB GPU being launched, and NB should check for PME GPU! */
 
-        /* pme->gpu->useTextureObjects = forcedGpuIdHack ? false : (pme->gpu->deviceInfo->prop.major >= 3); */
-        //yupinov - have to fix this GPU id selection for good
+        //pme->gpu->bUseTextureObjects = (pme->gpu->deviceInfo->prop.major >= 3);
+        //yupinov - have to fix this GPU id selection for good, forced GPUIdHack?
 
         size_t pointerStorageSize = ML_END_INVALID * PME_ID_END_INVALID;
         pme->gpu->StorageSizes.assign(pointerStorageSize, 0);

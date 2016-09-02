@@ -60,16 +60,9 @@
 #define THREADS_PER_BLOCK   (4 * warp_size)
 #define MIN_BLOCKS_PER_MP   (16)
 
-//move all this into structure?
 #if PME_USE_TEXTURES
-#define USE_TEXOBJ 0 // should check device info dynamically
-#if USE_TEXOBJ
-cudaTextureObject_t nnTexture;
-cudaTextureObject_t fshTexture;
-#else
 texture<int, 1, cudaReadModeElementType>   nnTextureRef;
 texture<float, 1, cudaReadModeElementType> fshTextureRef;
-#endif
 #endif
 
 
@@ -82,12 +75,7 @@ template <
     const gmx_bool bCalcAlways
     >
 __device__ __forceinline__ void calculate_splines(const int3                     nnOffset,
-#if PME_USE_TEXTURES
-#if USE_TEXOBJ
-                                                  cudaTextureObject_t            nnTexture,
-                                                  cudaTextureObject_t            fshTexture,
-#endif
-#else
+#if !PME_USE_TEXTURES
                                                   const int * __restrict__       nn,
                                                   const real * __restrict__      fsh,
 #endif
@@ -165,9 +153,9 @@ __device__ __forceinline__ void calculate_splines(const int3                    
             constIndex               += tInt;
 
 #if PME_USE_TEXTURES
-#if USE_TEXOBJ
-            fractX[sharedMemoryIndex] += tex1Dfetch<real>(fshTexture, constIndex);
-            idx[sharedMemoryIndex]     = tex1Dfetch<int>(nnTexture, constIndex);
+#if PME_USE_TEXOBJ
+            fractX[sharedMemoryIndex] += tex1Dfetch<real>(constants.fshTexture, constIndex);
+            idx[sharedMemoryIndex]     = tex1Dfetch<int>(constants.nnTexture, constIndex);
 #else
             fractX[sharedMemoryIndex] += tex1Dfetch(fshTextureRef, constIndex);
             idx[sharedMemoryIndex]     = tex1Dfetch(nnTextureRef, constIndex);
@@ -359,12 +347,7 @@ __launch_bounds__(THREADS_PER_BLOCK, MIN_BLOCKS_PER_MP)
 //yupinov put bounds on separate kernels as well
 __global__ void pme_spline_and_spread_kernel
     (const int3 nnOffset,
-#if PME_USE_TEXTURES
-#if USE_TEXOBJ
-    cudaTextureObject_t nnTexture,
-    cudaTextureObject_t fshTexture,
-#endif
-#else
+#if !PME_USE_TEXTURES
     const int * __restrict__ nn,
     const real * __restrict__ fsh,
 #endif
@@ -459,12 +442,7 @@ template <
     >
 __global__ void pme_spline_kernel
     (const int3 nnOffset,
-#if PME_USE_TEXTURES
-#if USE_TEXOBJ
-    cudaTextureObject_t nnTexture,
-    cudaTextureObject_t fshTexture,
-#endif
-#else
+#if !PME_USE_TEXTURES
     const int * __restrict__ nn,
     const real * __restrict__ fsh,
 #endif
@@ -666,7 +644,7 @@ void pme_gpu_copy_calcspline_constants(const gmx_pme_t *pme)
 
 #if PME_USE_TEXTURES
     cudaError_t  stat;
-#if USE_TEXOBJ
+#if PME_USE_TEXOBJ
     //if (use_texobj(dev_info))
     // should check device info here for CC >= 3.0
     {
@@ -681,7 +659,7 @@ void pme_gpu_copy_calcspline_constants(const gmx_pme_t *pme)
         rd.res.linear.sizeInBytes   = fshSize;
         memset(&td, 0, sizeof(td));
         td.readMode                 = cudaReadModeElementType;
-        stat = cudaCreateTextureObject(&fshTexture, &rd, &td, NULL);
+        stat = cudaCreateTextureObject(&pme->gpu->constants.fshTexture, &rd, &td, NULL);
         CU_RET_ERR(stat, "cudaCreateTextureObject on fsh_d failed");
 
 
@@ -693,7 +671,7 @@ void pme_gpu_copy_calcspline_constants(const gmx_pme_t *pme)
         rd.res.linear.sizeInBytes   = nnSize;
         memset(&td, 0, sizeof(td));
         td.readMode                 = cudaReadModeElementType;
-        stat = cudaCreateTextureObject(&nnTexture, &rd, &td, NULL); //yupinov destroy, keep allocated
+        stat = cudaCreateTextureObject(&pme->gpu->constants.nnTexture, &rd, &td, NULL); //also needs cleaning
         CU_RET_ERR(stat, "cudaCreateTextureObject on nn_d failed");
     }
     //else
@@ -835,11 +813,7 @@ void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                     {
                         pme_spline_kernel<4, blockSize / 4 / 4, FALSE> <<< nBlocksSpline, dimBlockSpline, 0, s>>>
                         (nnOffset,
-#if PME_USE_TEXTURES
-#if USE_TEXOBJ
-                         nnTexture, fshTexture,
-#endif
-#else
+#if !PME_USE_TEXTURES
                          pme->gpu->constants.nnArray, pme->gpu->constants.fshArray,
 #endif
                          pme->gpu->coordinates,
@@ -883,11 +857,7 @@ void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                         {
                             pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, FALSE, TRUE> <<< nBlocksSpread, dimBlockSpread, 0, s>>>
                             (nnOffset,
-#if PME_USE_TEXTURES
-#if USE_TEXOBJ
-                             nnTexture, fshTexture,
-#endif
-#else
+#if !PME_USE_TEXTURES
                              pme->gpu->constants.nnArray, pme->gpu->constants.fshArray,
 #endif
                              pme->gpu->coordinates, pme->gpu->coefficients, pme->gpu->grid, theta_d, dtheta_d, idx_d,

@@ -93,6 +93,12 @@
 
 /* Using textures instead of global memory. Only in spread now, but B-spline moduli in solving could also be texturized. */
 #define PME_USE_TEXTURES 1
+#if PME_USE_TEXTURES
+/* Using texture objects as opposed to texture references
+ * FIXME: rely entirely on dynamic device info instead, remove more ugly #ifs
+ */
+#define PME_USE_TEXOBJ 1
+#endif
 
 /*! \brief \internal
  * Internal identifiers for the PME CUDA memory management (gmx_pme_cuda_t::StoragePointers).
@@ -187,9 +193,11 @@ struct pme_gpu_const_parameters
     /* Should the pointers really live here ? */
     // spline calculation
     // fractional shifts (pme->fsh*)
-    real *fshArray;
+    real               *fshArray;
+    cudaTextureObject_t fshTexture;
     // indices (pme->nn*)
-    int  *nnArray;
+    int                *nnArray;
+    cudaTextureObject_t nnTexture;
 };
 
 /*! \brief \internal
@@ -225,7 +233,8 @@ struct gmx_pme_cuda_t
      * TRUE by default, disabled by setting the environment variable GMX_DISABLE_CUDA_TIMING.
      */
     gmx_bool bTiming;
-    /* gmx_bool useTextureObjects; */ /* If false, then use references [unused] */
+
+    //gmx_bool bUseTextureObjects;  /* If false, then use references [unused] */
 
     // constant structures for arguments
     pme_gpu_overlap_t             overlap;
