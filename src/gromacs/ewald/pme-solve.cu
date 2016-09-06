@@ -127,8 +127,7 @@ __global__ void pme_solve_kernel
     const real * __restrict__ BSplineModuleMinor,
     const real * __restrict__ BSplineModuleMajor,
     const real * __restrict__ BSplineModuleMiddle,
-    float2 * __restrict__ globalGrid,
-    const struct pme_gpu_const_parameters constants,
+    const struct pme_gpu_kernel_params kernelParams,
     real * __restrict__ virialAndEnergy)
 {
     // this is a PME solve kernel
@@ -141,22 +140,24 @@ __global__ void pme_solve_kernel
     const int blockSize = THREADS_PER_BLOCK;
     //const int threadId = blockId * blockSize + threadLocalId;
 
-    const int nMinor  = !YZXOrdering ? constants.localGridSize.z : constants.localGridSize.x; //yupinov fix all pme->nkx and such
-    const int nMajor  = !YZXOrdering ? constants.localGridSize.x : constants.localGridSize.y;
-    const int nMiddle = !YZXOrdering ? constants.localGridSize.y : constants.localGridSize.z;
+    float2 * __restrict__ globalGrid = kernelParams.grid.fourierGrid;
 
-    int       maxkMajor  = (nMajor + 1) / 2;  //X or Y
-    int       maxkMiddle = (nMiddle + 1) / 2; //Y OR Z => only check for !YZX
-    int       maxkMinor  = (nMinor + 1) / 2;  //Z or X => only check for YZX
+    const int             nMinor  = !YZXOrdering ? kernelParams.grid.localGridSize.z : kernelParams.grid.localGridSize.x; //yupinov fix all pme->nkx and such
+    const int             nMajor  = !YZXOrdering ? kernelParams.grid.localGridSize.x : kernelParams.grid.localGridSize.y;
+    const int             nMiddle = !YZXOrdering ? kernelParams.grid.localGridSize.y : kernelParams.grid.localGridSize.z;
 
-    const int enerVirSize = 7;
+    int                   maxkMajor  = (nMajor + 1) / 2;  //X or Y
+    int                   maxkMiddle = (nMiddle + 1) / 2; //Y OR Z => only check for !YZX
+    int                   maxkMinor  = (nMinor + 1) / 2;  //Z or X => only check for YZX
 
-    real      energy = 0.0f;
-    real      virxx  = 0.0f, virxy = 0.0f, virxz = 0.0f, viryy = 0.0f, viryz = 0.0f, virzz = 0.0f;
+    const int             enerVirSize = 7;
 
-    const int indexMinor  = blockIdx.x * blockDim.x + threadIdx.x;
-    const int indexMiddle = blockIdx.y * blockDim.y + threadIdx.y;
-    const int indexMajor  = blockIdx.z * blockDim.z + threadIdx.z;
+    real                  energy = 0.0f;
+    real                  virxx  = 0.0f, virxy = 0.0f, virxz = 0.0f, viryy = 0.0f, viryz = 0.0f, virzz = 0.0f;
+
+    const int             indexMinor  = blockIdx.x * blockDim.x + threadIdx.x;
+    const int             indexMiddle = blockIdx.y * blockDim.y + threadIdx.y;
+    const int             indexMajor  = blockIdx.z * blockDim.z + threadIdx.z;
 
     if ((indexMajor < localCountMajor) && (indexMiddle < localCountMiddle) && (indexMinor < localCountMinor))
     {
@@ -219,17 +220,17 @@ __global__ void pme_solve_kernel
 
         if (notZeroPoint)
         {
-            mhxk       = mX * constants.recipbox[XX].x;
-            mhyk       = mX * constants.recipbox[XX].y + mY * constants.recipbox[YY].y;
-            mhzk       = mX * constants.recipbox[XX].z + mY * constants.recipbox[YY].z + mZ * constants.recipbox[ZZ].z;
+            mhxk       = mX * kernelParams.step.recipbox[XX].x;
+            mhyk       = mX * kernelParams.step.recipbox[XX].y + mY * kernelParams.step.recipbox[YY].y;
+            mhzk       = mX * kernelParams.step.recipbox[XX].z + mY * kernelParams.step.recipbox[YY].z + mZ * kernelParams.step.recipbox[ZZ].z;
 
             m2k        = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
-            real denom = m2k * real(M_PI) * constants.volume * BSplineModuleMajor[kMajor] * BSplineModuleMiddle[kMiddle] * BSplineModuleMinor[kMinor];
-            real tmp1  = -constants.ewaldFactor * m2k;
+            real denom = m2k * real(M_PI) * kernelParams.step.boxVolume * BSplineModuleMajor[kMajor] * BSplineModuleMiddle[kMiddle] * BSplineModuleMinor[kMinor];
+            real tmp1  = -kernelParams.grid.ewaldFactor * m2k;
 
             denom = 1.0f / denom;
             tmp1  = expf(tmp1);
-            real   etermk = constants.elFactor * tmp1 * denom;
+            real   etermk = kernelParams.constants.elFactor * tmp1 * denom;
 
             float2 gridValue    = *globalGridPtr;
             float2 oldGridValue = gridValue;
@@ -241,7 +242,7 @@ __global__ void pme_solve_kernel
             {
                 real tmp1k = 2.0f * (gridValue.x * oldGridValue.x + gridValue.y * oldGridValue.y);
 
-                real vfactor = (constants.ewaldFactor + 1.0f / m2k) * 2.0f;
+                real vfactor = (kernelParams.grid.ewaldFactor  + 1.0f / m2k) * 2.0f;
                 real ets2    = corner_fac * tmp1k;
                 energy = ets2;
 
@@ -392,7 +393,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
 
     const int   gridSize = local_size[XX] * local_size[YY] * local_size[ZZ] * sizeof(float2);
 
-    float2     *grid_d = (float2 *)pme->gpu->fourierGrid;
+    float2     *grid_d = (float2 *)pme->gpu->kernelParams.grid.fourierGrid;
     if (!pme->gpu->bGPUFFT)
     {
         cu_copy_H2D_async(grid_d, grid, gridSize, s);
@@ -405,7 +406,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
     const int blocksPerGridLine = (gridLineSize + maxBlockSize - 1) / maxBlockSize; // rounded up
     dim3 threads((maxBlockSize + gridLinesPerBlock - 1) / gridLinesPerBlock, gridLinesPerBlock);
     const int blockSize = threads.x * threads.y * threads.z;
-    GMX_RELEASE_ASSERT(blockSize >= maxBlockSize, "wrong PME GPU solve launch parameters");
+    GMX_RELEASE_ASSERT(blockSize >= maxBlockSize, "Wrong PME GPU solve launch parameters");
     // we want to have spare threads to zero all the shared memory which we use in CC2.0 shared mem reduction
 
     dim3 blocks(blocksPerGridLine,
@@ -423,8 +424,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
              local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
              local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
              bspModMinor_d, bspModMajor_d, bspModMiddle_d,
-             grid_d,
-             pme->gpu->constants,
+             pme->gpu->kernelParams,
              pme->gpu->energyAndVirial);
         }
         else
@@ -434,8 +434,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
              local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
              local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
              bspModMinor_d, bspModMajor_d, bspModMiddle_d,
-             grid_d,
-             pme->gpu->constants,
+             pme->gpu->kernelParams,
              pme->gpu->energyAndVirial);
         }
     }
@@ -448,8 +447,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
              local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
              local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
              bspModMinor_d, bspModMajor_d, bspModMiddle_d,
-             grid_d,
-             pme->gpu->constants,
+             pme->gpu->kernelParams,
              pme->gpu->energyAndVirial);
         }
         else
@@ -459,8 +457,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
              local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
              local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
              bspModMinor_d, bspModMajor_d, bspModMiddle_d,
-             grid_d,
-             pme->gpu->constants,
+             pme->gpu->kernelParams,
              pme->gpu->energyAndVirial);
         }
     }
@@ -493,7 +490,7 @@ void pme_gpu_sync_energy_virial(const gmx_pme_t *pme)
     matrix                  &work_vir_q    = work->vir_q;
 
     cudaError_t              stat = cudaStreamWaitEvent(s, pme->gpu->syncEnerVirD2H, 0);
-    CU_RET_ERR(stat, "error while waiting for PME solve");
+    CU_RET_ERR(stat, "Error while waiting for PME solve");
     real                    *energyAndVirial_h = (real *)PMEMemoryFetch(pme, PME_ID_ENERGY_AND_VIRIAL, pme->gpu->energyAndVirialSize, ML_HOST);
     real                     energy            = 0.0;
     real                     virxx             = 0.0, virxy = 0.0, virxz = 0.0, viryy = 0.0, viryz = 0.0, virzz = 0.0;

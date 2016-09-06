@@ -75,8 +75,8 @@ CUDA_FUNC_QUALIFIER void spread_on_grid_gpu(const gmx_pme_t *CUDA_FUNC_ARGUMENT(
                                             const gmx_bool   CUDA_FUNC_ARGUMENT(bDoSplines)
                                             ) CUDA_FUNC_TERM
 
-CUDA_FUNC_QUALIFIER void gather_f_bsplines_gpu(gmx_pme_t      *CUDA_FUNC_ARGUMENT(pme),
-                                               const gmx_bool  CUDA_FUNC_ARGUMENT(bOverwriteForces)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void gather_f_bsplines_gpu(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
+                                               const gmx_bool   CUDA_FUNC_ARGUMENT(bOverwriteForces)) CUDA_FUNC_TERM
 
 CUDA_FUNC_QUALIFIER void solve_pme_gpu(
         gmx_pme_t     *CUDA_FUNC_ARGUMENT(pme),

@@ -137,7 +137,7 @@ void pme_gpu_copy_recipbox(const gmx_pme_t *pme)
         {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
     };
     assert(pme->recipbox[XX][XX] != 0.0);
-    memcpy(pme->gpu->constants.recipbox, box, sizeof(box));
+    memcpy(pme->gpu->kernelParams.step.recipbox, box, sizeof(box));
 }
 
 /*! \brief \internal
@@ -147,9 +147,9 @@ void pme_gpu_copy_recipbox(const gmx_pme_t *pme)
  */
 void pme_gpu_copy_wrap_zones(const gmx_pme_t *pme)
 {
-    const int nx      = pme->gpu->constants.localGridSize.x;
-    const int ny      = pme->gpu->constants.localGridSize.y;
-    const int nz      = pme->gpu->constants.localGridSize.z;
+    const int nx      = pme->gpu->kernelParams.grid.localGridSize.x;
+    const int ny      = pme->gpu->kernelParams.grid.localGridSize.y;
+    const int nz      = pme->gpu->kernelParams.grid.localGridSize.z;
     const int overlap = pme->pme_order - 1;
 
     /* Cell counts in the 7 overlapped grid parts */
@@ -181,8 +181,8 @@ void pme_gpu_copy_wrap_zones(const gmx_pme_t *pme)
     {
         cellsAccumCount_h[i] = cellsAccumCount_h[i] + cellsAccumCount_h[i - 1];
     }
-    memcpy(pme->gpu->overlap.overlapSizes, zoneSizesYZ_h, sizeof(zoneSizesYZ_h));
-    memcpy(pme->gpu->overlap.overlapCellCounts, cellsAccumCount_h, sizeof(cellsAccumCount_h));
+    memcpy(pme->gpu->kernelParams.grid.overlapSizes, zoneSizesYZ_h, sizeof(zoneSizesYZ_h));
+    memcpy(pme->gpu->kernelParams.grid.overlapCellCounts, cellsAccumCount_h, sizeof(cellsAccumCount_h));
 }
 
 /*! \brief
@@ -194,10 +194,11 @@ void pme_gpu_copy_wrap_zones(const gmx_pme_t *pme)
  */
 void pme_gpu_copy_coordinates(const gmx_pme_t *pme)
 {
-    assert(pme->gpu->constants.nAtoms > 0);
-    const size_t coordinatesSize = pme->gpu->constants.nAtoms * DIM * sizeof(real);
-    pme->gpu->coordinates = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_DEVICE);
-    cu_copy_H2D_async(pme->gpu->coordinates, pme->gpu->coordinatesHost, coordinatesSize, pme->gpu->pmeStream);
+    assert(pme->gpu->kernelParams.atoms.nAtoms > 0);
+    assert(pme->gpu->coordinatesHost);
+    const size_t coordinatesSize = pme->gpu->kernelParams.atoms.nAtoms * DIM * sizeof(real);
+    pme->gpu->kernelParams.atoms.coordinates = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_DEVICE);
+    cu_copy_H2D_async(pme->gpu->kernelParams.atoms.coordinates, pme->gpu->coordinatesHost, coordinatesSize, pme->gpu->pmeStream);
 }
 
 /*! \brief
@@ -210,11 +211,11 @@ void pme_gpu_copy_coordinates(const gmx_pme_t *pme)
  */
 void pme_gpu_copy_charges(const gmx_pme_t *pme)
 {
-    assert(pme->gpu->constants.nAtoms > 0);
+    assert(pme->gpu->kernelParams.atoms.nAtoms > 0);
     assert(pme->gpu->coefficientsHost);
-    const size_t coefficientSize = pme->gpu->constants.nAtoms * sizeof(real);
-    pme->gpu->coefficients = (real *)PMEMemoryFetch(pme, PME_ID_COEFFICIENT, coefficientSize, ML_DEVICE);
-    cu_copy_H2D_async(pme->gpu->coefficients, pme->gpu->coefficientsHost, coefficientSize, pme->gpu->pmeStream);
+    const size_t coefficientSize = pme->gpu->kernelParams.atoms.nAtoms * sizeof(float);
+    pme->gpu->kernelParams.atoms.coefficients = (real *)PMEMemoryFetch(pme, PME_ID_COEFFICIENT, coefficientSize, ML_DEVICE);
+    cu_copy_H2D_async(pme->gpu->kernelParams.atoms.coefficients, pme->gpu->coefficientsHost, coefficientSize, pme->gpu->pmeStream);
 }
 
 /*! \brief
@@ -257,13 +258,13 @@ void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo,
         assert(hwinfo->gpu_info.gpu_dev);
         assert(gpu_opt->dev_use);
 
-        int   forcedGpuId     = -1;
-        char *forcedGpuIdHack = getenv("GMX_PME_GPU_ID");
-        if (forcedGpuIdHack)
+        int   forcedGPUId       = -1;
+        char *forcedGPUIdString = getenv("GMX_PME_GPU_ID");
+        if (forcedGPUIdString)
         {
-            forcedGpuId = atoi(forcedGpuIdHack);
-            printf("PME rank %d trying to use GPU %d\n", PMEGPURank, forcedGpuId);
-            stat = cudaSetDevice(forcedGpuId);
+            forcedGPUId = atoi(forcedGPUIdString);
+            printf("PME rank %d trying to use GPU %d\n", PMEGPURank, forcedGPUId);
+            stat = cudaSetDevice(forcedGPUId);
             CU_RET_ERR(stat, "PME failed to set the GPU device");
         }
         else
@@ -278,13 +279,17 @@ void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo,
 
         /* Some permanent settings are set here */
 
-        pme->gpu->bGPUSingle = pme_gpu_enabled(pme) && (pme->nnodes == 1);       /* A convenience variable. */
+        pme->gpu->bGPUSingle = pme_gpu_enabled(pme) && (pme->nnodes == 1);
+        /* A convenience variable. */
 
-        pme->gpu->bGPUFFT = pme->gpu->bGPUSingle && !getenv("GMX_PME_GPU_FFTW"); /* cuFFT will only used for a single rank. */
+        pme->gpu->bGPUFFT = pme->gpu->bGPUSingle && !getenv("GMX_PME_GPU_FFTW");
+        /* cuFFT will only used for a single rank. */
 
-        pme->gpu->bGPUSolve = true;                                              /* pme->gpu->bGPUFFT - CPU solve with the CPU FFTW is definitely broken at the moment - 20160511 */
+        pme->gpu->bGPUSolve = true;
+        /* pme->gpu->bGPUFFT - CPU solve with the CPU FFTW is definitely broken at the moment - 20160511 */
 
-        pme->gpu->bGPUGather = true;                                             /* CPU gather has got to be broken as well due to different theta/dtheta layout. */
+        pme->gpu->bGPUGather = true;
+        /* CPU gather has got to be broken as well due to different theta/dtheta layout. */
 
         pme->gpu->bOutOfPlaceFFT = true;
         /* This should give better performance, according to the cuFFT documentation.
@@ -296,7 +301,7 @@ void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo,
         pme->gpu->bTiming = (getenv("GMX_DISABLE_CUDA_TIMING") == NULL); /* This should also check for NB GPU being launched, and NB should check for PME GPU! */
 
         //pme->gpu->bUseTextureObjects = (pme->gpu->deviceInfo->prop.major >= 3);
-        //yupinov - have to fix this GPU id selection for good, forced GPUIdHack?
+        //yupinov - have to fix the GPU id selection, forced GPUIdHack?
 
         size_t pointerStorageSize = ML_END_INVALID * PME_ID_END_INVALID;
         pme->gpu->StorageSizes.assign(pointerStorageSize, 0);
@@ -338,11 +343,11 @@ void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo,
     if (gridSizeChanged)
     {
         const int3   localGridSize = {pme->nkx, pme->nky, pme->nkz};
-        memcpy(&pme->gpu->constants.localGridSize, &localGridSize, sizeof(localGridSize));
+        memcpy(&pme->gpu->kernelParams.grid.localGridSize, &localGridSize, sizeof(localGridSize));
         const float3 localGridSizeFP = {(real)localGridSize.x, (real)localGridSize.y, (real)localGridSize.z};
-        memcpy(&pme->gpu->constants.localGridSizeFP, &localGridSizeFP, sizeof(localGridSizeFP));
+        memcpy(&pme->gpu->kernelParams.grid.localGridSizeFP, &localGridSizeFP, sizeof(localGridSizeFP));
         const int3   localGridSizePadded = {pme->pmegrid_nx, pme->pmegrid_ny, pme->pmegrid_nz};
-        memcpy(&pme->gpu->constants.localGridSizePadded, &localGridSizePadded, sizeof(localGridSizePadded));
+        memcpy(&pme->gpu->kernelParams.grid.localGridSizePadded, &localGridSizePadded, sizeof(localGridSizePadded));
 
         pme_gpu_copy_wrap_zones(pme);
         pme_gpu_copy_calcspline_constants(pme);
@@ -409,14 +414,13 @@ void pme_gpu_deinit(gmx_pme_t *pme)
     stat = cudaStreamDestroy(pme->gpu->pmeStream);
     CU_RET_ERR(stat, "PME cudaStreamDestroy error");
 
-    /* Finally destorys the GPU structure itself */
+    /* Finally destroys the GPU structure itself */
     sfree(pme->gpu);
     pme->gpu = NULL;
 }
 
 void pme_gpu_set_constants(const gmx_pme_t *pme, const matrix box, const real ewaldCoeff)
 {
-    // this is ran at the beginning of MD step
     if (!pme_gpu_enabled(pme))
     {
         return;
@@ -425,12 +429,12 @@ void pme_gpu_set_constants(const gmx_pme_t *pme, const matrix box, const real ew
     /* Assuming the recipbox is calculated already */
     pme_gpu_copy_recipbox(pme); // could use some boolean checks to know if it should run each time, like pressure coupling?
 
-    pme->gpu->constants.volume = box[XX][XX] * box[YY][YY] * box[ZZ][ZZ];
-    assert(pme->gpu->constants.volume != 0.0f);
+    pme->gpu->kernelParams.step.boxVolume = box[XX][XX] * box[YY][YY] * box[ZZ][ZZ];
+    assert(pme->gpu->kernelParams.step.boxVolume != 0.0f);
 
-    pme->gpu->constants.ewaldFactor = (M_PI * M_PI) / (ewaldCoeff * ewaldCoeff);
+    pme->gpu->kernelParams.grid.ewaldFactor = (M_PI * M_PI) / (ewaldCoeff * ewaldCoeff);
 
-    pme->gpu->constants.elFactor = ONE_4PI_EPS0 / pme->epsilon_r;
+    pme->gpu->kernelParams.constants.elFactor = ONE_4PI_EPS0 / pme->epsilon_r;
 }
 
 void pme_gpu_set_io_ranges(const gmx_pme_t *pme, rvec *coordinates, rvec *forces)
@@ -455,6 +459,35 @@ void pme_gpu_step_init(const gmx_pme_t *pme)
     pme_gpu_copy_coordinates(pme);
 }
 
+/*! \brief
+ * The PME GPU spline data reallocation.
+ *
+ * \param[in] pme            The PME structure.
+ */
+void pme_gpu_realloc_spline_data(const gmx_pme_t *pme)
+{
+    const int    order     = pme->pme_order;
+    const int    alignment = PME_SPREADGATHER_PARTICLES_PER_WARP;
+    /* Probably needs to be particlesPerBlock for full padding */
+    const size_t nAtomsPadded   = ((pme->gpu->kernelParams.atoms.nAtoms + alignment - 1) / alignment) * alignment;
+    const size_t splineDataSize = DIM * order * nAtomsPadded * sizeof(float);
+    assert(splineDataSize > 0);
+    pme->gpu->kernelParams.atoms.theta  = (float *)PMEMemoryFetch(pme, PME_ID_THETA, splineDataSize, ML_DEVICE);
+    pme->gpu->kernelParams.atoms.dtheta = (float *)PMEMemoryFetch(pme, PME_ID_DTHETA, splineDataSize, ML_DEVICE);
+}
+
+/*! \brief
+ * The PME GPU gridline indices reallocation.
+ *
+ * \param[in] pme            The PME structure.
+ */
+void pme_gpu_realloc_grid_indices(const gmx_pme_t *pme)
+{
+    const size_t indicesSize = DIM * pme->gpu->kernelParams.atoms.nAtoms * sizeof(int);
+    assert(indicesSize > 0);
+    pme->gpu->kernelParams.atoms.gridlineIndices = (int *)PMEMemoryFetch(pme, PME_ID_IDXPTR, indicesSize, ML_DEVICE);
+}
+
 void pme_gpu_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, real *coefficients)
 {
     if (!pme_gpu_enabled(pme))
@@ -462,12 +495,14 @@ void pme_gpu_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, real *coeffici
         return;
     }
 
-    pme->gpu->constants.nAtoms = nAtoms;
+    pme->gpu->kernelParams.atoms.nAtoms = nAtoms;
 
     pme->gpu->coefficientsHost = reinterpret_cast<real *>(coefficients);
     pme_gpu_copy_charges(pme);
 
-    pme_gpu_realloc_gather_forces(pme);
+    pme_gpu_realloc_forces(pme);
+    pme_gpu_realloc_spline_data(pme);
+    pme_gpu_realloc_grid_indices(pme);
 }
 
 void pme_gpu_step_end(const gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCalcEnerVir)
@@ -494,7 +529,7 @@ void pme_gpu_step_end(const gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_boo
     pme_gpu_step_reinit(pme);
 }
 
-//yupinov - why is this function not actually used when it should be?
+/* FIXME: this function does not actually seem to be used when it should be, with CPU FFT? */
 void pme_gpu_sync_grid(const gmx_pme_t *pme, const gmx_fft_direction dir)
 {
     if (!pme_gpu_enabled(pme))

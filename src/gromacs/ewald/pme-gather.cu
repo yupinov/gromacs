@@ -49,11 +49,11 @@
  *
  *
  */
-void pme_gpu_realloc_gather_forces(const gmx_pme_t *pme)
+void pme_gpu_realloc_forces(const gmx_pme_t *pme)
 {
-    assert(pme->gpu->constants.nAtoms > 0);
-    const size_t forcesSize = pme->gpu->constants.nAtoms * DIM * sizeof(real);
-    pme->gpu->forces = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_DEVICE);
+    assert(pme->gpu->kernelParams.atoms.nAtoms > 0);
+    const size_t forcesSize = pme->gpu->kernelParams.atoms.nAtoms * DIM * sizeof(real);
+    pme->gpu->kernelParams.atoms.forces = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_DEVICE);
 }
 
 /*! \brief
@@ -61,13 +61,14 @@ void pme_gpu_realloc_gather_forces(const gmx_pme_t *pme)
  * Copies the forces from the CPU buffer (pme->gpu->forcesHost) to the GPU
  * (to reduce them with the PME GPU gathered forces).
  * To be called after the bonded calculations.
+ * FIXME: either this functon goes to the main file, or the other fucntions go out of the main file...
  */
-void pme_gpu_copy_input_forces(gmx_pme_t *pme)
+void pme_gpu_copy_input_forces(const gmx_pme_t *pme)
 {
-    assert(pme->gpu->constants.nAtoms > 0);
+    assert(pme->gpu->kernelParams.atoms.nAtoms > 0);
     assert(pme->gpu->forcesHost);
-    const int forcesSize = DIM * pme->gpu->constants.nAtoms * sizeof(real);
-    cu_copy_H2D_async(pme->gpu->forces, pme->gpu->forcesHost, forcesSize, pme->gpu->pmeStream);
+    const size_t forcesSize = DIM * pme->gpu->kernelParams.atoms.nAtoms * sizeof(float);
+    cu_copy_H2D_async(pme->gpu->kernelParams.atoms.forces, pme->gpu->forcesHost, forcesSize, pme->gpu->pmeStream);
 }
 
 void pme_gpu_sync_output_forces(const gmx_pme_t *pme)
@@ -76,7 +77,7 @@ void pme_gpu_sync_output_forces(const gmx_pme_t *pme)
     cudaError_t  stat = cudaStreamWaitEvent(s, pme->gpu->syncForcesD2H, 0);
     CU_RET_ERR(stat, "Error while waiting for the PME GPU forces");
 
-    for (int i = 0; i < DIM * pme->gpu->constants.nAtoms; i++)
+    for (int i = 0; i < DIM * pme->gpu->kernelParams.atoms.nAtoms; i++)
     {
         GMX_ASSERT(!isnan(pme->gpu->forcesHost[i]), "PME GPU - wrong forces produced.");
     }
@@ -203,12 +204,7 @@ __device__ __forceinline__ void reduce_particle_forces(float3        fSumArray[]
  *                                  FALSE: the forces are added non-atomically to the output buffer (e.g. to the bonded forces).
  *
  * Normal parameters:
- * \param[in] constants             Various PME GPU (semi-?)constants.
- * \param[in] gridGlobal            The grid to gather the forces from, unwrapped.
- * \param[in] thetaGlobal           Spline values formed by a spreading kernel, sorted by the spline data layout.
- * \param[in] dthetaGlobal          Spline derivatives formed by a spreading kernel, sorted by the spline data layout.
- * \param[in] coefficientGlobal     The float particle charges, sorted by particles.
- * \param[in] idxGlobal             The ivec indices for accessing the grid, sorted by particles.
+ * \param[in] kernelParams          All the PME GPU data.
  * \param[out] forcesGlobal         The rvec forces for the output, sorted by particles.
  */
 template <
@@ -217,15 +213,17 @@ template <
     const gmx_bool bOverwriteForces
     >
 __launch_bounds__(4 * warp_size, 16)
-__global__ void pme_gather_kernel(const pme_gpu_const_parameters constants,
-                                  const real * __restrict__      gridGlobal,
-                                  const real * __restrict__      thetaGlobal,
-                                  const real * __restrict__      dthetaGlobal,
-                                  const real * __restrict__      coefficientGlobal,
-                                  const int * __restrict__       idxGlobal,
-                                  real * __restrict__            forcesGlobal
-                                  )
+__global__ void pme_gather_kernel(const pme_gpu_kernel_params    kernelParams)
 {
+    /* Global memory pointers */
+    const float * __restrict__ coefficientGlobal     = kernelParams.atoms.coefficients;
+    const float * __restrict__ gridGlobal            = kernelParams.grid.realGrid;
+    const float * __restrict__ thetaGlobal           = kernelParams.atoms.theta;
+    const float * __restrict__ dthetaGlobal          = kernelParams.atoms.dtheta;
+    const int * __restrict__   gridlineIndicesGlobal = kernelParams.atoms.gridlineIndices;
+    real * __restrict__        forcesGlobal          = kernelParams.atoms.forces;
+
+
     /* These are the particle indices - for the shared and global memory */
     const int localIndex  = threadIdx.z;
     const int globalIndex = blockIdx.x * blockDim.z + threadIdx.z;
@@ -234,10 +232,10 @@ __global__ void pme_gather_kernel(const pme_gpu_const_parameters constants,
     const int blockSize        = particlesPerBlock * particleDataSize;
     // should the array size aligned by warp size for shuffle?
 
-    const int         thetaSize = PME_SPREADGATHER_BLOCK_DATA_SIZE * order;
-    const int         idxSize   = PME_SPREADGATHER_BLOCK_DATA_SIZE;
-    __shared__ int    idx[idxSize];
-    __shared__ float2 splineParams[thetaSize]; /* Theta/dtheta pairs */
+    const int                 thetaSize             = PME_SPREADGATHER_BLOCK_DATA_SIZE * order;
+    const int                 gridlineIndicesSize   = PME_SPREADGATHER_BLOCK_DATA_SIZE;
+    __shared__ int            gridlineIndices[gridlineIndicesSize];
+    __shared__ float2         splineParams[thetaSize]; /* Theta/dtheta pairs */
 
     /* Spline Y/Z coordinates */
     const int ithy = threadIdx.y;
@@ -251,12 +249,12 @@ __global__ void pme_gather_kernel(const pme_gpu_const_parameters constants,
         + threadIdx.x;
 
     /* Staging */
-    const int particlesTillTheRangeEnd = constants.nAtoms - blockIdx.x * blockDim.z;
+    const int particlesTillTheRangeEnd = kernelParams.atoms.nAtoms - blockIdx.x * blockDim.z;
     assert(particlesTillTheRangeEnd > 0);
 
-    if ((threadLocalId < idxSize) && (threadLocalId < DIM * particlesTillTheRangeEnd))
+    if ((threadLocalId < gridlineIndicesSize) && (threadLocalId < DIM * particlesTillTheRangeEnd))
     {
-        idx[threadLocalId] = idxGlobal[blockIdx.x * idxSize + threadLocalId];
+        gridlineIndices[threadLocalId] = gridlineIndicesGlobal[blockIdx.x * gridlineIndicesSize + threadLocalId];
     }
     if ((threadLocalId < thetaSize) && (threadLocalId < DIM * order * particlesTillTheRangeEnd))
     {
@@ -269,15 +267,15 @@ __global__ void pme_gather_kernel(const pme_gpu_const_parameters constants,
     real           fy = 0.0f;
     real           fz = 0.0f;
 
-    const gmx_bool particleRangeCheck = (globalIndex < constants.nAtoms);
+    const gmx_bool particleRangeCheck = (globalIndex < kernelParams.atoms.nAtoms);
 
     //yupinov stage coefficient into a shared/local mem?
     // this particle skipping conditional should be synchronized between spline and gather
     // (garbage and NaNs might live in spline params for skipped particles)
     if (particleRangeCheck && (coefficientGlobal[globalIndex] != 0.0f))
     {
-        const int    pny = constants.localGridSizePadded.y;
-        const int    pnz = constants.localGridSizePadded.z;
+        const int    pny = kernelParams.grid.localGridSizePadded.y;
+        const int    pnz = kernelParams.grid.localGridSizePadded.z;
 
         const int    particleWarpIndex = localIndex % PME_SPREADGATHER_PARTICLES_PER_WARP;
         const int    warpIndex         = localIndex / PME_SPREADGATHER_PARTICLES_PER_WARP;
@@ -290,7 +288,7 @@ __global__ void pme_gather_kernel(const pme_gpu_const_parameters constants,
         const float2 tdy          = splineParams[thetaOffsetY];
         const int    thetaOffsetZ = thetaOffsetBase + ithz * orderStride + ZZ * dimStride;
         const float2 tdz          = splineParams[thetaOffsetZ];
-        const int    indexBaseYZ  = ((idx[localIndex * DIM + XX] + 0) * pny + (idx[localIndex * DIM + YY] + ithy)) * pnz + (idx[localIndex * DIM + ZZ] + ithz);
+        const int    indexBaseYZ  = ((gridlineIndices[localIndex * DIM + XX] + 0) * pny + (gridlineIndices[localIndex * DIM + YY] + ithy)) * pnz + (gridlineIndices[localIndex * DIM + ZZ] + ithz);
 #pragma unroll
         for (int ithx = 0; (ithx < order); ithx++)
         {
@@ -310,7 +308,7 @@ __global__ void pme_gather_kernel(const pme_gpu_const_parameters constants,
     __shared__ float3 fSumArray[particlesPerBlock];
     reduce_particle_forces<order, particleDataSize, blockSize>(fSumArray,
                                                                localIndex, splineIndex, lineIndex,
-                                                               constants.localGridSizeFP,
+                                                               kernelParams.grid.localGridSizeFP,
                                                                fx, fy, fz);
     __syncthreads();
 
@@ -328,15 +326,15 @@ __global__ void pme_gather_kernel(const pme_gpu_const_parameters constants,
         switch (dimIndex)
         {
             case XX:
-                contrib = constants.recipbox[XX].x * fSum.x /*+ constants.recipbox[YY].x * fSum.y + constants.recipbox[ZZ].x * fSum.z*/;
+                contrib = kernelParams.step.recipbox[XX].x * fSum.x /*+ constants.step.recipbox[YY].x * fSum.y + constants.step.recipbox[ZZ].x * fSum.z*/;
                 break;
 
             case YY:
-                contrib = constants.recipbox[XX].y * fSum.x + constants.recipbox[YY].y * fSum.y /* + constants.recipbox[ZZ].y * fSum.z*/;
+                contrib = kernelParams.step.recipbox[XX].y * fSum.x + kernelParams.step.recipbox[YY].y * fSum.y /* + constants.step.recipbox[ZZ].y * fSum.z*/;
                 break;
 
             case ZZ:
-                contrib = constants.recipbox[XX].z * fSum.x + constants.recipbox[YY].z * fSum.y + constants.recipbox[ZZ].z * fSum.z;
+                contrib = kernelParams.step.recipbox[XX].z * fSum.x + kernelParams.step.recipbox[YY].z * fSum.y + kernelParams.step.recipbox[ZZ].z * fSum.z;
                 break;
         }
 
@@ -344,7 +342,7 @@ __global__ void pme_gather_kernel(const pme_gpu_const_parameters constants,
         assert(!isnan(contrib));
 
         const int globalForceIndex = blockIdx.x * PME_SPREADGATHER_BLOCK_DATA_SIZE + threadLocalId;
-        assert(globalForceIndex < DIM * constants.nAtoms);
+        assert(globalForceIndex < DIM * kernelParams.atoms.nAtoms);
 
         if (bOverwriteForces)
         {
@@ -362,14 +360,12 @@ __global__ void pme_gather_kernel(const pme_gpu_const_parameters constants,
 template <
     const int order
     >
-__global__ void pme_unwrap_kernel
-    (const pme_gpu_const_parameters constants,
-    const struct pme_gpu_overlap_t  OVERLAP,
-    real * __restrict__             grid
-    )
+__global__ void pme_unwrap_kernel(const pme_gpu_kernel_params kernelParams)
 {
-    // UNWRAP
-    int blockId = blockIdx.x
+    /* Global memory pointer */
+    real * __restrict__  gridGlobal = kernelParams.grid.realGrid;
+
+    int                  blockId = blockIdx.x
         + blockIdx.y * gridDim.x
         + gridDim.x * gridDim.y * blockIdx.z;
     int threadId = blockId * (blockDim.x * blockDim.y * blockDim.z)
@@ -377,26 +373,26 @@ __global__ void pme_unwrap_kernel
         + (threadIdx.y * blockDim.x)
         + threadIdx.x;
 
-    const int nx  = constants.localGridSize.x;
-    const int ny  = constants.localGridSize.y;
-    const int nz  = constants.localGridSize.z;
-    const int pny = constants.localGridSizePadded.y;
-    const int pnz = constants.localGridSizePadded.z;
+    const int nx  = kernelParams.grid.localGridSize.x;
+    const int ny  = kernelParams.grid.localGridSize.y;
+    const int nz  = kernelParams.grid.localGridSize.z;
+    const int pny = kernelParams.grid.localGridSizePadded.y;
+    const int pnz = kernelParams.grid.localGridSizePadded.z;
 
 
     // should use ldg.128
 
-    if (threadId < OVERLAP.overlapCellCounts[OVERLAP_ZONES - 1])
+    if (threadId < kernelParams.grid.overlapCellCounts[OVERLAP_ZONES - 1])
     {
         int zoneIndex = -1;
         do
         {
             zoneIndex++;
         }
-        while (threadId >= OVERLAP.overlapCellCounts[zoneIndex]);
-        const int2 zoneSizeYZ = OVERLAP.overlapSizes[zoneIndex];
+        while (threadId >= kernelParams.grid.overlapCellCounts[zoneIndex]);
+        const int2 zoneSizeYZ = kernelParams.grid.overlapSizes[zoneIndex];
         // this is the overlapped cells's index relative to the current zone
-        const int  cellIndex = (zoneIndex > 0) ? (threadId - OVERLAP.overlapCellCounts[zoneIndex - 1]) : threadId;
+        const int  cellIndex = (zoneIndex > 0) ? (threadId - kernelParams.grid.overlapCellCounts[zoneIndex - 1]) : threadId;
 
         // replace integer division/modular arithmetics - a big performance hit
         // try int_fastdiv?
@@ -426,64 +422,50 @@ __global__ void pme_unwrap_kernel
             targetOffset += nx * pny * pnz;
         }
         const int targetIndex = sourceIndex + targetOffset;
-        grid[targetIndex] = grid[sourceIndex];
+        gridGlobal[targetIndex] = gridGlobal[sourceIndex];
     }
 }
 
-void gather_f_bsplines_gpu(struct gmx_pme_t *pme,
-                           const gmx_bool    bOverwriteForces)
+void gather_f_bsplines_gpu(const gmx_pme_t *pme,
+                           const gmx_bool   bOverwriteForces)
 {
-    int nAtoms = pme->gpu->constants.nAtoms;
-    if (!nAtoms)
-    {
-        return;
-    }
-
+    /* Copying the input CPU forces for reduction */
     if (!bOverwriteForces)
     {
         pme_gpu_copy_input_forces(pme);
     }
 
-    // false: we use some other GPU forces buffer for the final reduction, so we want to add to that
-    // in that case, maybe we want to replace + with atomicAdd at the end of kernel?
-    // true: we have our dedicated buffer, so just overwrite directly
-
     cudaStream_t s = pme->gpu->pmeStream;
 
     const int    order = pme->pme_order;
 
-    const int    nx       = pme->gpu->constants.localGridSize.x;
-    const int    ny       = pme->gpu->constants.localGridSize.y;
-    const int    nz       = pme->gpu->constants.localGridSize.z;
-    const int    gridSize = pme->gpu->constants.localGridSizePadded.x *
-        pme->gpu->constants.localGridSizePadded.y * pme->gpu->constants.localGridSizePadded.z * sizeof(real);
     if (!pme->gpu->bGPUFFT)
     {
+        /* Copying the input CPU grid */
         const int       grid_index = 0;
-        pmegrids_t     *pmegrid    = &pme->pmegrid[grid_index];
-        real           *grid       = pmegrid->grid.grid;
-
-        cu_copy_H2D_async(pme->gpu->grid, grid, gridSize, s);
+        float          *grid       = pme->pmegrid[grid_index].grid.grid;
+        const size_t    gridSize   = pme->gpu->kernelParams.grid.localGridSizePadded.x *
+            pme->gpu->kernelParams.grid.localGridSizePadded.y * pme->gpu->kernelParams.grid.localGridSizePadded.z * sizeof(real);
+        cu_copy_H2D_async(pme->gpu->kernelParams.grid.realGrid, grid, gridSize, s);
     }
 
-    if (pme->gpu->bGPUSingle)
+    if (pme_gpu_performs_wrapping(pme))
     {
+        /* The wrapping kernel */
+        const int    blockSize = 4 * warp_size; //yupinov thsi is everywhere! and architecture-specific
+        const int    overlap   = order - 1;
+
+        const int    nx              = pme->gpu->kernelParams.grid.localGridSize.x;
+        const int    ny              = pme->gpu->kernelParams.grid.localGridSize.y;
+        const int    nz              = pme->gpu->kernelParams.grid.localGridSize.z;
+        const int    overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
+        const int    nBlocks         = (overlappedCells + blockSize - 1) / blockSize;
+
         if (order == 4)
         {
-            const int blockSize = 4 * warp_size; //yupinov thsi is everywhere! and architecture-specific
-            const int overlap   = order - 1;
-
-            const int overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
-            const int nBlocks         = (overlappedCells + blockSize - 1) / blockSize;
-
             pme_gpu_timing_start(pme, gtPME_UNWRAP);
-
-            pme_unwrap_kernel<4> <<< nBlocks, blockSize, 0, s>>> (pme->gpu->constants,
-                                                                  pme->gpu->overlap,
-                                                                  pme->gpu->grid);
-
+            pme_unwrap_kernel<4> <<< nBlocks, blockSize, 0, s>>> (pme->gpu->kernelParams);
             CU_LAUNCH_ERR("pme_unwrap_kernel");
-
             pme_gpu_timing_stop(pme, gtPME_UNWRAP);
 
         }
@@ -493,40 +475,22 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme,
         }
     }
 
-    int   size_indices = nAtoms * sizeof(int);
-    int   size_splines = order * nAtoms * sizeof(int);
-
-    /* These are the unused coefficient scales for LJ/free energy */
-    /*
-       real            lambda  = grid_index < DO_Q ? lambda_q : lambda_lj;
-       real            scale   = pme->bFEP ? (grid_index % 2 == 0 ? (1.0 - lambda) : lambda) : 1.0;
-     */
-
-    /* Spline parameters */
-    real *theta_d  = (real *)PMEMemoryFetch(pme, PME_ID_THETA, DIM * size_splines, ML_DEVICE);
-    real *dtheta_d = (real *)PMEMemoryFetch(pme, PME_ID_DTHETA, DIM * size_splines, ML_DEVICE);
-
-    // indices
-    int      *idx_d = (int *)PMEMemoryFetch(pme, PME_ID_IDXPTR, DIM * size_indices, ML_DEVICE);
-
+    /* The gathering kernel */
     const int blockSize         = 4 * warp_size;
     const int particlesPerBlock = blockSize / order / order;
-    dim3 nBlocks((nAtoms + particlesPerBlock - 1) / particlesPerBlock);
+    dim3 nBlocks((pme->gpu->kernelParams.atoms.nAtoms + particlesPerBlock - 1) / particlesPerBlock);
     dim3 dimBlock(order, order, particlesPerBlock);
 
     pme_gpu_timing_start(pme, gtPME_GATHER);
-
     if (order == 4)
     {
         if (bOverwriteForces)
         {
-            pme_gather_kernel<4, blockSize / 4 / 4, TRUE> <<< nBlocks, dimBlock, 0, s>>>
-            (pme->gpu->constants, pme->gpu->grid, theta_d, dtheta_d, pme->gpu->coefficients, idx_d, pme->gpu->forces);
+            pme_gather_kernel<4, blockSize / 4 / 4, TRUE> <<< nBlocks, dimBlock, 0, s>>> (pme->gpu->kernelParams);
         }
         else
         {
-            pme_gather_kernel<4, blockSize / 4 / 4, FALSE> <<< nBlocks, dimBlock, 0, s>>>
-            (pme->gpu->constants, pme->gpu->grid, theta_d, dtheta_d, pme->gpu->coefficients, idx_d, pme->gpu->forces);
+            pme_gather_kernel<4, blockSize / 4 / 4, FALSE> <<< nBlocks, dimBlock, 0, s>>> (pme->gpu->kernelParams);
         }
     }
     else
@@ -534,11 +498,11 @@ void gather_f_bsplines_gpu(struct gmx_pme_t *pme,
         gmx_fatal(FARGS, "PME GPU gathering: orders other than 4 not implemented!");
     }
     CU_LAUNCH_ERR("pme_gather_kernel");
-
     pme_gpu_timing_stop(pme, gtPME_GATHER);
 
-    size_t      forcesSize   = DIM * nAtoms * sizeof(real);
-    cu_copy_D2H_async(pme->gpu->forcesHost, pme->gpu->forces, forcesSize, s);
-    cudaError_t stat = cudaEventRecord(pme->gpu->syncForcesD2H, s);
+    /* Copying the output forces */
+    const size_t forcesSize   = DIM * pme->gpu->kernelParams.atoms.nAtoms * sizeof(float);
+    cu_copy_D2H_async(pme->gpu->forcesHost, pme->gpu->kernelParams.atoms.forces, forcesSize, s);
+    cudaError_t  stat = cudaEventRecord(pme->gpu->syncForcesD2H, s);
     CU_RET_ERR(stat, "PME gather forces sync fail");
 }

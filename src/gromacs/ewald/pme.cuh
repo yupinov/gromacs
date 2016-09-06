@@ -145,59 +145,141 @@ enum MemLocType
     ML_END_INVALID
 };
 
-// PME GPU structures
+/* PME GPU data structures.
+ * They describe all the fixed-size data that needs to be accesses by the CUDA kernels.
+ * Pointers to the particle/grid/spline data live here as well.
+ * The data is split into sub-structures depending on its update rate.
+ */
+/* TODO: cleanup real/float mess */
 
-// wrap/unwrap overlap zones
-struct pme_gpu_overlap_t
+/*! \brief \internal
+ * A GPU data structure for storing the constant PME data.
+ *
+ * This only has to be initialized once.
+ */
+struct pme_gpu_const_params
 {
-#define OVERLAP_ZONES 7
-    int2 overlapSizes[OVERLAP_ZONES];
-    int  overlapCellCounts[OVERLAP_ZONES];
+    /*! \brief Electrostatics coefficient = ONE_4PI_EPS0 / pme->epsilon_r */
+    float elFactor;
 };
 
-/* A structure for storing common constants accessed within GPU kernels by value.
- * Some things are really constant, some things change every step => more splitting?
- * Ideally, as there are many PME kernels, this should not be a kernel parameter,
- * but rather a constant memory copied once per step.
+/*! \brief \internal
+ * A GPU data structure for storing the PME data related to the grid size and cut-off.
+ *
+ * This only has to be updated every DLB step.
  */
-struct pme_gpu_const_parameters
+struct pme_gpu_grid_params
 {
-    /*! \brief
-     * Reciprocal (inverted unit cell) box.
-     *
-     * The box is transposed as compared to the CPU pme->recipbox.
-     * Basically, spread uses matrix columns (while solve and gather use rows).
-     */
-    float3 recipbox[DIM];
+    /* Grid sizes */
     /*! \brief Grid data dimensions - integer. */
     int3   localGridSize;
     /*! \brief Grid data dimensions - floating point. */
     float3 localGridSizeFP;
     /*! \brief Grid size dimensions - integer. The padding as compared to localGridSize includes the (order - 1) overlap. */
     int3   localGridSizePadded;
+
+    /* Grid pointers */
+    /*! \brief Real space grid. */
+    real *realGrid;
+    /*! \brief Complex grid - used in FFT/solve.
+     *
+     * If we're using inplace cuFFT, then it's the same pointer as realGrid.
+     */
+    float2 *fourierGrid;
+
+    /* Crude wrap/unwrap overlap zone sizes - can go away with a better rewrite of wrap/unwrap */
+#define OVERLAP_ZONES 7
+    /*! \brief The Y and Z sizes of the overlap zones */
+    int2 overlapSizes[OVERLAP_ZONES];
+    /*! \brief The total cell counts of the overlap zones */
+    int  overlapCellCounts[OVERLAP_ZONES];
+
+    /*! \brief Ewald solving factor = (M_PI / ewaldCoeff)^2 */
+    float ewaldFactor;
+
+    /*! \brief Fractional shifts as in pme->fshx/fshy/fshz, laid out sequentially (XXX....XYYY......YZZZ.....Z) */
+    real               *fshArray;
+    /*! \brief Fractional shifts - a texture object for accessing fshArray */
+    cudaTextureObject_t fshTexture;
+    /*! \brief Fractional shifts gridline indices
+     * (modulo lookup table as in pme->nnx/nny/nnz, laid out sequentially (XXX....XYYY......YZZZ.....Z))
+     */
+    int                *nnArray;
+    /*! \brief Fractional shifts gridline indices - a texture object for accessing nnArray*/
+    cudaTextureObject_t nnTexture;
+    /*! \brief Offsets for X/Y/Z components of fshArray and nnArray */
+    int3                fshOffset;
+};
+
+/*! \brief \internal
+ * A GPU data structure for storing the PME data of the atoms, local to this process' domain partition.
+ *
+ * This only has to be updated every DD step.
+ */
+struct pme_gpu_atom_params
+{
     /*! \brief Number of local atoms */
     int    nAtoms;
-
-    /* Solving parameters - maybe they should be in a separate structure,
-     * as we likely won't use GPU solve much in multi-rank PME? */
-
-    /*! \brief The unit cell volume for solving. */
-    float volume;
-    /*! \brief Ewald solving coefficient = (M_PI / ewaldCoeff)^2 */
-    float ewaldFactor;
-    /*! \brief Electrostatics coefficient = ONE_4PI_EPS0 / pme->epsilon_r
-     * This is a permanent constant.
+    /*! \brief Pointer to the global GPU memory with input rvec atom coordinates.
+     * The coordinates themselves change and need to be copied to the GPU every MD step,
+     * but the pointer changes only on DD.
      */
-    float elFactor;
+    float3 *coordinates;
+    /*! \brief Pointer to the global GPU memory with input atom charges.
+     * The charges only need to be reallocated and copied to the GPU on DD step.
+     */
+    float  *coefficients;
+    /*! \brief Pointer to the global GPU memory with input/output rvec atom forces.
+     * The forces change and need to be copied from (and possibly to) the GPU every MD step,
+     * but the pointer changes only on DD.
+     */
+    float  *forces;
+    /*! \brief Pointer to the global GPU memory with ivec atom gridline indices.
+     * Computed on GPU in the spline calculation part.
+     */
+    int *gridlineIndices;
 
-    /* Should the pointers really live here ? */
-    // spline calculation
-    // fractional shifts (pme->fsh*)
-    real               *fshArray;
-    cudaTextureObject_t fshTexture;
-    // indices (pme->nn*)
-    int                *nnArray;
-    cudaTextureObject_t nnTexture;
+    /* B-spline parameters are computed entirely on GPU every MD step, not copied.
+     * Unless we want to try something like GPU spread + CPU gather?
+     */
+    /*! \brief Pointer to the global GPU memory with B-spline values */
+    float  *theta;
+    /*! \brief Pointer to the global GPU memory with B-spline derivative values */
+    float  *dtheta;
+};
+
+/*! \brief \internal
+ * A GPU data structure for storing the PME data which might change every MD step.
+ */
+struct pme_gpu_step_params
+{
+    /* The box parameters. The box only changes size each step with pressure coupling enabled.
+     * How about a corresponding check in the code? */
+    /*! \brief
+     * Reciprocal (inverted unit cell) box.
+     *
+     * The box is transposed as compared to the CPU pme->recipbox.
+     * Basically, spread uses matrix columns (while solve and gather use rows).
+     * This storage format might be not the best since the box is always triangular.
+     */
+    float3 recipbox[DIM];
+    /*! \brief The unit cell volume for solving. */
+    float  boxVolume;
+};
+
+/*! \brief \internal
+ * A single structure encompassing all the PME data used on GPU.
+ */
+struct pme_gpu_kernel_params
+{
+    /*! \brief Constant data. */
+    pme_gpu_const_params constants;
+    /*! \brief Data dependent on the grid size/cutoff. */
+    pme_gpu_grid_params  grid;
+    /*! \brief Data dependent on the DD and local atoms. */
+    pme_gpu_atom_params  atoms;
+    /*! \brief Data that changes on every MD step. */
+    pme_gpu_step_params  step;
 };
 
 /*! \brief \internal
@@ -236,15 +318,17 @@ struct gmx_pme_cuda_t
 
     //gmx_bool bUseTextureObjects;  /* If false, then use references [unused] */
 
-    // constant structures for arguments
-    pme_gpu_overlap_t             overlap;
-    pme_gpu_const_parameters      constants;
+    /*! \brief A single structure encompassing all the PME data used on GPU.
+     * This is the only parameter to all the PME CUDA kernels.
+     * Can probably be copied to the constant GPU memory once per MD step instead of being a parameter.
+     */
+    pme_gpu_kernel_params                kernelParams;
 
-    gmx_device_info_t            *deviceInfo;
+    gmx_device_info_t                   *deviceInfo;
 
-    std::vector<pme_gpu_timing *> timingEvents;
+    std::vector<pme_gpu_timing *>        timingEvents;
 
-    gmx_parallel_3dfft_gpu_t     *pfft_setup_gpu;
+    gmx_parallel_3dfft_gpu_t            *pfft_setup_gpu;
 
 
     /*! \brief Internal host/device pointers storage, addressed only by the PMEMemoryFetch and PMEMemoryFree routines.*/
@@ -265,25 +349,10 @@ struct gmx_pme_cuda_t
 
     /* Some device pointers/objects below (assigned from the PMEStoragePointers by PMEMemoryFetch) */
 
-
-
-    // real grid - used everywhere
-    real *grid;
-    // complex grid - used in R2C/solve/C2R
-    // if we're using inplace cuFFT, then it's the same pointer as grid!
-    t_complex *fourierGrid;
-
     // solve
     // 6 virial components, energy => 7 elements
     real  *energyAndVirial;
     size_t energyAndVirialSize; // bytes
-
-    // gather
-    // forces
-    real   *forces;
-
-    float3 *coordinates;
-    real   *coefficients;
 };
 
 // allocate memory; size == 0 => just fetch the current pointer
@@ -314,7 +383,7 @@ void pme_gpu_clear_energy_virial(const gmx_pme_t *pme, const int grid_index);
 // allocating
 void pme_gpu_alloc_grids(const gmx_pme_t *pme, const int grid_index);
 void pme_gpu_alloc_energy_virial(const gmx_pme_t *pme, const int grid_index);
-void pme_gpu_realloc_gather_forces(const gmx_pme_t *pme);
+void pme_gpu_realloc_forces(const gmx_pme_t *pme);
 
 void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup,
                                  ivec                      ndata,
