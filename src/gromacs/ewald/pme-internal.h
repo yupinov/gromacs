@@ -247,6 +247,8 @@ typedef struct gmx_pme_t {
     int            nthread;     /* The number of threads doing PME on our rank */
 
     gmx_bool       bPPnode;     /* Node also does particle-particle forces */
+    gmx_bool       doCoulomb;   /* Apply PME to electrostatics */
+    gmx_bool       doLJ;        /* Apply PME to Lennard-Jones r^-6 interactions */
     gmx_bool       bFEP;        /* Compute Free energy contribution */
     gmx_bool       bFEP_q;
     gmx_bool       bFEP_lj;
@@ -274,6 +276,7 @@ typedef struct gmx_pme_t {
                                              * This can probably be done in a better way
                                              * but this simple hack works for now
                                              */
+
     /* The PME coefficient spreading grid sizes/strides, includes pme_order-1 */
     int        pmegrid_nx, pmegrid_ny, pmegrid_nz;
     /* pmegrid_nz might be larger than strictly necessary to ensure
@@ -374,9 +377,8 @@ int gmx_pme_recv_coeffs_coords(struct gmx_pme_pp *pme_pp,
                                real **sigmaA, real **sigmaB,
                                matrix box, rvec **x, rvec **f,
                                int *maxshift_x, int *maxshift_y,
-                               gmx_bool *bFreeEnergy_q, gmx_bool *bFreeEnergy_lj,
                                real *lambda_q, real *lambda_lj,
-                               gmx_bool *bEnerVir, int *pme_flags,
+                               gmx_bool *bEnerVir,
                                gmx_int64_t *step,
                                ivec grid_size, real *ewaldcoeff_q, real *ewaldcoeff_lj);
 

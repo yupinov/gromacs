@@ -896,8 +896,6 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
          * we do not need to worry about shifting.
          */
 
-        int pme_flags = 0;
-
         wallcycle_start(wcycle, ewcPP_PMESENDX);
 
         bBS = (inputrec->nwall == 2);
@@ -907,20 +905,10 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
             svmul(inputrec->wall_ewald_zfac, boxs[ZZ], boxs[ZZ]);
         }
 
-        if (EEL_PME(fr->eeltype))
-        {
-            pme_flags |= GMX_PME_DO_COULOMB;
-        }
-
-        if (EVDW_PME(fr->vdwtype))
-        {
-            pme_flags |= GMX_PME_DO_LJ;
-        }
-
         gmx_pme_send_coordinates(cr, bBS ? boxs : box, x,
-                                 mdatoms->nChargePerturbed, mdatoms->nTypePerturbed, lambda[efptCOUL], lambda[efptVDW],
+                                 lambda[efptCOUL], lambda[efptVDW],
                                  (flags & (GMX_FORCE_VIRIAL | GMX_FORCE_ENERGY)),
-                                 pme_flags, step);
+                                 step);
 
         wallcycle_stop(wcycle, ewcPP_PMESENDX);
     }
@@ -1670,8 +1658,6 @@ void do_force_cutsGROUP(FILE *fplog, t_commrec *cr,
          * we do not need to worry about shifting.
          */
 
-        int pme_flags = 0;
-
         wallcycle_start(wcycle, ewcPP_PMESENDX);
 
         bBS = (inputrec->nwall == 2);
@@ -1681,20 +1667,10 @@ void do_force_cutsGROUP(FILE *fplog, t_commrec *cr,
             svmul(inputrec->wall_ewald_zfac, boxs[ZZ], boxs[ZZ]);
         }
 
-        if (EEL_PME(fr->eeltype))
-        {
-            pme_flags |= GMX_PME_DO_COULOMB;
-        }
-
-        if (EVDW_PME(fr->vdwtype))
-        {
-            pme_flags |= GMX_PME_DO_LJ;
-        }
-
         gmx_pme_send_coordinates(cr, bBS ? boxs : box, x,
-                                 mdatoms->nChargePerturbed, mdatoms->nTypePerturbed, lambda[efptCOUL], lambda[efptVDW],
+                                 lambda[efptCOUL], lambda[efptVDW],
                                  (flags & (GMX_FORCE_VIRIAL | GMX_FORCE_ENERGY)),
-                                 pme_flags, step);
+                                 step);
 
         wallcycle_stop(wcycle, ewcPP_PMESENDX);
     }

@@ -527,8 +527,7 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                          * exclusion forces) are calculated, so we can store
                          * the forces in the normal, single fr->f_novirsum array.
                          */
-                        ewald_LRcorrection(fr->excl_load[t], fr->excl_load[t+1],
-                                           cr, t, fr,
+                        ewald_LRcorrection(md->homenr, cr, nthreads, t, fr,
                                            md->chargeA, md->chargeB,
                                            md->sqrt_c6A, md->sqrt_c6B,
                                            md->sigmaA, md->sigmaB,
@@ -577,14 +576,7 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                 if (fr->n_tpi == 0 || (flags & GMX_FORCE_STATECHANGED))
                 {
                     pme_flags = GMX_PME_SPREAD | GMX_PME_SOLVE;
-                    if (EEL_PME(fr->eeltype))
-                    {
-                        pme_flags     |= GMX_PME_DO_COULOMB;
-                    }
-                    if (EVDW_PME(fr->vdwtype))
-                    {
-                        pme_flags |= GMX_PME_DO_LJ;
-                    }
+
                     if (flags & GMX_FORCE_FORCES)
                     {
                         pme_flags |= GMX_PME_CALC_F;

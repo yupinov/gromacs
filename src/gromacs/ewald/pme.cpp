@@ -630,6 +630,16 @@ int gmx_pme_init(struct gmx_pme_t   **pmedata,
         gmx_fatal(FARGS, "pme does not (yet) work with pbc = screw");
     }
 
+    /* NOTE:
+     * It is likely that the current gmx_pme_do() routine supports calculating
+     * only Coulomb or LJ while gmx_pme_init() configures for both,
+     * but that has never been tested.
+     * It is likely that the current gmx_pme_do() routine supports calculating,
+     * not calculating free-energy for Coulomb and/or LJ while gmx_pme_init()
+     * configures with free-energy, but that has never been tested.
+     */
+    pme->doCoulomb   = EEL_PME(ir->coulombtype);
+    pme->doLJ        = EVDW_PME(ir->vdwtype);
     pme->bFEP_q      = ((ir->efep != efepNO) && bFreeEnergy_q);
     pme->bFEP_lj     = ((ir->efep != efepNO) && bFreeEnergy_lj);
     pme->bFEP        = (pme->bFEP_q || pme->bFEP_lj);
@@ -786,7 +796,7 @@ int gmx_pme_init(struct gmx_pme_t   **pmedata,
     /* It doesn't matter if we allocate too many grids here,
      * we only allocate and use the ones we need.
      */
-    if (EVDW_PME(ir->vdwtype))
+    if (pme->doLJ)
     {
         pme->ngrids = ((ir->ljpme_combination_rule == eljpmeLB) ? DO_Q_AND_LJ_LB : DO_Q_AND_LJ);
     }
@@ -800,11 +810,11 @@ int gmx_pme_init(struct gmx_pme_t   **pmedata,
 
     for (i = 0; i < pme->ngrids; ++i)
     {
-        if ((i <  DO_Q && EEL_PME(ir->coulombtype) && (i == 0 ||
-                                                       bFreeEnergy_q)) ||
-            (i >= DO_Q && EVDW_PME(ir->vdwtype) && (i == 2 ||
-                                                    bFreeEnergy_lj ||
-                                                    ir->ljpme_combination_rule == eljpmeLB)))
+        if ((i <  DO_Q && pme->doCoulomb && (i == 0 ||
+                                             bFreeEnergy_q)) ||
+            (i >= DO_Q && pme->doLJ && (i == 2 ||
+                                        bFreeEnergy_lj ||
+                                        ir->ljpme_combination_rule == eljpmeLB)))
         {
             pmegrids_init(&pme->pmegrid[i],
                           pme->pmegrid_nx, pme->pmegrid_ny, pme->pmegrid_nz,
@@ -1049,7 +1059,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
      * that don't yet have them.
      */
 
-    bDoSplines = pme->bFEP || ((flags & GMX_PME_DO_COULOMB) && (flags & GMX_PME_DO_LJ));
+    bDoSplines = pme->bFEP || (pme->doCoulomb && pme->doLJ);
 
     /* We need a maximum of four separate PME calculations:
      * grid_index=0: Coulomb PME with charges from state A
@@ -1070,9 +1080,9 @@ int gmx_pme_do(struct gmx_pme_t *pme,
          * If grid_index < 2 we should be doing electrostatic PME
          * If grid_index >= 2 we should be doing LJ-PME
          */
-        if ((grid_index <  DO_Q && (!(flags & GMX_PME_DO_COULOMB) ||
+        if ((grid_index <  DO_Q && (!pme->doCoulomb ||
                                     (grid_index == 1 && !pme->bFEP_q))) ||
-            (grid_index >= DO_Q && (!(flags & GMX_PME_DO_LJ) ||
+            (grid_index >= DO_Q && (!pme->doLJ ||
                                     (grid_index == 3 && !pme->bFEP_lj))))
         {
             continue;
@@ -1323,7 +1333,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
     /* For Lorentz-Berthelot combination rules in LJ-PME, we need to calculate
      * seven terms. */
 
-    if ((flags & GMX_PME_DO_LJ) && pme->ljpme_combination_rule == eljpmeLB)
+    if (pme->doLJ && pme->ljpme_combination_rule == eljpmeLB)
     {
         /* Loop over A- and B-state if we are doing FEP */
         for (fep_state = 0; fep_state < fep_states_lj; ++fep_state)
@@ -1501,7 +1511,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
 
             if (bBackFFT)
             {
-                bFirst = !(flags & GMX_PME_DO_COULOMB);
+                bFirst = !pme->doCoulomb;
                 calc_initial_lb_coeffs(pme, local_c6, local_sigma);
                 for (grid_index = 8; grid_index >= 2; --grid_index)
                 {
@@ -1619,7 +1629,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
 
     if (bCalcEnerVir)
     {
-        if (flags & GMX_PME_DO_COULOMB)
+        if (pme->doCoulomb)
         {
             if (!pme->bFEP_q)
             {
@@ -1649,7 +1659,7 @@ int gmx_pme_do(struct gmx_pme_t *pme,
             *energy_q = 0;
         }
 
-        if (flags & GMX_PME_DO_LJ)
+        if (pme->doLJ)
         {
             if (!pme->bFEP_lj)
             {
