@@ -100,50 +100,11 @@
 #define PME_USE_TEXOBJ 1
 #endif
 
-/*! \brief \internal
- * Internal identifiers for the PME CUDA memory management (gmx_pme_cuda_t::StoragePointers).
- */
-enum PMEDataID
-{
-    // global grids
-    PME_ID_REAL_GRID = 0,     // Functions as CPU pme_grid with overlap and as fftgrid
-    PME_ID_COMPLEX_GRID,      // Used only for out-of-place cuFFT, functions as CPU cfftgrid
 
-    // spread and gather
-    PME_ID_IDXPTR,            // per-particle gridline indices as in atc->idx
-    PME_ID_THETA,             // B-spline values
-    PME_ID_DTHETA,            // B-spline derivatives
-    PME_ID_COEFFICIENT,       // charges
-
-    // spread (spline)
-    PME_ID_FSH,               // fractional shifts
-    PME_ID_NN,                // gridline indices (including the neighboring cells) - basically, a modulo operation lookup table
-
-    // spread
-    PME_ID_XPTR,              // coordinates
-
-    // gather
-    PME_ID_FORCES,            // forces
-
-    // solve
-    PME_ID_ENERGY_AND_VIRIAL, // energy and virial united storage (7 floats)
-    PME_ID_BSP_MOD_XX,        // B-spline moduli
-    PME_ID_BSP_MOD_YY,        // B-spline moduli
-    PME_ID_BSP_MOD_ZZ,        // B-spline moduli
-
-    // end
-    PME_ID_END_INVALID
-};
-
-/*! \brief \internal
- * The host/device memory tag for the PME pointer storage (gmx_pme_cuda_t::StoragePointers).
- */
-enum MemLocType
-{
-    ML_HOST = 0,
-    ML_DEVICE,
-    ML_END_INVALID
-};
+//yupinov fractional shifts
+// gridline indices (including the neighboring cells) - basically, a modulo operation lookup table
+// Functions as CPU pme_grid with overlap and as fftgrid
+// Used only for out-of-place cuFFT, functions as CPU cfftgrid
 
 /* PME GPU data structures.
  * They describe all the fixed-size data that needs to be accesses by the CUDA kernels.
@@ -180,7 +141,7 @@ struct pme_gpu_grid_params
 
     /* Grid pointers */
     /*! \brief Real space grid. */
-    real *realGrid;
+    float *realGrid;
     /*! \brief Complex grid - used in FFT/solve.
      *
      * If we're using inplace cuFFT, then it's the same pointer as realGrid.
@@ -198,17 +159,25 @@ struct pme_gpu_grid_params
     float ewaldFactor;
 
     /*! \brief Fractional shifts as in pme->fshx/fshy/fshz, laid out sequentially (XXX....XYYY......YZZZ.....Z) */
-    real               *fshArray;
+    float               *fshArray;
     /*! \brief Fractional shifts - a texture object for accessing fshArray */
-    cudaTextureObject_t fshTexture;
+    cudaTextureObject_t  fshTexture;
     /*! \brief Fractional shifts gridline indices
      * (modulo lookup table as in pme->nnx/nny/nnz, laid out sequentially (XXX....XYYY......YZZZ.....Z))
      */
     int                *nnArray;
-    /*! \brief Fractional shifts gridline indices - a texture object for accessing nnArray*/
+    /*! \brief Fractional shifts gridline indices - a texture object for accessing nnArray */
     cudaTextureObject_t nnTexture;
     /*! \brief Offsets for X/Y/Z components of fshArray and nnArray */
     int3                fshOffset;
+
+    /*! \brief Grid spline values as in pme->bsp_mod
+     * (laid out sequentially (XXX....XYYY......YZZZ.....Z))
+     */
+    float              *splineValuesArray;
+    /*! \brief Offsets for X/Y/Z components of splineValuesArray */
+    int3                splineValuesOffset;
+
 };
 
 /*! \brief \internal
@@ -326,43 +295,52 @@ struct gmx_pme_cuda_t
 
     gmx_device_info_t                   *deviceInfo;
 
-    std::vector<pme_gpu_timing *>        timingEvents;
+    pme_gpu_timing              *        timingEvents[gtPME_EVENT_COUNT];
 
     gmx_parallel_3dfft_gpu_t            *pfft_setup_gpu;
-
-
-    /*! \brief Internal host/device pointers storage, addressed only by the PMEMemoryFetch and PMEMemoryFree routines.*/
-    std::vector<void *> StoragePointers;
-    /*! \brief Internal host/device pointers storage (sizes of the corresponding ranges in StoragePointers). */
-    std::vector<size_t> StorageSizes;
 
     /* These are the host-side input/output pointers */
     /* TODO: not far in the future there will be a device input/output pointers too */
     /* Input */
-    real *coordinatesHost;  /* rvec/float3 */
-    real *coefficientsHost; /* real */
+    real  *coordinatesHost;  /* rvec/float3 */
+    real  *coefficientsHost; /* real */
     /* Output (and possibly input if pme_kernel_gather does the reduction) */
-    real *forcesHost;       /* rvec/float3 */
+    float *forcesHost;       /* rvec/float3 */
     /* Should the virial + energy live here as well? */
-
-
+    /*! \brief Energy and virial intermediate host-side buffer, managed and pinned by PME GPU entirely. Size is 7 floats. */
+    float *energyAndVirialHost;
+    /*! \brief B-spline values (temporary?) intermediate host-side buffers, managed and pinned by PME GPU entirely. Sizes are the grid sizes. */
+    float *splineValuesHost[DIM];
+    /*! \brief Sizes of the corresponding splineValuesHost arrays in bytes */
+    size_t splineValuesHostSizes[DIM]; //oh god the names
 
     /* Some device pointers/objects below (assigned from the PMEStoragePointers by PMEMemoryFetch) */
 
     // solve
     // 6 virial components, energy => 7 elements
     real  *energyAndVirial;
-    size_t energyAndVirialSize; // bytes
+    size_t energyAndVirialSizeBytes; // (7 * sizeof(float))
+
+    /* GPU allocation sizes (counts, not bytes!) */
+    int coordinatesSize;
+    int coordinatesSizeAlloc;
+    int forcesSize;
+    int forcesSizeAlloc;
+    int gridlineIndicesSize;
+    int gridlineIndicesSizeAlloc;
+    int splineDataSize;
+    int splineDataSizeAlloc;
+    int coefficientsSize;
+    int coefficientsSizeAlloc;
+    int fractShiftsSize;
+    int fractShiftsSizeAlloc;
+    int gridSize;
+    int gridSizeAlloc;
+    int splineValuesSize;
+    int splineValuesSizeAlloc;
 };
 
-// allocate memory; size == 0 => just fetch the current pointer
-void *PMEMemoryFetch(const gmx_pme_t *pme, PMEDataID id, size_t size, MemLocType location);
-
-
 // dumping all the CUDA-specific PME functions here...
-
-// copies the bspline moduli to the device (used in PME solve)
-void pme_gpu_copy_bspline_moduli(const gmx_pme_t *pme);
 
 gmx_inline gmx_bool pme_gpu_timings_enabled(const gmx_pme_t *pme)
 {
@@ -374,17 +352,10 @@ void gmx_parallel_3dfft_destroy_gpu(const gmx_parallel_3dfft_gpu_t &pfft_setup);
 
 
 // copies the nn and fsh to the device (used in PME spread(spline))
-void pme_gpu_copy_calcspline_constants(const gmx_pme_t *pme);
+void pme_gpu_realloc_and_copy_fract_shifts(const gmx_pme_t *pme);
+void pme_gpu_free_fract_shifts(const gmx_pme_t *pme);
 
 // clearing
-void pme_gpu_clear_grid(const gmx_pme_t *pme, const int grid_index);
-void pme_gpu_clear_energy_virial(const gmx_pme_t *pme, const int grid_index);
-
-// allocating
-void pme_gpu_alloc_grids(const gmx_pme_t *pme, const int grid_index);
-void pme_gpu_alloc_energy_virial(const gmx_pme_t *pme, const int grid_index);
-void pme_gpu_realloc_forces(const gmx_pme_t *pme);
-
 void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup,
                                  ivec                      ndata,
                                  const gmx_pme_t          *pme);

@@ -50,81 +50,53 @@
 /* The rest */
 #include <assert.h>
 
+#include "gromacs/gpu_utils/pmalloc_cuda.h"
 #include "gromacs/math/units.h"
 #include "gromacs/utility/smalloc.h"
 #include "pme.cuh"
 #include "pme-gpu.h"
 
 /*! \brief \internal
- * A GPU/host memory deallocation routine.
+ *
+ * Allocates the energy and virial memory both on GPU and CPU (7 floats).
  *
  * \param[in] pme            The PME structure.
- * \param[in] id             The internal PME GPU data id enum.
- * \param[in] location       The internal memory location enum (host or device).
  */
-void PMEMemoryFree(const gmx_pme_t *pme, PMEDataID id, MemLocType location)
+void pme_gpu_alloc_energy_virial(const gmx_pme_t *pme)
 {
-    cudaError_t stat;
-    size_t      i = location * PME_ID_END_INVALID + id;
-    if (pme->gpu->StoragePointers[i])
-    {
-        if (location == ML_DEVICE)
-        {
-            stat = cudaFree(pme->gpu->StoragePointers[i]);
-            CU_RET_ERR(stat, "PME cudaFree error");
-        }
-        else
-        {
-            stat = cudaFreeHost(pme->gpu->StoragePointers[i]);
-            CU_RET_ERR(stat, "PME cudaFreeHost error");
-        }
-        pme->gpu->StoragePointers[i] = NULL;
-    }
+    pme->gpu->energyAndVirialSizeBytes = 7 * sizeof(float); /* 6 virial components + energy */
+    cudaError_t stat = cudaMalloc((void **)&pme->gpu->energyAndVirial, pme->gpu->energyAndVirialSizeBytes);
+    CU_RET_ERR(stat, "cudaMalloc failed on PME energy and virial");
+    pmalloc((void **)&pme->gpu->energyAndVirialHost, pme->gpu->energyAndVirialSizeBytes);
 }
 
 /*! \brief \internal
- * A GPU/host memory allocation/fetching routine. If the size is 0, it just returns the current pointer.
+ * Frees the energy and virial memory both on GPU and CPU (7 floats).
  *
  * \param[in] pme            The PME structure.
- * \param[in] id             The internal PME GPU data id enum.
- * \param[in] size           The size in bytes.
- * \param[in] location       The internal memory location enum (host or device).
  */
-void *PMEMemoryFetch(const gmx_pme_t *pme, PMEDataID id, size_t size, MemLocType location)
+void pme_gpu_free_energy_virial(const gmx_pme_t *pme)
 {
-    assert(pme->gpu);
-    cudaError_t stat = cudaSuccess;
-    size_t      i    = location * PME_ID_END_INVALID + id;
+    cudaError_t stat = cudaFree(pme->gpu->energyAndVirial);
+    CU_RET_ERR(stat, "cudaFree failed on PME energy and virial");
+    pme->gpu->energyAndVirial = NULL;
+    pfree(pme->gpu->energyAndVirialHost);
+    pme->gpu->energyAndVirialHost = NULL;
+}
 
-    if (pme->gpu->StorageSizes[i] < size)
-    {
-        PMEMemoryFree(pme, id, location);
-        if (size > 0)
-        {
-            if (location == ML_DEVICE)
-            {
-                stat = cudaMalloc((void **)&pme->gpu->StoragePointers[i], size);
-                CU_RET_ERR(stat, "PME cudaMalloc error");
-            }
-            else
-            {
-                unsigned int allocFlags = cudaHostAllocDefault;
-                /*
-                 * allocFlags |= cudaHostAllocWriteCombined;
-                 * Could try cudaHostAllocWriteCombined for almost-constant global memory?
-                 * (like coordinates/coefficients and thetas/dthetas)
-                 */
-                stat = cudaHostAlloc((void **)&pme->gpu->StoragePointers[i], size, allocFlags);
-                CU_RET_ERR(stat, "PME cudaHostAlloc error");
-            }
-            pme->gpu->StorageSizes[i] = size;
-        }
-    }
-    return pme->gpu->StoragePointers[i];
+/*! \brief
+ *
+ * Clears the energy and virial memory on GPU with 0.
+ * Should be called at the end of the energy/virial calculation step.
+ */
+void pme_gpu_clear_energy_virial(const gmx_pme_t *pme)
+{
+    cudaError_t stat = cudaMemsetAsync(pme->gpu->energyAndVirial, 0, pme->gpu->energyAndVirialSizeBytes, pme->gpu->pmeStream);
+    CU_RET_ERR(stat, "PME energies/virial cudaMemsetAsync error");
 }
 
 /*! \brief \internal
- * Copies the reciprocal box to the GPU constants structure.
+ * Copies the precalculated reciprocal box to the GPU constants structure.
  *
  * \param[in] pme            The PME structure.
  */
@@ -136,8 +108,68 @@ void pme_gpu_copy_recipbox(const gmx_pme_t *pme)
         {                  0.0, pme->recipbox[YY][YY], pme->recipbox[ZZ][YY]},
         {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
     };
-    assert(pme->recipbox[XX][XX] != 0.0);
+    assert(pme->recipbox[XX][XX] != 0.0f);
     memcpy(pme->gpu->kernelParams.step.recipbox, box, sizeof(box));
+}
+
+/*! \brief \internal
+ *
+ * Reallocates and copies the pre-computed B-spline values to the GPU.
+ * FIXME: currently uses just a global memory, could be using texture memory/ldg.
+ *
+ * \param[in] pme            The PME structure.
+ */
+void pme_gpu_realloc_and_copy_bspline_values(const gmx_pme_t *pme)
+{
+    const int splineValuesOffset[DIM] = {0, pme->nkx, pme->nkx + pme->nky}; //?replace nkx
+    memcpy(&pme->gpu->kernelParams.grid.splineValuesOffset, &splineValuesOffset, sizeof(splineValuesOffset));
+
+    const int newSplineValuesSize  = pme->nkx + pme->nky + pme->nkz;
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.grid.splineValuesArray, NULL, sizeof(float),
+                        &pme->gpu->splineValuesSize, &pme->gpu->splineValuesSizeAlloc, newSplineValuesSize, pme->gpu->pmeStream, true);
+
+    for (int i = 0; i < DIM; i++)
+    {
+        size_t       gridSize;
+        switch (i)
+        {
+            case XX:
+                gridSize = pme->nkx;
+                break;
+
+            case YY:
+                gridSize = pme->nky;
+                break;
+
+            case ZZ:
+                gridSize = pme->nkz;
+                break;
+        }
+        size_t  modSize  = gridSize * sizeof(float);
+        /* reallocate the host buffer */
+        if ((pme->gpu->splineValuesHost[i] == NULL) || (pme->gpu->splineValuesHostSizes[i] < modSize))
+        {
+            pfree(pme->gpu->splineValuesHost[i]);
+            pmalloc((void **)&pme->gpu->splineValuesHost[i], modSize);
+        }
+        memcpy(pme->gpu->splineValuesHost[i], pme->bsp_mod[i], modSize);
+        //yupinov instead use pinning here as well!
+        cu_copy_H2D_async(pme->gpu->kernelParams.grid.splineValuesArray + splineValuesOffset[i], pme->gpu->splineValuesHost[i], modSize, pme->gpu->pmeStream);
+    }
+}
+
+/*! \brief \internal
+ * Frees the pre-computed B-spline values on the GPU (and the transfer CPU buffers).
+ *
+ * \param[in] pme            The PME structure.
+ */
+void pme_gpu_free_bspline_values(const gmx_pme_t *pme)
+{
+    for (int i = 0; i < DIM; i++)
+    {
+        pfree(pme->gpu->splineValuesHost[i]);
+    }
+    cu_free_buffered(pme->gpu->kernelParams.grid.splineValuesArray, &pme->gpu->splineValuesSize, &pme->gpu->splineValuesSizeAlloc);
 }
 
 /*! \brief \internal
@@ -186,36 +218,192 @@ void pme_gpu_copy_wrap_zones(const gmx_pme_t *pme)
 }
 
 /*! \brief
- * Copies the coordinates from the CPU buffer (pme->gpu->coordinatesHost) to the GPU.
+ * Reallocates the GPU buffer for the resulting PME forces.
+ *
+ *
+ */
+void pme_gpu_realloc_forces(const gmx_pme_t *pme)
+{
+    const int newForcesSize = pme->gpu->kernelParams.atoms.nAtoms * DIM;
+    assert(pme->gpu->kernelParams.atoms.nAtoms > 0);
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.atoms.forces, NULL, sizeof(float),
+                        &pme->gpu->forcesSize, &pme->gpu->forcesSizeAlloc, newForcesSize, pme->gpu->pmeStream, true);
+}
+
+void pme_gpu_free_forces(const gmx_pme_t *pme)
+{
+    cu_free_buffered(pme->gpu->kernelParams.atoms.forces, &pme->gpu->forcesSize, &pme->gpu->forcesSizeAlloc);
+}
+
+/*! \brief
+ * Reallocates the buffer on the GPU and copies the coordinates from the CPU buffer (pme->gpu->coordinatesHost).
  *
  * \param[in] pme            The PME structure.
  *
  * Needs to be called every MD step. The coordinates are then used in the spline calculation.
+ * Should probably be split into realloc (on DD) and copy (every step) parts...
  */
-void pme_gpu_copy_coordinates(const gmx_pme_t *pme)
+void pme_gpu_realloc_and_copy_coordinates(const gmx_pme_t *pme)
 {
     assert(pme->gpu->kernelParams.atoms.nAtoms > 0);
     assert(pme->gpu->coordinatesHost);
-    const size_t coordinatesSize = pme->gpu->kernelParams.atoms.nAtoms * DIM * sizeof(real);
-    pme->gpu->kernelParams.atoms.coordinates = (float3 *)PMEMemoryFetch(pme, PME_ID_XPTR, coordinatesSize, ML_DEVICE);
-    cu_copy_H2D_async(pme->gpu->kernelParams.atoms.coordinates, pme->gpu->coordinatesHost, coordinatesSize, pme->gpu->pmeStream);
+    const size_t newCoordinatesSize = pme->gpu->kernelParams.atoms.nAtoms * DIM;
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.atoms.coordinates, pme->gpu->coordinatesHost, sizeof(float),
+                        &pme->gpu->coordinatesSize, &pme->gpu->coordinatesSizeAlloc, newCoordinatesSize, pme->gpu->pmeStream, true);
 }
 
 /*! \brief
- * Copies the charges (sometimes also called coefficients) from the CPU buffer (pme->gpu->coefficientsHost) to the GPU.
+ * Frees the coordinates on the GPU.
+ *
+ * \param[in] pme            The PME structure.
+ */
+void pme_gpu_free_coordinates(const gmx_pme_t *pme)
+{
+    cu_free_buffered((void **)&pme->gpu->kernelParams.atoms.coordinates, &pme->gpu->coordinatesSize, &pme->gpu->coordinatesSizeAlloc);
+}
+
+/*! \brief
+ * Reallocates the buffer on the GPU and copies the charges (sometimes also called coefficients) from the CPU buffer (pme->gpu->coefficientsHost).
  *
  * \param[in] pme            The PME structure.
  *
  * Does not need to be done every MD step, only whenever the local charges change.
  * (So, in the beginning of the run, or on DD step).
  */
-void pme_gpu_copy_charges(const gmx_pme_t *pme)
+void pme_gpu_realloc_and_copy_charges(const gmx_pme_t *pme)
 {
     assert(pme->gpu->kernelParams.atoms.nAtoms > 0);
     assert(pme->gpu->coefficientsHost);
-    const size_t coefficientSize = pme->gpu->kernelParams.atoms.nAtoms * sizeof(float);
-    pme->gpu->kernelParams.atoms.coefficients = (real *)PMEMemoryFetch(pme, PME_ID_COEFFICIENT, coefficientSize, ML_DEVICE);
-    cu_copy_H2D_async(pme->gpu->kernelParams.atoms.coefficients, pme->gpu->coefficientsHost, coefficientSize, pme->gpu->pmeStream);
+    const size_t newCoefficientSize = pme->gpu->kernelParams.atoms.nAtoms;
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.atoms.coefficients, pme->gpu->coefficientsHost, sizeof(float),
+                        &pme->gpu->coefficientsSize, &pme->gpu->coefficientsSizeAlloc, newCoefficientSize, pme->gpu->pmeStream, true);
+}
+
+/*! \brief
+ * Frees the charges on the GPU.
+ *
+ * \param[in] pme            The PME structure.
+ */
+void pme_gpu_free_charges(const gmx_pme_t *pme)
+{
+    cu_free_buffered((void **)&pme->gpu->kernelParams.atoms.coefficients, &pme->gpu->coefficientsSize, &pme->gpu->coefficientsSizeAlloc);
+}
+
+/*! \brief
+ * Reallocates the buffers on the GPU for the particle spline data.
+ *
+ * \param[in] pme            The PME structure.
+ */
+void pme_gpu_realloc_spline_data(const gmx_pme_t *pme)
+{
+    const int    order     = pme->pme_order;
+    const int    alignment = PME_SPREADGATHER_PARTICLES_PER_WARP;
+    /* Probably needs to be particlesPerBlock for full padding */
+    const size_t nAtomsPadded      = ((pme->gpu->kernelParams.atoms.nAtoms + alignment - 1) / alignment) * alignment;
+    const size_t newSplineDataSize = DIM * order * nAtomsPadded;
+    assert(newSplineDataSize > 0);
+
+    /* Two arrays of the same size */
+    int currentSizeTemp      = pme->gpu->splineDataSize;
+    int currentSizeTempAlloc = pme->gpu->splineDataSizeAlloc;
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.atoms.theta, NULL, sizeof(float),
+                        &currentSizeTemp, &currentSizeTempAlloc, newSplineDataSize, pme->gpu->pmeStream, true);
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.atoms.dtheta, NULL, sizeof(float),
+                        &pme->gpu->splineDataSize, &pme->gpu->splineDataSizeAlloc, newSplineDataSize, pme->gpu->pmeStream, true);
+}
+
+/*! \brief
+ * Frees the buffers on the GPU for the particle spline data.
+ *
+ * \param[in] pme            The PME structure.
+ */
+void pme_gpu_free_spline_data(const gmx_pme_t *pme)
+{
+    /* Two arrays of the same size */
+    int currentSizeTemp      = pme->gpu->splineDataSize;
+    int currentSizeTempAlloc = pme->gpu->splineDataSizeAlloc;
+    cu_free_buffered((void **)&pme->gpu->kernelParams.atoms.theta, &currentSizeTemp, &currentSizeTempAlloc);
+    cu_free_buffered((void **)&pme->gpu->kernelParams.atoms.dtheta, &pme->gpu->splineDataSize, &pme->gpu->splineDataSizeAlloc);
+}
+
+/*! \brief \internal
+ * Reallocates the buffer on the GPU for the particle gridline indices.
+ *
+ * \param[in] pme            The PME structure.
+ */
+void pme_gpu_realloc_grid_indices(const gmx_pme_t *pme)
+{
+    const size_t newIndicesSize = DIM * pme->gpu->kernelParams.atoms.nAtoms;
+    assert(newIndicesSize > 0);
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.atoms.gridlineIndices, NULL, sizeof(int),
+                        &pme->gpu->gridlineIndicesSize, &pme->gpu->gridlineIndicesSizeAlloc, newIndicesSize, pme->gpu->pmeStream, true);
+}
+
+/*! \brief
+ * Frees the buffer on the GPU for the particle gridline indices.
+ *
+ * \param[in] pme            The PME structure.
+ */
+void pme_gpu_free_grid_indices(const gmx_pme_t *pme)
+{
+    cu_free_buffered((void **)&pme->gpu->kernelParams.atoms.gridlineIndices, &pme->gpu->gridlineIndicesSize, &pme->gpu->gridlineIndicesSizeAlloc);
+}
+
+void pme_gpu_realloc_grids(const gmx_pme_t *pme)
+{
+    const int pnx         = pme->pmegrid_nx; //?
+    const int pny         = pme->pmegrid_ny;
+    const int pnz         = pme->pmegrid_nz;
+    const int newGridSize = pnx * pny * pnz;
+
+    if (pme->gpu->bOutOfPlaceFFT)
+    {
+        /* Allocate a separate complex grid */
+        int tempGridSize      = pme->gpu->gridSize;
+        int tempGridSizeAlloc = pme->gpu->gridSizeAlloc;
+        cu_realloc_buffered((void **)&pme->gpu->kernelParams.grid.fourierGrid, NULL, sizeof(float),
+                            &tempGridSize, &tempGridSizeAlloc, newGridSize, pme->gpu->pmeStream, true);
+    }
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.grid.realGrid, NULL, sizeof(float),
+                        &pme->gpu->gridSize, &pme->gpu->gridSizeAlloc, newGridSize, pme->gpu->pmeStream, true);
+    if (!pme->gpu->bOutOfPlaceFFT)
+    {
+        /* Using the same grid */
+        pme->gpu->kernelParams.grid.fourierGrid = (float2 *)(pme->gpu->kernelParams.grid.realGrid);
+    }
+}
+
+void pme_gpu_free_grids(const gmx_pme_t *pme)
+{
+    if (pme->gpu->bOutOfPlaceFFT)
+    {
+        /* Free a separate complex grid */
+        int tempGridSize      = pme->gpu->gridSize;
+        int tempGridSizeAlloc = pme->gpu->gridSizeAlloc;
+        cu_free_buffered((void **)&pme->gpu->kernelParams.grid.fourierGrid, &tempGridSize, &tempGridSizeAlloc);
+    }
+    cu_free_buffered((void **)&pme->gpu->kernelParams.grid.realGrid, &pme->gpu->gridSize, &pme->gpu->gridSizeAlloc);
+}
+
+void pme_gpu_clear_grid(const gmx_pme_t *pme)
+{
+    /*
+       pmegrid_t *pmegrid = &(pme->pmegrid[grid_index].grid);
+       const int pnx = pmegrid->n[XX];
+       const int pny = pmegrid->n[YY];
+       const int pnz = pmegrid->n[ZZ];
+     */
+
+    const int    pnx      = pme->pmegrid_nx;
+    const int    pny      = pme->pmegrid_ny;
+    const int    pnz      = pme->pmegrid_nz;
+    const int    gridSize = pnx * pny * pnz * sizeof(real);
+
+    cudaStream_t s = pme->gpu->pmeStream;
+
+    cudaError_t  stat = cudaMemsetAsync(pme->gpu->kernelParams.grid.realGrid, 0, gridSize, s);
+    /* Should the complex grid be cleared in soem weird case? */
+    CU_RET_ERR(stat, "cudaMemsetAsync spread error");
 }
 
 /*! \brief
@@ -225,9 +413,8 @@ void pme_gpu_copy_charges(const gmx_pme_t *pme)
  */
 void pme_gpu_step_reinit(const gmx_pme_t *pme)
 {
-    const int grid_index = 0;
-    pme_gpu_clear_grid(pme, grid_index);
-    pme_gpu_clear_energy_virial(pme, grid_index);
+    pme_gpu_clear_grid(pme);
+    pme_gpu_clear_energy_virial(pme);
 }
 
 /*! \brief
@@ -243,7 +430,6 @@ void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo,
     {
         return;
     }
-    const int      grid_index = 0;
 
     const gmx_bool firstInit = !pme->gpu;
     if (firstInit)
@@ -303,10 +489,6 @@ void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo,
         //pme->gpu->bUseTextureObjects = (pme->gpu->deviceInfo->prop.major >= 3);
         //yupinov - have to fix the GPU id selection, forced GPUIdHack?
 
-        size_t pointerStorageSize = ML_END_INVALID * PME_ID_END_INVALID;
-        pme->gpu->StorageSizes.assign(pointerStorageSize, 0);
-        pme->gpu->StoragePointers.assign(pointerStorageSize, NULL);
-
         /* Creating a PME CUDA stream */
 #if GMX_CUDA_VERSION >= 5050
         int highest_priority;
@@ -335,13 +517,14 @@ void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo,
 
         pme_gpu_init_timings(pme);
 
-        pme_gpu_alloc_energy_virial(pme, grid_index);
+        pme_gpu_alloc_energy_virial(pme);
     }
 
     const bool gridSizeChanged = true; /* This function is called on DLB steps as well */
 
-    if (gridSizeChanged)
+    if (gridSizeChanged)               /* The need for reallocation is checked inside, might do a redundant check here?... */
     {
+        /* The grid size variants */
         const int3   localGridSize = {pme->nkx, pme->nky, pme->nkz};
         memcpy(&pme->gpu->kernelParams.grid.localGridSize, &localGridSize, sizeof(localGridSize));
         const float3 localGridSizeFP = {(real)localGridSize.x, (real)localGridSize.y, (real)localGridSize.z};
@@ -350,9 +533,9 @@ void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo,
         memcpy(&pme->gpu->kernelParams.grid.localGridSizePadded, &localGridSizePadded, sizeof(localGridSizePadded));
 
         pme_gpu_copy_wrap_zones(pme);
-        pme_gpu_copy_calcspline_constants(pme);
-        pme_gpu_copy_bspline_moduli(pme);
-        pme_gpu_alloc_grids(pme, grid_index);
+        pme_gpu_realloc_and_copy_fract_shifts(pme);
+        pme_gpu_realloc_and_copy_bspline_values(pme);
+        pme_gpu_realloc_grids(pme);
 
         if (pme->gpu->bGPUFFT)
         {
@@ -378,14 +561,16 @@ void pme_gpu_deinit(gmx_pme_t *pme)
 
     cudaError_t stat;
 
-    /* Cleaning up all the GPU/host pointers allocated through PMEMemoryFetch. */
-    for (unsigned int id = 0; id < PME_ID_END_INVALID; id++)
-    {
-        for (unsigned int location = 0; location < ML_END_INVALID; location++)
-        {
-            PMEMemoryFree(pme, (PMEDataID)id, (MemLocType)location);
-        }
-    }
+    /* Free lots of dynamic data */
+    pme_gpu_free_energy_virial(pme);
+    pme_gpu_free_bspline_values(pme);
+    pme_gpu_free_forces(pme);
+    pme_gpu_free_coordinates(pme);
+    pme_gpu_free_charges(pme);
+    pme_gpu_free_spline_data(pme);
+    pme_gpu_free_grid_indices(pme);
+    pme_gpu_free_fract_shifts(pme);
+    pme_gpu_free_grids(pme);
 
     /* cuFFT cleanup */
     if (pme->gpu->pfft_setup_gpu)
@@ -397,7 +582,7 @@ void pme_gpu_deinit(gmx_pme_t *pme)
         sfree(pme->gpu->pfft_setup_gpu);
     }
 
-    /* Destroys the synchronization events */
+    /* Free the synchronization events */
     stat = cudaEventDestroy(pme->gpu->syncEnerVirD2H);
     CU_RET_ERR(stat, "cudaEventDestroy failed on syncEnerVirH2D");
     stat = cudaEventDestroy(pme->gpu->syncForcesD2H);
@@ -407,14 +592,14 @@ void pme_gpu_deinit(gmx_pme_t *pme)
     stat = cudaEventDestroy(pme->gpu->syncSolveGridD2H);
     CU_RET_ERR(stat, "cudaEventDestroy failed on syncSolveGridH2D");
 
-    /* Destroys the timing events */
+    /* Free the timing events */
     pme_gpu_destroy_timings(pme);
 
-    /* Destroys the CUDA stream */
+    /* Destroy the CUDA stream */
     stat = cudaStreamDestroy(pme->gpu->pmeStream);
     CU_RET_ERR(stat, "PME cudaStreamDestroy error");
 
-    /* Finally destroys the GPU structure itself */
+    /* Finally free the GPU structure itself */
     sfree(pme->gpu);
     pme->gpu = NULL;
 }
@@ -456,36 +641,7 @@ void pme_gpu_step_init(const gmx_pme_t *pme)
         return;
     }
 
-    pme_gpu_copy_coordinates(pme);
-}
-
-/*! \brief
- * The PME GPU spline data reallocation.
- *
- * \param[in] pme            The PME structure.
- */
-void pme_gpu_realloc_spline_data(const gmx_pme_t *pme)
-{
-    const int    order     = pme->pme_order;
-    const int    alignment = PME_SPREADGATHER_PARTICLES_PER_WARP;
-    /* Probably needs to be particlesPerBlock for full padding */
-    const size_t nAtomsPadded   = ((pme->gpu->kernelParams.atoms.nAtoms + alignment - 1) / alignment) * alignment;
-    const size_t splineDataSize = DIM * order * nAtomsPadded * sizeof(float);
-    assert(splineDataSize > 0);
-    pme->gpu->kernelParams.atoms.theta  = (float *)PMEMemoryFetch(pme, PME_ID_THETA, splineDataSize, ML_DEVICE);
-    pme->gpu->kernelParams.atoms.dtheta = (float *)PMEMemoryFetch(pme, PME_ID_DTHETA, splineDataSize, ML_DEVICE);
-}
-
-/*! \brief
- * The PME GPU gridline indices reallocation.
- *
- * \param[in] pme            The PME structure.
- */
-void pme_gpu_realloc_grid_indices(const gmx_pme_t *pme)
-{
-    const size_t indicesSize = DIM * pme->gpu->kernelParams.atoms.nAtoms * sizeof(int);
-    assert(indicesSize > 0);
-    pme->gpu->kernelParams.atoms.gridlineIndices = (int *)PMEMemoryFetch(pme, PME_ID_IDXPTR, indicesSize, ML_DEVICE);
+    pme_gpu_realloc_and_copy_coordinates(pme);
 }
 
 void pme_gpu_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, real *coefficients)
@@ -495,14 +651,18 @@ void pme_gpu_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, real *coeffici
         return;
     }
 
+    const gmx_bool haveToRealloc = (pme->gpu->kernelParams.atoms.nAtoms < nAtoms);
     pme->gpu->kernelParams.atoms.nAtoms = nAtoms;
 
     pme->gpu->coefficientsHost = reinterpret_cast<real *>(coefficients);
-    pme_gpu_copy_charges(pme);
+    pme_gpu_realloc_and_copy_charges(pme);
 
-    pme_gpu_realloc_forces(pme);
-    pme_gpu_realloc_spline_data(pme);
-    pme_gpu_realloc_grid_indices(pme);
+    if (haveToRealloc) /* This check might be redundant, but is logical */
+    {
+        pme_gpu_realloc_forces(pme);
+        pme_gpu_realloc_spline_data(pme);
+        pme_gpu_realloc_grid_indices(pme);
+    }
 }
 
 void pme_gpu_step_end(const gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCalcEnerVir)

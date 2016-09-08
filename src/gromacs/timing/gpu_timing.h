@@ -43,8 +43,6 @@
 #ifndef GMX_TIMING_GPU_TIMING_H
 #define GMX_TIMING_GPU_TIMING_H
 
-#include <vector>
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -56,16 +54,9 @@ struct gmx_nbnxn_kernel_timing_data_t
     int     c; /**< Number of calls corresponding to the elapsed time */
 };
 
-/*! \internal \brief GPU timings for PME. */
-struct gmx_wallclock_gpu_pme_t
-{
-    /* A separate PME structure to avoid refactoring the NB code for gmx_wallclock_gpu_t */
-    std::vector<gmx_nbnxn_kernel_timing_data_t> timing;
-};
-
 /*! \internal \brief
  *
- * PME GPU stages timing events indices, corresponding to the PMEGPUStages in wallcycle.cpp.
+ * PME GPU stages timing events indices, corresponding to the string in PMEStageNames in wallcycle.cpp.
  */
 enum
 {
@@ -78,7 +69,14 @@ enum
     gtPME_FFT_C2R,
     gtPME_UNWRAP,
     gtPME_GATHER,
-    gtPME_END_INVALID
+    gtPME_EVENT_COUNT /* not a stage ID but a static array size */
+};
+
+/*! \internal \brief GPU timings for PME. */
+struct gmx_wallclock_gpu_pme_t
+{
+    /* A separate PME structure to avoid refactoring the NB code for gmx_wallclock_gpu_t later */
+    gmx_nbnxn_kernel_timing_data_t timing[gtPME_EVENT_COUNT];
 };
 
 /*! \internal \brief GPU timings for kernels and H2d/D2H transfers. */

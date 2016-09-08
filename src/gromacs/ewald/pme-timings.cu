@@ -40,16 +40,14 @@
  */
 
 #include "gmxpre.h"
-
-#include <cuda.h>
-
-#include "pme.h"
-#include "pme.cuh"
 #include "gromacs/timing/gpu_timing.h"
 #include "gromacs/timing/wallcycle.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/gpu_utils/cudautils.cuh"
+#include <cuda.h>
+#include "pme.h"
+#include "pme.cuh"
 
 /* The pme_gpu_timing class implementation */
 
@@ -133,18 +131,20 @@ unsigned int pme_gpu_timing::get_call_count()
 
 /* The general PME GPU timing functions */
 
-void pme_gpu_timing_start(const gmx_pme_t *pme, int PMEStageId)
+void pme_gpu_timing_start(const gmx_pme_t *pme, size_t PMEStageId)
 {
     if (pme_gpu_timings_enabled(pme))
     {
+        GMX_ASSERT(PMEStageId < gtPME_EVENT_COUNT, "Wrong PME GPU timign event index");
         pme->gpu->timingEvents[PMEStageId]->start_recording(pme->gpu->pmeStream);
     }
 }
 
-void pme_gpu_timing_stop(const gmx_pme_t *pme, int PMEStageId)
+void pme_gpu_timing_stop(const gmx_pme_t *pme, size_t PMEStageId)
 {
     if (pme_gpu_timings_enabled(pme))
     {
+        GMX_ASSERT(PMEStageId < gtPME_EVENT_COUNT, "Wrong PME GPU timign event index");
         pme->gpu->timingEvents[PMEStageId]->stop_recording(pme->gpu->pmeStream);
     }
 }
@@ -161,8 +161,7 @@ void pme_gpu_get_timings(gmx_wallclock_gpu_t **timings, const gmx_pme_t *pme)
             // init_timings(*timings);
             // frankly, it's just memset..
         }
-        (*timings)->pme.timing.resize(pme->gpu->timingEvents.size());
-        for (size_t i = 0; i < pme->gpu->timingEvents.size(); i++)
+        for (size_t i = 0; i < gtPME_EVENT_COUNT; i++)
         {
             (*timings)->pme.timing[i].t = pme->gpu->timingEvents[i]->get_total_time_milliseconds();
             (*timings)->pme.timing[i].c = pme->gpu->timingEvents[i]->get_call_count();
@@ -174,7 +173,7 @@ void pme_gpu_update_timings(const gmx_pme_t *pme)
 {
     if (pme_gpu_timings_enabled(pme))
     {
-        for (size_t i = 0; i < pme->gpu->timingEvents.size(); i++)
+        for (size_t i = 0; i < gtPME_EVENT_COUNT; i++)
         {
             pme->gpu->timingEvents[i]->update();
         }
@@ -186,9 +185,9 @@ void pme_gpu_init_timings(const gmx_pme_t *pme)
     if (pme_gpu_timings_enabled(pme))
     {
         cudaStreamSynchronize(pme->gpu->pmeStream);
-        for (size_t i = 0; i < gtPME_END_INVALID; i++)
+        for (size_t i = 0; i < gtPME_EVENT_COUNT; i++)
         {
-            pme->gpu->timingEvents.push_back(new pme_gpu_timing());
+            pme->gpu->timingEvents[i] = new pme_gpu_timing();
             pme->gpu->timingEvents[i]->enable();
         }
     }
@@ -198,11 +197,11 @@ void pme_gpu_destroy_timings(const gmx_pme_t *pme)
 {
     if (pme_gpu_timings_enabled(pme))
     {
-        for (size_t i = 0; i < pme->gpu->timingEvents.size(); i++)
+        for (size_t i = 0; i < gtPME_EVENT_COUNT; i++)
         {
             delete pme->gpu->timingEvents[i];
         }
-        pme->gpu->timingEvents.resize(0);
+        memset(pme->gpu->timingEvents, 0, sizeof(pme->gpu->timingEvents));
     }
 }
 
@@ -210,7 +209,7 @@ void pme_gpu_reset_timings(const gmx_pme_t *pme)
 {
     if (pme_gpu_timings_enabled(pme))
     {
-        for (size_t i = 0; i < pme->gpu->timingEvents.size(); i++)
+        for (size_t i = 0; i < gtPME_EVENT_COUNT; i++)
         {
             pme->gpu->timingEvents[i]->reset();
         }

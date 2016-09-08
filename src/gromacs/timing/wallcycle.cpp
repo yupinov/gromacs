@@ -906,7 +906,7 @@ void wallcycle_print(FILE *fplog, const gmx::MDLogger &mdlog, int nnodes, int np
                 tot_k += gpu_t->ktime[i][j].t;
             }
         }
-        for (size_t k = 0; k < gpu_t->pme.timing.size(); k++)
+        for (size_t k = 0; k < gtPME_EVENT_COUNT; k++)
         {
             tot_k += gpu_t->pme.timing[k].t;
         }
@@ -938,7 +938,7 @@ void wallcycle_print(FILE *fplog, const gmx::MDLogger &mdlog, int nnodes, int np
                 }
             }
         }
-        for (size_t k = 0; k < gpu_t->pme.timing.size(); k++)
+        for (size_t k = 0; k < gtPME_EVENT_COUNT; k++)
         {
             if (gpu_t->pme.timing[k].c)
             {

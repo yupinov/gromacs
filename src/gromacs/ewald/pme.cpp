@@ -744,7 +744,7 @@ int gmx_pme_init(struct gmx_pme_t   **pmedata,
         // only a single rank
         GMX_RELEASE_ASSERT(!pme->bFEP, "PME GPU is only implemented for a single grid");
         // shouldn't be difficult to extend though
-        GMX_RELEASE_ASSERT(!EVDW_PME(ir->vdwtype), "PME LJ is not implemented on a GPU");
+        GMX_RELEASE_ASSERT(!pme->doLJ, "PME LJ is not implemented on a GPU");
         // a matter of implementing multiple girds + the PME LJ solve kernel
         GMX_RELEASE_ASSERT(sizeof(real) == sizeof(float), "Only single precision supported for PME GPU");
         // most likely current FFT/solve wouldn't work on double precision
@@ -1738,7 +1738,7 @@ void gmx_pme_gpu_launch(gmx_pme_t      *pme,
      * For GPU this value currently will be false, possibly increasing the divergence in pme_spline.
      */
 
-    bDoSplines = pme->bFEP || ((flags & GMX_PME_DO_COULOMB) && (flags & GMX_PME_DO_LJ));
+    bDoSplines = pme->bFEP || (pme->doCoulomb && pme->doLJ);
 
     const unsigned int grid_index = 0;
 
@@ -1914,7 +1914,7 @@ int gmx_pme_gpu_get_results(const gmx_pme_t *pme,
 
     if (bCalcEnerVir)
     {
-        if (flags & GMX_PME_DO_COULOMB)
+        if (pme->doCoulomb)
         {
             if (!pme->bFEP_q)
             {
@@ -1944,7 +1944,7 @@ int gmx_pme_gpu_get_results(const gmx_pme_t *pme,
             *energy_q = 0;
         }
 
-        if (flags & GMX_PME_DO_LJ)
+        if (pme->doLJ)
         {
             if (!pme->bFEP_lj)
             {

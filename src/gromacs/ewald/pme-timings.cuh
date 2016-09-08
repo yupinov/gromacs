@@ -118,7 +118,7 @@ void pme_gpu_destroy_timings(const gmx_pme_t *pme);
  * \param[in] pme            The PME data structure.
  * \param[in] PMEStageId     The PME GPU stage gtPME_ index from the enum in src/gromacs/timing/gpu_timing.h
  */
-void pme_gpu_timing_start(const gmx_pme_t *pme, int PMEStageId);
+void pme_gpu_timing_start(const gmx_pme_t *pme, size_t PMEStageId);
 
 /*! \libinternal
  * \brief
@@ -128,7 +128,7 @@ void pme_gpu_timing_start(const gmx_pme_t *pme, int PMEStageId);
  * \param[in] pme            The PME data structure.
  * \param[in] PMEStageId     The PME GPU stage gtPME_ index from the enum in src/gromacs/timing/gpu_timing.h
  */
-void pme_gpu_timing_stop(const gmx_pme_t *pme, int PMEStageId);
+void pme_gpu_timing_stop(const gmx_pme_t *pme, size_t PMEStageId);
 
 /*! \libinternal
  * \brief

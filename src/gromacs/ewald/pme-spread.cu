@@ -606,7 +606,7 @@ __global__ void pme_wrap_kernel(const pme_gpu_kernel_params kernelParams)
     }
 }
 
-void pme_gpu_copy_calcspline_constants(const gmx_pme_t *pme)
+void pme_gpu_realloc_and_copy_fract_shifts(const gmx_pme_t *pme)
 {
     cudaStream_t s = pme->gpu->pmeStream;
 
@@ -620,14 +620,24 @@ void pme_gpu_copy_calcspline_constants(const gmx_pme_t *pme)
     const int3 fshOffset = {0, cellCount * nx, cellCount * (nx + ny)};
     memcpy(&pme->gpu->kernelParams.grid.fshOffset, &fshOffset, sizeof(fshOffset));
 
-    const int    fshSize  = cellCount * (nx + ny + nz) * sizeof(real);
-    real        *fshArray = pme->gpu->kernelParams.grid.fshArray = (real *)PMEMemoryFetch(pme, PME_ID_FSH, fshSize, ML_DEVICE);
-    cu_copy_H2D_async(fshArray + fshOffset.x, pme->fshx, cellCount * nx * sizeof(real), s);
-    cu_copy_H2D_async(fshArray + fshOffset.y, pme->fshy, cellCount * ny * sizeof(real), s);
-    cu_copy_H2D_async(fshArray + fshOffset.z, pme->fshz, cellCount * nz * sizeof(real), s);
+    const int    newFractShiftsSize  = cellCount * (nx + ny + nz);
 
-    const int nnSize  = cellCount * (nx + ny + nz) * sizeof(int);
-    int      *nnArray = pme->gpu->kernelParams.grid.nnArray = (int *)PMEMemoryFetch(pme, PME_ID_NN, nnSize, ML_DEVICE);
+    /* Two arrays, same size */
+    int currentSizeTemp      = pme->gpu->fractShiftsSize;
+    int currentSizeTempAlloc = pme->gpu->fractShiftsSizeAlloc;
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.grid.fshArray, NULL, sizeof(float),
+                        &currentSizeTemp, &currentSizeTempAlloc, newFractShiftsSize, pme->gpu->pmeStream, true);
+    float *fshArray = pme->gpu->kernelParams.grid.fshArray;
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.grid.nnArray, NULL, sizeof(int),
+                        &pme->gpu->fractShiftsSize, &pme->gpu->fractShiftsSizeAlloc, newFractShiftsSize, pme->gpu->pmeStream, true);
+    int *nnArray = pme->gpu->kernelParams.grid.nnArray;
+
+    //yupinov pinning?
+
+    cu_copy_H2D_async(fshArray + fshOffset.x, pme->fshx, cellCount * nx * sizeof(float), s);
+    cu_copy_H2D_async(fshArray + fshOffset.y, pme->fshy, cellCount * ny * sizeof(float), s);
+    cu_copy_H2D_async(fshArray + fshOffset.z, pme->fshz, cellCount * nz * sizeof(float), s);
+
     cu_copy_H2D_async(nnArray + fshOffset.x, pme->nnx, cellCount * nx * sizeof(int), s);
     cu_copy_H2D_async(nnArray + fshOffset.y, pme->nny, cellCount * ny * sizeof(int), s);
     cu_copy_H2D_async(nnArray + fshOffset.z, pme->nnz, cellCount * nz * sizeof(int), s);
@@ -646,7 +656,7 @@ void pme_gpu_copy_calcspline_constants(const gmx_pme_t *pme)
         rd.res.linear.devPtr        = fshArray;
         rd.res.linear.desc.f        = cudaChannelFormatKindFloat;
         rd.res.linear.desc.x        = 32;
-        rd.res.linear.sizeInBytes   = fshSize;
+        rd.res.linear.sizeInBytes   = newFractShiftsSize * sizeof(float);
         memset(&td, 0, sizeof(td));
         td.readMode                 = cudaReadModeElementType;
         stat = cudaCreateTextureObject(&pme->gpu->kernelParams.grid.fshTexture, &rd, &td, NULL);
@@ -658,21 +668,21 @@ void pme_gpu_copy_calcspline_constants(const gmx_pme_t *pme)
         rd.res.linear.devPtr        = nnArray;
         rd.res.linear.desc.f        = cudaChannelFormatKindSigned;
         rd.res.linear.desc.x        = 32;
-        rd.res.linear.sizeInBytes   = nnSize;
+        rd.res.linear.sizeInBytes   = newFractShiftsSize * sizeof(int);
         memset(&td, 0, sizeof(td));
         td.readMode                 = cudaReadModeElementType;
-        stat = cudaCreateTextureObject(&pme->gpu->kernelParams.grid.nnTexture, &rd, &td, NULL); //also needs cleaning
+        stat = cudaCreateTextureObject(&pme->gpu->kernelParams.grid.nnTexture, &rd, &td, NULL);
         CU_RET_ERR(stat, "cudaCreateTextureObject on nn_d failed");
     }
     //else
 #else
     {
         cudaChannelFormatDesc cd_fsh = cudaCreateChannelDesc<float>();
-        stat = cudaBindTexture(NULL, &fshTextureRef, fshArray, &cd_fsh, fshSize);
+        stat = cudaBindTexture(NULL, &fshTextureRef, fshArray, &cd_fsh, newFractsShiftSize * sizeof(float)); //yupinov check overalloc
         CU_RET_ERR(stat, "cudaBindTexture on fsh failed");
 
         cudaChannelFormatDesc cd_nn = cudaCreateChannelDesc<int>();
-        stat = cudaBindTexture(NULL, &nnTextureRef, nnArray, &cd_nn, nnSize);
+        stat = cudaBindTexture(NULL, &nnTextureRef, nnArray, &cd_nn, newFractShiftsSize * sizeof(int));
         CU_RET_ERR(stat, "cudaBindTexture on nn failed");
         //yupinov unbind
     }
@@ -680,42 +690,14 @@ void pme_gpu_copy_calcspline_constants(const gmx_pme_t *pme)
 #endif
 }
 
-void pme_gpu_alloc_grids(const gmx_pme_t *pme, const int gmx_unused grid_index)
+void pme_gpu_free_fract_shifts(const gmx_pme_t *pme)
 {
-    const int pnx      = pme->pmegrid_nx;
-    const int pny      = pme->pmegrid_ny;
-    const int pnz      = pme->pmegrid_nz;
-    const int gridSize = pnx * pny * pnz * sizeof(real);
-
-    pme->gpu->kernelParams.grid.realGrid = (real *)PMEMemoryFetch(pme, PME_ID_REAL_GRID, gridSize, ML_DEVICE);
-    if (pme->gpu->bOutOfPlaceFFT)
-    {
-        pme->gpu->kernelParams.grid.fourierGrid = (float2 *)PMEMemoryFetch(pme, PME_ID_COMPLEX_GRID, gridSize, ML_DEVICE);
-    }
-    else
-    {
-        pme->gpu->kernelParams.grid.fourierGrid = (float2 *)pme->gpu->kernelParams.grid.realGrid;
-    }
-}
-
-void pme_gpu_clear_grid(const gmx_pme_t *pme, const int gmx_unused grid_index)
-{
-    /*
-       pmegrid_t *pmegrid = &(pme->pmegrid[grid_index].grid);
-       const int pnx = pmegrid->n[XX];
-       const int pny = pmegrid->n[YY];
-       const int pnz = pmegrid->n[ZZ];
-     */
-
-    const int    pnx      = pme->pmegrid_nx;
-    const int    pny      = pme->pmegrid_ny;
-    const int    pnz      = pme->pmegrid_nz;
-    const int    gridSize = pnx * pny * pnz * sizeof(real);
-
-    cudaStream_t s = pme->gpu->pmeStream;
-
-    cudaError_t  stat = cudaMemsetAsync(pme->gpu->kernelParams.grid.realGrid, 0, gridSize, s);
-    CU_RET_ERR(stat, "cudaMemsetAsync spread error");
+    /* Two arrays, same size */
+    int currentSizeTemp      = pme->gpu->fractShiftsSize;
+    int currentSizeTempAlloc = pme->gpu->fractShiftsSizeAlloc;
+    cu_free_buffered((void **)&pme->gpu->kernelParams.grid.fshArray, &currentSizeTemp, &currentSizeTempAlloc);
+    cu_free_buffered((void **)&pme->gpu->kernelParams.grid.nnArray, &pme->gpu->fractShiftsSize, &pme->gpu->fractShiftsSizeAlloc);
+    /* TODO: unbind textures here! */
 }
 
 void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,

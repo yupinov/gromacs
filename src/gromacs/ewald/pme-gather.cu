@@ -45,18 +45,6 @@
 #include "pme.cuh"
 
 /*! \brief
- * Reallocates the GPU output buffer for the resulting PME forces.
- *
- *
- */
-void pme_gpu_realloc_forces(const gmx_pme_t *pme)
-{
-    assert(pme->gpu->kernelParams.atoms.nAtoms > 0);
-    const size_t forcesSize = pme->gpu->kernelParams.atoms.nAtoms * DIM * sizeof(real);
-    pme->gpu->kernelParams.atoms.forces = (real *)PMEMemoryFetch(pme, PME_ID_FORCES, forcesSize, ML_DEVICE);
-}
-
-/*! \brief
  *
  * Copies the forces from the CPU buffer (pme->gpu->forcesHost) to the GPU
  * (to reduce them with the PME GPU gathered forces).

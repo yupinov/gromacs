@@ -239,7 +239,7 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
 
         gmx_pme_gpu_launch(pme, natoms, x_pp, f_pp,
                            chargeA, box, wcycle, ewaldcoeff_q,
-                           pme_flags | GMX_PME_DO_ALL_F | (bEnerVir ? GMX_PME_CALC_ENER_VIR : 0));
+                           GMX_PME_DO_ALL_F | (bEnerVir ? GMX_PME_CALC_ENER_VIR : 0));
 
         gmx_pme_gpu_launch_gather(pme, wcycle, true);
 
@@ -247,7 +247,7 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
                                 cr, wcycle,
                                 vir_q, vir_lj,
                                 &energy_q, &energy_lj, lambda_q, lambda_lj, &dvdlambda_q, &dvdlambda_lj,
-                                pme_flags | GMX_PME_DO_ALL_F | (bEnerVir ? GMX_PME_CALC_ENER_VIR : 0));
+                                GMX_PME_DO_ALL_F | (bEnerVir ? GMX_PME_CALC_ENER_VIR : 0));
 
 
         cycles = wallcycle_stop(wcycle, ewcPMEMESH);
