@@ -377,7 +377,7 @@ void pme_gpu_free_grids(const gmx_pme_t *pme)
 {
     if (pme->gpu->bOutOfPlaceFFT)
     {
-        /* Free a separate complex grid */
+        /* Free a separate complex grid of the same size */
         int tempGridSize      = pme->gpu->gridSize;
         int tempGridSizeAlloc = pme->gpu->gridSizeAlloc;
         cu_free_buffered((void **)&pme->gpu->kernelParams.grid.fourierGrid, &tempGridSize, &tempGridSizeAlloc);
@@ -385,25 +385,13 @@ void pme_gpu_free_grids(const gmx_pme_t *pme)
     cu_free_buffered((void **)&pme->gpu->kernelParams.grid.realGrid, &pme->gpu->gridSize, &pme->gpu->gridSizeAlloc);
 }
 
-void pme_gpu_clear_grid(const gmx_pme_t *pme)
+void pme_gpu_clear_grids(const gmx_pme_t *pme)
 {
-    /*
-       pmegrid_t *pmegrid = &(pme->pmegrid[grid_index].grid);
-       const int pnx = pmegrid->n[XX];
-       const int pny = pmegrid->n[YY];
-       const int pnz = pmegrid->n[ZZ];
-     */
-
-    const int    pnx      = pme->pmegrid_nx;
-    const int    pny      = pme->pmegrid_ny;
-    const int    pnz      = pme->pmegrid_nz;
-    const int    gridSize = pnx * pny * pnz * sizeof(float);
-
     cudaStream_t s = pme->gpu->pmeStream;
 
-    cudaError_t  stat = cudaMemsetAsync(pme->gpu->kernelParams.grid.realGrid, 0, gridSize, s);
-    /* Should the complex grid be cleared in soem weird case? */
-    CU_RET_ERR(stat, "cudaMemsetAsync spread error");
+    cudaError_t  stat = cudaMemsetAsync(pme->gpu->kernelParams.grid.realGrid, 0, pme->gpu->gridSize * sizeof(float), s);
+    /* Should the complex grid be cleared in some weird case? */
+    CU_RET_ERR(stat, "cudaMemsetAsync on the PME grid error");
 }
 
 /*! \brief
@@ -413,7 +401,7 @@ void pme_gpu_clear_grid(const gmx_pme_t *pme)
  */
 void pme_gpu_step_reinit(const gmx_pme_t *pme)
 {
-    pme_gpu_clear_grid(pme);
+    pme_gpu_clear_grids(pme);
     pme_gpu_clear_energy_virial(pme);
 }
 
@@ -423,8 +411,7 @@ void pme_gpu_step_reinit(const gmx_pme_t *pme)
  * \param[in] pme            The PME structure.
  * ......
  */
-void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo,
-                  const gmx_gpu_opt_t *gpu_opt)
+void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_opt_t *gpu_opt)
 {
     if (!pme_gpu_enabled(pme))
     {
@@ -518,11 +505,13 @@ void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo,
         pme_gpu_init_timings(pme);
 
         pme_gpu_alloc_energy_virial(pme);
+
+        GMX_RELEASE_ASSERT(pme->epsilon_r != 0.0f, "PME GPU: erroneous electostatic factor");
+        pme->gpu->kernelParams.constants.elFactor = ONE_4PI_EPS0 / pme->epsilon_r;
     }
 
     const bool gridSizeChanged = true; /* This function is called on DLB steps as well */
-
-    if (gridSizeChanged)               /* The need for reallocation is checked inside, might do a redundant check here?... */
+    if (gridSizeChanged)               /* The need for reallocation is checked for inside, might do a redundant grid size increase check here anyway?... */
     {
         /* The grid size variants */
         const int3   localGridSize = {pme->nkx, pme->nky, pme->nkz};
@@ -613,13 +602,12 @@ void pme_gpu_set_constants(const gmx_pme_t *pme, const matrix box, const float e
 
     /* Assuming the recipbox is calculated already */
     pme_gpu_copy_recipbox(pme); // could use some boolean checks to know if it should run each time, like pressure coupling?
+    // actually, just compare the memory
 
     pme->gpu->kernelParams.step.boxVolume = box[XX][XX] * box[YY][YY] * box[ZZ][ZZ];
     assert(pme->gpu->kernelParams.step.boxVolume != 0.0f);
 
     pme->gpu->kernelParams.grid.ewaldFactor = (M_PI * M_PI) / (ewaldCoeff * ewaldCoeff);
-
-    pme->gpu->kernelParams.constants.elFactor = ONE_4PI_EPS0 / pme->epsilon_r;
 }
 
 void pme_gpu_set_io_ranges(const gmx_pme_t *pme, rvec *coordinates, rvec *forces)
