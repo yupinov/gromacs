@@ -121,6 +121,11 @@ static void gmx_pmeonly_switch(int *npmedata, struct gmx_pme_t ***pmedata,
             pme->nky == grid_size[YY] &&
             pme->nkz == grid_size[ZZ])
         {
+            /* Here we have found an existing PME data structure that suits us.
+             * However, in the GPU case, we have to reinitialize it - there's only one GPU structure.
+             * This should not cause actual GPU reallocations, at least (the allocated buffers are never shrunk).
+             * So, just some grid size updates in the GPU kernel parameters.
+             */
             if (pme_gpu_enabled(pme))
             {
                 gmx_pme_reinit(&((*pmedata)[ind]), cr, pme, ir, grid_size);

@@ -165,7 +165,6 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
         {
             if ((EEL_PME(fr->eeltype) || EVDW_PME(fr->vdwtype)) && (cr->duty & DUTY_PME))
             {
-                /* Do reciprocal PME for Coulomb and/or LJ. */
                 assert(fr->n_tpi >= 0);
                 if (fr->n_tpi == 0 || (flags & GMX_FORCE_STATECHANGED))
                 {
