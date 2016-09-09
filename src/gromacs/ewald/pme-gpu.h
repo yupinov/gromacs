@@ -138,9 +138,9 @@ CUDA_FUNC_QUALIFIER void pme_gpu_step_init(const gmx_pme_t *CUDA_FUNC_ARGUMENT(p
  * Currently it is called together with the pme_gpu_step_init, but can possibly be called less often?
  * (Different constants have different lifetime...).
  */
-CUDA_FUNC_QUALIFIER void pme_gpu_set_constants(const gmx_pme_t   *CUDA_FUNC_ARGUMENT(pme),
-                                               const matrix       CUDA_FUNC_ARGUMENT(box),
-                                               const real         CUDA_FUNC_ARGUMENT(ewaldCoeff)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_set_constants(const gmx_pme_t    *CUDA_FUNC_ARGUMENT(pme),
+                                               const matrix        CUDA_FUNC_ARGUMENT(box),
+                                               const float         CUDA_FUNC_ARGUMENT(ewaldCoeff)) CUDA_FUNC_TERM
 
 /*! \brief
  * (Re-)initializes the semi-static domain particle data (the number of particles, charges). Does nothing on non-CUDA builds.
@@ -152,9 +152,9 @@ CUDA_FUNC_QUALIFIER void pme_gpu_set_constants(const gmx_pme_t   *CUDA_FUNC_ARGU
  * This is a function that should only be called in the beginning of the run and on domain decomposition.
  * Should be called before the pme_gpu_set_io_ranges.
  */
-CUDA_FUNC_QUALIFIER void pme_gpu_reinit_atoms(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
-                                              const int        CUDA_FUNC_ARGUMENT(nAtoms),
-                                              real            *CUDA_FUNC_ARGUMENT(coefficients)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_reinit_atoms(const gmx_pme_t  *CUDA_FUNC_ARGUMENT(pme),
+                                              const int         CUDA_FUNC_ARGUMENT(nAtoms),
+                                              float            *CUDA_FUNC_ARGUMENT(coefficients)) CUDA_FUNC_TERM
 
 /*! \brief
  * Sets the host-side I/O buffers in the PME GPU. Does nothing on non-CUDA builds.

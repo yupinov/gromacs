@@ -62,12 +62,12 @@ __global__ void pme_solve_kernel
     const int localOffsetMinor, const int localOffsetMajor, const int localOffsetMiddle,
     const int localSizeMinor, /*const int localSizeMajor,*/ const int localSizeMiddle,
     const struct pme_gpu_kernel_params kernelParams,
-    real * __restrict__ virialAndEnergy)
+    float * __restrict__ virialAndEnergy)
 {
     /* Global memory pointers */
-    const real * __restrict__ BSplineModuleMinor  = kernelParams.grid.splineValuesArray + (YZXOrdering ? kernelParams.grid.splineValuesOffset.x : kernelParams.grid.splineValuesOffset.z);
-    const real * __restrict__ BSplineModuleMiddle = kernelParams.grid.splineValuesArray + (YZXOrdering ? kernelParams.grid.splineValuesOffset.z : kernelParams.grid.splineValuesOffset.y);
-    const real * __restrict__ BSplineModuleMajor  = kernelParams.grid.splineValuesArray + (YZXOrdering ? kernelParams.grid.splineValuesOffset.y : kernelParams.grid.splineValuesOffset.x);
+    const float * __restrict__ BSplineModuleMinor  = kernelParams.grid.splineValuesArray + (YZXOrdering ? kernelParams.grid.splineValuesOffset.x : kernelParams.grid.splineValuesOffset.z);
+    const float * __restrict__ BSplineModuleMiddle = kernelParams.grid.splineValuesArray + (YZXOrdering ? kernelParams.grid.splineValuesOffset.z : kernelParams.grid.splineValuesOffset.y);
+    const float * __restrict__ BSplineModuleMajor  = kernelParams.grid.splineValuesArray + (YZXOrdering ? kernelParams.grid.splineValuesOffset.y : kernelParams.grid.splineValuesOffset.x);
 
 
 
@@ -81,36 +81,36 @@ __global__ void pme_solve_kernel
     const int blockSize = THREADS_PER_BLOCK;
     //const int threadId = blockId * blockSize + threadLocalId;
 
-    float2 * __restrict__ globalGrid = kernelParams.grid.fourierGrid;
+    float2 * __restrict__  globalGrid = kernelParams.grid.fourierGrid;
 
-    const int             nMinor  = !YZXOrdering ? kernelParams.grid.localGridSize.z : kernelParams.grid.localGridSize.x; //yupinov fix all pme->nkx and such
-    const int             nMajor  = !YZXOrdering ? kernelParams.grid.localGridSize.x : kernelParams.grid.localGridSize.y;
-    const int             nMiddle = !YZXOrdering ? kernelParams.grid.localGridSize.y : kernelParams.grid.localGridSize.z;
+    const int              nMinor  = !YZXOrdering ? kernelParams.grid.localGridSize.z : kernelParams.grid.localGridSize.x; //yupinov fix all pme->nkx and such
+    const int              nMajor  = !YZXOrdering ? kernelParams.grid.localGridSize.x : kernelParams.grid.localGridSize.y;
+    const int              nMiddle = !YZXOrdering ? kernelParams.grid.localGridSize.y : kernelParams.grid.localGridSize.z;
 
-    int                   maxkMajor  = (nMajor + 1) / 2;  //X or Y
-    int                   maxkMiddle = (nMiddle + 1) / 2; //Y OR Z => only check for !YZX
-    int                   maxkMinor  = (nMinor + 1) / 2;  //Z or X => only check for YZX
+    int                    maxkMajor  = (nMajor + 1) / 2;  //X or Y
+    int                    maxkMiddle = (nMiddle + 1) / 2; //Y OR Z => only check for !YZX
+    int                    maxkMinor  = (nMinor + 1) / 2;  //Z or X => only check for YZX
 
-    const int             enerVirSize = 7;
+    const int              enerVirSize = 7;
 
-    real                  energy = 0.0f;
-    real                  virxx  = 0.0f, virxy = 0.0f, virxz = 0.0f, viryy = 0.0f, viryz = 0.0f, virzz = 0.0f;
+    float                  energy = 0.0f;
+    float                  virxx  = 0.0f, virxy = 0.0f, virxz = 0.0f, viryy = 0.0f, viryz = 0.0f, virzz = 0.0f;
 
-    const int             indexMinor  = blockIdx.x * blockDim.x + threadIdx.x;
-    const int             indexMiddle = blockIdx.y * blockDim.y + threadIdx.y;
-    const int             indexMajor  = blockIdx.z * blockDim.z + threadIdx.z;
+    const int              indexMinor  = blockIdx.x * blockDim.x + threadIdx.x;
+    const int              indexMiddle = blockIdx.y * blockDim.y + threadIdx.y;
+    const int              indexMajor  = blockIdx.z * blockDim.z + threadIdx.z;
 
     if ((indexMajor < localCountMajor) && (indexMiddle < localCountMiddle) && (indexMinor < localCountMinor))
     {
         /* The offset should be equal to the global thread index */
-        float2    *globalGridPtr = globalGrid + (indexMajor * localSizeMiddle + indexMiddle) * localSizeMinor + indexMinor;
+        float2     *globalGridPtr = globalGrid + (indexMajor * localSizeMiddle + indexMiddle) * localSizeMinor + indexMinor;
 
-        const int  kMajor = indexMajor + localOffsetMajor;
+        const int   kMajor = indexMajor + localOffsetMajor;
         /* Checking either X in XYZ, or Y in YZX cases */
-        const real mMajor = (kMajor < maxkMajor) ? kMajor : (kMajor - nMajor);
+        const float mMajor = (kMajor < maxkMajor) ? kMajor : (kMajor - nMajor);
 
-        const int  kMiddle = indexMiddle + localOffsetMiddle;
-        real       mMiddle = kMiddle;
+        const int   kMiddle = indexMiddle + localOffsetMiddle;
+        float       mMiddle = kMiddle;
         /* Checking Y in XYZ case */
         if (!YZXOrdering)
         {
@@ -118,9 +118,9 @@ __global__ void pme_solve_kernel
         }
         /* We should skip the k-space point (0,0,0) */
 
-        const int      kMinor       = localOffsetMinor + indexMinor;
-        const gmx_bool notZeroPoint = (kMinor > 0 || kMajor > 0 || kMiddle > 0);
-        real           mMinor       = kMinor, mhxk, mhyk, mhzk, m2k;
+        const int       kMinor       = localOffsetMinor + indexMinor;
+        const gmx_bool  notZeroPoint = (kMinor > 0 || kMajor > 0 || kMiddle > 0);
+        float           mMinor       = kMinor, mhxk, mhyk, mhzk, m2k;
 
         /* Checking X in YZX case */
         if (YZXOrdering)
@@ -128,7 +128,7 @@ __global__ void pme_solve_kernel
             mMinor = (kMinor < maxkMinor) ? kMinor : (kMinor - nMinor);
         }
 
-        real mX, mY, mZ;
+        float mX, mY, mZ;
         if (YZXOrdering)
         {
             mX = mMinor;
@@ -143,7 +143,7 @@ __global__ void pme_solve_kernel
         }
 
         /* 0.5 correction for corner points of a minor dimension */
-        real corner_fac = 1.0f;
+        float corner_fac = 1.0f;
         if (YZXOrdering)
         {
             if (kMiddle == 0 || kMiddle == maxkMiddle)
@@ -166,28 +166,28 @@ __global__ void pme_solve_kernel
             mhzk       = mX * kernelParams.step.recipbox[XX].z + mY * kernelParams.step.recipbox[YY].z + mZ * kernelParams.step.recipbox[ZZ].z;
 
             m2k        = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
-            real denom = m2k * real(M_PI) * kernelParams.step.boxVolume * BSplineModuleMajor[kMajor] * BSplineModuleMiddle[kMiddle] * BSplineModuleMinor[kMinor];
-            real tmp1  = -kernelParams.grid.ewaldFactor * m2k;
+            float denom = m2k * float(M_PI) * kernelParams.step.boxVolume * BSplineModuleMajor[kMajor] * BSplineModuleMiddle[kMiddle] * BSplineModuleMinor[kMinor];
+            float tmp1  = -kernelParams.grid.ewaldFactor * m2k;
 
             denom = 1.0f / denom;
             tmp1  = expf(tmp1);
-            real   etermk = kernelParams.constants.elFactor * tmp1 * denom;
+            float   etermk = kernelParams.constants.elFactor * tmp1 * denom;
 
-            float2 gridValue    = *globalGridPtr;
-            float2 oldGridValue = gridValue;
+            float2  gridValue    = *globalGridPtr;
+            float2  oldGridValue = gridValue;
             gridValue.x   *= etermk;
             gridValue.y   *= etermk;
             *globalGridPtr = gridValue;
 
             if (bEnerVir)
             {
-                real tmp1k = 2.0f * (gridValue.x * oldGridValue.x + gridValue.y * oldGridValue.y);
+                float tmp1k = 2.0f * (gridValue.x * oldGridValue.x + gridValue.y * oldGridValue.y);
 
-                real vfactor = (kernelParams.grid.ewaldFactor  + 1.0f / m2k) * 2.0f;
-                real ets2    = corner_fac * tmp1k;
+                float vfactor = (kernelParams.grid.ewaldFactor  + 1.0f / m2k) * 2.0f;
+                float ets2    = corner_fac * tmp1k;
                 energy = ets2;
 
-                real ets2vf  = ets2 * vfactor;
+                float ets2vf  = ets2 * vfactor;
 
                 virxx   = ets2vf * mhxk * mhxk - ets2;
                 virxy   = ets2vf * mhxk * mhyk;
@@ -216,7 +216,7 @@ __global__ void pme_solve_kernel
          */
 #endif
         {
-            __shared__ real virialAndEnergyShared[enerVirSize * blockSize];
+            __shared__ float virialAndEnergyShared[enerVirSize * blockSize];
             // 3.5k smem per block - a serious limiter!
 
             /*  a 7-thread reduction in shared memory inspired by reduce_force_j_generic */
@@ -416,17 +416,17 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
 
 void pme_gpu_sync_energy_virial(const gmx_pme_t *pme)
 {
-    cudaStream_t             s = pme->gpu->pmeStream;
+    cudaStream_t              s = pme->gpu->pmeStream;
 
-    struct pme_solve_work_t *work          = &pme->solve_work[0];
-    real                    *work_energy_q = &(work->energy_q);
-    matrix                  &work_vir_q    = work->vir_q;
+    struct pme_solve_work_t  *work          = &pme->solve_work[0];
+    float                    *work_energy_q = &(work->energy_q);
+    matrix                   &work_vir_q    = work->vir_q;
 
-    cudaError_t              stat = cudaStreamWaitEvent(s, pme->gpu->syncEnerVirD2H, 0);
+    cudaError_t               stat = cudaStreamWaitEvent(s, pme->gpu->syncEnerVirD2H, 0);
     CU_RET_ERR(stat, "Error while waiting for PME solve");
 
-    real                     energy            = 0.0;
-    real                     virxx             = 0.0, virxy = 0.0, virxz = 0.0, viryy = 0.0, viryz = 0.0, virzz = 0.0;
+    float                     energy            = 0.0;
+    float                     virxx             = 0.0, virxy = 0.0, virxz = 0.0, viryy = 0.0, viryz = 0.0, virzz = 0.0;
 
     int j = 0;
     virxx  += pme->gpu->energyAndVirialHost[j++];

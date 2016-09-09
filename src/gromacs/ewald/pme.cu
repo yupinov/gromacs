@@ -397,7 +397,7 @@ void pme_gpu_clear_grid(const gmx_pme_t *pme)
     const int    pnx      = pme->pmegrid_nx;
     const int    pny      = pme->pmegrid_ny;
     const int    pnz      = pme->pmegrid_nz;
-    const int    gridSize = pnx * pny * pnz * sizeof(real);
+    const int    gridSize = pnx * pny * pnz * sizeof(float);
 
     cudaStream_t s = pme->gpu->pmeStream;
 
@@ -527,7 +527,7 @@ void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo,
         /* The grid size variants */
         const int3   localGridSize = {pme->nkx, pme->nky, pme->nkz};
         memcpy(&pme->gpu->kernelParams.grid.localGridSize, &localGridSize, sizeof(localGridSize));
-        const float3 localGridSizeFP = {(real)localGridSize.x, (real)localGridSize.y, (real)localGridSize.z};
+        const float3 localGridSizeFP = {(float)localGridSize.x, (float)localGridSize.y, (float)localGridSize.z};
         memcpy(&pme->gpu->kernelParams.grid.localGridSizeFP, &localGridSizeFP, sizeof(localGridSizeFP));
         const int3   localGridSizePadded = {pme->pmegrid_nx, pme->pmegrid_ny, pme->pmegrid_nz};
         memcpy(&pme->gpu->kernelParams.grid.localGridSizePadded, &localGridSizePadded, sizeof(localGridSizePadded));
@@ -604,7 +604,7 @@ void pme_gpu_deinit(gmx_pme_t *pme)
     pme->gpu = NULL;
 }
 
-void pme_gpu_set_constants(const gmx_pme_t *pme, const matrix box, const real ewaldCoeff)
+void pme_gpu_set_constants(const gmx_pme_t *pme, const matrix box, const float ewaldCoeff)
 {
     if (!pme_gpu_enabled(pme))
     {
@@ -629,8 +629,8 @@ void pme_gpu_set_io_ranges(const gmx_pme_t *pme, rvec *coordinates, rvec *forces
         return;
     }
 
-    pme->gpu->forcesHost       = reinterpret_cast<real *>(forces);
-    pme->gpu->coordinatesHost  = reinterpret_cast<real *>(coordinates);
+    pme->gpu->forcesHost       = reinterpret_cast<float *>(forces);
+    pme->gpu->coordinatesHost  = reinterpret_cast<float *>(coordinates);
     /* TODO: should the cudaHostRegister be called for the *Host pointers under some condition/policy? */
 }
 
@@ -644,7 +644,7 @@ void pme_gpu_step_init(const gmx_pme_t *pme)
     pme_gpu_realloc_and_copy_coordinates(pme);
 }
 
-void pme_gpu_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, real *coefficients)
+void pme_gpu_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, float *coefficients)
 {
     if (!pme_gpu_enabled(pme))
     {
@@ -654,7 +654,7 @@ void pme_gpu_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, real *coeffici
     const gmx_bool haveToRealloc = (pme->gpu->kernelParams.atoms.nAtoms < nAtoms);
     pme->gpu->kernelParams.atoms.nAtoms = nAtoms;
 
-    pme->gpu->coefficientsHost = reinterpret_cast<real *>(coefficients);
+    pme->gpu->coefficientsHost = reinterpret_cast<float *>(coefficients);
     pme_gpu_realloc_and_copy_charges(pme);
 
     if (haveToRealloc) /* This check might be redundant, but is logical */

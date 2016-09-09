@@ -75,8 +75,8 @@ void pme_gpu_sync_output_forces(const gmx_pme_t *pme)
  *
  * An inline CUDA function: unroll the dynamic index accesses to the constant grid sizes to avoid local memory operations.
  */
-__device__ __forceinline__ real read_grid_size(const float3 localGridSizeFP,
-                                               const int    dimIndex)
+__device__ __forceinline__ float read_grid_size(const float3 localGridSizeFP,
+                                                const int    dimIndex)
 {
     switch (dimIndex)
     {
@@ -105,14 +105,14 @@ template <
     const int particleDataSize,
     const int blockSize
     >
-__device__ __forceinline__ void reduce_particle_forces(float3        fSumArray[],
-                                                       const int     localIndex,
-                                                       const int     splineIndex,
-                                                       const int     lineIndex,
-                                                       const float3  localGridSizeFP,
-                                                       real         &fx,
-                                                       real         &fy,
-                                                       real         &fz)
+__device__ __forceinline__ void reduce_particle_forces(float3         fSumArray[],
+                                                       const int      localIndex,
+                                                       const int      splineIndex,
+                                                       const int      lineIndex,
+                                                       const float3   localGridSizeFP,
+                                                       float         &fx,
+                                                       float         &fy,
+                                                       float         &fz)
 {
 #if (GMX_PTX_ARCH >= 300)
     if (!(order & (order - 1))) // only for orders of power of 2
@@ -153,8 +153,8 @@ __device__ __forceinline__ void reduce_particle_forces(float3        fSumArray[]
 
         if (splineIndex < 3)
         {
-            const real n = read_grid_size(localGridSizeFP, splineIndex);
-            *((real *)(&fSumArray[localIndex]) + splineIndex) = fx * n;
+            const float n = read_grid_size(localGridSizeFP, splineIndex);
+            *((float *)(&fSumArray[localIndex]) + splineIndex) = fx * n;
         }
     }
     else
@@ -162,20 +162,20 @@ __device__ __forceinline__ void reduce_particle_forces(float3        fSumArray[]
     {
         // TODO (psz): improve the generic reduction
         // lazy 3-thread reduction in shared memory inspired by reduce_force_j_generic
-        __shared__ real fSharedArray[DIM * blockSize];
+        __shared__ float fSharedArray[DIM * blockSize];
         fSharedArray[XX * blockSize + lineIndex] = fx;
         fSharedArray[YY * blockSize + lineIndex] = fy;
         fSharedArray[ZZ * blockSize + lineIndex] = fz;
 
         if (splineIndex < 3)
         {
-            const real n = read_grid_size(localGridSizeFP, splineIndex);
-            float      f = 0.0f;
+            const float n = read_grid_size(localGridSizeFP, splineIndex);
+            float       f = 0.0f;
             for (int j = localIndex * particleDataSize; j < (localIndex + 1) * particleDataSize; j++)
             {
                 f += fSharedArray[blockSize * splineIndex + j];
             }
-            *((real *)(&fSumArray[localIndex]) + splineIndex) = f * n;
+            *((float *)(&fSumArray[localIndex]) + splineIndex) = f * n;
         }
     }
 }
@@ -204,12 +204,12 @@ __launch_bounds__(4 * warp_size, 16)
 __global__ void pme_gather_kernel(const pme_gpu_kernel_params    kernelParams)
 {
     /* Global memory pointers */
-    const float * __restrict__ coefficientGlobal     = kernelParams.atoms.coefficients;
-    const float * __restrict__ gridGlobal            = kernelParams.grid.realGrid;
-    const float * __restrict__ thetaGlobal           = kernelParams.atoms.theta;
-    const float * __restrict__ dthetaGlobal          = kernelParams.atoms.dtheta;
-    const int * __restrict__   gridlineIndicesGlobal = kernelParams.atoms.gridlineIndices;
-    real * __restrict__        forcesGlobal          = kernelParams.atoms.forces;
+    const float * __restrict__  coefficientGlobal     = kernelParams.atoms.coefficients;
+    const float * __restrict__  gridGlobal            = kernelParams.grid.realGrid;
+    const float * __restrict__  thetaGlobal           = kernelParams.atoms.theta;
+    const float * __restrict__  dthetaGlobal          = kernelParams.atoms.dtheta;
+    const int * __restrict__    gridlineIndicesGlobal = kernelParams.atoms.gridlineIndices;
+    float * __restrict__        forcesGlobal          = kernelParams.atoms.forces;
 
 
     /* These are the particle indices - for the shared and global memory */
@@ -251,11 +251,11 @@ __global__ void pme_gather_kernel(const pme_gpu_kernel_params    kernelParams)
     }
     __syncthreads();
 
-    real           fx = 0.0f;
-    real           fy = 0.0f;
-    real           fz = 0.0f;
+    float           fx = 0.0f;
+    float           fy = 0.0f;
+    float           fz = 0.0f;
 
-    const gmx_bool particleRangeCheck = (globalIndex < kernelParams.atoms.nAtoms);
+    const gmx_bool  particleRangeCheck = (globalIndex < kernelParams.atoms.nAtoms);
 
     //yupinov stage coefficient into a shared/local mem?
     // this particle skipping conditional should be synchronized between spline and gather
@@ -280,11 +280,11 @@ __global__ void pme_gather_kernel(const pme_gpu_kernel_params    kernelParams)
 #pragma unroll
         for (int ithx = 0; (ithx < order); ithx++)
         {
-            const real   gridValue    = gridGlobal[indexBaseYZ + ithx * pny * pnz];
-            const int    thetaOffsetX = thetaOffsetBase + ithx * orderStride + XX * dimStride;
-            const float2 tdx          = splineParams[thetaOffsetX];
-            const real   fxy1         = tdz.x * gridValue;
-            const real   fz1          = tdz.y * gridValue;
+            const float   gridValue    = gridGlobal[indexBaseYZ + ithx * pny * pnz];
+            const int     thetaOffsetX = thetaOffsetBase + ithx * orderStride + XX * dimStride;
+            const float2  tdx          = splineParams[thetaOffsetX];
+            const float   fxy1         = tdz.x * gridValue;
+            const float   fz1          = tdz.y * gridValue;
             fx += tdx.y * tdy.x * fxy1;
             fy += tdx.x * tdy.y * fxy1;
             fz += tdx.x * tdy.x * fz1;
@@ -303,14 +303,14 @@ __global__ void pme_gather_kernel(const pme_gpu_kernel_params    kernelParams)
     if (threadLocalId < DIM * particlesPerBlock)
     {
         // new, different particle indices
-        const int    localIndexFinal = threadLocalId / DIM;
-        const int    dimIndex        = threadLocalId - localIndexFinal * DIM;
+        const int     localIndexFinal = threadLocalId / DIM;
+        const int     dimIndex        = threadLocalId - localIndexFinal * DIM;
 
-        const float3 fSum             = fSumArray[localIndexFinal];
-        const int    globalIndexFinal = blockIdx.x * particlesPerBlock + localIndexFinal;
-        const real   coefficient      = coefficientGlobal[globalIndexFinal];
+        const float3  fSum             = fSumArray[localIndexFinal];
+        const int     globalIndexFinal = blockIdx.x * particlesPerBlock + localIndexFinal;
+        const float   coefficient      = coefficientGlobal[globalIndexFinal];
 
-        real         contrib;
+        float         contrib;
         switch (dimIndex)
         {
             case XX:
@@ -351,9 +351,9 @@ template <
 __global__ void pme_unwrap_kernel(const pme_gpu_kernel_params kernelParams)
 {
     /* Global memory pointer */
-    real * __restrict__  gridGlobal = kernelParams.grid.realGrid;
+    float * __restrict__  gridGlobal = kernelParams.grid.realGrid;
 
-    int                  blockId = blockIdx.x
+    int                   blockId = blockIdx.x
         + blockIdx.y * gridDim.x
         + gridDim.x * gridDim.y * blockIdx.z;
     int threadId = blockId * (blockDim.x * blockDim.y * blockDim.z)
@@ -433,7 +433,7 @@ void gather_f_bsplines_gpu(const gmx_pme_t *pme,
         const int       grid_index = 0;
         float          *grid       = pme->pmegrid[grid_index].grid.grid;
         const size_t    gridSize   = pme->gpu->kernelParams.grid.localGridSizePadded.x *
-            pme->gpu->kernelParams.grid.localGridSizePadded.y * pme->gpu->kernelParams.grid.localGridSizePadded.z * sizeof(real);
+            pme->gpu->kernelParams.grid.localGridSizePadded.y * pme->gpu->kernelParams.grid.localGridSizePadded.z * sizeof(float);
         cu_copy_H2D_async(pme->gpu->kernelParams.grid.realGrid, grid, gridSize, s);
     }
 

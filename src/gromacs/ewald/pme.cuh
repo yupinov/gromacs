@@ -111,7 +111,6 @@
  * Pointers to the particle/grid/spline data live here as well.
  * The data is split into sub-structures depending on its update rate.
  */
-/* TODO: cleanup real/float mess */
 
 /*! \brief \internal
  * A GPU data structure for storing the constant PME data.
@@ -302,10 +301,10 @@ struct gmx_pme_cuda_t
     /* These are the host-side input/output pointers */
     /* TODO: not far in the future there will be a device input/output pointers too */
     /* Input */
-    real  *coordinatesHost;  /* rvec/float3 */
-    real  *coefficientsHost; /* real */
+    float  *coordinatesHost;  /* rvec/float3 */
+    float  *coefficientsHost;
     /* Output (and possibly input if pme_kernel_gather does the reduction) */
-    float *forcesHost;       /* rvec/float3 */
+    float  *forcesHost;      /* rvec/float3 */
     /* Should the virial + energy live here as well? */
     /*! \brief Energy and virial intermediate host-side buffer, managed and pinned by PME GPU entirely. Size is 7 floats. */
     float *energyAndVirialHost;
@@ -318,8 +317,8 @@ struct gmx_pme_cuda_t
 
     // solve
     // 6 virial components, energy => 7 elements
-    real  *energyAndVirial;
-    size_t energyAndVirialSizeBytes; // (7 * sizeof(float))
+    float  *energyAndVirial;
+    size_t  energyAndVirialSizeBytes; // (7 * sizeof(float))
 
     /* GPU allocation sizes (counts, not bytes!) */
     int coordinatesSize;
