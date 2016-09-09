@@ -259,7 +259,7 @@ void pme_gpu_realloc_and_copy_coordinates(const gmx_pme_t *pme)
  */
 void pme_gpu_free_coordinates(const gmx_pme_t *pme)
 {
-    cu_free_buffered((void **)&pme->gpu->kernelParams.atoms.coordinates, &pme->gpu->coordinatesSize, &pme->gpu->coordinatesSizeAlloc);
+    cu_free_buffered(pme->gpu->kernelParams.atoms.coordinates, &pme->gpu->coordinatesSize, &pme->gpu->coordinatesSizeAlloc);
 }
 
 /*! \brief
@@ -286,7 +286,7 @@ void pme_gpu_realloc_and_copy_charges(const gmx_pme_t *pme)
  */
 void pme_gpu_free_charges(const gmx_pme_t *pme)
 {
-    cu_free_buffered((void **)&pme->gpu->kernelParams.atoms.coefficients, &pme->gpu->coefficientsSize, &pme->gpu->coefficientsSizeAlloc);
+    cu_free_buffered(pme->gpu->kernelParams.atoms.coefficients, &pme->gpu->coefficientsSize, &pme->gpu->coefficientsSizeAlloc);
 }
 
 /*! \brief
@@ -320,10 +320,8 @@ void pme_gpu_realloc_spline_data(const gmx_pme_t *pme)
 void pme_gpu_free_spline_data(const gmx_pme_t *pme)
 {
     /* Two arrays of the same size */
-    int currentSizeTemp      = pme->gpu->splineDataSize;
-    int currentSizeTempAlloc = pme->gpu->splineDataSizeAlloc;
-    cu_free_buffered((void **)&pme->gpu->kernelParams.atoms.theta, &currentSizeTemp, &currentSizeTempAlloc);
-    cu_free_buffered((void **)&pme->gpu->kernelParams.atoms.dtheta, &pme->gpu->splineDataSize, &pme->gpu->splineDataSizeAlloc);
+    cu_free_buffered(pme->gpu->kernelParams.atoms.theta);
+    cu_free_buffered(pme->gpu->kernelParams.atoms.dtheta, &pme->gpu->splineDataSize, &pme->gpu->splineDataSizeAlloc);
 }
 
 /*! \brief \internal
@@ -346,7 +344,7 @@ void pme_gpu_realloc_grid_indices(const gmx_pme_t *pme)
  */
 void pme_gpu_free_grid_indices(const gmx_pme_t *pme)
 {
-    cu_free_buffered((void **)&pme->gpu->kernelParams.atoms.gridlineIndices, &pme->gpu->gridlineIndicesSize, &pme->gpu->gridlineIndicesSizeAlloc);
+    cu_free_buffered(pme->gpu->kernelParams.atoms.gridlineIndices, &pme->gpu->gridlineIndicesSize, &pme->gpu->gridlineIndicesSizeAlloc);
 }
 
 void pme_gpu_realloc_grids(const gmx_pme_t *pme)
@@ -378,11 +376,9 @@ void pme_gpu_free_grids(const gmx_pme_t *pme)
     if (pme->gpu->bOutOfPlaceFFT)
     {
         /* Free a separate complex grid of the same size */
-        int tempGridSize      = pme->gpu->gridSize;
-        int tempGridSizeAlloc = pme->gpu->gridSizeAlloc;
-        cu_free_buffered((void **)&pme->gpu->kernelParams.grid.fourierGrid, &tempGridSize, &tempGridSizeAlloc);
+        cu_free_buffered(pme->gpu->kernelParams.grid.fourierGrid);
     }
-    cu_free_buffered((void **)&pme->gpu->kernelParams.grid.realGrid, &pme->gpu->gridSize, &pme->gpu->gridSizeAlloc);
+    cu_free_buffered(pme->gpu->kernelParams.grid.realGrid, &pme->gpu->gridSize, &pme->gpu->gridSizeAlloc);
 }
 
 void pme_gpu_clear_grids(const gmx_pme_t *pme)
@@ -506,7 +502,7 @@ void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_opt
 
         pme_gpu_alloc_energy_virial(pme);
 
-        GMX_RELEASE_ASSERT(pme->epsilon_r != 0.0f, "PME GPU: erroneous electostatic factor");
+        assert(pme->epsilon_r != 0.0f);
         pme->gpu->kernelParams.constants.elFactor = ONE_4PI_EPS0 / pme->epsilon_r;
     }
 

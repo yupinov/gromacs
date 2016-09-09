@@ -212,18 +212,18 @@ __global__ void pme_gather_kernel(const pme_gpu_kernel_params    kernelParams)
     float * __restrict__        forcesGlobal          = kernelParams.atoms.forces;
 
 
-    /* These are the particle indices - for the shared and global memory */
-    const int localIndex  = threadIdx.z;
-    const int globalIndex = blockIdx.x * blockDim.z + threadIdx.z;
+    /* These are the atom indices - for the shared and global memory */
+    const int localIndexGather  = threadIdx.z;
+    const int globalIndexGather = blockIdx.x * blockDim.z + threadIdx.z;
 
     const int particleDataSize = order * order; /* Number of data components and threads for a single particle */
     const int blockSize        = particlesPerBlock * particleDataSize;
     // should the array size aligned by warp size for shuffle?
 
-    const int                 thetaSize             = PME_SPREADGATHER_BLOCK_DATA_SIZE * order;
-    const int                 gridlineIndicesSize   = PME_SPREADGATHER_BLOCK_DATA_SIZE;
+    const int                 splineParamsSize             = PME_SPREADGATHER_BLOCK_DATA_SIZE * order;
+    const int                 gridlineIndicesSize          = PME_SPREADGATHER_BLOCK_DATA_SIZE;
     __shared__ int            gridlineIndices[gridlineIndicesSize];
-    __shared__ float2         splineParams[thetaSize]; /* Theta/dtheta pairs */
+    __shared__ float2         splineParams[splineParamsSize]; /* Theta/dtheta pairs */
 
     /* Spline Y/Z coordinates */
     const int ithy = threadIdx.y;
@@ -236,18 +236,22 @@ __global__ void pme_gather_kernel(const pme_gpu_kernel_params    kernelParams)
         + (threadIdx.y * blockDim.x)
         + threadIdx.x;
 
-    /* Staging */
-    const int particlesTillTheRangeEnd = kernelParams.atoms.nAtoms - blockIdx.x * blockDim.z;
-    assert(particlesTillTheRangeEnd > 0);
-
-    if ((threadLocalId < gridlineIndicesSize) && (threadLocalId < DIM * particlesTillTheRangeEnd))
+    /* Staging the atom gridline indices, DIM * particlesPerBlock = 24 threads */
+    const int localGridlineIndicesIndex  = threadLocalId;
+    const int globalGridlineIndicesIndex = blockIdx.x * gridlineIndicesSize + localGridlineIndicesIndex;
+    const int globalCheckIndices         = pme_gpu_check_atom_data_index(globalGridlineIndicesIndex, kernelParams.atoms.nAtoms * DIM);
+    if ((localGridlineIndicesIndex < gridlineIndicesSize) && globalCheckIndices)
     {
-        gridlineIndices[threadLocalId] = gridlineIndicesGlobal[blockIdx.x * gridlineIndicesSize + threadLocalId];
+        gridlineIndices[localGridlineIndicesIndex] = gridlineIndicesGlobal[globalGridlineIndicesIndex];
     }
-    if ((threadLocalId < thetaSize) && (threadLocalId < DIM * order * particlesTillTheRangeEnd))
+    /* Staging the spline parameters, DIM * order * particlesPerBlock = 96 threads */
+    const int localSplineParamsIndex  = threadLocalId;
+    const int globalSplineParamsIndex = blockIdx.x * splineParamsSize + localSplineParamsIndex;
+    const int globalCheckSplineParams = pme_gpu_check_atom_data_index(globalSplineParamsIndex, kernelParams.atoms.nAtoms * DIM * order);
+    if ((localSplineParamsIndex < splineParamsSize) && globalCheckSplineParams)
     {
-        splineParams[threadLocalId].x = thetaGlobal[blockIdx.x * thetaSize + threadLocalId];
-        splineParams[threadLocalId].y = dthetaGlobal[blockIdx.x * thetaSize + threadLocalId];
+        splineParams[localSplineParamsIndex].x = thetaGlobal[globalSplineParamsIndex];
+        splineParams[localSplineParamsIndex].y = dthetaGlobal[globalSplineParamsIndex];
     }
     __syncthreads();
 
@@ -255,18 +259,18 @@ __global__ void pme_gather_kernel(const pme_gpu_kernel_params    kernelParams)
     float           fy = 0.0f;
     float           fz = 0.0f;
 
-    const gmx_bool  particleRangeCheck = (globalIndex < kernelParams.atoms.nAtoms);
+    const int       globalCheck = pme_gpu_check_atom_data_index(globalIndexGather, kernelParams.atoms.nAtoms);
 
     //yupinov stage coefficient into a shared/local mem?
-    // this particle skipping conditional should be synchronized between spline and gather
-    // (garbage and NaNs might live in spline params for skipped particles)
-    if (particleRangeCheck && (coefficientGlobal[globalIndex] != 0.0f))
+    // this zero charge skipping conditional should be synchronized between spline and gather
+    // (garbage and NaNs might live in spline params for particles skipped by calcspline because we don't zero them currently!)
+    if ((coefficientGlobal[globalIndexGather] != 0.0f) && globalCheck)
     {
         const int    pny = kernelParams.grid.localGridSizePadded.y;
         const int    pnz = kernelParams.grid.localGridSizePadded.z;
 
-        const int    particleWarpIndex = localIndex % PME_SPREADGATHER_PARTICLES_PER_WARP;
-        const int    warpIndex         = localIndex / PME_SPREADGATHER_PARTICLES_PER_WARP;
+        const int    particleWarpIndex = localIndexGather % PME_SPREADGATHER_PARTICLES_PER_WARP;
+        const int    warpIndex         = localIndexGather / PME_SPREADGATHER_PARTICLES_PER_WARP;
 
         const int    thetaOffsetBase = PME_SPLINE_THETA_STRIDE * order * warpIndex * DIM * PME_SPREADGATHER_PARTICLES_PER_WARP + particleWarpIndex;
         const int    orderStride     = PME_SPLINE_THETA_STRIDE * DIM * PME_SPREADGATHER_PARTICLES_PER_WARP; // PME_SPLINE_ORDER_STRIDE
@@ -276,7 +280,7 @@ __global__ void pme_gather_kernel(const pme_gpu_kernel_params    kernelParams)
         const float2 tdy          = splineParams[thetaOffsetY];
         const int    thetaOffsetZ = thetaOffsetBase + ithz * orderStride + ZZ * dimStride;
         const float2 tdz          = splineParams[thetaOffsetZ];
-        const int    indexBaseYZ  = ((gridlineIndices[localIndex * DIM + XX] + 0) * pny + (gridlineIndices[localIndex * DIM + YY] + ithy)) * pnz + (gridlineIndices[localIndex * DIM + ZZ] + ithz);
+        const int    indexBaseYZ  = ((gridlineIndices[localIndexGather * DIM + XX] + 0) * pny + (gridlineIndices[localIndexGather * DIM + YY] + ithy)) * pnz + (gridlineIndices[localIndexGather * DIM + ZZ] + ithz);
 #pragma unroll
         for (int ithx = 0; (ithx < order); ithx++)
         {
@@ -292,23 +296,26 @@ __global__ void pme_gather_kernel(const pme_gpu_kernel_params    kernelParams)
     }
     __syncthreads();
 
-    // now particlesPerBlock particles have to reduce order^2 contributions each
+    // now (particlesPerBlock) particles have to reduce (order^2) contributions each
     __shared__ float3 fSumArray[particlesPerBlock];
     reduce_particle_forces<order, particleDataSize, blockSize>(fSumArray,
-                                                               localIndex, splineIndex, lineIndex,
+                                                               localIndexGather, splineIndex, lineIndex,
                                                                kernelParams.grid.localGridSizeFP,
                                                                fx, fy, fz);
     __syncthreads();
 
-    if (threadLocalId < DIM * particlesPerBlock)
+    /* Writing out the final forces, DIM * particlesPerBlock = 24 threads */
+    const int localForceIndex  = threadLocalId;
+    const int globalForceIndex = blockIdx.x * PME_SPREADGATHER_BLOCK_DATA_SIZE + localForceIndex;
+    const int globalCheckForce = pme_gpu_check_atom_data_index(globalForceIndex, kernelParams.atoms.nAtoms * DIM);
+    if ((localForceIndex < DIM * particlesPerBlock) && globalCheckForce)
     {
-        // new, different particle indices
-        const int     localIndexFinal = threadLocalId / DIM;
-        const int     dimIndex        = threadLocalId - localIndexFinal * DIM;
+        const int     localIndexOutput  = localForceIndex / DIM;
+        const int     dimIndex          = localForceIndex - localIndexOutput * DIM;
 
-        const float3  fSum             = fSumArray[localIndexFinal];
-        const int     globalIndexFinal = blockIdx.x * particlesPerBlock + localIndexFinal;
-        const float   coefficient      = coefficientGlobal[globalIndexFinal];
+        const float3  fSum               = fSumArray[localIndexOutput];
+        const int     globalIndexOutput  = blockIdx.x * particlesPerBlock + localIndexOutput;
+        const float   coefficient        = coefficientGlobal[globalIndexOutput];
 
         float         contrib;
         switch (dimIndex)
@@ -329,9 +336,7 @@ __global__ void pme_gather_kernel(const pme_gpu_kernel_params    kernelParams)
         contrib *= -coefficient;
         assert(!isnan(contrib));
 
-        const int globalForceIndex = blockIdx.x * PME_SPREADGATHER_BLOCK_DATA_SIZE + threadLocalId;
         assert(globalForceIndex < DIM * kernelParams.atoms.nAtoms);
-
         if (bOverwriteForces)
         {
             forcesGlobal[globalForceIndex] = contrib;

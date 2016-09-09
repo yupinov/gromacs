@@ -100,6 +100,21 @@
 #define PME_USE_TEXOBJ 1
 #endif
 
+/*! \brief \internal
+ * An inline CUDA function for checking the global atom data indices against the atom data array sizes.
+ *
+ * \param[in] atomDataIndexGlobal  The atom data index.
+ * \param[in] nAtomData            The atom data array element count.
+ * \returns                        0 if index is outside of bounds, non-0 otherwise.
+ *
+ * This is called from the spline_and_spread and gather PME kernels.
+ * The goal is to isolate the global range checks, and allow avoiding them with PME_USE_PADDING enabled.
+ */
+int __device__ __forceinline__ pme_gpu_check_atom_data_index(const int atomDataIndex, const int nAtomData)
+{
+    return (atomDataIndex < nAtomData);
+}
+
 
 //yupinov fractional shifts
 // gridline indices (including the neighboring cells) - basically, a modulo operation lookup table
@@ -140,11 +155,8 @@ struct pme_gpu_grid_params
 
     /* Grid pointers */
     /*! \brief Real space grid. */
-    float *realGrid;
-    /*! \brief Complex grid - used in FFT/solve.
-     *
-     * If we're using inplace cuFFT, then it's the same pointer as realGrid.
-     */
+    float  *realGrid;
+    /*! \brief Complex grid - used in FFT/solve. If we're using inplace cuFFT, then it's the same pointer as realGrid. */
     float2 *fourierGrid;
 
     /* Crude wrap/unwrap overlap zone sizes - can go away with a better rewrite of wrap/unwrap */
@@ -176,7 +188,6 @@ struct pme_gpu_grid_params
     float              *splineValuesArray;
     /*! \brief Offsets for X/Y/Z components of splineValuesArray */
     int3                splineValuesOffset;
-
 };
 
 /*! \brief \internal

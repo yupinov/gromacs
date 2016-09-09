@@ -104,10 +104,10 @@ __device__ __forceinline__ void calculate_splines(const float3 * __restrict__   
 #endif
     float data[dataSize * order];
 
-    const int localLimit  = (dimIndex < DIM) && (orderIndex < (PME_GPU_PARALLEL_SPLINE ? order : 1));
-    const int globalLimit = (globalIndexCalc < kernelParams.atoms.nAtoms);
+    const int localCheck  = (dimIndex < DIM) && (orderIndex < (PME_GPU_PARALLEL_SPLINE ? order : 1));
+    const int globalCheck = pme_gpu_check_atom_data_index(globalIndexCalc, kernelParams.atoms.nAtoms);
 
-    if (localLimit && globalLimit)
+    if (localCheck && globalCheck)
     {
         /* Indices interpolation */
 
@@ -257,19 +257,11 @@ __device__ __forceinline__ void spread_charges(const float * __restrict__      c
     const int            pny        = kernelParams.grid.localGridSizePadded.y;
     const int            pnz        = kernelParams.grid.localGridSizePadded.z;
 
-    /*
-       pnx = pmegrid->s[XX];
-       pny = pmegrid->s[YY];
-       pnz = pmegrid->s[ZZ];
-
-       offx = pmegrid->offset[XX];
-       offy = pmegrid->offset[YY];
-       offz = pmegrid->offset[ZZ];
-     */
-    const int offx = 0, offy = 0, offz = 0;
+    const int            offx = 0, offy = 0, offz = 0;
     // unused for now
 
-    if ((globalIndex < kernelParams.atoms.nAtoms) && (coefficient[localIndex] != 0.0f))
+    const int globalCheck = pme_gpu_check_atom_data_index(globalIndex, kernelParams.atoms.nAtoms);
+    if ((coefficient[localIndex] != 0.0f) && globalCheck)
     {
         // spline Y/Z coordinates
         const int ithy = threadIdx.y;
@@ -311,7 +303,8 @@ __device__ __forceinline__ void stage_charges(const int                  threadL
     const int globalIndexBase = blockIdx.x * particlesPerBlock;
     const int index           = threadLocalId;
     const int globalIndex     = globalIndexBase + index;
-    if ((index < particlesPerBlock) && (globalIndex < nAtoms))
+    const int globalCheck     = pme_gpu_check_atom_data_index(globalIndex, nAtoms);
+    if ((index < particlesPerBlock) && globalCheck)
     {
         coefficient[threadLocalId] = coefficientGlobal[globalIndex];
     }
@@ -328,7 +321,8 @@ __device__ __forceinline__ void stage_coordinates(const int                  thr
     const int globalIndexBase = blockIdx.x * particlesPerBlock * DIM;
     const int index           = threadLocalId - 1 * particlesPerBlock;
     const int globalIndex     = globalIndexBase + index;
-    if ((index >= 0) && (index < DIM * particlesPerBlock) && (globalIndex < DIM * nAtoms))
+    const int globalCheck     = pme_gpu_check_atom_data_index(globalIndex, DIM * nAtoms); /* DIM floats per atom */
+    if ((index >= 0) && (index < DIM * particlesPerBlock) && globalCheck)
     {
         coordinates[index] = coordinatesGlobal[globalIndex];
     }
@@ -503,8 +497,9 @@ __global__ void pme_spread_kernel(const pme_gpu_kernel_params kernelParams)
     const int localIndexCalc  = threadLocalId / DIM;
     const int dimIndex        = threadLocalId - localIndexCalc * DIM;
     const int globalIndexCalc = globalParticleIndexBase + localIndexCalc;
+    const int globalCheck     = pme_gpu_check_atom_data_index(globalIndexCalc, kernelParams.atoms.nAtoms);
 
-    if ((globalIndexCalc < kernelParams.atoms.nAtoms) && (dimIndex < DIM) && (localIndexCalc < particlesPerBlock))
+    if ((dimIndex < DIM) && (localIndexCalc < particlesPerBlock) && globalCheck)
     {
         gridlineIndices[localIndexCalc * DIM + dimIndex] = gridlineIndicesGlobal[globalIndexCalc * DIM + dimIndex];
 
@@ -693,10 +688,8 @@ void pme_gpu_realloc_and_copy_fract_shifts(const gmx_pme_t *pme)
 void pme_gpu_free_fract_shifts(const gmx_pme_t *pme)
 {
     /* Two arrays, same size */
-    int currentSizeTemp      = pme->gpu->fractShiftsSize;
-    int currentSizeTempAlloc = pme->gpu->fractShiftsSizeAlloc;
-    cu_free_buffered((void **)&pme->gpu->kernelParams.grid.fshArray, &currentSizeTemp, &currentSizeTempAlloc);
-    cu_free_buffered((void **)&pme->gpu->kernelParams.grid.nnArray, &pme->gpu->fractShiftsSize, &pme->gpu->fractShiftsSizeAlloc);
+    cu_free_buffered(pme->gpu->kernelParams.grid.fshArray);
+    cu_free_buffered(pme->gpu->kernelParams.grid.nnArray, &pme->gpu->fractShiftsSize, &pme->gpu->fractShiftsSizeAlloc);
     /* TODO: unbind textures here! */
 }
 
