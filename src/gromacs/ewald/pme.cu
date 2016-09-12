@@ -124,7 +124,7 @@ void pme_gpu_realloc_and_copy_bspline_values(const gmx_pme_t *pme)
     const int splineValuesOffset[DIM] = {0, pme->nkx, pme->nkx + pme->nky}; //?replace nkx
     memcpy(&pme->gpu->kernelParams.grid.splineValuesOffset, &splineValuesOffset, sizeof(splineValuesOffset));
 
-    const int newSplineValuesSize  = pme->nkx + pme->nky + pme->nkz;
+    const int newSplineValuesSize = pme->nkx + pme->nky + pme->nkz;
     cu_realloc_buffered((void **)&pme->gpu->kernelParams.grid.splineValuesArray, NULL, sizeof(float),
                         &pme->gpu->splineValuesSize, &pme->gpu->splineValuesSizeAlloc, newSplineValuesSize, pme->gpu->pmeStream, true);
 
@@ -218,38 +218,63 @@ void pme_gpu_copy_wrap_zones(const gmx_pme_t *pme)
 }
 
 /*! \brief
- * Reallocates the GPU buffer for the resulting PME forces.
+ * Reallocates the GPU buffer for the PME forces.
  *
- *
+ * \param[in] pme            The PME structure.
  */
 void pme_gpu_realloc_forces(const gmx_pme_t *pme)
 {
-    const int newForcesSize = pme->gpu->kernelParams.atoms.nAtoms * DIM;
-    assert(pme->gpu->kernelParams.atoms.nAtoms > 0);
+    const size_t newForcesSize = pme->gpu->nAtomsAlloc * DIM;
+    assert(newForcesSize > 0);
     cu_realloc_buffered((void **)&pme->gpu->kernelParams.atoms.forces, NULL, sizeof(float),
                         &pme->gpu->forcesSize, &pme->gpu->forcesSizeAlloc, newForcesSize, pme->gpu->pmeStream, true);
 }
 
+/*! \brief
+ * Frees the GPU buffer for the PME forces.
+ *
+ * \param[in] pme            The PME structure.
+ */
 void pme_gpu_free_forces(const gmx_pme_t *pme)
 {
     cu_free_buffered(pme->gpu->kernelParams.atoms.forces, &pme->gpu->forcesSize, &pme->gpu->forcesSizeAlloc);
 }
 
 /*! \brief
- * Reallocates the buffer on the GPU and copies the coordinates from the CPU buffer (pme->gpu->coordinatesHost).
+ * Reallocates the input coordinates buffer on the GPU (and clears the padded part if needed).
+ *
+ * \param[in] pme            The PME structure.
+ *
+ * Needs to be called on every DD step/in the beginning.
+ */
+void pme_gpu_realloc_coordinates(const gmx_pme_t *pme)
+{
+    const size_t newCoordinatesSize = pme->gpu->nAtomsAlloc * DIM;
+    assert(newCoordinatesSize > 0);
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.atoms.coordinates, NULL, sizeof(float),
+                        &pme->gpu->coordinatesSize, &pme->gpu->coordinatesSizeAlloc, newCoordinatesSize, pme->gpu->pmeStream, true);
+#if PME_GPU_USE_PADDING
+    const size_t paddingIndex = DIM * pme->gpu->kernelParams.atoms.nAtoms;
+    const size_t paddingCount = DIM * pme->gpu->nAtomsAlloc - paddingIndex;
+    if (paddingCount > 0)
+    {
+        cudaError_t stat = cudaMemsetAsync(pme->gpu->kernelParams.atoms.coordinates + paddingIndex, 0, paddingCount * sizeof(float), pme->gpu->pmeStream);
+        CU_RET_ERR(stat, "PME failed to clear the padded coordinates");
+    }
+#endif
+}
+
+/*! \brief
+ * Copies the input coordinates from the CPU buffer (pme->gpu->coordinatesHost) onto the GPU.
  *
  * \param[in] pme            The PME structure.
  *
  * Needs to be called every MD step. The coordinates are then used in the spline calculation.
- * Should probably be split into realloc (on DD) and copy (every step) parts...
  */
-void pme_gpu_realloc_and_copy_coordinates(const gmx_pme_t *pme)
+void pme_gpu_copy_coordinates(const gmx_pme_t *pme)
 {
-    assert(pme->gpu->kernelParams.atoms.nAtoms > 0);
     assert(pme->gpu->coordinatesHost);
-    const size_t newCoordinatesSize = pme->gpu->kernelParams.atoms.nAtoms * DIM;
-    cu_realloc_buffered((void **)&pme->gpu->kernelParams.atoms.coordinates, pme->gpu->coordinatesHost, sizeof(float),
-                        &pme->gpu->coordinatesSize, &pme->gpu->coordinatesSizeAlloc, newCoordinatesSize, pme->gpu->pmeStream, true);
+    cu_copy_H2D_async(pme->gpu->kernelParams.atoms.coordinates, pme->gpu->coordinatesHost, pme->gpu->kernelParams.atoms.nAtoms * DIM * sizeof(float), pme->gpu->pmeStream);
 }
 
 /*! \brief
@@ -263,20 +288,30 @@ void pme_gpu_free_coordinates(const gmx_pme_t *pme)
 }
 
 /*! \brief
- * Reallocates the buffer on the GPU and copies the charges (sometimes also called coefficients) from the CPU buffer (pme->gpu->coefficientsHost).
+ * Reallocates the buffer on the GPU and copies the charges (sometimes also called coefficients) from the CPU buffer (pme->gpu->coefficientsHost). Clears the padded part if needed.
  *
  * \param[in] pme            The PME structure.
  *
  * Does not need to be done every MD step, only whenever the local charges change.
  * (So, in the beginning of the run, or on DD step).
  */
-void pme_gpu_realloc_and_copy_charges(const gmx_pme_t *pme)
+void pme_gpu_realloc_and_copy_coefficients(const gmx_pme_t *pme)
 {
-    assert(pme->gpu->kernelParams.atoms.nAtoms > 0);
     assert(pme->gpu->coefficientsHost);
-    const size_t newCoefficientSize = pme->gpu->kernelParams.atoms.nAtoms;
-    cu_realloc_buffered((void **)&pme->gpu->kernelParams.atoms.coefficients, pme->gpu->coefficientsHost, sizeof(float),
-                        &pme->gpu->coefficientsSize, &pme->gpu->coefficientsSizeAlloc, newCoefficientSize, pme->gpu->pmeStream, true);
+    const size_t newCoefficientsSize = pme->gpu->nAtomsAlloc;
+    assert(newCoefficientsSize > 0);
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.atoms.coefficients, NULL, sizeof(float),
+                        &pme->gpu->coefficientsSize, &pme->gpu->coefficientsSizeAlloc, newCoefficientsSize, pme->gpu->pmeStream, true);
+    cu_copy_H2D_async(pme->gpu->kernelParams.atoms.coefficients, pme->gpu->coefficientsHost, pme->gpu->kernelParams.atoms.nAtoms * sizeof(float), pme->gpu->pmeStream);
+#if PME_GPU_USE_PADDING
+    const size_t paddingIndex = pme->gpu->kernelParams.atoms.nAtoms;
+    const size_t paddingCount = pme->gpu->nAtomsAlloc - paddingIndex;
+    if (paddingCount > 0)
+    {
+        cudaError_t stat = cudaMemsetAsync(pme->gpu->kernelParams.atoms.coefficients + paddingIndex, 0, paddingCount * sizeof(float), pme->gpu->pmeStream);
+        CU_RET_ERR(stat, "PME failed to clear the padded charges");
+    }
+#endif
 }
 
 /*! \brief
@@ -290,19 +325,17 @@ void pme_gpu_free_charges(const gmx_pme_t *pme)
 }
 
 /*! \brief
- * Reallocates the buffers on the GPU for the particle spline data.
+ * Reallocates the buffers on the GPU for the atoms spline data.
  *
  * \param[in] pme            The PME structure.
  */
 void pme_gpu_realloc_spline_data(const gmx_pme_t *pme)
 {
-    const int    order     = pme->pme_order;
-    const int    alignment = PME_SPREADGATHER_PARTICLES_PER_WARP;
-    /* Probably needs to be particlesPerBlock for full padding */
-    const size_t nAtomsPadded      = ((pme->gpu->kernelParams.atoms.nAtoms + alignment - 1) / alignment) * alignment;
+    const int    order             = pme->pme_order;
+    const int    alignment         = PME_SPREADGATHER_PARTICLES_PER_WARP;
+    const size_t nAtomsPadded      = ((pme->gpu->nAtomsAlloc + alignment - 1) / alignment) * alignment;
     const size_t newSplineDataSize = DIM * order * nAtomsPadded;
     assert(newSplineDataSize > 0);
-
     /* Two arrays of the same size */
     int currentSizeTemp      = pme->gpu->splineDataSize;
     int currentSizeTempAlloc = pme->gpu->splineDataSizeAlloc;
@@ -313,7 +346,7 @@ void pme_gpu_realloc_spline_data(const gmx_pme_t *pme)
 }
 
 /*! \brief
- * Frees the buffers on the GPU for the particle spline data.
+ * Frees the buffers on the GPU for the atoms spline data.
  *
  * \param[in] pme            The PME structure.
  */
@@ -331,7 +364,7 @@ void pme_gpu_free_spline_data(const gmx_pme_t *pme)
  */
 void pme_gpu_realloc_grid_indices(const gmx_pme_t *pme)
 {
-    const size_t newIndicesSize = DIM * pme->gpu->kernelParams.atoms.nAtoms;
+    const size_t newIndicesSize = DIM * pme->gpu->nAtomsAlloc;
     assert(newIndicesSize > 0);
     cu_realloc_buffered((void **)&pme->gpu->kernelParams.atoms.gridlineIndices, NULL, sizeof(int),
                         &pme->gpu->gridlineIndicesSize, &pme->gpu->gridlineIndicesSizeAlloc, newIndicesSize, pme->gpu->pmeStream, true);
@@ -383,14 +416,12 @@ void pme_gpu_free_grids(const gmx_pme_t *pme)
 
 void pme_gpu_clear_grids(const gmx_pme_t *pme)
 {
-    cudaStream_t s = pme->gpu->pmeStream;
-
-    cudaError_t  stat = cudaMemsetAsync(pme->gpu->kernelParams.grid.realGrid, 0, pme->gpu->gridSize * sizeof(float), s);
+    cudaError_t  stat = cudaMemsetAsync(pme->gpu->kernelParams.grid.realGrid, 0, pme->gpu->gridSize * sizeof(float), pme->gpu->pmeStream);
     /* Should the complex grid be cleared in some weird case? */
     CU_RET_ERR(stat, "cudaMemsetAsync on the PME grid error");
 }
 
-/*! \brief
+/*! \brief \internal
  * The PME GPU reinitialization function that is called both at the end of any MD step and on any load balancing step.
  *
  * \param[in] pme            The PME structure.
@@ -401,12 +432,6 @@ void pme_gpu_step_reinit(const gmx_pme_t *pme)
     pme_gpu_clear_energy_virial(pme);
 }
 
-/*! \brief
- * The PME GPU initialization function that is called in the beginning of the run and on any load balancing step.
- *
- * \param[in] pme            The PME structure.
- * ......
- */
 void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_opt_t *gpu_opt)
 {
     if (!pme_gpu_enabled(pme))
@@ -625,7 +650,7 @@ void pme_gpu_step_init(const gmx_pme_t *pme)
         return;
     }
 
-    pme_gpu_realloc_and_copy_coordinates(pme);
+    pme_gpu_copy_coordinates(pme);
 }
 
 void pme_gpu_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, float *coefficients)
@@ -635,14 +660,19 @@ void pme_gpu_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, float *coeffic
         return;
     }
 
-    const gmx_bool haveToRealloc = (pme->gpu->kernelParams.atoms.nAtoms < nAtoms);
     pme->gpu->kernelParams.atoms.nAtoms = nAtoms;
+    const int      alignment = 8; //yupinov FIXME: this is particlesPerBlock
+    pme->gpu->nAtomsPadded = ((nAtoms + alignment - 1) / alignment) * alignment;
+    int            nAtomsAlloc   = PME_GPU_USE_PADDING ? pme->gpu->nAtomsPadded : nAtoms;
+    const gmx_bool haveToRealloc = (pme->gpu->nAtomsAlloc < nAtomsAlloc);
+    pme->gpu->nAtomsAlloc = nAtomsAlloc;
 
     pme->gpu->coefficientsHost = reinterpret_cast<float *>(coefficients);
-    pme_gpu_realloc_and_copy_charges(pme);
+    pme_gpu_realloc_and_copy_coefficients(pme); /* no split => no realloc check */
 
-    if (haveToRealloc) /* This check might be redundant, but is logical */
+    if (haveToRealloc)                          /* This check might be redundant, but is logical */
     {
+        pme_gpu_realloc_coordinates(pme);
         pme_gpu_realloc_forces(pme);
         pme_gpu_realloc_spline_data(pme);
         pme_gpu_realloc_grid_indices(pme);

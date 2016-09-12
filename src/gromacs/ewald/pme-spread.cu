@@ -43,6 +43,8 @@
 
 #include "gmxpre.h"
 
+#include <assert.h>
+
 #include "pme.h"
 #include "pme-internal.h"
 
@@ -71,8 +73,7 @@ texture<float, 1, cudaReadModeElementType> fshTextureRef;
  */
 template <
     const int order,
-    const int particlesPerBlock,
-    const gmx_bool bCalcAlways
+    const int particlesPerBlock
     >
 __device__ __forceinline__ void calculate_splines(const float3 * __restrict__     coordinates,
                                                   float * __restrict__            coefficient,
@@ -97,7 +98,6 @@ __device__ __forceinline__ void calculate_splines(const float3 * __restrict__   
 
     const int        dataSize   = PME_GPU_PARALLEL_SPLINE ? PME_SPREADGATHER_BLOCK_DATA_SIZE : 1;
     const int        dataOffset = PME_GPU_PARALLEL_SPLINE ? sharedMemoryIndex : 0;
-
     /* Spline parameter storage, shared for PME_GPU_PARALLEL_SPLINE==1 to not overuse the local memory */
 #if PME_GPU_PARALLEL_SPLINE
     __shared__
@@ -132,13 +132,13 @@ __device__ __forceinline__ void calculate_splines(const float3 * __restrict__   
                 case 1:
                     fShiftIndex = kernelParams.grid.fshOffset.y;
                     n           = kernelParams.grid.localGridSizeFP.y;
-                    t           = /*x.x * constants.step.recipbox[dimIndex].x + */ x.y * kernelParams.step.recipbox[dimIndex].y + x.z * kernelParams.step.recipbox[dimIndex].z;
+                    t           = /*x.x * kernelParams.step.recipbox[dimIndex].x + */ x.y * kernelParams.step.recipbox[dimIndex].y + x.z * kernelParams.step.recipbox[dimIndex].z;
                     break;
 
                 case 2:
                     fShiftIndex = kernelParams.grid.fshOffset.z;
                     n           = kernelParams.grid.localGridSizeFP.z;
-                    t           = /*x.x * constants.step.recipbox[dimIndex].x + x.y * constants.step.recipbox[dimIndex].y + */ x.z * kernelParams.step.recipbox[dimIndex].z;
+                    t           = /*x.x * kernelParams.step.recipbox[dimIndex].x + x.y * kernelParams.step.recipbox[dimIndex].y + */ x.z * kernelParams.step.recipbox[dimIndex].z;
                     break;
             }
 
@@ -147,6 +147,7 @@ __device__ __forceinline__ void calculate_splines(const float3 * __restrict__   
             tInt = (int)t;
             fractX[sharedMemoryIndex] = t - tInt;
             fShiftIndex              += tInt;
+            assert(fShiftIndex >= 0);
 
 #if PME_USE_TEXTURES
 #if PME_USE_TEXOBJ
@@ -157,23 +158,24 @@ __device__ __forceinline__ void calculate_splines(const float3 * __restrict__   
             gridlineIndices[sharedMemoryIndex]     = tex1Dfetch(nnTextureRef, fShiftIndex);
 #endif
 #else
-            const float * __restrict__  fsh = constants.grid.fshArray;
-            const int * __restrict__    nn  = constants.grid.nnArray;
+            const float * __restrict__  fsh = kernelParams.grid.fshArray;
+            const int * __restrict__    nn  = kernelParams.grid.nnArray;
             fractX[sharedMemoryIndex]         += fsh[fShiftIndex];
             gridlineIndices[sharedMemoryIndex] = nn[fShiftIndex];
 #endif
-
             gridlineIndicesGlobal[globalIndexBase * DIM + sharedMemoryIndex] = gridlineIndices[sharedMemoryIndex];
         }
 
         /* B-spline calculation */
 
-        if (bCalcAlways || (coefficient[localIndexCalc] != 0.0f)) //yupinov thsi conditional should be same in spread and gather!
+        const int       chargeCheck = pme_gpu_check_atom_charge(coefficient[localIndexCalc]);
+        if (chargeCheck)
         {
             float       div;
             int         k;
 
             const float dr = fractX[sharedMemoryIndex];
+            assert(!isnan(dr));
 
             /* dr is relative offset from lower cell limit */
             data[(order - 1) * dataSize + dataOffset] = 0.0f;
@@ -210,6 +212,7 @@ __device__ __forceinline__ void calculate_splines(const float3 * __restrict__   
                 const int   thetaGlobalIndex = thetaGlobalOffsetBase + thetaIndex;
 
                 const float dtheta = ((k > 0) ? data[(k - 1) * dataSize + dataOffset] : 0.0f) - data[k * dataSize + dataOffset];
+                assert(!isnan(dtheta));
                 dthetaGlobal[thetaGlobalIndex] = dtheta;
             }
 
@@ -234,6 +237,7 @@ __device__ __forceinline__ void calculate_splines(const float3 * __restrict__   
                 const int thetaGlobalIndex = thetaGlobalOffsetBase + thetaIndex;
 
                 theta[thetaIndex]             = data[k * dataSize + dataOffset];
+                assert(!isnan(theta[thetaIndex]));
                 thetaGlobal[thetaGlobalIndex] = data[k * dataSize + dataOffset];
             }
         }
@@ -261,7 +265,8 @@ __device__ __forceinline__ void spread_charges(const float * __restrict__      c
     // unused for now
 
     const int globalCheck = pme_gpu_check_atom_data_index(globalIndex, kernelParams.atoms.nAtoms);
-    if ((coefficient[localIndex] != 0.0f) && globalCheck)
+    const int chargeCheck = pme_gpu_check_atom_charge(coefficient[localIndex]);
+    if (chargeCheck & globalCheck)
     {
         // spline Y/Z coordinates
         const int ithy = threadIdx.y;
@@ -280,6 +285,7 @@ __device__ __forceinline__ void spread_charges(const float * __restrict__      c
         const float  thz         = theta[thetaOffsetBase + ithz * orderStride + ZZ * dimStride];
         const float  thy         = theta[thetaOffsetBase + ithy * orderStride + YY * dimStride];
         const float  constVal    = thz * thy * coefficient[localIndex];
+        assert(!isnan(constVal));
         const int    constOffset = (iy + ithy) * pnz + (iz + ithz);
         const float *thx         = theta + (thetaOffsetBase + XX * dimStride);
 
@@ -287,6 +293,8 @@ __device__ __forceinline__ void spread_charges(const float * __restrict__      c
         for (int ithx = 0; (ithx < order); ithx++)
         {
             const int index_x = (ix + ithx) * pny * pnz;
+            assert(!isnan(thx[ithx * orderStride]));
+            assert(!isnan(gridGlobal[index_x + constOffset]));
             atomicAdd(gridGlobal + index_x + constOffset, thx[ithx * orderStride] * constVal);
         }
     }
@@ -295,36 +303,41 @@ __device__ __forceinline__ void spread_charges(const float * __restrict__      c
 template <
     const int particlesPerBlock
     >
-__device__ __forceinline__ void stage_charges(const int                  threadLocalId,
-                                              float * __restrict__       coefficient,
-                                              const float * __restrict__ coefficientGlobal,
-                                              const int                  nAtoms)
+__device__ __forceinline__ void stage_charges(const int                   threadLocalId,
+                                              float * __restrict__        coefficient,
+                                              const pme_gpu_kernel_params kernelParams)
 {
-    const int globalIndexBase = blockIdx.x * particlesPerBlock;
-    const int index           = threadLocalId;
-    const int globalIndex     = globalIndexBase + index;
-    const int globalCheck     = pme_gpu_check_atom_data_index(globalIndex, nAtoms);
-    if ((index < particlesPerBlock) && globalCheck)
+    /* Global memory pointer */
+    const float * __restrict__   coefficientGlobal = kernelParams.atoms.coefficients;
+
+    const int                    globalIndexBase = blockIdx.x * particlesPerBlock;
+    const int                    localIndex      = threadLocalId;
+    const int                    globalIndex     = globalIndexBase + localIndex;
+    const int                    globalCheck     = pme_gpu_check_atom_data_index(globalIndex, kernelParams.atoms.nAtoms);
+    if ((localIndex < particlesPerBlock) & globalCheck)
     {
-        coefficient[threadLocalId] = coefficientGlobal[globalIndex];
+        assert(!isnan(coefficientGlobal[globalIndex]));
+        coefficient[localIndex] = coefficientGlobal[globalIndex];
     }
 }
 
 template <
     const int particlesPerBlock
     >
-__device__ __forceinline__ void stage_coordinates(const int                  threadLocalId,
-                                                  float * __restrict__       coordinates,
-                                                  const float * __restrict__ coordinatesGlobal,
-                                                  const int                  nAtoms)
+__device__ __forceinline__ void stage_coordinates(const int                   threadLocalId,
+                                                  float * __restrict__        coordinates,
+                                                  const pme_gpu_kernel_params kernelParams)
 {
-    const int globalIndexBase = blockIdx.x * particlesPerBlock * DIM;
-    const int index           = threadLocalId - 1 * particlesPerBlock;
-    const int globalIndex     = globalIndexBase + index;
-    const int globalCheck     = pme_gpu_check_atom_data_index(globalIndex, DIM * nAtoms); /* DIM floats per atom */
-    if ((index >= 0) && (index < DIM * particlesPerBlock) && globalCheck)
+    /* Global memory pointer */
+    const float * __restrict__  coordinatesGlobal = kernelParams.atoms.coordinates;
+
+    const int                   globalIndexBase = blockIdx.x * particlesPerBlock * DIM;
+    const int                   localIndex      = threadLocalId - 1 * particlesPerBlock;
+    const int                   globalIndex     = globalIndexBase + localIndex;
+    const int                   globalCheck     = pme_gpu_check_atom_data_index(globalIndex, DIM * kernelParams.atoms.nAtoms); /* DIM floats per atom */
+    if ((localIndex >= 0) && (localIndex < DIM * particlesPerBlock) && globalCheck)
     {
-        coordinates[index] = coordinatesGlobal[globalIndex];
+        coordinates[localIndex] = coordinatesGlobal[globalIndex];
     }
 }
 
@@ -332,7 +345,6 @@ template <
     const int order,
     const int particlesPerBlock,
     const gmx_bool bCalcSplines,     // first part
-    const gmx_bool bCalcAlways,      // bypassing conditional in the first part
     const gmx_bool bSpread           // second part
     >
 //#if GMX_PTX_ARCH <= 300
@@ -341,10 +353,6 @@ __launch_bounds__(THREADS_PER_BLOCK, MIN_BLOCKS_PER_MP)
 //yupinov put bounds on separate kernels as well
 __global__ void pme_spline_and_spread_kernel(const pme_gpu_kernel_params kernelParams)
 {
-    /* Global memory pointers */
-    const float3 * __restrict__  coordinatesGlobal = kernelParams.atoms.coordinates;
-    const float * __restrict__   coefficientGlobal = kernelParams.atoms.coefficients;
-
     /* Gridline indices, ivec */
     __shared__ int                gridlineIndices[PME_SPREADGATHER_BLOCK_DATA_SIZE];
     // charges
@@ -371,17 +379,17 @@ __global__ void pme_spline_and_spread_kernel(const pme_gpu_kernel_params kernelP
         // coordinates
         __shared__ float coordinates[DIM * particlesPerBlock];
 
-        stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal, kernelParams.atoms.nAtoms);
-        stage_coordinates<particlesPerBlock>(threadLocalId, coordinates, (const float *)coordinatesGlobal, kernelParams.atoms.nAtoms);
+        stage_charges<particlesPerBlock>(threadLocalId, coefficient, kernelParams);
+        stage_coordinates<particlesPerBlock>(threadLocalId, coordinates, kernelParams);
         __syncthreads();
-        calculate_splines<order, particlesPerBlock, bCalcAlways>((const float3 *)coordinates, coefficient,
-                                                                 theta, gridlineIndices,
-                                                                 kernelParams,
-                                                                 globalCalcIndex,
-                                                                 localCalcIndex,
-                                                                 globalParticleIndexBase,
-                                                                 dimCalcIndex,
-                                                                 orderCalcIndex);
+        calculate_splines<order, particlesPerBlock>((const float3 *)coordinates, coefficient,
+                                                    theta, gridlineIndices,
+                                                    kernelParams,
+                                                    globalCalcIndex,
+                                                    localCalcIndex,
+                                                    globalParticleIndexBase,
+                                                    dimCalcIndex,
+                                                    orderCalcIndex);
     }
     else if (bSpread) // staging for spread
     {
@@ -401,7 +409,7 @@ __global__ void pme_spline_and_spread_kernel(const pme_gpu_kernel_params kernelP
            }
            }
          */
-        stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal, kernelParams.atoms.nAtoms);
+        stage_charges<particlesPerBlock>(threadLocalId, coefficient, kernelParams);
         __syncthreads();
     }
 
@@ -420,15 +428,10 @@ __global__ void pme_spline_and_spread_kernel(const pme_gpu_kernel_params kernelP
 
 template <
     const int order,
-    const int particlesPerBlock,
-    const gmx_bool bCalcAlways
+    const int particlesPerBlock
     >
 __global__ void pme_spline_kernel(const pme_gpu_kernel_params kernelParams)
 {
-    /* Global memory pointers */
-    const float3 * __restrict__  coordinatesGlobal = kernelParams.atoms.coordinates;
-    const float * __restrict__   coefficientGlobal = kernelParams.atoms.coefficients;
-
     // gridline indices
     __shared__ int               gridlineIndices[PME_SPREADGATHER_BLOCK_DATA_SIZE];
     // charges
@@ -449,19 +452,19 @@ __global__ void pme_spline_kernel(const pme_gpu_kernel_params kernelParams)
     const int dimIndex        = threadIdx.y;
     const int globalIndexCalc = globalIndexBase + localIndexCalc;
 
-    stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal, kernelParams.atoms.nAtoms);
-    stage_coordinates<particlesPerBlock>(threadLocalId, coordinates, (const float *)coordinatesGlobal, kernelParams.atoms.nAtoms);
+    stage_charges<particlesPerBlock>(threadLocalId, coefficient, kernelParams);
+    stage_coordinates<particlesPerBlock>(threadLocalId, coordinates, kernelParams);
     __syncthreads();
     // TODO: clean up type casts
 
-    calculate_splines<order, particlesPerBlock, bCalcAlways>((const float3 *)coordinates, coefficient,
-                                                             theta, gridlineIndices,
-                                                             kernelParams,
-                                                             globalIndexCalc,
-                                                             localIndexCalc,
-                                                             globalIndexBase,
-                                                             dimIndex,
-                                                             orderIndex);
+    calculate_splines<order, particlesPerBlock>((const float3 *)coordinates, coefficient,
+                                                theta, gridlineIndices,
+                                                kernelParams,
+                                                globalIndexCalc,
+                                                localIndexCalc,
+                                                globalIndexBase,
+                                                dimIndex,
+                                                orderIndex);
 }
 
 
@@ -470,7 +473,6 @@ template
 __global__ void pme_spread_kernel(const pme_gpu_kernel_params kernelParams)
 {
     /* Global memory pointers */
-    const float * __restrict__ coefficientGlobal     = kernelParams.atoms.coefficients;
     const int * __restrict__   gridlineIndicesGlobal = kernelParams.atoms.gridlineIndices;
     float * __restrict__       thetaGlobal           = kernelParams.atoms.theta;
 
@@ -491,7 +493,7 @@ __global__ void pme_spread_kernel(const pme_gpu_kernel_params kernelParams)
         + threadIdx.x;
 
 
-    stage_charges<particlesPerBlock>(threadLocalId, coefficient, coefficientGlobal, kernelParams.atoms.nAtoms);
+    stage_charges<particlesPerBlock>(threadLocalId, coefficient, kernelParams);
     __syncthreads();
 
     const int localIndexCalc  = threadLocalId / DIM;
@@ -589,6 +591,9 @@ __global__ void pme_wrap_kernel(const pme_gpu_kernel_params kernelParams)
            const int targetOverlapZ = (iz < overlap) ? 1 : 0;
            const int useAtomic = ((targetOverlapX + targetOverlapY + targetOverlapZ) > 1) ? 1 : 0;
          */
+        assert(!isnan(gridGlobal[targetIndex]));
+        assert(!isnan(gridGlobal[sourceIndex]));
+
         const int useAtomic = 1;
         if (useAtomic)
         {
@@ -598,6 +603,7 @@ __global__ void pme_wrap_kernel(const pme_gpu_kernel_params kernelParams)
         {
             gridGlobal[targetIndex] += gridGlobal[sourceIndex];
         }
+
     }
 }
 
@@ -734,8 +740,6 @@ void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
     const int ny  = pme->nky;
     const int nz  = pme->nkz;
 
-    const int n = pme->gpu->kernelParams.atoms.nAtoms;
-
     const int gridSize = pnx * pny * pnz * sizeof(float);
 
     // each spread kernel thread works on [order] contiguous x grid points, so we multiply the total number of threads by [order^2]
@@ -746,10 +750,10 @@ void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
     const int splineParticlesPerBlock = particlesPerBlock; //blockSize / DIM; - can be easily changed, just have to pass spread theta stride to the spline kernel!
     // duplicated below!
 
-    dim3 nBlocksSpread((n + blockSize - 1) / blockSize * order * order);
-    dim3 nBlocksSpline((n + splineParticlesPerBlock - 1) / splineParticlesPerBlock);
-    dim3 dimBlockSpread(order, order, particlesPerBlock); // used for spline_and_spread / spread
-    dim3 dimBlockSpline(splineParticlesPerBlock, DIM);    // used for spline
+    dim3 nBlocksSpread(pme->gpu->nAtomsPadded / particlesPerBlock);
+    dim3 nBlocksSpline((pme->gpu->kernelParams.atoms.nAtoms + splineParticlesPerBlock - 1) / splineParticlesPerBlock); //???
+    dim3 dimBlockSpread(order, order, particlesPerBlock);                                                              // used for spline_and_spread / spread
+    dim3 dimBlockSpline(splineParticlesPerBlock, DIM);                                                                 // used for spline
     switch (order)
     {
         case 4:
@@ -764,7 +768,7 @@ void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                     }
                     else
                     {
-                        pme_spline_kernel<4, blockSize / 4 / 4, FALSE> <<< nBlocksSpline, dimBlockSpline, 0, s>>> (pme->gpu->kernelParams);
+                        pme_spline_kernel<4, blockSize / 4 / 4> <<< nBlocksSpline, dimBlockSpline, 0, s>>> (pme->gpu->kernelParams);
                     }
                     CU_LAUNCH_ERR("pme_spline_kernel");
                     pme_gpu_timing_stop(pme, gtPME_SPLINE);
@@ -790,7 +794,7 @@ void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                     {
                         if (bSpread)
                         {
-                            pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, FALSE, TRUE> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (pme->gpu->kernelParams);
+                            pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, TRUE> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (pme->gpu->kernelParams);
                         }
                         else
                         {
