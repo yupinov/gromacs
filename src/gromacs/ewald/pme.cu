@@ -288,7 +288,7 @@ void pme_gpu_free_coordinates(const gmx_pme_t *pme)
 }
 
 /*! \brief
- * Reallocates the buffer on the GPU and copies the charges (sometimes also called coefficients) from the CPU buffer (pme->gpu->coefficientsHost). Clears the padded part if needed.
+ * Reallocates the buffer on the GPU and copies the charges/coefficients from the CPU buffer (pme->gpu->coefficientsHost). Clears the padded part if needed.
  *
  * \param[in] pme            The PME structure.
  *
@@ -664,13 +664,13 @@ void pme_gpu_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, float *coeffic
     const int      alignment = 8; //yupinov FIXME: this is particlesPerBlock
     pme->gpu->nAtomsPadded = ((nAtoms + alignment - 1) / alignment) * alignment;
     int            nAtomsAlloc   = PME_GPU_USE_PADDING ? pme->gpu->nAtomsPadded : nAtoms;
-    const gmx_bool haveToRealloc = (pme->gpu->nAtomsAlloc < nAtomsAlloc);
+    const gmx_bool haveToRealloc = (pme->gpu->nAtomsAlloc < nAtomsAlloc); /* This check might be redundant, but is logical */
     pme->gpu->nAtomsAlloc = nAtomsAlloc;
 
     pme->gpu->coefficientsHost = reinterpret_cast<float *>(coefficients);
-    pme_gpu_realloc_and_copy_coefficients(pme); /* no split => no realloc check */
+    pme_gpu_realloc_and_copy_coefficients(pme); /* could also be checked for haveToRealloc, but the copy always needs to be performed */
 
-    if (haveToRealloc)                          /* This check might be redundant, but is logical */
+    if (haveToRealloc)
     {
         pme_gpu_realloc_coordinates(pme);
         pme_gpu_realloc_forces(pme);
