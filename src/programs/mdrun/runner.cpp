@@ -1411,7 +1411,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
                fr ? fr->pmedata : NULL,
                EI_DYNAMICS(inputrec->eI) && !MULTISIM(cr));
 
-    // Free PME data (including the GPU)
+    // Free PME data
     if (pmedata)
     {
         gmx_pme_destroy(pmedata);

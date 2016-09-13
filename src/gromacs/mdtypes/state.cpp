@@ -190,7 +190,8 @@ void init_state(t_state *state, int natoms, int ngtc, int nnhpres, int nhchainle
     snew(state->enerhist, 1);
     init_energyhistory(state->enerhist);
     init_df_history(&state->dfhist, nlambda);
-    init_swapstate(&state->swapstate);
+    state->swapstate       = NULL;
+    state->edsamstate      = NULL;
     state->ddp_count       = 0;
     state->ddp_count_cg_gl = 0;
     state->cg_gl           = NULL;
@@ -199,28 +200,14 @@ void init_state(t_state *state, int natoms, int ngtc, int nnhpres, int nhchainle
 
 void done_state(t_state *state)
 {
-    if (state->x)
-    {
-        sfree(state->x);
-    }
-    if (state->v)
-    {
-        sfree(state->v);
-    }
-    if (state->cg_p)
-    {
-        sfree(state->cg_p);
-    }
+    sfree(state->x);
+    sfree(state->v);
+    sfree(state->cg_p);
+    sfree(state->enerhist);
     state->nalloc = 0;
-    if (state->cg_gl)
-    {
-        sfree(state->cg_gl);
-    }
+    sfree(state->cg_gl);
     state->cg_gl_nalloc = 0;
-    if (state->lambda)
-    {
-        sfree(state->lambda);
-    }
+    sfree(state->lambda);
     if (state->ngtc > 0)
     {
         sfree(state->nosehoover_xi);
