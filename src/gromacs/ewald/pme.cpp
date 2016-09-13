@@ -1725,7 +1725,7 @@ void gmx_pme_gpu_launch(gmx_pme_t      *pme,
 
     wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME);
     pme_gpu_set_constants(pme, box, ewaldcoeff_q); // TODO call this conditionally
-    pme_gpu_reinit_atoms(pme, nAtoms, charges);    // TODO call this conditionally
+    pme_gpu_init_atoms_once(pme, nAtoms, charges);
     pme_gpu_set_io_ranges(pme, x, f);              /* should this be called every step, or on DD/DLB, or on bCalcEnerVir change? */
     pme_gpu_step_init(pme);
     wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);

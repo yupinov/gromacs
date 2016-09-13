@@ -322,6 +322,13 @@ struct gmx_pme_cuda_t
      * TRUE by default, disabled by setting the environment variable GMX_DISABLE_CUDA_TIMING.
      */
     gmx_bool bTiming;
+    /*! \brief A boolean which tells the PME to call the pme_gpu_reinit_atoms at the step beginning.
+     * Currently it is only used for the very first MD step.
+     * The DD pme_gpu_reinit_atoms gets called in gmx_pmeonly instead.
+     * Set to TRUE initially, then to FALSE after pme_gpu_reinit_atoms is called.
+     */
+    gmx_bool bNeedToUpdateAtoms;
+
 
     //gmx_bool bUseTextureObjects;  /* If false, then use references [unused] */
 

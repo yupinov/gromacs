@@ -380,7 +380,10 @@ int gmx_pme_recv_coeffs_coords(struct gmx_pme_pp *pme_pp,
                                real *lambda_q, real *lambda_lj,
                                gmx_bool *bEnerVir,
                                gmx_int64_t *step,
-                               ivec grid_size, real *ewaldcoeff_q, real *ewaldcoeff_lj);
+                               ivec grid_size,
+                               real *ewaldcoeff_q,
+                               real *ewaldcoeff_lj,
+                               gmx_bool *chargesChanged);
 
 /*! \brief Send the PME mesh force, virial and energy to the PP-only nodes */
 void gmx_pme_send_force_vir_ener(struct gmx_pme_pp *pme_pp,

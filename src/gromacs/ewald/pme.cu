@@ -479,18 +479,20 @@ void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_opt
         pme->gpu->bGPUFFT = pme->gpu->bGPUSingle && !getenv("GMX_PME_GPU_FFTW");
         /* cuFFT will only used for a single rank. */
 
-        pme->gpu->bGPUSolve = true;
+        pme->gpu->bGPUSolve = TRUE;
         /* pme->gpu->bGPUFFT - CPU solve with the CPU FFTW is definitely broken at the moment - 20160511 */
 
-        pme->gpu->bGPUGather = true;
+        pme->gpu->bGPUGather = TRUE;
         /* CPU gather has got to be broken as well due to different theta/dtheta layout. */
 
-        pme->gpu->bOutOfPlaceFFT = true;
+        pme->gpu->bOutOfPlaceFFT = TRUE;
         /* This should give better performance, according to the cuFFT documentation.
          * The performance seems to be the same though.
          * Perhaps the limiting factor is using paddings/overlaps in the grid, which is also frowned upon.
          * PME could also try to pick up nice grid sizes (with factors of 2, 3, 5, 7)
          */
+
+        pme->gpu->bNeedToUpdateAtoms = TRUE;                             /* For the delayed atom data init */
 
         pme->gpu->bTiming = (getenv("GMX_DISABLE_CUDA_TIMING") == NULL); /* This should also check for NB GPU being launched, and NB should check for PME GPU! */
 
@@ -531,7 +533,7 @@ void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_opt
         pme->gpu->kernelParams.constants.elFactor = ONE_4PI_EPS0 / pme->epsilon_r;
     }
 
-    const bool gridSizeChanged = true; /* This function is called on DLB steps as well */
+    const bool gridSizeChanged = TRUE; /* This function is called on DLB steps as well */
     if (gridSizeChanged)               /* The need for reallocation is checked for inside, might do a redundant grid size increase check here anyway?... */
     {
         /* The grid size variants */
@@ -676,6 +678,15 @@ void pme_gpu_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, float *coeffic
         pme_gpu_realloc_forces(pme);
         pme_gpu_realloc_spline_data(pme);
         pme_gpu_realloc_grid_indices(pme);
+    }
+}
+
+void pme_gpu_init_atoms_once(const gmx_pme_t *pme, const int nAtoms, float *coefficients)
+{
+    if (pme->gpu->bNeedToUpdateAtoms)
+    {
+        pme_gpu_reinit_atoms(pme, nAtoms, coefficients);
+        pme->gpu->bNeedToUpdateAtoms = FALSE;
     }
 }
 
