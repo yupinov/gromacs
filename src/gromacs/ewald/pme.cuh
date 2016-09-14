@@ -89,6 +89,8 @@
 #define PME_SPREADGATHER_BLOCK_DATA_SIZE (particlesPerBlock * DIM)
 
 
+
+
 // and block sizes should also be here....
 
 
@@ -113,6 +115,13 @@
 /* 0: Atoms with zero charges are processed by PME. Could introduce some overhead.
  * 1: Atoms with zero charges are not processed by PME. Adds branching to the spread/gather.
  *    Could be good for performance in specific systems with lots of neutral atoms.
+ */
+
+#define PME_GPU_ENERGY_AND_VIRIAL_COUNT 7
+/* This is a number of output floats of PME solve.
+ * 6 floats for symmetric virial matrix + 1 float for reciprocal energy.
+ * Better to have a magic number like this defined in one place.
+ * Works better as a define - for more concise CUDA kernel.
  */
 
 /*! \brief \internal
@@ -164,6 +173,9 @@ struct pme_gpu_const_params
 {
     /*! \brief Electrostatics coefficient = ONE_4PI_EPS0 / pme->epsilon_r */
     float elFactor;
+    /*! \brief Energy and virial GPU array. Size is PME_GPU_ENERGY_AND_VIRIAL_COUNT floats.
+     * Order is ??? */
+    float *virialAndEnergy;
 };
 
 /*! \brief \internal
@@ -353,18 +365,11 @@ struct gmx_pme_cuda_t
     float  *forcesHost;      /* rvec/float3 */
     /* Should the virial + energy live here as well? */
     /*! \brief Energy and virial intermediate host-side buffer, managed and pinned by PME GPU entirely. Size is 7 floats. */
-    float *energyAndVirialHost;
+    float *virialAndEnergyHost;
     /*! \brief B-spline values (temporary?) intermediate host-side buffers, managed and pinned by PME GPU entirely. Sizes are the grid sizes. */
     float *splineValuesHost[DIM];
     /*! \brief Sizes of the corresponding splineValuesHost arrays in bytes */
     size_t splineValuesHostSizes[DIM]; //oh god the names
-
-    /* Some device pointers/objects below (assigned from the PMEStoragePointers by PMEMemoryFetch) */
-
-    // solve
-    // 6 virial components, energy => 7 elements
-    float  *energyAndVirial;
-    size_t  energyAndVirialSizeBytes; // (7 * sizeof(float))
 
     /*! \brief Number of local atoms, padded to be divisible by particlesPerBlock.
      * Used for kernel scheduling.

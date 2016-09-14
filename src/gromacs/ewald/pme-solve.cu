@@ -50,25 +50,24 @@
 
 #define THREADS_PER_BLOCK (4 * warp_size)
 
-template<
-    const gmx_bool bEnerVir,
-    // should the energy/virial be computed
-    const gmx_bool YZXOrdering
-    // false - GPU solve works in a XYZ ordering (after a single-rank cuFFT)
-    // true - GPU solve works in a YZX ordering, like the CPU one (after FFTW)
-    >
+template<const gmx_bool bEnerVir,
+         // should the energy/virial be computed
+         const gmx_bool YZXOrdering
+         // false - GPU solve works in a XYZ ordering (after a single-rank cuFFT)
+         // true - GPU solve works in a YZX ordering, like the CPU one (after FFTW)
+         >
 __global__ void pme_solve_kernel
     (const int localCountMajor, const int localCountMiddle, const int localCountMinor,
     const int localOffsetMinor, const int localOffsetMajor, const int localOffsetMiddle,
     const int localSizeMinor, /*const int localSizeMajor,*/ const int localSizeMiddle,
-    const struct pme_gpu_kernel_params kernelParams,
-    float * __restrict__ virialAndEnergy)
+    const struct pme_gpu_kernel_params kernelParams
+    )
 {
     /* Global memory pointers */
-    const float * __restrict__ BSplineModuleMinor  = kernelParams.grid.splineValuesArray + (YZXOrdering ? kernelParams.grid.splineValuesOffset.x : kernelParams.grid.splineValuesOffset.z);
-    const float * __restrict__ BSplineModuleMiddle = kernelParams.grid.splineValuesArray + (YZXOrdering ? kernelParams.grid.splineValuesOffset.z : kernelParams.grid.splineValuesOffset.y);
-    const float * __restrict__ BSplineModuleMajor  = kernelParams.grid.splineValuesArray + (YZXOrdering ? kernelParams.grid.splineValuesOffset.y : kernelParams.grid.splineValuesOffset.x);
-
+    const float * __restrict__ BSplineModuleMinor    = kernelParams.grid.splineValuesArray + (YZXOrdering ? kernelParams.grid.splineValuesOffset.x : kernelParams.grid.splineValuesOffset.z);
+    const float * __restrict__ BSplineModuleMiddle   = kernelParams.grid.splineValuesArray + (YZXOrdering ? kernelParams.grid.splineValuesOffset.z : kernelParams.grid.splineValuesOffset.y);
+    const float * __restrict__ BSplineModuleMajor    = kernelParams.grid.splineValuesArray + (YZXOrdering ? kernelParams.grid.splineValuesOffset.y : kernelParams.grid.splineValuesOffset.x);
+    float * __restrict__       virialAndEnergyGlobal = kernelParams.constants.virialAndEnergy;
 
 
     // this is a PME solve kernel
@@ -90,8 +89,6 @@ __global__ void pme_solve_kernel
     int                    maxkMajor  = (nMajor + 1) / 2;  //X or Y
     int                    maxkMiddle = (nMiddle + 1) / 2; //Y OR Z => only check for !YZX
     int                    maxkMinor  = (nMinor + 1) / 2;  //Z or X => only check for YZX
-
-    const int              enerVirSize = 7;
 
     float                  energy = 0.0f;
     float                  virxx  = 0.0f, virxy = 0.0f, virxz = 0.0f, viryy = 0.0f, viryz = 0.0f, virzz = 0.0f;
@@ -216,7 +213,7 @@ __global__ void pme_solve_kernel
          */
 #endif
         {
-            __shared__ float virialAndEnergyShared[enerVirSize * blockSize];
+            __shared__ float virialAndEnergyShared[PME_GPU_ENERGY_AND_VIRIAL_COUNT * blockSize];
             // 3.5k smem per block - a serious limiter!
 
             /*  a 7-thread reduction in shared memory inspired by reduce_force_j_generic */
@@ -236,7 +233,7 @@ __global__ void pme_solve_kernel
             for (int s = blockSize >> 1; s >= warp_size; s >>= 1)
             {
 #pragma unroll
-                for (int i = 0; i < enerVirSize; i++)
+                for (int i = 0; i < PME_GPU_ENERGY_AND_VIRIAL_COUNT; i++)
                 {
                     if (threadLocalId < s) // split per threads?
                     {
@@ -246,9 +243,9 @@ __global__ void pme_solve_kernel
                 __syncthreads();
             }
 
-            const int threadsPerComponent    = warp_size / enerVirSize;         // this is also the stride, will be 32 / 7 = 4
-            const int contributionsPerThread = warp_size / threadsPerComponent; // will be 32 / 4 = 8
-            if (threadLocalId < enerVirSize * threadsPerComponent)
+            const int threadsPerComponent    = warp_size / PME_GPU_ENERGY_AND_VIRIAL_COUNT; // this is also the stride, will be 32 / 7 = 4
+            const int contributionsPerThread = warp_size / threadsPerComponent;             // will be 32 / 4 = 8
+            if (threadLocalId < PME_GPU_ENERGY_AND_VIRIAL_COUNT * threadsPerComponent)
             {
                 const int componentIndex        = threadLocalId / threadsPerComponent;
                 const int threadComponentOffset = threadLocalId - componentIndex * threadsPerComponent;
@@ -259,8 +256,7 @@ __global__ void pme_solve_kernel
                 {
                     sum += virialAndEnergyShared[componentIndex * blockSize + j * threadsPerComponent + threadComponentOffset];
                 }
-                // write to global memory
-                atomicAdd(virialAndEnergy + componentIndex, sum);
+                atomicAdd(virialAndEnergyGlobal + componentIndex, sum);
             }
 
             /* A naive reduction */
@@ -289,21 +285,21 @@ __global__ void pme_solve_kernel
                }
                if (threadLocalId < sizing)
                {
-                atomicAdd(virialAndEnergy + threadLocalId, virialAndEnergyShared[threadLocalId]);
+                atomicAdd(virialAndEnergyGlobal + threadLocalId, virialAndEnergyShared[threadLocalId]);
                }
              */
         }
     }
 }
 
-void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
-                   gmx_bool bEnerVir)
+void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
 {
     /* do recip sum over local cells in grid */
 
     const gmx_bool YZXOrdering = !pme->gpu->bGPUFFT;
     /* true: y major, z middle, x minor or continuous - the CPU FFTW way */
     /* false: x major, y middle, z minor - the single rank GPU cuFFT way */
+    //printf("ordering %d\n", YZXOrdering);
 
     cudaStream_t s = pme->gpu->pmeStream;
 
@@ -319,15 +315,9 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
         gmx_parallel_3dfft_complex_limits(pme->pfft_setup[PME_GRID_QA], complex_order, local_ndata, local_offset, local_size);
     }
 
-    const int minorDim  = !YZXOrdering ? ZZ : XX;
-    const int middleDim = !YZXOrdering ? YY : ZZ;
-    const int majorDim  = !YZXOrdering ? XX : YY;
-
-    /*
-       const int nMinor =  local_ndata[minorDim]; //!YZXOrdering ? pme->nkz : pme->nkx;
-       const int nMajor = local_ndata[majorDim];
-       const int nMiddle = local_ndata[middleDim]; //these are basic sizes, so what
-     */
+    const int   minorDim  = !YZXOrdering ? ZZ : XX;
+    const int   middleDim = !YZXOrdering ? YY : ZZ;
+    const int   majorDim  = !YZXOrdering ? XX : YY;
 
     const int   gridSize = local_size[XX] * local_size[YY] * local_size[ZZ] * sizeof(float2);
 
@@ -361,8 +351,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
             (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim],
              local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
              local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-             pme->gpu->kernelParams,
-             pme->gpu->energyAndVirial);
+             pme->gpu->kernelParams);
         }
         else
         {
@@ -370,8 +359,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
             (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
              local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
              local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-             pme->gpu->kernelParams,
-             pme->gpu->energyAndVirial);
+             pme->gpu->kernelParams);
         }
     }
     else
@@ -382,8 +370,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
             (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim],
              local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
              local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-             pme->gpu->kernelParams,
-             pme->gpu->energyAndVirial);
+             pme->gpu->kernelParams);
         }
         else
         {
@@ -391,8 +378,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
             (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
              local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
              local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-             pme->gpu->kernelParams,
-             pme->gpu->energyAndVirial);
+             pme->gpu->kernelParams);
         }
     }
     CU_LAUNCH_ERR("pme_solve_kernel");
@@ -401,7 +387,8 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid,
 
     if (bEnerVir)
     {
-        cu_copy_D2H_async(pme->gpu->energyAndVirialHost, pme->gpu->energyAndVirial, pme->gpu->energyAndVirialSizeBytes, s);
+        cu_copy_D2H_async(pme->gpu->virialAndEnergyHost, pme->gpu->kernelParams.constants.virialAndEnergy,
+                          PME_GPU_ENERGY_AND_VIRIAL_COUNT * sizeof(float), s);
         cudaError_t stat = cudaEventRecord(pme->gpu->syncEnerVirD2H, s);
         CU_RET_ERR(stat, "PME solve energy/virial sync fail");
     }
@@ -428,18 +415,19 @@ void pme_gpu_sync_energy_virial(const gmx_pme_t *pme)
     float                     energy            = 0.0;
     float                     virxx             = 0.0, virxy = 0.0, virxz = 0.0, viryy = 0.0, viryz = 0.0, virzz = 0.0;
 
-    int j = 0;
-    virxx  += pme->gpu->energyAndVirialHost[j++];
-    viryy  += pme->gpu->energyAndVirialHost[j++];
-    virzz  += pme->gpu->energyAndVirialHost[j++];
-    virxy  += pme->gpu->energyAndVirialHost[j++];
-    virxz  += pme->gpu->energyAndVirialHost[j++];
-    viryz  += pme->gpu->energyAndVirialHost[j++];
-    energy += pme->gpu->energyAndVirialHost[j++];
-    for (j = 0; j < 7; j++)
+    for (int j = 0; j < PME_GPU_ENERGY_AND_VIRIAL_COUNT; j++)
     {
-        GMX_RELEASE_ASSERT(!isnan(pme->gpu->energyAndVirialHost[j]), "PME GPU produces incorrect energy.");
+        GMX_ASSERT(!isnan(pme->gpu->virialAndEnergyHost[j]), "PME GPU produces incorrect energy/virial.");
     }
+
+    int j = 0;
+    virxx  += pme->gpu->virialAndEnergyHost[j++];
+    viryy  += pme->gpu->virialAndEnergyHost[j++];
+    virzz  += pme->gpu->virialAndEnergyHost[j++];
+    virxy  += pme->gpu->virialAndEnergyHost[j++];
+    virxz  += pme->gpu->virialAndEnergyHost[j++];
+    viryz  += pme->gpu->virialAndEnergyHost[j++];
+    energy += pme->gpu->virialAndEnergyHost[j++];
 
     work_vir_q[XX][XX] = 0.25 * virxx;
     work_vir_q[YY][YY] = 0.25 * viryy;

@@ -57,31 +57,30 @@
 #include "pme-gpu.h"
 
 /*! \brief \internal
- *
- * Allocates the energy and virial memory both on GPU and CPU (7 floats).
+ * Allocates the fixed size energy and virial buffer both on GPU and CPU.
  *
  * \param[in] pme            The PME structure.
  */
 void pme_gpu_alloc_energy_virial(const gmx_pme_t *pme)
 {
-    pme->gpu->energyAndVirialSizeBytes = 7 * sizeof(float); /* 6 virial components + energy */
-    cudaError_t stat = cudaMalloc((void **)&pme->gpu->energyAndVirial, pme->gpu->energyAndVirialSizeBytes);
+    const size_t energyAndVirialSize = PME_GPU_ENERGY_AND_VIRIAL_COUNT * sizeof(float);
+    cudaError_t  stat                = cudaMalloc((void **)&pme->gpu->kernelParams.constants.virialAndEnergy, energyAndVirialSize);
     CU_RET_ERR(stat, "cudaMalloc failed on PME energy and virial");
-    pmalloc((void **)&pme->gpu->energyAndVirialHost, pme->gpu->energyAndVirialSizeBytes);
+    pmalloc((void **)&pme->gpu->virialAndEnergyHost, energyAndVirialSize);
 }
 
 /*! \brief \internal
- * Frees the energy and virial memory both on GPU and CPU (7 floats).
+ * Frees the energy and virial memory both on GPU and CPU.
  *
  * \param[in] pme            The PME structure.
  */
 void pme_gpu_free_energy_virial(const gmx_pme_t *pme)
 {
-    cudaError_t stat = cudaFree(pme->gpu->energyAndVirial);
+    cudaError_t stat = cudaFree(pme->gpu->kernelParams.constants.virialAndEnergy);
     CU_RET_ERR(stat, "cudaFree failed on PME energy and virial");
-    pme->gpu->energyAndVirial = NULL;
-    pfree(pme->gpu->energyAndVirialHost);
-    pme->gpu->energyAndVirialHost = NULL;
+    pme->gpu->kernelParams.constants.virialAndEnergy = NULL;
+    pfree(pme->gpu->virialAndEnergyHost);
+    pme->gpu->virialAndEnergyHost = NULL;
 }
 
 /*! \brief
@@ -91,7 +90,8 @@ void pme_gpu_free_energy_virial(const gmx_pme_t *pme)
  */
 void pme_gpu_clear_energy_virial(const gmx_pme_t *pme)
 {
-    cudaError_t stat = cudaMemsetAsync(pme->gpu->energyAndVirial, 0, pme->gpu->energyAndVirialSizeBytes, pme->gpu->pmeStream);
+    cudaError_t stat = cudaMemsetAsync(pme->gpu->kernelParams.constants.virialAndEnergy, 0,
+                                       PME_GPU_ENERGY_AND_VIRIAL_COUNT * sizeof(float), pme->gpu->pmeStream);
     CU_RET_ERR(stat, "PME energies/virial cudaMemsetAsync error");
 }
 
@@ -102,14 +102,14 @@ void pme_gpu_clear_energy_virial(const gmx_pme_t *pme)
  */
 void pme_gpu_copy_recipbox(const gmx_pme_t *pme)
 {
-    const float3 box[3] =
+    const float3 newBox[3] =
     {
         {pme->recipbox[XX][XX], pme->recipbox[YY][XX], pme->recipbox[ZZ][XX]},
         {                  0.0, pme->recipbox[YY][YY], pme->recipbox[ZZ][YY]},
         {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
     };
     assert(pme->recipbox[XX][XX] != 0.0f);
-    memcpy(pme->gpu->kernelParams.step.recipbox, box, sizeof(box));
+    memcpy(pme->gpu->kernelParams.step.recipbox, newBox, sizeof(newBox));
 }
 
 /*! \brief \internal
