@@ -1734,8 +1734,6 @@ void gmx_pme_gpu_launch(gmx_pme_t      *pme,
     assert(pme->nnodes > 0);
     assert(pme->nnodes == 1 || pme->ndecompdim > 0);
 
-    gmx::invertBoxMatrix(box, pme->recipbox);
-
     bFirst = TRUE;
 
     wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME);

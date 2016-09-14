@@ -47,6 +47,8 @@
 #include "gromacs/hardware/hw_info.h"
 #include "gromacs/utility/logger.h"
 
+#include "gromacs/math/invertmatrix.h"
+
 /* The rest */
 #include <assert.h>
 
@@ -399,7 +401,7 @@ void pme_gpu_free_grids(const gmx_pme_t *pme)
 
 void pme_gpu_clear_grids(const gmx_pme_t *pme)
 {
-    cudaError_t  stat = cudaMemsetAsync(pme->gpu->kernelParams.grid.realGrid, 0, pme->gpu->gridSize * sizeof(float), pme->gpu->pmeStream);
+    cudaError_t stat = cudaMemsetAsync(pme->gpu->kernelParams.grid.realGrid, 0, pme->gpu->gridSize * sizeof(float), pme->gpu->pmeStream);
     /* Should the complex grid be cleared in some weird case? */
     CU_RET_ERR(stat, "cudaMemsetAsync on the PME grid error");
 }
@@ -630,31 +632,31 @@ void pme_gpu_step_init(const gmx_pme_t *pme, const matrix box)
 
     pme_gpu_copy_coordinates(pme);
 
-    /* Assuming the pme->recipbox is calculated from the box already, like this:
-     * gmx::invertBoxMatrix(box, pme->recipbox);
-     * It could be called here instead of pme.cpp, if CUDA was friends with C++11.
-     *
-     * The GPU recipBox is transposed as compared to the CPU pme->recipbox.
-     * Basically, spread uses matrix columns (while solve and gather use rows).
-     * This storage format might be optimized for better access patterns.
+    const size_t   boxMemorySize        = sizeof(matrix);
+    const gmx_bool haveToUpdateUnitCell = memcmp(pme->gpu->previousBox, box, boxMemorySize);
+    /* There could be a pressure coupling check here, but this is more straightforward.
+     * This is an exact comparison of float values though.
      */
-    const float3   newRecipBox[DIM] =
-    {
-        {pme->recipbox[XX][XX], pme->recipbox[YY][XX], pme->recipbox[ZZ][XX]},
-        {                  0.0, pme->recipbox[YY][YY], pme->recipbox[ZZ][YY]},
-        {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
-    };
-    const size_t   recipBoxMemorySize   = sizeof(newRecipBox);
-    const gmx_bool haveToUpdateUnitCell = memcmp(pme->gpu->kernelParams.step.recipBox, newRecipBox, recipBoxMemorySize);
-    /* There could be a pressure coupling check here, but this is more straightforward. */
     if (haveToUpdateUnitCell)
     {
-        /* The reciprocal box have changed, and the inverse is unique, so the box must have changed too.
-         * Updating both the recipBox and boxVolume */
-        assert(newRecipBox[XX][XX] != 0.0f);
-        memcpy(pme->gpu->kernelParams.step.recipBox, newRecipBox, recipBoxMemorySize);
+        memcpy(pme->gpu->previousBox, box, boxMemorySize);
+
         pme->gpu->kernelParams.step.boxVolume = box[XX][XX] * box[YY][YY] * box[ZZ][ZZ];
         assert(pme->gpu->kernelParams.step.boxVolume != 0.0f);
+
+        matrix recipBox;
+        gmx::invertBoxMatrix(box, recipBox);
+        /* The GPU recipBox is transposed as compared to the CPU recipBox.
+         * Spread uses matrix columns (while solve and gather use rows).
+         * There is no particular reason for this; it might be further rethought/optimized for better access patterns.
+         */
+        const float3 newRecipBox[DIM] =
+        {
+            {recipBox[XX][XX], recipBox[YY][XX], recipBox[ZZ][XX]},
+            {             0.0, recipBox[YY][YY], recipBox[ZZ][YY]},
+            {             0.0,              0.0, recipBox[ZZ][ZZ]}
+        };
+        memcpy(pme->gpu->kernelParams.step.recipBox, newRecipBox, boxMemorySize);
     }
 }
 

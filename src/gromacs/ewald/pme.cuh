@@ -356,6 +356,11 @@ struct gmx_pme_cuda_t
 
     gmx_parallel_3dfft_gpu_t            *pfft_setup_gpu;
 
+    /*! \brief The unit cell box from the previous step.
+     * Only used to know if the step parameters need to be updated.
+     */
+    matrix previousBox;
+
     /* These are the host-side input/output pointers */
     /* TODO: not far in the future there will be a device input/output pointers too */
     /* Input */
