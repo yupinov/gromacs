@@ -326,15 +326,15 @@ __global__ void pme_gather_kernel(const pme_gpu_kernel_params    kernelParams)
         switch (dimIndex)
         {
             case XX:
-                contrib = kernelParams.step.recipbox[XX].x * fSum.x /*+ kernelParams.step.recipbox[YY].x * fSum.y + kernelParams.step.recipbox[ZZ].x * fSum.z*/;
+                contrib = kernelParams.step.recipBox[XX].x * fSum.x /*+ kernelParams.step.recipbox[YY].x * fSum.y + kernelParams.step.recipbox[ZZ].x * fSum.z*/;
                 break;
 
             case YY:
-                contrib = kernelParams.step.recipbox[XX].y * fSum.x + kernelParams.step.recipbox[YY].y * fSum.y /* + kernelParams.step.recipbox[ZZ].y * fSum.z*/;
+                contrib = kernelParams.step.recipBox[XX].y * fSum.x + kernelParams.step.recipBox[YY].y * fSum.y /* + kernelParams.step.recipbox[ZZ].y * fSum.z*/;
                 break;
 
             case ZZ:
-                contrib = kernelParams.step.recipbox[XX].z * fSum.x + kernelParams.step.recipbox[YY].z * fSum.y + kernelParams.step.recipbox[ZZ].z * fSum.z;
+                contrib = kernelParams.step.recipBox[XX].z * fSum.x + kernelParams.step.recipBox[YY].z * fSum.y + kernelParams.step.recipBox[ZZ].z * fSum.z;
                 break;
         }
 

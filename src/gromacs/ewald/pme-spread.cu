@@ -126,19 +126,19 @@ __device__ __forceinline__ void calculate_splines(const float3 * __restrict__   
                 case 0:
                     fShiftIndex = kernelParams.grid.fshOffset.x;
                     n           = kernelParams.grid.localGridSizeFP.x;
-                    t           = x.x * kernelParams.step.recipbox[dimIndex].x + x.y * kernelParams.step.recipbox[dimIndex].y + x.z * kernelParams.step.recipbox[dimIndex].z;
+                    t           = x.x * kernelParams.step.recipBox[dimIndex].x + x.y * kernelParams.step.recipBox[dimIndex].y + x.z * kernelParams.step.recipBox[dimIndex].z;
                     break;
 
                 case 1:
                     fShiftIndex = kernelParams.grid.fshOffset.y;
                     n           = kernelParams.grid.localGridSizeFP.y;
-                    t           = /*x.x * kernelParams.step.recipbox[dimIndex].x + */ x.y * kernelParams.step.recipbox[dimIndex].y + x.z * kernelParams.step.recipbox[dimIndex].z;
+                    t           = /*x.x * kernelParams.step.recipbox[dimIndex].x + */ x.y * kernelParams.step.recipBox[dimIndex].y + x.z * kernelParams.step.recipBox[dimIndex].z;
                     break;
 
                 case 2:
                     fShiftIndex = kernelParams.grid.fshOffset.z;
                     n           = kernelParams.grid.localGridSizeFP.z;
-                    t           = /*x.x * kernelParams.step.recipbox[dimIndex].x + x.y * kernelParams.step.recipbox[dimIndex].y + */ x.z * kernelParams.step.recipbox[dimIndex].z;
+                    t           = /*x.x * kernelParams.step.recipbox[dimIndex].x + x.y * kernelParams.step.recipbox[dimIndex].y + */ x.z * kernelParams.step.recipBox[dimIndex].z;
                     break;
             }
 

@@ -96,23 +96,6 @@ void pme_gpu_clear_energy_virial(const gmx_pme_t *pme)
 }
 
 /*! \brief \internal
- * Copies the precalculated reciprocal box to the GPU constants structure.
- *
- * \param[in] pme            The PME structure.
- */
-void pme_gpu_copy_recipbox(const gmx_pme_t *pme)
-{
-    const float3 newBox[3] =
-    {
-        {pme->recipbox[XX][XX], pme->recipbox[YY][XX], pme->recipbox[ZZ][XX]},
-        {                  0.0, pme->recipbox[YY][YY], pme->recipbox[ZZ][YY]},
-        {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
-    };
-    assert(pme->recipbox[XX][XX] != 0.0f);
-    memcpy(pme->gpu->kernelParams.step.recipbox, newBox, sizeof(newBox));
-}
-
-/*! \brief \internal
  *
  * Reallocates and copies the pre-computed B-spline values to the GPU.
  * FIXME: currently uses just a global memory, could be using texture memory/ldg.
@@ -217,7 +200,7 @@ void pme_gpu_copy_wrap_zones(const gmx_pme_t *pme)
     memcpy(pme->gpu->kernelParams.grid.overlapCellCounts, cellsAccumCount_h, sizeof(cellsAccumCount_h));
 }
 
-/*! \brief
+/*! \brief \internal
  * Reallocates the GPU buffer for the PME forces.
  *
  * \param[in] pme            The PME structure.
@@ -230,7 +213,7 @@ void pme_gpu_realloc_forces(const gmx_pme_t *pme)
                         &pme->gpu->forcesSize, &pme->gpu->forcesSizeAlloc, newForcesSize, pme->gpu->pmeStream, true);
 }
 
-/*! \brief
+/*! \brief \internal
  * Frees the GPU buffer for the PME forces.
  *
  * \param[in] pme            The PME structure.
@@ -240,7 +223,7 @@ void pme_gpu_free_forces(const gmx_pme_t *pme)
     cu_free_buffered(pme->gpu->kernelParams.atoms.forces, &pme->gpu->forcesSize, &pme->gpu->forcesSizeAlloc);
 }
 
-/*! \brief
+/*! \brief \internal
  * Reallocates the input coordinates buffer on the GPU (and clears the padded part if needed).
  *
  * \param[in] pme            The PME structure.
@@ -264,7 +247,7 @@ void pme_gpu_realloc_coordinates(const gmx_pme_t *pme)
 #endif
 }
 
-/*! \brief
+/*! \brief \internal
  * Copies the input coordinates from the CPU buffer (pme->gpu->coordinatesHost) onto the GPU.
  *
  * \param[in] pme            The PME structure.
@@ -277,7 +260,7 @@ void pme_gpu_copy_coordinates(const gmx_pme_t *pme)
     cu_copy_H2D_async(pme->gpu->kernelParams.atoms.coordinates, pme->gpu->coordinatesHost, pme->gpu->kernelParams.atoms.nAtoms * DIM * sizeof(float), pme->gpu->pmeStream);
 }
 
-/*! \brief
+/*! \brief \internal
  * Frees the coordinates on the GPU.
  *
  * \param[in] pme            The PME structure.
@@ -287,7 +270,7 @@ void pme_gpu_free_coordinates(const gmx_pme_t *pme)
     cu_free_buffered(pme->gpu->kernelParams.atoms.coordinates, &pme->gpu->coordinatesSize, &pme->gpu->coordinatesSizeAlloc);
 }
 
-/*! \brief
+/*! \brief \internal
  * Reallocates the buffer on the GPU and copies the charges/coefficients from the CPU buffer (pme->gpu->coefficientsHost). Clears the padded part if needed.
  *
  * \param[in] pme            The PME structure.
@@ -314,7 +297,7 @@ void pme_gpu_realloc_and_copy_coefficients(const gmx_pme_t *pme)
 #endif
 }
 
-/*! \brief
+/*! \brief \internal
  * Frees the charges on the GPU.
  *
  * \param[in] pme            The PME structure.
@@ -324,7 +307,7 @@ void pme_gpu_free_charges(const gmx_pme_t *pme)
     cu_free_buffered(pme->gpu->kernelParams.atoms.coefficients, &pme->gpu->coefficientsSize, &pme->gpu->coefficientsSizeAlloc);
 }
 
-/*! \brief
+/*! \brief \internal
  * Reallocates the buffers on the GPU for the atoms spline data.
  *
  * \param[in] pme            The PME structure.
@@ -345,7 +328,7 @@ void pme_gpu_realloc_spline_data(const gmx_pme_t *pme)
                         &pme->gpu->splineDataSize, &pme->gpu->splineDataSizeAlloc, newSplineDataSize, pme->gpu->pmeStream, true);
 }
 
-/*! \brief
+/*! \brief \internal
  * Frees the buffers on the GPU for the atoms spline data.
  *
  * \param[in] pme            The PME structure.
@@ -616,19 +599,12 @@ void pme_gpu_deinit(gmx_pme_t *pme)
     pme->gpu = NULL;
 }
 
-void pme_gpu_set_constants(const gmx_pme_t *pme, const matrix box, const float ewaldCoeff)
+void pme_gpu_set_constants(const gmx_pme_t *pme, const float ewaldCoeff)
 {
     if (!pme_gpu_enabled(pme))
     {
         return;
     }
-
-    /* Assuming the recipbox is calculated already */
-    pme_gpu_copy_recipbox(pme); // could use some boolean checks to know if it should run each time, like pressure coupling?
-    // actually, just compare the memory
-
-    pme->gpu->kernelParams.step.boxVolume = box[XX][XX] * box[YY][YY] * box[ZZ][ZZ];
-    assert(pme->gpu->kernelParams.step.boxVolume != 0.0f);
 
     pme->gpu->kernelParams.grid.ewaldFactor = (M_PI * M_PI) / (ewaldCoeff * ewaldCoeff);
 }
@@ -645,7 +621,7 @@ void pme_gpu_set_io_ranges(const gmx_pme_t *pme, rvec *coordinates, rvec *forces
     /* TODO: should the cudaHostRegister be called for the *Host pointers under some condition/policy? */
 }
 
-void pme_gpu_step_init(const gmx_pme_t *pme)
+void pme_gpu_step_init(const gmx_pme_t *pme, const matrix box)
 {
     if (!pme_gpu_enabled(pme))
     {
@@ -653,6 +629,33 @@ void pme_gpu_step_init(const gmx_pme_t *pme)
     }
 
     pme_gpu_copy_coordinates(pme);
+
+    /* Assuming the pme->recipbox is calculated from the box already, like this:
+     * gmx::invertBoxMatrix(box, pme->recipbox);
+     * It could be called here instead of pme.cpp, if CUDA was friends with C++11.
+     *
+     * The GPU recipBox is transposed as compared to the CPU pme->recipbox.
+     * Basically, spread uses matrix columns (while solve and gather use rows).
+     * This storage format might be optimized for better access patterns.
+     */
+    const float3   newRecipBox[DIM] =
+    {
+        {pme->recipbox[XX][XX], pme->recipbox[YY][XX], pme->recipbox[ZZ][XX]},
+        {                  0.0, pme->recipbox[YY][YY], pme->recipbox[ZZ][YY]},
+        {                  0.0,                   0.0, pme->recipbox[ZZ][ZZ]}
+    };
+    const size_t   recipBoxMemorySize   = sizeof(newRecipBox);
+    const gmx_bool haveToUpdateUnitCell = memcmp(pme->gpu->kernelParams.step.recipBox, newRecipBox, recipBoxMemorySize);
+    /* There could be a pressure coupling check here, but this is more straightforward. */
+    if (haveToUpdateUnitCell)
+    {
+        /* The reciprocal box have changed, and the inverse is unique, so the box must have changed too.
+         * Updating both the recipBox and boxVolume */
+        assert(newRecipBox[XX][XX] != 0.0f);
+        memcpy(pme->gpu->kernelParams.step.recipBox, newRecipBox, recipBoxMemorySize);
+        pme->gpu->kernelParams.step.boxVolume = box[XX][XX] * box[YY][YY] * box[ZZ][ZZ];
+        assert(pme->gpu->kernelParams.step.boxVolume != 0.0f);
+    }
 }
 
 void pme_gpu_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, float *coefficients)

@@ -1739,10 +1739,12 @@ void gmx_pme_gpu_launch(gmx_pme_t      *pme,
     bFirst = TRUE;
 
     wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME);
-    pme_gpu_set_constants(pme, box, ewaldcoeff_q); // TODO call this conditionally
-    pme_gpu_init_atoms_once(pme, nAtoms, charges);
-    pme_gpu_set_io_ranges(pme, x, f);              /* should this be called every step, or on DD/DLB, or on bCalcEnerVir change? */
-    pme_gpu_step_init(pme);
+    pme_gpu_set_constants(pme, ewaldcoeff_q);      // TODO call this in pme_gpu_init
+    pme_gpu_init_atoms_once(pme, nAtoms, charges); /* This only does a one-time atom data init at the first MD step
+                                                    * Additional reinits are called when needed after gmx_pme_recv_coeffs_coords
+                                                    */
+    pme_gpu_set_io_ranges(pme, x, f);              /* Should this be called every step, or on DD/DLB, or on bCalcEnerVir change? */
+    pme_gpu_step_init(pme, box);                   /* This copies the coordinates, and updates the unit cell box (if it changed) */
     wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
 
     /* For simplicity, we construct the splines for all particles if

@@ -122,24 +122,24 @@ CUDA_FUNC_QUALIFIER void pme_gpu_init(gmx_pme_t           *CUDA_FUNC_ARGUMENT(pm
 CUDA_FUNC_QUALIFIER void pme_gpu_deinit(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 /*! \brief
- * Initializes the PME GPU step. Does nothing on non-CUDA builds.
+ * Initializes the PME GPU step (copies coordinates onto GPU, possibly sets the unit cell parameters). Does nothing on non-CUDA builds.
  *
  * \param[in] pme     The PME structure.
+ * \param[in] box     The unit cell box which does not necessarily change every step (only with pressure coupling enabled).
+ *                    Currently it is simply compared with the previous one to determine if it needs to be updated.
  */
-CUDA_FUNC_QUALIFIER void pme_gpu_step_init(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_step_init(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
+                                           const matrix     CUDA_FUNC_ARGUMENT(box)) CUDA_FUNC_TERM
 
 /*! \brief
  * Sets the PME GPU constants. Does nothing on non-CUDA builds.
  *
  * \param[in] pme            The PME structure.
- * \param[in] box            The unit cell - does not necessarily change every step.
  * \param[in] ewaldCoeff     The Ewald coefficient.
  *
- * Currently it is called together with the pme_gpu_step_init, but can possibly be called less often?
- * (Different constants have different lifetime...).
+ * Currently it is called together with the pme_gpu_step_init, but should be called in pme_gpu_init (on grid size change) instead.
  */
 CUDA_FUNC_QUALIFIER void pme_gpu_set_constants(const gmx_pme_t    *CUDA_FUNC_ARGUMENT(pme),
-                                               const matrix        CUDA_FUNC_ARGUMENT(box),
                                                const float         CUDA_FUNC_ARGUMENT(ewaldCoeff)) CUDA_FUNC_TERM
 
 /*! \brief

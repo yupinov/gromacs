@@ -281,7 +281,7 @@ struct pme_gpu_step_params
      * Basically, spread uses matrix columns (while solve and gather use rows).
      * This storage format might be not the best since the box is always triangular.
      */
-    float3 recipbox[DIM];
+    float3 recipBox[DIM];
     /*! \brief The unit cell volume for solving. */
     float  boxVolume;
 };

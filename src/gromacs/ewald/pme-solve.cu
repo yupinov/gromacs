@@ -64,10 +64,10 @@ __global__ void pme_solve_kernel
     )
 {
     /* Global memory pointers */
-    const float * __restrict__ BSplineModuleMinor    = kernelParams.grid.splineValuesArray + (YZXOrdering ? kernelParams.grid.splineValuesOffset.x : kernelParams.grid.splineValuesOffset.z);
-    const float * __restrict__ BSplineModuleMiddle   = kernelParams.grid.splineValuesArray + (YZXOrdering ? kernelParams.grid.splineValuesOffset.z : kernelParams.grid.splineValuesOffset.y);
-    const float * __restrict__ BSplineModuleMajor    = kernelParams.grid.splineValuesArray + (YZXOrdering ? kernelParams.grid.splineValuesOffset.y : kernelParams.grid.splineValuesOffset.x);
-    float * __restrict__       virialAndEnergyGlobal = kernelParams.constants.virialAndEnergy;
+    const float * __restrict__ splineValueMinorGlobal    = kernelParams.grid.splineValuesArray + (YZXOrdering ? kernelParams.grid.splineValuesOffset.x : kernelParams.grid.splineValuesOffset.z);
+    const float * __restrict__ splineValueMiddleGlobal   = kernelParams.grid.splineValuesArray + (YZXOrdering ? kernelParams.grid.splineValuesOffset.z : kernelParams.grid.splineValuesOffset.y);
+    const float * __restrict__ splineValueMajorGlobal    = kernelParams.grid.splineValuesArray + (YZXOrdering ? kernelParams.grid.splineValuesOffset.y : kernelParams.grid.splineValuesOffset.x);
+    float * __restrict__       virialAndEnergyGlobal     = kernelParams.constants.virialAndEnergy;
 
 
     // this is a PME solve kernel
@@ -114,7 +114,6 @@ __global__ void pme_solve_kernel
             mMiddle = (kMiddle < maxkMiddle) ? kMiddle : (kMiddle - nMiddle);
         }
         /* We should skip the k-space point (0,0,0) */
-
         const int       kMinor       = localOffsetMinor + indexMinor;
         const gmx_bool  notZeroPoint = (kMinor > 0 || kMajor > 0 || kMiddle > 0);
         float           mMinor       = kMinor, mhxk, mhyk, mhzk, m2k;
@@ -158,12 +157,12 @@ __global__ void pme_solve_kernel
 
         if (notZeroPoint)
         {
-            mhxk       = mX * kernelParams.step.recipbox[XX].x;
-            mhyk       = mX * kernelParams.step.recipbox[XX].y + mY * kernelParams.step.recipbox[YY].y;
-            mhzk       = mX * kernelParams.step.recipbox[XX].z + mY * kernelParams.step.recipbox[YY].z + mZ * kernelParams.step.recipbox[ZZ].z;
+            mhxk       = mX * kernelParams.step.recipBox[XX].x;
+            mhyk       = mX * kernelParams.step.recipBox[XX].y + mY * kernelParams.step.recipBox[YY].y;
+            mhzk       = mX * kernelParams.step.recipBox[XX].z + mY * kernelParams.step.recipBox[YY].z + mZ * kernelParams.step.recipBox[ZZ].z;
 
             m2k        = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
-            float denom = m2k * float(M_PI) * kernelParams.step.boxVolume * BSplineModuleMajor[kMajor] * BSplineModuleMiddle[kMiddle] * BSplineModuleMinor[kMinor];
+            float denom = m2k * float(M_PI) * kernelParams.step.boxVolume * splineValueMajorGlobal[kMajor] * splineValueMiddleGlobal[kMiddle] * splineValueMinorGlobal[kMinor];
             float tmp1  = -kernelParams.grid.ewaldFactor * m2k;
 
             denom = 1.0f / denom;
