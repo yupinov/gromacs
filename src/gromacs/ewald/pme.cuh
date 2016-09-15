@@ -48,8 +48,9 @@
 #include <assert.h>
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
-#include "pme-timings.cuh"
 #include "pme-gpu.h"
+#include "pme-timings.cuh"
+
 
 /*
     Here is a current memory layout for the theta/dtheta B-spline float parameter arrays.
@@ -428,12 +429,21 @@ struct gmx_pme_cuda_t
     int gridSizeAlloc;
 };
 
-// dumping all the CUDA-specific PME functions here...
-
+/*! \libinternal
+ * \brief
+ *
+ * Tells if CUDA-based performance tracking is enabled for PME.
+ *
+ * \param[in] pme            The PME data structure.
+ * \returns                  TRUE if timings are enabled, FALSE otehrwise.
+ */
 gmx_inline gmx_bool pme_gpu_timings_enabled(const gmx_pme_t *pme)
 {
     return pme_gpu_enabled(pme) && pme->gpu->bTiming;
 }
+
+
+// dumping all the CUDA-specific PME functions here...
 
 void gmx_parallel_3dfft_destroy_gpu(const gmx_parallel_3dfft_gpu_t &pfft_setup);
 

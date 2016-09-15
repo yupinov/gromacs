@@ -190,20 +190,20 @@ void gmx_parallel_3dfft_complex_limits_gpu(const gmx_parallel_3dfft_gpu_t setup,
     }
 }
 
-void gmx_parallel_3dfft_execute_gpu(gmx_pme_t        *pme,
-                                    gmx_fft_direction dir,
-                                    const int         grid_index)
+void pme_gpu_3dfft(gmx_pme_t        *pme,
+                   gmx_fft_direction dir,
+                   const int         grid_index)
 {
     gmx_parallel_3dfft_gpu_t setup = pme->gpu->pfft_setup_gpu[grid_index];
 
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {
 
-        pme_gpu_timing_start(pme, gtPME_FFT_R2C);
+        pme_gpu_start_timing(pme, gtPME_FFT_R2C);
 
         cufftResult_t result = cufftExecR2C(setup->planR2C, setup->realGrid, setup->complexGrid);
 
-        pme_gpu_timing_stop(pme, gtPME_FFT_R2C);
+        pme_gpu_stop_timing(pme, gtPME_FFT_R2C);
 
         if (result)
         {
@@ -213,11 +213,11 @@ void gmx_parallel_3dfft_execute_gpu(gmx_pme_t        *pme,
     else
     {
 
-        pme_gpu_timing_start(pme, gtPME_FFT_C2R);
+        pme_gpu_start_timing(pme, gtPME_FFT_C2R);
 
         cufftResult_t result = cufftExecC2R(setup->planC2R, setup->complexGrid, setup->realGrid);
 
-        pme_gpu_timing_stop(pme, gtPME_FFT_C2R);
+        pme_gpu_stop_timing(pme, gtPME_FFT_C2R);
 
         if (result)
         {

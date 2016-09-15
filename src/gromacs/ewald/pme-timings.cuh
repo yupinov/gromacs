@@ -79,10 +79,7 @@ class pme_gpu_timing
          */
         void stop_recording(cudaStream_t s);
 
-        /*! \brief
-         * To be called after stop_recording and the CUDA stream of the event has been synchronised.
-         *
-         */
+        /*! \brief To be called after stop_recording and the CUDA stream of the event has been synchronised. */
         void update();
 
         // to be called once if needed
@@ -113,22 +110,22 @@ void pme_gpu_destroy_timings(const gmx_pme_t *pme);
 /*! \libinternal
  * \brief
  *
- * Starts timing the certain PME GPU stage in a single step.
+ * Starts timing the certain PME GPU stage during a single step (if timings are enabled).
  *
  * \param[in] pme            The PME data structure.
  * \param[in] PMEStageId     The PME GPU stage gtPME_ index from the enum in src/gromacs/timing/gpu_timing.h
  */
-void pme_gpu_timing_start(const gmx_pme_t *pme, size_t PMEStageId);
+void pme_gpu_start_timing(const gmx_pme_t *pme, size_t PMEStageId);
 
 /*! \libinternal
  * \brief
  *
- * Stops timing the certain PME GPU stage in a single step.
+ * Stops timing the certain PME GPU stage during a single step (if timings are enabled).
  *
  * \param[in] pme            The PME data structure.
  * \param[in] PMEStageId     The PME GPU stage gtPME_ index from the enum in src/gromacs/timing/gpu_timing.h
  */
-void pme_gpu_timing_stop(const gmx_pme_t *pme, size_t PMEStageId);
+void pme_gpu_stop_timing(const gmx_pme_t *pme, size_t PMEStageId);
 
 /*! \libinternal
  * \brief

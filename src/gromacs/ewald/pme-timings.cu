@@ -131,7 +131,7 @@ unsigned int pme_gpu_timing::get_call_count()
 
 /* The general PME GPU timing functions */
 
-void pme_gpu_timing_start(const gmx_pme_t *pme, size_t PMEStageId)
+void pme_gpu_start_timing(const gmx_pme_t *pme, size_t PMEStageId)
 {
     if (pme_gpu_timings_enabled(pme))
     {
@@ -140,7 +140,7 @@ void pme_gpu_timing_start(const gmx_pme_t *pme, size_t PMEStageId)
     }
 }
 
-void pme_gpu_timing_stop(const gmx_pme_t *pme, size_t PMEStageId)
+void pme_gpu_stop_timing(const gmx_pme_t *pme, size_t PMEStageId)
 {
     if (pme_gpu_timings_enabled(pme))
     {
@@ -149,7 +149,7 @@ void pme_gpu_timing_stop(const gmx_pme_t *pme, size_t PMEStageId)
     }
 }
 
-void pme_gpu_get_timings(gmx_wallclock_gpu_t **timings, const gmx_pme_t *pme)
+void pme_gpu_get_timings(const gmx_pme_t *pme, gmx_wallclock_gpu_t **timings)
 {
     if (pme_gpu_timings_enabled(pme))
     {

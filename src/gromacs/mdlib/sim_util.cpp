@@ -2637,7 +2637,7 @@ void finish_run(FILE *fplog, const gmx::MDLogger &mdlog, t_commrec *cr,
         struct gmx_wallclock_gpu_t* gputimes = use_GPU(nbv) ? nbnxn_gpu_get_timings(nbv->gpu_nbv) : NULL;
         if (pme_gpu_enabled(pme))
         {
-            pme_gpu_get_timings(&gputimes, pme);
+            pme_gpu_get_timings(pme, &gputimes);
         }
 
         wallcycle_print(fplog, mdlog, cr->nnodes, cr->npmenodes, nthreads_pp, nthreads_pme,

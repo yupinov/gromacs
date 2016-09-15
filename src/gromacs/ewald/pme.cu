@@ -561,7 +561,7 @@ void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_opt
     pme_gpu_step_reinit(pme);
 }
 
-void pme_gpu_deinit(gmx_pme_t *pme)
+void pme_gpu_destroy(gmx_pme_t *pme)
 {
     if (!pme_gpu_enabled(pme))
     {
@@ -627,7 +627,7 @@ void pme_gpu_set_io_ranges(const gmx_pme_t *pme, rvec *coordinates, rvec *forces
     /* TODO: should the cudaHostRegister be called for the *Host pointers under some condition/policy? */
 }
 
-void pme_gpu_step_init(const gmx_pme_t *pme, const matrix box)
+void pme_gpu_start_step(const gmx_pme_t *pme, const matrix box)
 {
     if (!pme_gpu_enabled(pme))
     {
@@ -715,7 +715,7 @@ void pme_gpu_sync_energy_virial(const gmx_pme_t *pme)
     }
 }
 
-void pme_gpu_step_end(const gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCalcEnerVir)
+void pme_gpu_finish_step(const gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_bool bCalcEnerVir)
 {
     if (!pme_gpu_enabled(pme))
     {

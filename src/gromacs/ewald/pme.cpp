@@ -134,7 +134,7 @@ void gmx_parallel_3dfft_execute_gpu_wrapper(gmx_pme_t              *pme,
 
     if (pme_gpu_performs_FFT(pme))
     {
-        gmx_parallel_3dfft_execute_gpu(pme, dir, grid_index);
+        pme_gpu_3dfft(pme, dir, grid_index);
     }
     else
     {
@@ -1746,7 +1746,7 @@ void gmx_pme_gpu_launch(gmx_pme_t      *pme,
                                                     * Additional reinits are called when needed after gmx_pme_recv_coeffs_coords.
                                                     */
     pme_gpu_set_io_ranges(pme, x, f);              /* Should this be called every step, or on DD/DLB, or on bCalcEnerVir change? */
-    pme_gpu_step_init(pme, box);                   /* This copies the coordinates, and updates the unit cell box (if it changed) */
+    pme_gpu_start_step(pme, box);                  /* This copies the coordinates, and updates the unit cell box (if it changed) */
     wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
 
     /* For simplicity, we construct the splines for all particles if
@@ -1776,12 +1776,10 @@ void gmx_pme_gpu_launch(gmx_pme_t      *pme,
 
     if (flags & GMX_PME_SPREAD)
     {
-        // XXX wallcycle_start(wcycle, ewcPME_SPREADGATHER);
-
         /* Spread the coefficients on a grid */
         wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
         // TODO rename: consider using the "pme_gpu" prefix here
-        spread_on_grid_gpu(pme, &pme->atc[0], grid_index, &pmegrid->grid, bFirst, TRUE, bDoSplines);
+        pme_gpu_spread(pme, &pme->atc[0], grid_index, &pmegrid->grid, bFirst, TRUE, bDoSplines);
         wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
 
         //if (!pme->bUseThreads)
@@ -1820,7 +1818,7 @@ void gmx_pme_gpu_launch(gmx_pme_t      *pme,
             if (pme_gpu_performs_solve(pme))
             {
                 wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
-                solve_pme_gpu(pme, cfftgrid, bCalcEnerVir);
+                pme_gpu_solve(pme, cfftgrid, bCalcEnerVir);
                 wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
             }
             else
@@ -1880,7 +1878,7 @@ void gmx_pme_gpu_launch_gather(gmx_pme_t                 *pme,
     }
 
     wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
-    gather_f_bsplines_gpu(pme, bClearForces);
+    pme_gpu_gather(pme, bClearForces);
     wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
 }
 
@@ -1901,7 +1899,7 @@ int gmx_pme_gpu_get_results(const gmx_pme_t *pme,
     const gmx_bool       bCalcF                  = flags & GMX_PME_CALC_F;
 
     wallcycle_sub_start(wcycle, ewcsWAIT_GPU_PME);
-    pme_gpu_step_end(pme, bCalcF, bCalcEnerVir);
+    pme_gpu_finish_step(pme, bCalcF, bCalcEnerVir);
     wallcycle_sub_stop(wcycle, ewcsWAIT_GPU_PME);
 
     if (bCalcEnerVir)
@@ -1953,7 +1951,7 @@ int gmx_pme_destroy(struct gmx_pme_t **pmedata)
     sfree(pme->sum_qgrid_tmp);
     sfree(pme->sum_qgrid_dd_tmp);
 
-    pme_gpu_deinit(pme);
+    pme_gpu_destroy(pme);
 
     sfree(*pmedata);
     *pmedata = NULL;

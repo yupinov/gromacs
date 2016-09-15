@@ -699,12 +699,12 @@ void pme_gpu_free_fract_shifts(const gmx_pme_t *pme)
     /* TODO: unbind textures here! */
 }
 
-void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
-                        const int gmx_unused grid_index,
-                        pmegrid_t *pmegrid,
-                        const gmx_bool bCalcSplines,
-                        const gmx_bool bSpread,
-                        const gmx_bool bDoSplines)
+void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
+                    const int gmx_unused grid_index,
+                    pmegrid_t *pmegrid,
+                    const gmx_bool bCalcSplines,
+                    const gmx_bool bSpread,
+                    const gmx_bool bDoSplines)
 {
     const gmx_bool bSeparateKernels = false;  // significantly slower if true
     if (!bCalcSplines && !bSpread)
@@ -761,7 +761,7 @@ void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
             {
                 if (bCalcSplines)
                 {
-                    pme_gpu_timing_start(pme, gtPME_SPLINE);
+                    pme_gpu_start_timing(pme, gtPME_SPLINE);
                     if (bDoSplines)
                     {
                         gmx_fatal(FARGS, "the code for bDoSplines==true was not tested!");
@@ -771,19 +771,19 @@ void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                         pme_spline_kernel<4, blockSize / 4 / 4> <<< nBlocksSpline, dimBlockSpline, 0, s>>> (pme->gpu->kernelParams);
                     }
                     CU_LAUNCH_ERR("pme_spline_kernel");
-                    pme_gpu_timing_stop(pme, gtPME_SPLINE);
+                    pme_gpu_stop_timing(pme, gtPME_SPLINE);
                 }
                 if (bSpread)
                 {
-                    pme_gpu_timing_start(pme, gtPME_SPREAD);
+                    pme_gpu_start_timing(pme, gtPME_SPREAD);
                     pme_spread_kernel<4, blockSize / 4 / 4> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (pme->gpu->kernelParams);
                     CU_LAUNCH_ERR("pme_spread_kernel");
-                    pme_gpu_timing_stop(pme, gtPME_SPREAD);
+                    pme_gpu_stop_timing(pme, gtPME_SPREAD);
                 }
             }
             else // a single monster kernel here
             {
-                pme_gpu_timing_start(pme, gtPME_SPLINEANDSPREAD);
+                pme_gpu_start_timing(pme, gtPME_SPLINEANDSPREAD);
                 if (bCalcSplines)
                 {
                     if (bDoSplines)
@@ -807,7 +807,7 @@ void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                     gmx_fatal(FARGS, "the code for bCalcSplines==false was not tested!");
                 }
                 CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
-                pme_gpu_timing_stop(pme, gtPME_SPLINEANDSPREAD);
+                pme_gpu_stop_timing(pme, gtPME_SPLINEANDSPREAD);
             }
             if (bSpread && pme->gpu->bGPUSingle)
             {
@@ -816,10 +816,10 @@ void spread_on_grid_gpu(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                 const int overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
                 const int nBlocks         = (overlappedCells + blockSize - 1) / blockSize;
 
-                pme_gpu_timing_start(pme, gtPME_WRAP);
+                pme_gpu_start_timing(pme, gtPME_WRAP);
                 pme_wrap_kernel<4> <<< nBlocks, blockSize, 0, s>>> (pme->gpu->kernelParams);
                 CU_LAUNCH_ERR("pme_wrap_kernel");
-                pme_gpu_timing_stop(pme, gtPME_WRAP);
+                pme_gpu_stop_timing(pme, gtPME_WRAP);
             }
             break;
 

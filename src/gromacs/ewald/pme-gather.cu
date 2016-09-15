@@ -423,8 +423,8 @@ __global__ void pme_unwrap_kernel(const pme_gpu_kernel_params kernelParams)
     }
 }
 
-void gather_f_bsplines_gpu(const gmx_pme_t *pme,
-                           const gmx_bool   bOverwriteForces)
+void pme_gpu_gather(const gmx_pme_t *pme,
+                    const gmx_bool   bOverwriteForces)
 {
     /* Copying the input CPU forces for reduction */
     if (!bOverwriteForces)
@@ -460,10 +460,10 @@ void gather_f_bsplines_gpu(const gmx_pme_t *pme,
 
         if (order == 4)
         {
-            pme_gpu_timing_start(pme, gtPME_UNWRAP);
+            pme_gpu_start_timing(pme, gtPME_UNWRAP);
             pme_unwrap_kernel<4> <<< nBlocks, blockSize, 0, s>>> (pme->gpu->kernelParams);
             CU_LAUNCH_ERR("pme_unwrap_kernel");
-            pme_gpu_timing_stop(pme, gtPME_UNWRAP);
+            pme_gpu_stop_timing(pme, gtPME_UNWRAP);
 
         }
         else
@@ -478,7 +478,7 @@ void gather_f_bsplines_gpu(const gmx_pme_t *pme,
     dim3 nBlocks(pme->gpu->nAtomsPadded / particlesPerBlock);
     dim3 dimBlock(order, order, particlesPerBlock);
 
-    pme_gpu_timing_start(pme, gtPME_GATHER);
+    pme_gpu_start_timing(pme, gtPME_GATHER);
     if (order == 4)
     {
         if (bOverwriteForces)
@@ -495,7 +495,7 @@ void gather_f_bsplines_gpu(const gmx_pme_t *pme,
         gmx_fatal(FARGS, "PME GPU gathering: orders other than 4 not implemented!");
     }
     CU_LAUNCH_ERR("pme_gather_kernel");
-    pme_gpu_timing_stop(pme, gtPME_GATHER);
+    pme_gpu_stop_timing(pme, gtPME_GATHER);
 
     /* Copying the output forces */
     const size_t forcesSize   = DIM * pme->gpu->kernelParams.atoms.nAtoms * sizeof(float);
