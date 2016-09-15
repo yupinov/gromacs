@@ -38,7 +38,7 @@
  * various compile-time constants shared among the PME CUDA kernels,
  * and also names some PME CUDA memory management routines.
  *
- *  \author Aleksei Iupinov <a.yupinov@gmail.com>
+ * \author Aleksei Iupinov <a.yupinov@gmail.com>
  */
 
 #ifndef PME_CUDA_H
@@ -206,7 +206,7 @@ struct pme_gpu_grid_params
     /*! \brief The total cell counts of the overlap zones */
     int  overlapCellCounts[PME_GPU_OVERLAP_ZONES_COUNT];
 
-    /*! \brief Ewald solving factor = (M_PI / ewaldCoeff)^2 */
+    /*! \brief Ewald solving factor = (M_PI / pme->ewaldcoeff_q)^2 */
     float ewaldFactor;
 
     /*! \brief Fractional shifts as in pme->fshx/fshy/fshz, laid out sequentially (XXX....XYYY......YZZZ.....Z) */

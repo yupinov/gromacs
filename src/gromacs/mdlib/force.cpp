@@ -188,7 +188,6 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
                                        md->chargeA,
                                        bSB ? boxs : box,
                                        wcycle,
-                                       fr->ewaldcoeff_q,
                                        pme_flags);
                 }
             }

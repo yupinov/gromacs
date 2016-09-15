@@ -1720,7 +1720,6 @@ void gmx_pme_gpu_launch(gmx_pme_t      *pme,
                         real            charges[],
                         matrix          box,
                         gmx_wallcycle_t wcycle,
-                        real            ewaldcoeff_q,
                         int             flags)
 {
     if (!pme_gpu_enabled(pme))
@@ -1743,7 +1742,6 @@ void gmx_pme_gpu_launch(gmx_pme_t      *pme,
     bFirst = TRUE;
 
     wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME);
-    pme_gpu_set_constants(pme, ewaldcoeff_q);      // TODO call this in pme_gpu_init
     pme_gpu_init_atoms_once(pme, nAtoms, charges); /* This only does a one-time atom data init at the first MD step.
                                                     * Additional reinits are called when needed after gmx_pme_recv_coeffs_coords.
                                                     */

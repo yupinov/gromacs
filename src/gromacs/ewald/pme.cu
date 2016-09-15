@@ -533,6 +533,8 @@ void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_opt
     const bool gridSizeChanged = TRUE; /* This function is called on DLB steps as well */
     if (gridSizeChanged)               /* The need for reallocation is checked for inside, might do a redundant grid size increase check here anyway?... */
     {
+        pme->gpu->kernelParams.grid.ewaldFactor = (M_PI * M_PI) / (pme->ewaldcoeff_q * pme->ewaldcoeff_q);
+
         /* The grid size variants */
         const int3   localGridSize = {pme->nkx, pme->nky, pme->nkz};
         memcpy(&pme->gpu->kernelParams.grid.localGridSize, &localGridSize, sizeof(localGridSize));
@@ -611,16 +613,6 @@ void pme_gpu_deinit(gmx_pme_t *pme)
     /* Finally free the GPU structure itself */
     sfree(pme->gpu);
     pme->gpu = NULL;
-}
-
-void pme_gpu_set_constants(const gmx_pme_t *pme, const float ewaldCoeff)
-{
-    if (!pme_gpu_enabled(pme))
-    {
-        return;
-    }
-
-    pme->gpu->kernelParams.grid.ewaldFactor = (M_PI * M_PI) / (ewaldCoeff * ewaldCoeff);
 }
 
 void pme_gpu_set_io_ranges(const gmx_pme_t *pme, rvec *coordinates, rvec *forces)

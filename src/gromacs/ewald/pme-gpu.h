@@ -54,10 +54,6 @@
 struct gmx_hw_info_t;
 struct gmx_gpu_opt_t;
 
-
-//yupinov add author info everywhere
-
-
 // internal data handling
 
 
@@ -134,16 +130,6 @@ CUDA_FUNC_QUALIFIER void pme_gpu_deinit(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA
 CUDA_FUNC_QUALIFIER void pme_gpu_step_init(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
                                            const matrix     CUDA_FUNC_ARGUMENT(box)) CUDA_FUNC_TERM
 
-/*! \brief
- * Sets the PME GPU constants. Does nothing on non-CUDA builds.
- *
- * \param[in] pme            The PME structure.
- * \param[in] ewaldCoeff     The Ewald coefficient.
- *
- * Currently it is called together with the pme_gpu_step_init, but should be called in pme_gpu_init (on grid size change) instead.
- */
-CUDA_FUNC_QUALIFIER void pme_gpu_set_constants(const gmx_pme_t    *CUDA_FUNC_ARGUMENT(pme),
-                                               const float         CUDA_FUNC_ARGUMENT(ewaldCoeff)) CUDA_FUNC_TERM
 
 /*! \brief
  * Reallocates the local atoms data (charges, coordinates, etc.). Copies the charges. Does nothing on non-CUDA builds.

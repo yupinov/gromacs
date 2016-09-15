@@ -135,7 +135,6 @@ void gmx_pme_gpu_launch(gmx_pme_t         *pme,
                         real               charges[],
                         matrix             box,
                         gmx_wallcycle_t    wcycle,
-                        real               ewaldcoeff_q,
                         int                flags);
 
 // launches the rest of the PME GPU:
