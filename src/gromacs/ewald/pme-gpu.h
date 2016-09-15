@@ -191,7 +191,7 @@ CUDA_FUNC_QUALIFIER void pme_gpu_init_atoms_once(const gmx_pme_t  *CUDA_FUNC_ARG
  * \param[in] coordinates    The pointer to the host-side array of particle coordinates in rvec format.
  * \param[in] forces         The pointer to the host-side array of particle forces.
  *                           It will be used for output, but can also be used for input,
- *                           if bClearForces is passed as false to the gmx_pme_gpu_launch_gather.
+ *                           if bClearForces is passed as false to the pme_gpu_launch_gather.
  */
 CUDA_FUNC_QUALIFIER void pme_gpu_set_io_ranges(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
                                                rvec            *CUDA_FUNC_ARGUMENT(coordinates),
@@ -213,5 +213,32 @@ CUDA_FUNC_QUALIFIER void pme_gpu_reset_timings(const gmx_pme_t *CUDA_FUNC_ARGUME
  */
 CUDA_FUNC_QUALIFIER void pme_gpu_get_timings(const gmx_pme_t      *CUDA_FUNC_ARGUMENT(pme),
                                              gmx_wallclock_gpu_t **CUDA_FUNC_ARGUMENT(timings)) CUDA_FUNC_TERM
+
+
+CUDA_FUNC_QUALIFIER void pme_gpu_get_results(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
+                                             gmx_wallcycle_t  CUDA_FUNC_ARGUMENT(wcycle),
+                                             matrix           CUDA_FUNC_ARGUMENT(vir_q),
+                                             real            *CUDA_FUNC_ARGUMENT(energy_q),
+                                             int              CUDA_FUNC_ARGUMENT(flags)) CUDA_FUNC_TERM
+
+// launches first part of PME GPU - from spread up to and including FFT C2R
+// and copying energy/virial back
+void pme_gpu_launch(gmx_pme_t         *pme,
+                    int                nAtoms,
+                    rvec               x[],
+                    rvec               f[],
+                    real               charges[],
+                    matrix             box,
+                    gmx_wallcycle_t    wcycle,
+                    int                flags);
+
+// launches the rest of the PME GPU:
+// copying calculated forces (e.g. listed) onto GPU (only for bClearF == false), gather, copying forces back
+// for separate PME ranks there is no precalculated forces, so bClearF has to be true
+// so there is no reason not to put this call directly back into pme_gpu_launch for bClearF == true
+void pme_gpu_launch_gather(gmx_pme_t      *pme,
+                           gmx_wallcycle_t wcycle,
+                           gmx_bool        bClearForces);
+
 
 #endif // PMEGPU_H

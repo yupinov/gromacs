@@ -95,6 +95,13 @@ if(CUDA_HOST_COMPILER_CHANGED)
         list(APPEND CUDA_HOST_COMPILER_OPTIONS "-D__STRICT_ANSI__")
     endif()
 
+    if(GMX_OPENMP)
+        find_package(OpenMP)
+        if(OPENMP_FOUND)
+            list(APPEND CUDA_HOST_COMPILER_OPTIONS "-Xcompiler=-fopenmp")
+        endif()
+    endif()
+
     work_around_glibc_2_23()
 
     set(CUDA_HOST_COMPILER_OPTIONS "${CUDA_HOST_COMPILER_OPTIONS}"

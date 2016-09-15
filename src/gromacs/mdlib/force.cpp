@@ -182,13 +182,13 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
                         /* We don't calculate f, but we do want the potential */
                         pme_flags |= GMX_PME_CALC_POT;
                     }
-                    gmx_pme_gpu_launch(fr->pmedata,
-                                       md->homenr - fr->n_tpi,
-                                       x, fr->f_novirsum,
-                                       md->chargeA,
-                                       bSB ? boxs : box,
-                                       wcycle,
-                                       pme_flags);
+                    pme_gpu_launch(fr->pmedata,
+                                   md->homenr - fr->n_tpi,
+                                   x, fr->f_novirsum,
+                                   md->chargeA,
+                                   bSB ? boxs : box,
+                                   wcycle,
+                                   pme_flags);
                 }
             }
         }
@@ -554,7 +554,7 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                                                    fr->vir_el_recip);
             }
 
-            gmx_pme_gpu_launch_gather(fr->pmedata, wcycle, false);
+            pme_gpu_launch_gather(fr->pmedata, wcycle, false);
 
             enerd->dvdl_lin[efptCOUL] += dvdl_long_range_correction_q;
             enerd->dvdl_lin[efptVDW]  += dvdl_long_range_correction_lj;
@@ -607,15 +607,11 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                     {
                         gmx_fatal(FARGS, "Error %d in reciprocal PME routine", status);
                     }
-                    status = gmx_pme_gpu_get_results(fr->pmedata,
-                                                     wcycle,
-                                                     fr->vir_el_recip,
-                                                     &Vlr_q,
-                                                     pme_flags);
-                    if (status != 0)
-                    {
-                        gmx_fatal(FARGS, "Error %d in reciprocal PME routine", status);
-                    }
+                    pme_gpu_get_results(fr->pmedata,
+                                        wcycle,
+                                        fr->vir_el_recip,
+                                        &Vlr_q,
+                                        pme_flags);
                     /* We should try to do as little computation after
                      * this as possible, because parallel PME synchronizes
                      * the nodes, so we want all load imbalance of the
