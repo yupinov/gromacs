@@ -243,26 +243,23 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
         dvdlambda_lj = 0;
         clear_mat(vir_q);
         clear_mat(vir_lj);
+        energy_q     = 0.0;
+        energy_lj    = 0.0;
+
+        const int pme_flags = GMX_PME_DO_ALL_F | (bEnerVir ? GMX_PME_CALC_ENER_VIR : 0);
 
         gmx_pme_do(pme, 0, natoms, x_pp, f_pp,
                    chargeA, chargeB, c6A, c6B, sigmaA, sigmaB, box,
                    cr, maxshift_x, maxshift_y, mynrnb, wcycle,
                    vir_q, ewaldcoeff_q, vir_lj, ewaldcoeff_lj,
                    &energy_q, &energy_lj, lambda_q, lambda_lj, &dvdlambda_q, &dvdlambda_lj,
-                   GMX_PME_DO_ALL_F | (bEnerVir ? GMX_PME_CALC_ENER_VIR : 0));
+                   pme_flags);
 
         gmx_pme_gpu_launch(pme, natoms, x_pp, f_pp,
                            chargeA, box, wcycle, ewaldcoeff_q,
-                           GMX_PME_DO_ALL_F | (bEnerVir ? GMX_PME_CALC_ENER_VIR : 0));
-
+                           pme_flags);
         gmx_pme_gpu_launch_gather(pme, wcycle, true);
-
-        gmx_pme_gpu_get_results(pme,
-                                cr, wcycle,
-                                vir_q, vir_lj,
-                                &energy_q, &energy_lj, lambda_q, lambda_lj, &dvdlambda_q, &dvdlambda_lj,
-                                GMX_PME_DO_ALL_F | (bEnerVir ? GMX_PME_CALC_ENER_VIR : 0));
-
+        gmx_pme_gpu_get_results(pme, wcycle, vir_q, &energy_q, pme_flags);
 
         cycles = wallcycle_stop(wcycle, ewcPMEMESH);
 

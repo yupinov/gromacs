@@ -1738,8 +1738,8 @@ void gmx_pme_gpu_launch(gmx_pme_t      *pme,
 
     wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME);
     pme_gpu_set_constants(pme, ewaldcoeff_q);      // TODO call this in pme_gpu_init
-    pme_gpu_init_atoms_once(pme, nAtoms, charges); /* This only does a one-time atom data init at the first MD step
-                                                    * Additional reinits are called when needed after gmx_pme_recv_coeffs_coords
+    pme_gpu_init_atoms_once(pme, nAtoms, charges); /* This only does a one-time atom data init at the first MD step.
+                                                    * Additional reinits are called when needed after gmx_pme_recv_coeffs_coords.
                                                     */
     pme_gpu_set_io_ranges(pme, x, f);              /* Should this be called every step, or on DD/DLB, or on bCalcEnerVir change? */
     pme_gpu_step_init(pme, box);                   /* This copies the coordinates, and updates the unit cell box (if it changed) */
@@ -1883,111 +1883,39 @@ void gmx_pme_gpu_launch_gather(gmx_pme_t                 *pme,
 // this function should just fetch results
 
 int gmx_pme_gpu_get_results(const gmx_pme_t *pme,
-                            t_commrec gmx_unused *cr,
-                            gmx_wallcycle_t gmx_unused wcycle,
-                            matrix vir_q,
-                            matrix vir_lj,
-                            real *energy_q,  real *energy_lj,
-                            real lambda_q,   real lambda_lj,
-                            real *dvdlambda_q, real *dvdlambda_lj,
-                            int flags)
+                            gmx_wallcycle_t  wcycle,
+                            matrix           vir_q,
+                            real            *energy_q,
+                            int              flags)
 {
     if (!pme_gpu_enabled(pme))
     {
         return 0;
     }
 
-    const int            grid_index = 0;
-
     const gmx_bool       bCalcEnerVir            = flags & GMX_PME_CALC_ENER_VIR;
     const gmx_bool       bCalcF                  = flags & GMX_PME_CALC_F;
 
-    real                 energy_AB[4];
-    matrix               vir_AB[4];
-
-    /* FIXME: there should be a waiting wallycle here, which would not conflict with the NB waiting */
-    wallcycle_sub_start_nocount(wcycle, ewcsWAIT_GPU_PME);
+    wallcycle_sub_start(wcycle, ewcsWAIT_GPU_PME);
     pme_gpu_step_end(pme, bCalcF, bCalcEnerVir);
     wallcycle_sub_stop(wcycle, ewcsWAIT_GPU_PME);
-
-    // copied from up there in the loop...
-    assert(grid_index == 0);
-    if (bCalcEnerVir)
-    {
-        /* This should only be called on the master thread
-         * and after the threads have synchronized.
-         */
-        if (grid_index < 2)
-        {
-            get_pme_ener_vir_q(pme->solve_work, pme->nthread, &energy_AB[grid_index], vir_AB[grid_index]);
-        }
-        else
-        {
-            get_pme_ener_vir_lj(pme->solve_work, pme->nthread, &energy_AB[grid_index], vir_AB[grid_index]);
-        }
-    }
 
     if (bCalcEnerVir)
     {
         if (pme->doCoulomb)
         {
-            if (!pme->bFEP_q)
-            {
-                *energy_q = energy_AB[0];
-                m_add(vir_q, vir_AB[0], vir_q);
-            }
-            else
-            {
-                *energy_q       = (1.0-lambda_q)*energy_AB[0] + lambda_q*energy_AB[1];
-                *dvdlambda_q   += energy_AB[1] - energy_AB[0];
-                for (int i = 0; i < DIM; i++)
-                {
-                    for (int j = 0; j < DIM; j++)
-                    {
-                        vir_q[i][j] += (1.0-lambda_q)*vir_AB[0][i][j] +
-                            lambda_q*vir_AB[1][i][j];
-                    }
-                }
-            }
+            pme_gpu_get_energy_virial(pme, energy_q, vir_q);
             if (debug)
             {
-                fprintf(debug, "Electrostatic PME mesh energy: %g\n", *energy_q);
+                fprintf(debug, "Electrostatic PME mesh energy [GPU]: %g\n", *energy_q);
             }
         }
         else
         {
             *energy_q = 0;
         }
-
-        if (pme->doLJ)
-        {
-            if (!pme->bFEP_lj)
-            {
-                *energy_lj = energy_AB[2];
-                m_add(vir_lj, vir_AB[2], vir_lj);
-            }
-            else
-            {
-                *energy_lj     = (1.0-lambda_lj)*energy_AB[2] + lambda_lj*energy_AB[3];
-                *dvdlambda_lj += energy_AB[3] - energy_AB[2];
-                for (int i = 0; i < DIM; i++)
-                {
-                    for (int j = 0; j < DIM; j++)
-                    {
-                        vir_lj[i][j] += (1.0-lambda_lj)*vir_AB[2][i][j] + lambda_lj*vir_AB[3][i][j];
-                    }
-                }
-            }
-            if (debug)
-            {
-                fprintf(debug, "Lennard-Jones PME mesh energy: %g\n", *energy_lj);
-            }
-        }
-        else
-        {
-            *energy_lj = 0;
-        }
     }
+    /* No bCalcF code since currently forces are copied to the output host buffer with no perturbation */
     return 0;
 }
 

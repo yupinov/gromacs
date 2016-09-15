@@ -379,7 +379,7 @@ __global__ void pme_unwrap_kernel(const pme_gpu_kernel_params kernelParams)
 
     // should use ldg.128
 
-    if (threadId < kernelParams.grid.overlapCellCounts[OVERLAP_ZONES - 1])
+    if (threadId < kernelParams.grid.overlapCellCounts[PME_GPU_OVERLAP_ZONES_COUNT - 1])
     {
         int zoneIndex = -1;
         do

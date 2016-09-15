@@ -100,6 +100,9 @@ CUDA_FUNC_QUALIFIER void pme_gpu_sync_grid(const gmx_pme_t *CUDA_FUNC_ARGUMENT(p
  */
 gmx_inline gmx_bool pme_gpu_enabled(const gmx_pme_t *pme)
 {
+    /* Something to think about: should this function be called from all the CUDA_FUNC_QUALIFIER functions?
+     * In other words, should we plan for dynamic toggling of the PME GPU?
+     */
     return (pme != NULL) && pme->bGPU;
 }
 
@@ -210,5 +213,14 @@ CUDA_FUNC_QUALIFIER void pme_gpu_reset_timings(const gmx_pme_t *CUDA_FUNC_ARGUME
  */
 CUDA_FUNC_QUALIFIER void pme_gpu_get_timings(gmx_wallclock_gpu_t **CUDA_FUNC_ARGUMENT(timings),
                                              const gmx_pme_t      *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+
+/*! \brief
+ * Gets the PME GPU output virial/energy. Should be called after pme_gpu_step_end. Does nothing on non-CUDA builds.
+ *
+ * \param[in]  pme  The PME structure.
+ * \param[out] energy  The output energy pointer.
+ * \param[out] virial  The output virial matrix.
+ */
+void pme_gpu_get_energy_virial(const gmx_pme_t *pme, real *energy, matrix virial);
 
 #endif // PMEGPU_H

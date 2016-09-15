@@ -261,7 +261,7 @@ typedef struct gmx_pme_t {
                                              * A permanent variable, should be read using pme_gpu_enabled.
                                              */
 
-    gmx_pme_gpu_t *gpu;                     /* pointer to GPU data     */
+    gmx_pme_gpu_t *gpu;                     /* A pointer to the GPU data*/
 
     int            ljpme_combination_rule;  /* Type of combination rule in LJ-PME */
 

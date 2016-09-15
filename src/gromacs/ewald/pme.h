@@ -100,10 +100,11 @@ int gmx_pme_destroy(struct gmx_pme_t **pmedata);
 #define GMX_PME_DO_ALL_F  (GMX_PME_SPREAD | GMX_PME_SOLVE | GMX_PME_CALC_F)
 //@}
 
-/*! \brief Do a PME calculation for the long range electrostatics and/or LJ.
+/*! \brief Do a PME calculation on a CPU for the long range electrostatics and/or LJ.
  *
  * The meaning of \p flags is defined above, and determines which
  * parts of the calculation are performed.
+ * Does nothing if pme_gpu_enabled(pme) returns TRUE.
  *
  * \return 0 indicates all well, non zero is an error code.
  */
@@ -145,14 +146,10 @@ void gmx_pme_gpu_launch_gather(gmx_pme_t      *pme,
                                gmx_bool        bClearForces);
 
 int gmx_pme_gpu_get_results(const gmx_pme_t *pme,
-                            t_commrec gmx_unused *cr,
-                            gmx_wallcycle_t wcycle,
-                            matrix vir_q,
-                            matrix vir_lj,
-                            real *energy_q,  real *energy_lj,
-                            real lambda_q,   real lambda_lj,
-                            real *dvdlambda_q, real *dvdlambda_lj,
-                            int flags);
+                            gmx_wallcycle_t  wcycle,
+                            matrix           vir_q,
+                            real            *energy_q,
+                            int              flags);
 
 
 /*! \brief Called on the nodes that do PME exclusively (as slaves) */

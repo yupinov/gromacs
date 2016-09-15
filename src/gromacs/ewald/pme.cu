@@ -47,13 +47,12 @@
 #include "gromacs/hardware/hw_info.h"
 #include "gromacs/utility/logger.h"
 
-#include "gromacs/math/invertmatrix.h"
-
 /* The rest */
 #include <assert.h>
-
 #include "gromacs/gpu_utils/pmalloc_cuda.h"
+#include "gromacs/math/invertmatrix.h"
 #include "gromacs/math/units.h"
+#include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
 #include "pme.cuh"
 #include "pme-gpu.h"
@@ -65,7 +64,7 @@
  */
 void pme_gpu_alloc_energy_virial(const gmx_pme_t *pme)
 {
-    const size_t energyAndVirialSize = PME_GPU_ENERGY_AND_VIRIAL_COUNT * sizeof(float);
+    const size_t energyAndVirialSize = PME_GPU_VIRIAL_AND_ENERGY_COUNT * sizeof(float);
     cudaError_t  stat                = cudaMalloc((void **)&pme->gpu->kernelParams.constants.virialAndEnergy, energyAndVirialSize);
     CU_RET_ERR(stat, "cudaMalloc failed on PME energy and virial");
     pmalloc((void **)&pme->gpu->virialAndEnergyHost, energyAndVirialSize);
@@ -85,7 +84,7 @@ void pme_gpu_free_energy_virial(const gmx_pme_t *pme)
     pme->gpu->virialAndEnergyHost = NULL;
 }
 
-/*! \brief
+/*! \brief \internal
  *
  * Clears the energy and virial memory on GPU with 0.
  * Should be called at the end of the energy/virial calculation step.
@@ -93,8 +92,21 @@ void pme_gpu_free_energy_virial(const gmx_pme_t *pme)
 void pme_gpu_clear_energy_virial(const gmx_pme_t *pme)
 {
     cudaError_t stat = cudaMemsetAsync(pme->gpu->kernelParams.constants.virialAndEnergy, 0,
-                                       PME_GPU_ENERGY_AND_VIRIAL_COUNT * sizeof(float), pme->gpu->pmeStream);
+                                       PME_GPU_VIRIAL_AND_ENERGY_COUNT * sizeof(float), pme->gpu->pmeStream);
     CU_RET_ERR(stat, "PME energies/virial cudaMemsetAsync error");
+}
+
+void pme_gpu_get_energy_virial(const gmx_pme_t *pme, real *energy, matrix virial)
+{
+    assert(energy);
+    size_t j = 0;
+    virial[XX][XX] = 0.25 * pme->gpu->virialAndEnergyHost[j++];
+    virial[YY][YY] = 0.25 * pme->gpu->virialAndEnergyHost[j++];
+    virial[ZZ][ZZ] = 0.25 * pme->gpu->virialAndEnergyHost[j++];
+    virial[XX][YY] = virial[YY][XX] = 0.25 * pme->gpu->virialAndEnergyHost[j++];
+    virial[XX][ZZ] = virial[ZZ][XX] = 0.25 * pme->gpu->virialAndEnergyHost[j++];
+    virial[YY][ZZ] = virial[ZZ][YY] = 0.25 * pme->gpu->virialAndEnergyHost[j++];
+    *energy        = 0.5 * pme->gpu->virialAndEnergyHost[j++];
 }
 
 /*! \brief \internal
@@ -171,7 +183,7 @@ void pme_gpu_copy_wrap_zones(const gmx_pme_t *pme)
 
     /* Cell counts in the 7 overlapped grid parts */
     /* Is this correct? No Z alignment changes? */
-    const int3 zoneSizes_h[OVERLAP_ZONES] =
+    const int3 zoneSizes_h[PME_GPU_OVERLAP_ZONES_COUNT] =
     {
         {     nx,        ny,   overlap},
         {     nx,   overlap,        nz},
@@ -182,19 +194,19 @@ void pme_gpu_copy_wrap_zones(const gmx_pme_t *pme)
         {overlap,   overlap,   overlap}
     };
     /* The X is never used on the GPU, actually */
-    int2 zoneSizesYZ_h[OVERLAP_ZONES];
-    for (int i = 0; i < OVERLAP_ZONES; i++)
+    int2 zoneSizesYZ_h[PME_GPU_OVERLAP_ZONES_COUNT];
+    for (int i = 0; i < PME_GPU_OVERLAP_ZONES_COUNT; i++)
     {
         zoneSizesYZ_h[i].x = zoneSizes_h[i].y;
         zoneSizesYZ_h[i].y = zoneSizes_h[i].z;
     }
-    int cellsAccumCount_h[OVERLAP_ZONES];
-    for (int i = 0; i < OVERLAP_ZONES; i++)
+    int cellsAccumCount_h[PME_GPU_OVERLAP_ZONES_COUNT];
+    for (int i = 0; i < PME_GPU_OVERLAP_ZONES_COUNT; i++)
     {
         cellsAccumCount_h[i] = zoneSizes_h[i].x * zoneSizes_h[i].y * zoneSizes_h[i].z;
     }
     /* Accumulation */
-    for (int i = 1; i < OVERLAP_ZONES; i++)
+    for (int i = 1; i < PME_GPU_OVERLAP_ZONES_COUNT; i++)
     {
         cellsAccumCount_h[i] = cellsAccumCount_h[i] + cellsAccumCount_h[i - 1];
     }
@@ -692,6 +704,22 @@ void pme_gpu_init_atoms_once(const gmx_pme_t *pme, const int nAtoms, float *coef
     {
         pme_gpu_reinit_atoms(pme, nAtoms, coefficients);
         pme->gpu->bNeedToUpdateAtoms = FALSE;
+    }
+}
+
+/*! \brief \internal
+ * Waits for the PME GPU output virial/energy copy to the intermediate CPU buffer to finish.
+ *
+ * \param[in] pme  The PME structure.
+ */
+void pme_gpu_sync_energy_virial(const gmx_pme_t *pme)
+{
+    cudaError_t stat = cudaStreamWaitEvent(pme->gpu->pmeStream, pme->gpu->syncEnerVirD2H, 0);
+    CU_RET_ERR(stat, "Error while waiting for PME solve");
+
+    for (int j = 0; j < PME_GPU_VIRIAL_AND_ENERGY_COUNT; j++)
+    {
+        GMX_ASSERT(!isnan(pme->gpu->virialAndEnergyHost[j]), "PME GPU produces incorrect energy/virial.");
     }
 }
 

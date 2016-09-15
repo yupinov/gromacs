@@ -610,13 +610,10 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                         gmx_fatal(FARGS, "Error %d in reciprocal PME routine", status);
                     }
                     status = gmx_pme_gpu_get_results(fr->pmedata,
-                                                     cr,
                                                      wcycle,
                                                      fr->vir_el_recip,
-                                                     fr->vir_lj_recip,
-                                                     &Vlr_q, &Vlr_lj,
-                                                     lambda[efptCOUL], lambda[efptVDW],
-                                                     &dvdl_long_range_q, &dvdl_long_range_lj, pme_flags);
+                                                     &Vlr_q,
+                                                     pme_flags);
                     if (status != 0)
                     {
                         gmx_fatal(FARGS, "Error %d in reciprocal PME routine", status);

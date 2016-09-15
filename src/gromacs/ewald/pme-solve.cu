@@ -212,7 +212,7 @@ __global__ void pme_solve_kernel
          */
 #endif
         {
-            __shared__ float virialAndEnergyShared[PME_GPU_ENERGY_AND_VIRIAL_COUNT * blockSize];
+            __shared__ float virialAndEnergyShared[PME_GPU_VIRIAL_AND_ENERGY_COUNT * blockSize];
             // 3.5k smem per block - a serious limiter!
 
             /*  a 7-thread reduction in shared memory inspired by reduce_force_j_generic */
@@ -232,7 +232,7 @@ __global__ void pme_solve_kernel
             for (int s = blockSize >> 1; s >= warp_size; s >>= 1)
             {
 #pragma unroll
-                for (int i = 0; i < PME_GPU_ENERGY_AND_VIRIAL_COUNT; i++)
+                for (int i = 0; i < PME_GPU_VIRIAL_AND_ENERGY_COUNT; i++)
                 {
                     if (threadLocalId < s) // split per threads?
                     {
@@ -242,9 +242,9 @@ __global__ void pme_solve_kernel
                 __syncthreads();
             }
 
-            const int threadsPerComponent    = warp_size / PME_GPU_ENERGY_AND_VIRIAL_COUNT; // this is also the stride, will be 32 / 7 = 4
+            const int threadsPerComponent    = warp_size / PME_GPU_VIRIAL_AND_ENERGY_COUNT; // this is also the stride, will be 32 / 7 = 4
             const int contributionsPerThread = warp_size / threadsPerComponent;             // will be 32 / 4 = 8
-            if (threadLocalId < PME_GPU_ENERGY_AND_VIRIAL_COUNT * threadsPerComponent)
+            if (threadLocalId < PME_GPU_VIRIAL_AND_ENERGY_COUNT * threadsPerComponent)
             {
                 const int componentIndex        = threadLocalId / threadsPerComponent;
                 const int threadComponentOffset = threadLocalId - componentIndex * threadsPerComponent;
@@ -387,7 +387,7 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
     if (bEnerVir)
     {
         cu_copy_D2H_async(pme->gpu->virialAndEnergyHost, pme->gpu->kernelParams.constants.virialAndEnergy,
-                          PME_GPU_ENERGY_AND_VIRIAL_COUNT * sizeof(float), s);
+                          PME_GPU_VIRIAL_AND_ENERGY_COUNT * sizeof(float), s);
         cudaError_t stat = cudaEventRecord(pme->gpu->syncEnerVirD2H, s);
         CU_RET_ERR(stat, "PME solve energy/virial sync fail");
     }
@@ -398,43 +398,4 @@ void solve_pme_gpu(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
         cudaError_t stat = cudaEventRecord(pme->gpu->syncSolveGridD2H, s);
         CU_RET_ERR(stat, "PME solve grid sync fail");
     }
-}
-
-void pme_gpu_sync_energy_virial(const gmx_pme_t *pme)
-{
-    cudaStream_t              s = pme->gpu->pmeStream;
-
-    struct pme_solve_work_t  *work          = &pme->solve_work[0];
-    float                    *work_energy_q = &(work->energy_q);
-    matrix                   &work_vir_q    = work->vir_q;
-
-    cudaError_t               stat = cudaStreamWaitEvent(s, pme->gpu->syncEnerVirD2H, 0);
-    CU_RET_ERR(stat, "Error while waiting for PME solve");
-
-    float                     energy            = 0.0;
-    float                     virxx             = 0.0, virxy = 0.0, virxz = 0.0, viryy = 0.0, viryz = 0.0, virzz = 0.0;
-
-    for (int j = 0; j < PME_GPU_ENERGY_AND_VIRIAL_COUNT; j++)
-    {
-        GMX_ASSERT(!isnan(pme->gpu->virialAndEnergyHost[j]), "PME GPU produces incorrect energy/virial.");
-    }
-
-    int j = 0;
-    virxx  += pme->gpu->virialAndEnergyHost[j++];
-    viryy  += pme->gpu->virialAndEnergyHost[j++];
-    virzz  += pme->gpu->virialAndEnergyHost[j++];
-    virxy  += pme->gpu->virialAndEnergyHost[j++];
-    virxz  += pme->gpu->virialAndEnergyHost[j++];
-    viryz  += pme->gpu->virialAndEnergyHost[j++];
-    energy += pme->gpu->virialAndEnergyHost[j++];
-
-    work_vir_q[XX][XX] = 0.25 * virxx;
-    work_vir_q[YY][YY] = 0.25 * viryy;
-    work_vir_q[ZZ][ZZ] = 0.25 * virzz;
-    work_vir_q[XX][YY] = work_vir_q[YY][XX] = 0.25 * virxy;
-    work_vir_q[XX][ZZ] = work_vir_q[ZZ][XX] = 0.25 * virxz;
-    work_vir_q[YY][ZZ] = work_vir_q[ZZ][YY] = 0.25 * viryz;
-
-    /* This energy should be corrected for a charged system */
-    *work_energy_q = 0.5 * energy;
 }

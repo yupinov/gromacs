@@ -117,7 +117,7 @@
  *    Could be good for performance in specific systems with lots of neutral atoms.
  */
 
-#define PME_GPU_ENERGY_AND_VIRIAL_COUNT 7
+#define PME_GPU_VIRIAL_AND_ENERGY_COUNT 7
 /* This is a number of output floats of PME solve.
  * 6 floats for symmetric virial matrix + 1 float for reciprocal energy.
  * Better to have a magic number like this defined in one place.
@@ -173,8 +173,8 @@ struct pme_gpu_const_params
 {
     /*! \brief Electrostatics coefficient = ONE_4PI_EPS0 / pme->epsilon_r */
     float elFactor;
-    /*! \brief Energy and virial GPU array. Size is PME_GPU_ENERGY_AND_VIRIAL_COUNT floats.
-     * Order is ??? */
+    /*! \brief Virial and energy GPU array. Size is PME_GPU_ENERGY_AND_VIRIAL_COUNT (7) floats.
+     * The element order is virxx, viryy, virzz, virxy, virxz, viryz, energy. */
     float *virialAndEnergy;
 };
 
@@ -196,15 +196,15 @@ struct pme_gpu_grid_params
     /* Grid pointers */
     /*! \brief Real space grid. */
     float  *realGrid;
-    /*! \brief Complex grid - used in FFT/solve. If we're using inplace cuFFT, then it's the same pointer as realGrid. */
+    /*! \brief Complex grid - used in FFT/solve. If inplace cuFFT is used, then it is the same pointer as realGrid. */
     float2 *fourierGrid;
 
     /* Crude wrap/unwrap overlap zone sizes - can go away with a better rewrite of wrap/unwrap */
-#define OVERLAP_ZONES 7
+#define PME_GPU_OVERLAP_ZONES_COUNT 7
     /*! \brief The Y and Z sizes of the overlap zones */
-    int2 overlapSizes[OVERLAP_ZONES];
+    int2 overlapSizes[PME_GPU_OVERLAP_ZONES_COUNT];
     /*! \brief The total cell counts of the overlap zones */
-    int  overlapCellCounts[OVERLAP_ZONES];
+    int  overlapCellCounts[PME_GPU_OVERLAP_ZONES_COUNT];
 
     /*! \brief Ewald solving factor = (M_PI / ewaldCoeff)^2 */
     float ewaldFactor;
@@ -272,14 +272,13 @@ struct pme_gpu_atom_params
  */
 struct pme_gpu_step_params
 {
-    /* The box parameters. The box only changes size each step with pressure coupling enabled.
-     * How about a corresponding check in the code? */
+    /* The box parameters. The box only changes size each step with pressure coupling enabled. */
     /*! \brief
      * Reciprocal (inverted unit cell) box.
      *
      * The box is transposed as compared to the CPU pme->recipbox.
      * Basically, spread uses matrix columns (while solve and gather use rows).
-     * This storage format might be not the best since the box is always triangular.
+     * This storage format might be not the most optimal since the box is always triangular so there are zeroes.
      */
     float3 recipBox[DIM];
     /*! \brief The unit cell volume for solving. */
@@ -291,7 +290,7 @@ struct pme_gpu_step_params
  */
 struct pme_gpu_kernel_params
 {
-    /*! \brief Constant data. */
+    /*! \brief Constant data that is set once. */
     pme_gpu_const_params constants;
     /*! \brief Data dependent on the grid size/cutoff. */
     pme_gpu_grid_params  grid;
@@ -309,7 +308,7 @@ struct gmx_pme_cuda_t
     /*! \brief The CUDA stream where everything related to the PME happens. */
     cudaStream_t pmeStream;
 
-    /* Synchronization events. */
+    /* Synchronization events */
     /*! \brief A synchronization event for the energy/virial being copied to the host after the solving stage. */
     cudaEvent_t syncEnerVirD2H;
     /*! \brief A synchronization event for the output forces being copied to the host after the gathering stage. */
@@ -334,30 +333,28 @@ struct gmx_pme_cuda_t
      * TRUE by default, disabled by setting the environment variable GMX_DISABLE_CUDA_TIMING.
      */
     gmx_bool bTiming;
-    /*! \brief A boolean which tells the PME to call the pme_gpu_reinit_atoms at the step beginning.
-     * Currently it is only used for the very first MD step.
+    /*! \brief A boolean which tells the PME to call the pme_gpu_reinit_atoms at the beginning of the run.
      * The DD pme_gpu_reinit_atoms gets called in gmx_pmeonly instead.
-     * Set to TRUE initially, then to FALSE after pme_gpu_reinit_atoms is called.
+     * Set to TRUE initially, then to FALSE after pme_gpu_init_atoms_once is called.
      */
     gmx_bool bNeedToUpdateAtoms;
-
 
     //gmx_bool bUseTextureObjects;  /* If false, then use references [unused] */
 
     /*! \brief A single structure encompassing all the PME data used on GPU.
      * This is the only parameter to all the PME CUDA kernels.
-     * Can probably be copied to the constant GPU memory once per MD step instead of being a parameter.
+     * Can probably be copied to the constant GPU memory once per MD step (or even less often) instead of being a parameter.
      */
     pme_gpu_kernel_params                kernelParams;
 
     gmx_device_info_t                   *deviceInfo;
 
-    pme_gpu_timing              *        timingEvents[gtPME_EVENT_COUNT];
+    pme_gpu_timing                      *timingEvents[gtPME_EVENT_COUNT];
 
     gmx_parallel_3dfft_gpu_t            *pfft_setup_gpu;
 
     /*! \brief The unit cell box from the previous step.
-     * Only used to know if the step parameters need to be updated.
+     * Only used to know if the kernelParams.step needs to be updated.
      */
     matrix previousBox;
 
@@ -369,19 +366,19 @@ struct gmx_pme_cuda_t
     /* Output (and possibly input if pme_kernel_gather does the reduction) */
     float  *forcesHost;      /* rvec/float3 */
     /* Should the virial + energy live here as well? */
-    /*! \brief Energy and virial intermediate host-side buffer, managed and pinned by PME GPU entirely. Size is 7 floats. */
+    /*! \brief Virial and energy intermediate host-side buffer, managed and pinned by PME GPU entirely. Size is PME_GPU_VIRIAL_AND_ENERGY_COUNT. */
     float *virialAndEnergyHost;
     /*! \brief B-spline values (temporary?) intermediate host-side buffers, managed and pinned by PME GPU entirely. Sizes are the grid sizes. */
     float *splineValuesHost[DIM];
     /*! \brief Sizes of the corresponding splineValuesHost arrays in bytes */
     size_t splineValuesHostSizes[DIM]; //oh god the names
+    /*! \brief Sizes of the corresponding splineValuesHost arrays in bytes */
 
     /*! \brief Number of local atoms, padded to be divisible by particlesPerBlock.
      * Used for kernel scheduling.
      * kernelParams.atoms.nAtoms is the actual atom count to be used for data copying.
      */
     int nAtomsPadded;
-
     /*! \brief Number of local atoms, padded to be divisible by particlesPerBlock if (PME_GPU_USE_PADDING == 1).
      * Used only as a basic size for almost all the atom data allocations
      * (spline parameter data is also aligned by PME_SPREADGATHER_PARTICLES_PER_WARP).
@@ -391,10 +388,11 @@ struct gmx_pme_cuda_t
     int nAtomsAlloc;
 
     /* GPU arrays element counts (not the arrays sizes in bytes!).
-     * The sizes are all based on kernelParams.atoms.nAtomsAlloc, which by itself might already be padded, so they are not the actual meaningful data sizes.
+     * They might be larger than the actual meaningful data sizes.
      * These are paired: the actual element count + the maximum element count that can fit in the current allocated memory.
-     * These integer pairs are only meaningful for the cu_realloc/free_buffered calls.
+     * These integer pairs are mostly meaningful for the cu_realloc/free_buffered calls.
      * As such, if cu_realloc/free_buffered is refactored, they can be freely changed, too.
+     * The only exception is gridSize which is also used for grid clearing/copying.
      */
     /*! \brief The kernelParams.atoms.coordinates float element count (actual)*/
     int coordinatesSize;
@@ -416,6 +414,10 @@ struct gmx_pme_cuda_t
     int coefficientsSize;
     /*! \brief The kernelParams.atoms.coefficients float element count (reserved) */
     int coefficientsSizeAlloc;
+    /*! \brief The kernelParams.grid.splineValuesArray float element count (actual) */
+    int splineValuesSize;
+    /*! \brief The kernelParams.grid.splineValuesArray float element count (reserved) */
+    int splineValuesSizeAlloc;
     /*! \brief Both the kernelParams.grid.fshArray and kernelParams.grid.nnArray float element count (actual) */
     int fractShiftsSize;
     /*! \brief Both the kernelParams.grid.fshArray and kernelParams.grid.nnArray float element count (reserved) */
@@ -424,10 +426,6 @@ struct gmx_pme_cuda_t
     int gridSize;
     /*! \brief Both the kernelParams.grid.realGrid (and possibly kernelParams.grid.fourierGrid) float element count (reserved) */
     int gridSizeAlloc;
-    /*! \brief The kernelParams.grid.splineValuesArray float element count (actual) */
-    int splineValuesSize;
-    /*! \brief The kernelParams.grid.splineValuesArray float element count (reserved) */
-    int splineValuesSizeAlloc;
 };
 
 // dumping all the CUDA-specific PME functions here...
@@ -461,13 +459,5 @@ void gmx_parallel_3dfft_complex_limits_gpu(const gmx_parallel_3dfft_gpu_t pfft_s
  * \param[in] pme  The PME structure.
  */
 void pme_gpu_sync_output_forces(const gmx_pme_t *pme);
-
-
-/*! \brief
- * Waits for the PME GPU output energy/virial copy to the CPU buffer (????) to finish.
- *
- * \param[in] pme  The PME structure.
- */
-void pme_gpu_sync_energy_virial(const gmx_pme_t *pme);
 
 #endif
