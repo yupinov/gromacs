@@ -435,11 +435,63 @@ struct gmx_pme_cuda_t
  * Tells if CUDA-based performance tracking is enabled for PME.
  *
  * \param[in] pme            The PME data structure.
- * \returns                  TRUE if timings are enabled, FALSE otehrwise.
+ * \returns                  TRUE if timings are enabled, FALSE otherwise.
  */
 gmx_inline gmx_bool pme_gpu_timings_enabled(const gmx_pme_t *pme)
 {
     return pme_gpu_enabled(pme) && pme->gpu->bTiming;
+}
+
+/*! \libinternal
+ * \brief
+ *
+ * Tells if PME performs the gathering stage on GPU.
+ *
+ * \param[in] pme            The PME data structure.
+ * \returns                  TRUE if the gathering is performed on GPU, FALSE otherwise.
+ */
+gmx_inline gmx_bool pme_gpu_performs_gather(const gmx_pme_t *pme)
+{
+    return pme_gpu_enabled(pme) && pme->gpu->bGPUGather;
+}
+
+/*! \libinternal
+ * \brief
+ *
+ * Tells if PME performs the FFT stages on GPU.
+ *
+ * \param[in] pme            The PME data structure.
+ * \returns                  TRUE if FFT is performed on GPU, FALSE otherwise.
+ */
+gmx_inline gmx_bool pme_gpu_performs_FFT(const gmx_pme_t *pme)
+{
+    return pme_gpu_enabled(pme) && pme->gpu->bGPUFFT;
+}
+
+/*! \libinternal
+ * \brief
+ *
+ * Tells if PME performs the grid (un-)wrapping on GPU.
+ *
+ * \param[in] pme            The PME data structure.
+ * \returns                  TRUE if (un-)wrapping is performed on GPU, FALSE otherwise.
+ */
+gmx_inline gmx_bool pme_gpu_performs_wrapping(const gmx_pme_t *pme)
+{
+    return pme_gpu_enabled(pme) && pme->gpu->bGPUSingle;
+}
+
+/*! \libinternal
+ * \brief
+ *
+ * Tells if PME performs the grid solving on GPU.
+ *
+ * \param[in] pme            The PME data structure.
+ * \returns                  TRUE if solving is performed on GPU, FALSE otherwise.
+ */
+gmx_inline gmx_bool pme_gpu_performs_solve(const gmx_pme_t *pme)
+{
+    return pme_gpu_enabled(pme) && pme->gpu->bGPUSolve;
 }
 
 

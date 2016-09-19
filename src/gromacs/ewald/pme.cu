@@ -448,15 +448,84 @@ void pme_gpu_clear_grids(const gmx_pme_t *pme)
  *
  * \param[in] pme            The PME structure.
  */
-void pme_gpu_step_reinit(const gmx_pme_t *pme)
+void pme_gpu_reinit_step(const gmx_pme_t *pme)
 {
     pme_gpu_clear_grids(pme);
     pme_gpu_clear_energy_virial(pme);
 }
 
+/*! \brief \internal
+ * (Re-)initializes all the PME GPU data related to the grid size and cut-off.
+ *
+ * \param[in] pme            The PME structure.
+ */
+void pme_gpu_reinit_grids(const gmx_pme_t *pme)
+{
+    pme->gpu->kernelParams.grid.ewaldFactor = (M_PI * M_PI) / (pme->ewaldcoeff_q * pme->ewaldcoeff_q);
+
+    /* The grid size variants */
+    const int3   localGridSize = {pme->nkx, pme->nky, pme->nkz};
+    memcpy(&pme->gpu->kernelParams.grid.localGridSize, &localGridSize, sizeof(localGridSize));
+    const float3 localGridSizeFP = {(float)localGridSize.x, (float)localGridSize.y, (float)localGridSize.z};
+    memcpy(&pme->gpu->kernelParams.grid.localGridSizeFP, &localGridSizeFP, sizeof(localGridSizeFP));
+    const int3   localGridSizePadded = {pme->pmegrid_nx, pme->pmegrid_ny, pme->pmegrid_nz};
+    memcpy(&pme->gpu->kernelParams.grid.localGridSizePadded, &localGridSizePadded, sizeof(localGridSizePadded));
+
+    pme_gpu_copy_wrap_zones(pme);
+    pme_gpu_realloc_and_copy_fract_shifts(pme);
+    pme_gpu_realloc_and_copy_bspline_values(pme);
+    pme_gpu_realloc_grids(pme);
+
+    if (pme->gpu->bGPUFFT)
+    {
+        for (int i = 0; i < pme->ngrids; ++i)
+        {
+            gmx_parallel_3dfft_init_gpu(&pme->gpu->pfft_setup_gpu[i], (int *)&localGridSize, pme);
+        }
+    }
+}
+
+/*! \brief \internal
+ * Waits for the PME GPU output virial/energy copying to the intermediate CPU buffer to finish.
+ *
+ * \param[in] pme  The PME structure.
+ */
+void pme_gpu_sync_energy_virial(const gmx_pme_t *pme)
+{
+    cudaError_t stat = cudaStreamWaitEvent(pme->gpu->pmeStream, pme->gpu->syncEnerVirD2H, 0);
+    CU_RET_ERR(stat, "Error while waiting for PME solve");
+
+    for (int j = 0; j < PME_GPU_VIRIAL_AND_ENERGY_COUNT; j++)
+    {
+        GMX_ASSERT(!isnan(pme->gpu->virialAndEnergyHost[j]), "PME GPU produces incorrect energy/virial.");
+    }
+}
+
+/*! \brief \internal
+ * Waits for the PME GPU grid copying to the host-side buffer to finish.
+ *
+ * \param[in] pme  The PME structure.
+ */
+void pme_gpu_sync_grid(const gmx_pme_t *pme, const gmx_fft_direction dir)
+{
+    /* FIXME: this function does not actually seem to be used when it should be, with CPU FFT? */
+    if (!pme_gpu_enabled(pme))
+    {
+        return;
+    }
+
+    gmx_bool syncGPUGrid = ((dir == GMX_FFT_REAL_TO_COMPLEX) ? true : pme->gpu->bGPUSolve);
+    if (syncGPUGrid)
+    {
+        cudaError_t stat = cudaStreamWaitEvent(pme->gpu->pmeStream,
+                                               (dir == GMX_FFT_REAL_TO_COMPLEX) ? pme->gpu->syncSpreadGridD2H : pme->gpu->syncSolveGridD2H, 0);
+        CU_RET_ERR(stat, "Error while waiting for the PME GPU grid to be copied to CPU");
+    }
+}
+
 /* The exposed PME GPU functions follow below */
 
-void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_opt_t *gpu_opt)
+void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_opt_t *gpu_opt)
 {
     if (!pme_gpu_enabled(pme))
     {
@@ -555,37 +624,12 @@ void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_opt
 
         assert(pme->epsilon_r != 0.0f);
         pme->gpu->kernelParams.constants.elFactor = ONE_4PI_EPS0 / pme->epsilon_r;
+
+        snew(pme->gpu->pfft_setup_gpu, pme->ngrids);
     }
 
-    const bool gridSizeChanged = TRUE; /* This function is called on DLB steps as well */
-    if (gridSizeChanged)               /* The need for reallocation is checked for inside, might do a redundant grid size increase check here anyway?... */
-    {
-        pme->gpu->kernelParams.grid.ewaldFactor = (M_PI * M_PI) / (pme->ewaldcoeff_q * pme->ewaldcoeff_q);
-
-        /* The grid size variants */
-        const int3   localGridSize = {pme->nkx, pme->nky, pme->nkz};
-        memcpy(&pme->gpu->kernelParams.grid.localGridSize, &localGridSize, sizeof(localGridSize));
-        const float3 localGridSizeFP = {(float)localGridSize.x, (float)localGridSize.y, (float)localGridSize.z};
-        memcpy(&pme->gpu->kernelParams.grid.localGridSizeFP, &localGridSizeFP, sizeof(localGridSizeFP));
-        const int3   localGridSizePadded = {pme->pmegrid_nx, pme->pmegrid_ny, pme->pmegrid_nz};
-        memcpy(&pme->gpu->kernelParams.grid.localGridSizePadded, &localGridSizePadded, sizeof(localGridSizePadded));
-
-        pme_gpu_copy_wrap_zones(pme);
-        pme_gpu_realloc_and_copy_fract_shifts(pme);
-        pme_gpu_realloc_and_copy_bspline_values(pme);
-        pme_gpu_realloc_grids(pme);
-
-        if (pme->gpu->bGPUFFT)
-        {
-            snew(pme->gpu->pfft_setup_gpu, pme->ngrids); //yupinov - memory leaking?
-            for (int i = 0; i < pme->ngrids; ++i)
-            {
-                gmx_parallel_3dfft_init_gpu(&pme->gpu->pfft_setup_gpu[i], (int *)&localGridSize, pme);
-            }
-        }
-    }
-
-    pme_gpu_step_reinit(pme);
+    pme_gpu_reinit_grids(pme);
+    pme_gpu_reinit_step(pme);
 }
 
 void pme_gpu_destroy(gmx_pme_t *pme)
@@ -699,14 +743,14 @@ void pme_gpu_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, float *coeffic
     }
 
     pme->gpu->kernelParams.atoms.nAtoms = nAtoms;
-    const int      alignment = 8; //yupinov FIXME: this is particlesPerBlock
+    const int      alignment = 8; // FIXME: this is particlesPerBlock
     pme->gpu->nAtomsPadded = ((nAtoms + alignment - 1) / alignment) * alignment;
     int            nAtomsAlloc   = PME_GPU_USE_PADDING ? pme->gpu->nAtomsPadded : nAtoms;
     const gmx_bool haveToRealloc = (pme->gpu->nAtomsAlloc < nAtomsAlloc); /* This check might be redundant, but is logical */
     pme->gpu->nAtomsAlloc = nAtomsAlloc;
 
     pme->gpu->coefficientsHost = reinterpret_cast<float *>(coefficients);
-    pme_gpu_realloc_and_copy_coefficients(pme); /* could also be checked for haveToRealloc, but the copy always needs to be performed */
+    pme_gpu_realloc_and_copy_coefficients(pme); /* Could also be checked for haveToRealloc, but the copy always needs to be performed */
 
     if (haveToRealloc)
     {
@@ -714,22 +758,6 @@ void pme_gpu_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, float *coeffic
         pme_gpu_realloc_forces(pme);
         pme_gpu_realloc_spline_data(pme);
         pme_gpu_realloc_grid_indices(pme);
-    }
-}
-
-/*! \brief \internal
- * Waits for the PME GPU output virial/energy copy to the intermediate CPU buffer to finish.
- *
- * \param[in] pme  The PME structure.
- */
-void pme_gpu_sync_energy_virial(const gmx_pme_t *pme)
-{
-    cudaError_t stat = cudaStreamWaitEvent(pme->gpu->pmeStream, pme->gpu->syncEnerVirD2H, 0);
-    CU_RET_ERR(stat, "Error while waiting for PME solve");
-
-    for (int j = 0; j < PME_GPU_VIRIAL_AND_ENERGY_COUNT; j++)
-    {
-        GMX_ASSERT(!isnan(pme->gpu->virialAndEnergyHost[j]), "PME GPU produces incorrect energy/virial.");
     }
 }
 
@@ -752,52 +780,8 @@ void pme_gpu_finish_step(const gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_
     {
         pme_gpu_sync_energy_virial(pme);
     }
-
     pme_gpu_update_timings(pme);
-
-    pme_gpu_step_reinit(pme);
-}
-
-/* FIXME: this function does not actually seem to be used when it should be, with CPU FFT? */
-void pme_gpu_sync_grid(const gmx_pme_t *pme, const gmx_fft_direction dir)
-{
-    if (!pme_gpu_enabled(pme))
-    {
-        return;
-    }
-
-    gmx_bool syncGPUGrid = ((dir == GMX_FFT_REAL_TO_COMPLEX) ? true : pme->gpu->bGPUSolve);
-    if (syncGPUGrid)
-    {
-        cudaError_t stat = cudaStreamWaitEvent(pme->gpu->pmeStream,
-                                               (dir == GMX_FFT_REAL_TO_COMPLEX) ? pme->gpu->syncSpreadGridD2H : pme->gpu->syncSolveGridD2H, 0);
-        CU_RET_ERR(stat, "Error while waiting for the PME GPU grid to be copied to CPU");
-    }
-}
-
-// TODO: use gmx_inline for small functions
-
-// wrappers just for the pme.cpp host calls - a PME GPU code that should ideally be in this file as well
-// C++11 not supported in CUDA host code by default => the code stays there for now
-
-gmx_bool pme_gpu_performs_gather(const gmx_pme_t *pme)
-{
-    return pme_gpu_enabled(pme) && pme->gpu->bGPUGather;
-}
-
-gmx_bool pme_gpu_performs_FFT(const gmx_pme_t *pme)
-{
-    return pme_gpu_enabled(pme) && pme->gpu->bGPUFFT;
-}
-
-gmx_bool pme_gpu_performs_wrapping(const gmx_pme_t *pme)
-{
-    return pme_gpu_enabled(pme) && pme->gpu->bGPUSingle;
-}
-
-gmx_bool pme_gpu_performs_solve(const gmx_pme_t *pme)
-{
-    return pme_gpu_enabled(pme) && pme->gpu->bGPUSolve;
+    pme_gpu_reinit_step(pme);
 }
 
 /*! \brief \internal
@@ -980,9 +964,9 @@ void pme_gpu_launch(gmx_pme_t      *pme,
 
 // this will only copy the forces buffer (with results from listed calculations, etc.) to the GPU (for bClearF == false),
 // launch the gather kernel, copy the result back
-void pme_gpu_launch_gather(gmx_pme_t                 *pme,
-                           gmx_wallcycle_t gmx_unused wcycle,
-                           gmx_bool                   bClearForces)
+void pme_gpu_launch_gather(const gmx_pme_t                 *pme,
+                           gmx_wallcycle_t gmx_unused       wcycle,
+                           gmx_bool                         bClearForces)
 {
     if (!pme_gpu_performs_gather(pme))
     {
@@ -1027,5 +1011,5 @@ void pme_gpu_get_results(const gmx_pme_t *pme,
             *energy_q = 0;
         }
     }
-    /* No bCalcF code since currently forces are copied to the output host buffer with no perturbation. */
+    /* No bCalcF code since currently forces are copied to the output host buffer with no transformation. */
 }

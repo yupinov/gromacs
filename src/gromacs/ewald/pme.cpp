@@ -837,7 +837,7 @@ int gmx_pme_init(struct gmx_pme_t   **pmedata,
         pme_realloc_atomcomm_things(&pme->atc[0]);
     }
 
-    pme_gpu_init(pme, hwinfo, gpu_opt);
+    pme_gpu_reinit(pme, hwinfo, gpu_opt);
 
     pme->lb_buf1       = NULL;
     pme->lb_buf2       = NULL;

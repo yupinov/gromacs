@@ -80,13 +80,6 @@ CUDA_FUNC_QUALIFIER void pme_gpu_solve(
         t_complex     *CUDA_FUNC_ARGUMENT(grid),
         const gmx_bool CUDA_FUNC_ARGUMENT(bEnerVir)) CUDA_FUNC_TERM
 
-// these should not really be external - only used in GPU launch code which is stuck in pme.cpp
-CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_gather(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
-CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_FFT(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
-CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_wrapping(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
-CUDA_FUNC_QUALIFIER gmx_bool pme_gpu_performs_solve(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM_WITH_RETURN(FALSE)
-CUDA_FUNC_QUALIFIER void pme_gpu_sync_grid(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme), const gmx_fft_direction CUDA_FUNC_ARGUMENT(dir)) CUDA_FUNC_TERM
-
 // nice external functions
 
 /*! \brief \internal
@@ -104,15 +97,15 @@ gmx_inline gmx_bool pme_gpu_enabled(const gmx_pme_t *pme)
 }
 
 /*! \brief \internal
- * Initializes the PME GPU data at the beginning of the run or on DLB. Does nothing on non-CUDA builds.
+ * (Re-)initializes the PME GPU data at the beginning of the run or on DLB. Does nothing on non-CUDA builds.
  *
  * \param[in] pme     The PME structure.
  * \param[in] hwinfo  The hardware information structure.
  * \param[in] gpu_opt The GPU information structure.
  */
-CUDA_FUNC_QUALIFIER void pme_gpu_init(gmx_pme_t           *CUDA_FUNC_ARGUMENT(pme),
-                                      const gmx_hw_info_t *CUDA_FUNC_ARGUMENT(hwinfo),
-                                      const gmx_gpu_opt_t *CUDA_FUNC_ARGUMENT(gpu_opt)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_reinit(gmx_pme_t           *CUDA_FUNC_ARGUMENT(pme),
+                                        const gmx_hw_info_t *CUDA_FUNC_ARGUMENT(hwinfo),
+                                        const gmx_gpu_opt_t *CUDA_FUNC_ARGUMENT(gpu_opt)) CUDA_FUNC_TERM
 
 /*! \brief \internal
  * Destroys the PME GPU data at the end of the run. Does nothing on non-CUDA builds.
@@ -206,22 +199,24 @@ CUDA_FUNC_QUALIFIER void pme_gpu_get_results(const gmx_pme_t *CUDA_FUNC_ARGUMENT
 
 // launches first part of PME GPU - from spread up to and including FFT C2R
 // and copying energy/virial back
-void pme_gpu_launch(gmx_pme_t         *pme,
-                    int                nAtoms,
-                    rvec               x[],
-                    rvec               f[],
-                    real               charges[],
-                    matrix             box,
-                    gmx_wallcycle_t    wcycle,
-                    int                flags);
+CUDA_FUNC_QUALIFIER void pme_gpu_launch(gmx_pme_t         *CUDA_FUNC_ARGUMENT(pme),
+                                        int                CUDA_FUNC_ARGUMENT(nAtoms),
+                                        rvec              *CUDA_FUNC_ARGUMENT(x),
+                                        rvec              *CUDA_FUNC_ARGUMENT(f),
+                                        real              *CUDA_FUNC_ARGUMENT(charges),
+                                        matrix             CUDA_FUNC_ARGUMENT(box),
+                                        gmx_wallcycle_t    CUDA_FUNC_ARGUMENT(wcycle),
+                                        int                CUDA_FUNC_ARGUMENT(flags)) CUDA_FUNC_TERM
+
 
 // launches the rest of the PME GPU:
 // copying calculated forces (e.g. listed) onto GPU (only for bClearF == false), gather, copying forces back
 // for separate PME ranks there is no precalculated forces, so bClearF has to be true
 // so there is no reason not to put this call directly back into pme_gpu_launch for bClearF == true
-void pme_gpu_launch_gather(gmx_pme_t      *pme,
-                           gmx_wallcycle_t wcycle,
-                           gmx_bool        bClearForces);
+CUDA_FUNC_QUALIFIER void pme_gpu_launch_gather(const gmx_pme_t      *CUDA_FUNC_ARGUMENT(pme),
+                                               gmx_wallcycle_t       CUDA_FUNC_ARGUMENT(wcycle),
+                                               gmx_bool              CUDA_FUNC_ARGUMENT(bClearForces)) CUDA_FUNC_TERM
+
 
 
 #endif // PMEGPU_H
