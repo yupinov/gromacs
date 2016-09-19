@@ -89,9 +89,9 @@ void pme_gpu_free_energy_virial(const gmx_pme_t *pme)
 }
 
 /*! \brief \internal
+ * Clears the energy and virial memory on GPU with 0. Should be called at the end of the energy/virial calculation step.
  *
- * Clears the energy and virial memory on GPU with 0.
- * Should be called at the end of the energy/virial calculation step.
+ * \param[in] pme            The PME structure.
  */
 void pme_gpu_clear_energy_virial(const gmx_pme_t *pme)
 {
@@ -100,6 +100,13 @@ void pme_gpu_clear_energy_virial(const gmx_pme_t *pme)
     CU_RET_ERR(stat, "PME energies/virial cudaMemsetAsync error");
 }
 
+/*! \brief \internal
+ * Returns the output virial and energy of the PME solving.
+ *
+ * \param[in]  pme               The PME structure.
+ * \param[out] energy            The output energy.
+ * \param[out] virial            The output virial matrix.
+ */
 void pme_gpu_get_energy_virial(const gmx_pme_t *pme, real *energy, matrix virial)
 {
     assert(energy);
@@ -114,7 +121,6 @@ void pme_gpu_get_energy_virial(const gmx_pme_t *pme, real *energy, matrix virial
 }
 
 /*! \brief \internal
- *
  * Reallocates and copies the pre-computed B-spline values to the GPU.
  * FIXME: currently uses just a global memory, could be using texture memory/ldg.
  *
@@ -371,7 +377,7 @@ void pme_gpu_realloc_grid_indices(const gmx_pme_t *pme)
                         &pme->gpu->gridlineIndicesSize, &pme->gpu->gridlineIndicesSizeAlloc, newIndicesSize, pme->gpu->pmeStream, true);
 }
 
-/*! \brief
+/*! \brief \internal
  * Frees the buffer on the GPU for the particle gridline indices.
  *
  * \param[in] pme            The PME structure.
@@ -381,6 +387,11 @@ void pme_gpu_free_grid_indices(const gmx_pme_t *pme)
     cu_free_buffered(pme->gpu->kernelParams.atoms.gridlineIndices, &pme->gpu->gridlineIndicesSize, &pme->gpu->gridlineIndicesSizeAlloc);
 }
 
+/*! \brief \internal
+ * Reallocates the real space grid (and possibly the complex reciprocal grid) on the GPU.
+ *
+ * \param[in] pme            The PME structure.
+ */
 void pme_gpu_realloc_grids(const gmx_pme_t *pme)
 {
     const int pnx         = pme->pmegrid_nx; //?
@@ -405,6 +416,11 @@ void pme_gpu_realloc_grids(const gmx_pme_t *pme)
     }
 }
 
+/*! \brief \internal
+ * Frees the real space grid (and possibly the complex reciprocal grid) on the GPU.
+ *
+ * \param[in] pme            The PME structure.
+ */
 void pme_gpu_free_grids(const gmx_pme_t *pme)
 {
     if (pme->gpu->bOutOfPlaceFFT)
@@ -415,6 +431,11 @@ void pme_gpu_free_grids(const gmx_pme_t *pme)
     cu_free_buffered(pme->gpu->kernelParams.grid.realGrid, &pme->gpu->gridSize, &pme->gpu->gridSizeAlloc);
 }
 
+/*! \brief \internal
+ * Clears the real space grid on the GPU. Should be called at the end of each MD step.
+ *
+ * \param[in] pme            The PME structure.
+ */
 void pme_gpu_clear_grids(const gmx_pme_t *pme)
 {
     cudaError_t stat = cudaMemsetAsync(pme->gpu->kernelParams.grid.realGrid, 0, pme->gpu->gridSize * sizeof(float), pme->gpu->pmeStream);
@@ -432,6 +453,8 @@ void pme_gpu_step_reinit(const gmx_pme_t *pme)
     pme_gpu_clear_grids(pme);
     pme_gpu_clear_energy_virial(pme);
 }
+
+/* The exposed PME GPU functions follow below */
 
 void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_opt_t *gpu_opt)
 {
@@ -694,15 +717,6 @@ void pme_gpu_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, float *coeffic
     }
 }
 
-void pme_gpu_init_atoms_once(const gmx_pme_t *pme, const int nAtoms, float *coefficients)
-{
-    if (pme->gpu->bNeedToUpdateAtoms)
-    {
-        pme_gpu_reinit_atoms(pme, nAtoms, coefficients);
-        pme->gpu->bNeedToUpdateAtoms = FALSE;
-    }
-}
-
 /*! \brief \internal
  * Waits for the PME GPU output virial/energy copy to the intermediate CPU buffer to finish.
  *
@@ -726,7 +740,8 @@ void pme_gpu_finish_step(const gmx_pme_t *pme, const gmx_bool bCalcF, const gmx_
         return;
     }
 
-    cudaError_t stat = cudaStreamSynchronize(pme->gpu->pmeStream); /* Needed for copy back/timing events */
+    /* Needed for copy back as well as timing events */
+    cudaError_t stat = cudaStreamSynchronize(pme->gpu->pmeStream);
     CU_RET_ERR(stat, "Failed to synchronize the PME GPU stream!");
 
     if (bCalcF)
@@ -807,7 +822,6 @@ void gmx_parallel_3dfft_execute_gpu_wrapper(gmx_pme_t              *pme,
     else
     {
         wallcycle_start(wcycle, ewcPME_FFT);
-        //TODO: suppress warnins on non-OpenMP build?
 #pragma omp parallel for num_threads(pme->nthread) schedule(static)
         for (int thread = 0; thread < pme->nthread; thread++)
         {
@@ -844,8 +858,7 @@ void pme_gpu_launch(gmx_pme_t      *pme,
     real                *grid        = NULL;
     real                *fftgrid;
     t_complex           *cfftgrid;
-    int                  thread = 0;
-    gmx_bool             bFirst, bDoSplines;
+    gmx_bool             bFirst;
     const gmx_bool       bCalcEnerVir            = flags & GMX_PME_CALC_ENER_VIR;
     const gmx_bool       bBackFFT                = flags & (GMX_PME_CALC_F | GMX_PME_CALC_POT);
 
@@ -855,22 +868,17 @@ void pme_gpu_launch(gmx_pme_t      *pme,
     bFirst = TRUE;
 
     wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME);
-    pme_gpu_init_atoms_once(pme, nAtoms, charges); /* This only does a one-time atom data init at the first MD step.
-                                                    * Additional reinits are called when needed after gmx_pme_recv_coeffs_coords.
-                                                    */
+    if (pme->gpu->bNeedToUpdateAtoms)
+    {
+        /* This only does a one-time atom data init at the first MD step.
+         * Later, pme_gpu_reinit_atoms is called when needed after gmx_pme_recv_coeffs_coords.
+         */
+        pme_gpu_reinit_atoms(pme, nAtoms, charges);
+        pme->gpu->bNeedToUpdateAtoms = FALSE;
+    }
     pme_gpu_set_io_ranges(pme, x, f);              /* Should this be called every step, or on DD/DLB, or on bCalcEnerVir change? */
-    pme_gpu_start_step(pme, box);                  /* This copies the coordinates, and updates the unit cell box (if it changed) */
+    pme_gpu_start_step(pme, box);                  /* This copies the coordinates, and updates the unit cell box (if it has changed) */
     wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
-
-    /* For simplicity, we construct the splines for all particles if
-     * more than one PME calculations is needed. Some optimization
-     * could be done by keeping track of which atoms have splines
-     * constructed, and construct new splines on each pass for atoms
-     * that don't yet have them.
-     * For GPU this value currently will be false, possibly increasing the divergence in pme_spline.
-     */
-
-    bDoSplines = pme->bFEP || (pme->doCoulomb && pme->doLJ);
 
     const unsigned int grid_index = 0;
 
@@ -892,7 +900,7 @@ void pme_gpu_launch(gmx_pme_t      *pme,
         /* Spread the coefficients on a grid */
         wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
         // TODO rename: consider using the "pme_gpu" prefix here
-        pme_gpu_spread(pme, &pme->atc[0], grid_index, &pmegrid->grid, bFirst, TRUE, bDoSplines);
+        pme_gpu_spread(pme, &pme->atc[0], grid_index, &pmegrid->grid, bFirst, TRUE);
         wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
 
         //if (!pme->bUseThreads)
@@ -933,9 +941,9 @@ void pme_gpu_launch(gmx_pme_t      *pme,
                 wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
             }
             else
-#pragma omp parallel for num_threads(pme->nthread) schedule(static)
             {
-                for (thread = 0; thread < pme->nthread; thread++)
+#pragma omp parallel for num_threads(pme->nthread) schedule(static)
+                for (int thread = 0; thread < pme->nthread; thread++)
                 {
                     solve_pme_yzx(pme, cfftgrid,
                                   box[XX][XX]*box[YY][YY]*box[ZZ][ZZ],
@@ -952,7 +960,7 @@ void pme_gpu_launch(gmx_pme_t      *pme,
             if (!pme_gpu_performs_FFT(pme) || !pme_gpu_performs_gather(pme))
             {
 #pragma omp parallel for num_threads(pme->nthread) schedule(static)
-                for (thread = 0; thread < pme->nthread; thread++)
+                for (int thread = 0; thread < pme->nthread; thread++)
                 {
                     copy_fftgrid_to_pmegrid(pme, fftgrid, grid, grid_index, pme->nthread, thread);
                 }

@@ -703,8 +703,7 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                     const int gmx_unused grid_index,
                     pmegrid_t *pmegrid,
                     const gmx_bool bCalcSplines,
-                    const gmx_bool bSpread,
-                    const gmx_bool bDoSplines)
+                    const gmx_bool bSpread)
 {
     const gmx_bool bSeparateKernels = false;  // significantly slower if true
     if (!bCalcSplines && !bSpread)
@@ -723,16 +722,6 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
     const int order   = pmegrid->order;
     const int overlap = order - 1;
 
-    /*
-       ivec local_ndata, local_size, local_offset;
-       gmx_parallel_3dfft_real_limits_gpu(pme, grid_index, local_ndata, local_offset, local_size);
-       const int pnx = local_size[XX];
-       const int pny = local_size[YY];
-       const int pnz = local_size[ZZ];
-       const int nx = local_ndata[XX];
-       const int ny = local_ndata[YY];
-       const int nz = local_ndata[ZZ];
-     */
     const int pnx = pmegrid->n[XX];
     const int pny = pmegrid->n[YY];
     const int pnz = pmegrid->n[ZZ];
@@ -762,14 +751,7 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                 if (bCalcSplines)
                 {
                     pme_gpu_start_timing(pme, gtPME_SPLINE);
-                    if (bDoSplines)
-                    {
-                        gmx_fatal(FARGS, "the code for bDoSplines==true was not tested!");
-                    }
-                    else
-                    {
-                        pme_spline_kernel<4, blockSize / 4 / 4> <<< nBlocksSpline, dimBlockSpline, 0, s>>> (pme->gpu->kernelParams);
-                    }
+                    pme_spline_kernel<4, blockSize / 4 / 4> <<< nBlocksSpline, dimBlockSpline, 0, s>>> (pme->gpu->kernelParams);
                     CU_LAUNCH_ERR("pme_spline_kernel");
                     pme_gpu_stop_timing(pme, gtPME_SPLINE);
                 }
@@ -786,20 +768,13 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                 pme_gpu_start_timing(pme, gtPME_SPLINEANDSPREAD);
                 if (bCalcSplines)
                 {
-                    if (bDoSplines)
+                    if (bSpread)
                     {
-                        gmx_fatal(FARGS, "the code for bDoSplines==true was not tested!");
+                        pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, TRUE> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (pme->gpu->kernelParams);
                     }
                     else
                     {
-                        if (bSpread)
-                        {
-                            pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, TRUE> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (pme->gpu->kernelParams);
-                        }
-                        else
-                        {
-                            gmx_fatal(FARGS, "the code for bSpread==false was not tested!");
-                        }
+                        gmx_fatal(FARGS, "the code for bSpread==false was not tested!");
                     }
                 }
                 else
@@ -811,7 +786,7 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
             }
             if (bSpread && pme->gpu->bGPUSingle)
             {
-                // wrap on GPU as a separate small kernel - we need a complete grid first!
+                /* Wrapping the resulting grid on a GPU as a separate small kernel */
                 const int blockSize       = 4 * warp_size; //yupinov this is everywhere! and architecture-specific
                 const int overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
                 const int nBlocks         = (overlappedCells + blockSize - 1) / blockSize;

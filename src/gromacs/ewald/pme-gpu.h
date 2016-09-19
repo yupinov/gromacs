@@ -68,9 +68,7 @@ CUDA_FUNC_QUALIFIER void pme_gpu_spread(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)
                                         const int        CUDA_FUNC_ARGUMENT(grid_index),
                                         pmegrid_t       *CUDA_FUNC_ARGUMENT(pmegrid),
                                         const gmx_bool   CUDA_FUNC_ARGUMENT(bCalcSplines),
-                                        const gmx_bool   CUDA_FUNC_ARGUMENT(bSpread),
-                                        const gmx_bool   CUDA_FUNC_ARGUMENT(bDoSplines)
-                                        ) CUDA_FUNC_TERM
+                                        const gmx_bool   CUDA_FUNC_ARGUMENT(bSpread)) CUDA_FUNC_TERM
 
 // A GPU counterpart to the gather_f_bsplines
 CUDA_FUNC_QUALIFIER void pme_gpu_gather(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
@@ -168,21 +166,6 @@ void pme_gpu_get_energy_virial(const gmx_pme_t *pme, real *energy, matrix virial
 CUDA_FUNC_QUALIFIER void pme_gpu_reinit_atoms(const gmx_pme_t  *CUDA_FUNC_ARGUMENT(pme),
                                               const int         CUDA_FUNC_ARGUMENT(nAtoms),
                                               float            *CUDA_FUNC_ARGUMENT(coefficients)) CUDA_FUNC_TERM
-
-
-/*! \brief \internal
- * Allocates the local atoms data (charges, coordinates, etc.) at the very first MD step. Copies the charges. Does nothing on non-CUDA builds.
- *
- * \param[in] pme            The PME structure.
- * \param[in] nAtoms         The number of particles.
- * \param[in] coefficients   The pointer to the host-side array of particle charges.
- *
- * This is a wrapper just for calling pme_gpu_reinit_atoms once at the beginning of the run.
- * There is probably more elegant way to do this...
- */
-CUDA_FUNC_QUALIFIER void pme_gpu_init_atoms_once(const gmx_pme_t  *CUDA_FUNC_ARGUMENT(pme),
-                                                 const int         CUDA_FUNC_ARGUMENT(nAtoms),
-                                                 float            *CUDA_FUNC_ARGUMENT(coefficients)) CUDA_FUNC_TERM
 
 /*! \brief \internal
  * Sets the host-side I/O buffers in the PME GPU. Does nothing on non-CUDA builds.
