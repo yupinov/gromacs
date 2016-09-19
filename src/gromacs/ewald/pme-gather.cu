@@ -263,8 +263,6 @@ __global__ void pme_gather_kernel(const pme_gpu_kernel_params    kernelParams)
     const int       chargeCheck = pme_gpu_check_atom_charge(coefficientGlobal[globalIndexGather]);
 
     //yupinov stage coefficient into a shared/local mem?
-    // this zero charge skipping conditional should be synchronized between spline and gather
-    // (garbage and NaNs might live in spline params for particles skipped by calcspline because we don't zero them currently!)
     if (chargeCheck & globalCheck)
     {
         const int    pny = kernelParams.grid.localGridSizePadded.y;
@@ -306,52 +304,37 @@ __global__ void pme_gather_kernel(const pme_gpu_kernel_params    kernelParams)
                                                                fx, fy, fz);
     __syncthreads();
 
-    /* Writing out the final forces, DIM * particlesPerBlock = 24 threads */
-    //yupinov stage the coefficient!
-    // and check the global loads!
-    const int localForceIndex  = threadLocalId;
-    const int globalForceIndex = blockIdx.x * PME_SPREADGATHER_BLOCK_DATA_SIZE + localForceIndex;
-    const int globalCheckForce = pme_gpu_check_atom_data_index(globalForceIndex, kernelParams.atoms.nAtoms * DIM);
-    if ((localForceIndex < DIM * particlesPerBlock) && globalCheckForce)
+    /* Calculating the final forces with no component branching, particlesPerBlock = 8 threads */
+    const int localCalcIndex  = threadLocalId;
+    const int globalCalcIndex = blockIdx.x * particlesPerBlock + localCalcIndex;
+    const int globalCalcCheck = pme_gpu_check_atom_data_index(globalCalcIndex, kernelParams.atoms.nAtoms);
+    if ((localCalcIndex < particlesPerBlock) && globalCalcCheck)
     {
-        const int     localIndexOutput  = localForceIndex / DIM;
-        const int     dimIndex          = localForceIndex - localIndexOutput * DIM;
-
-        const float3  fSum               = fSumArray[localIndexOutput];
-
-        const int     globalIndexOutput  = blockIdx.x * particlesPerBlock + localIndexOutput;
-        const float   coefficient        = coefficientGlobal[globalIndexOutput];
-
-        float         contrib;
-        switch (dimIndex)
-        {
-            case XX:
-                contrib = kernelParams.step.recipBox[XX].x * fSum.x /*+ kernelParams.step.recipbox[YY].x * fSum.y + kernelParams.step.recipbox[ZZ].x * fSum.z*/;
-                break;
-
-            case YY:
-                contrib = kernelParams.step.recipBox[XX].y * fSum.x + kernelParams.step.recipBox[YY].y * fSum.y /* + kernelParams.step.recipbox[ZZ].y * fSum.z*/;
-                break;
-
-            case ZZ:
-                contrib = kernelParams.step.recipBox[XX].z * fSum.x + kernelParams.step.recipBox[YY].z * fSum.y + kernelParams.step.recipBox[ZZ].z * fSum.z;
-                break;
-        }
-
-        contrib *= -coefficient;
-        assert(!isnan(contrib));
-
+        const float3  fSum               = fSumArray[localCalcIndex];
+        const float   negCoefficient     = -coefficientGlobal[globalCalcIndex];
+        float3        result;
+        result.x                  = negCoefficient * kernelParams.step.recipBox[XX].x * fSum.x;
+        result.y                  = negCoefficient * (kernelParams.step.recipBox[XX].y * fSum.x + kernelParams.step.recipBox[YY].y * fSum.y);
+        result.z                  = negCoefficient * (kernelParams.step.recipBox[XX].z * fSum.x + kernelParams.step.recipBox[YY].z * fSum.y + kernelParams.step.recipBox[ZZ].z * fSum.z);
+        fSumArray[localCalcIndex] = result;
+    }
+    /* Writing out the final forces, DIM * particlesPerBlock = 24 threads */
+    const int localOutputIndex  = threadLocalId;
+    const int globalOutputIndex = blockIdx.x * PME_SPREADGATHER_BLOCK_DATA_SIZE + localOutputIndex;
+    const int globalOutputCheck = pme_gpu_check_atom_data_index(globalOutputIndex, kernelParams.atoms.nAtoms * DIM);
+    if ((localOutputIndex < particlesPerBlock * DIM) && globalOutputCheck)
+    {
+        float outputForceComponent = ((float *)fSumArray)[localOutputIndex];
         if (bOverwriteForces)
         {
-            forcesGlobal[globalForceIndex] = contrib;
+            forcesGlobal[globalOutputIndex] = outputForceComponent;
         }
         else
         {
-            forcesGlobal[globalForceIndex] += contrib;
+            forcesGlobal[globalOutputIndex] += outputForceComponent;
         }
     }
 }
-
 
 // a quick dirty copy of pme_wrap_kernel
 template <
