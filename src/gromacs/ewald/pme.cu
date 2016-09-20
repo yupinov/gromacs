@@ -575,8 +575,6 @@ void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_o
         {
             gmx_fatal(FARGS, error.c_str());
         }
-        /* Should we put a log line about our final CPU/GPU decision? */
-        // gmx_warning("PME will run on %s", pme->bGPU ? "GPU" : "CPU");
 
         snew(pme->gpu, 1);
         cudaError_t stat;
@@ -593,7 +591,7 @@ void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_o
         char *forcedGPUIdString = getenv("GMX_PME_GPU_ID");
         if (forcedGPUIdString)
         {
-            int forcedGPUId = atoi(forcedGPUIdString); /* This is a CUDA PU id */
+            int forcedGPUId = atoi(forcedGPUIdString); /* This is a CUDA GPU id */
             if (debug)
             {
                 fprintf(debug, "PME GPU rank %d trying to use GPU %d\n", PMEGPURank, forcedGPUId);
