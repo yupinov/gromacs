@@ -711,29 +711,8 @@ int gmx_pme_init(struct gmx_pme_t   **pmedata,
     snew(pme->bsp_mod[YY], pme->nky);
     snew(pme->bsp_mod[ZZ], pme->nkz);
 
-    pme->gpu = pmeGPU; /* Carrying over the single GPU structure */
-
-    pme->bGPU = bPMEGPU && (pme->nodeid == 0);
-    /* Only the first PME rank should do PME GPU for now. */
-
-    if (pme_gpu_enabled(pme))
-    {
-        //yupinov: fatal vs. assert
-        GMX_RELEASE_ASSERT(pme->nnodes == 1, "PME GPU is only implemented for a single rank");
-        // only a single rank
-        GMX_RELEASE_ASSERT(!pme->bFEP, "PME GPU is only implemented for a single grid");
-        // shouldn't be difficult to extend though
-        GMX_RELEASE_ASSERT(!pme->doLJ, "PME LJ is not implemented on a GPU");
-        // a matter of implementing multiple girds + the PME LJ solve kernel
-        GMX_RELEASE_ASSERT(sizeof(real) == sizeof(float), "Only single precision supported for PME GPU");
-        // most likely current FFT/solve wouldn't work on double precision
-        GMX_RELEASE_ASSERT(pme->pme_order == 4, "PME GPU is only implemented for the PME order of 4");
-#if GMX_GPU != GMX_GPU_CUDA
-        GMX_RELEASE_ASSERT(false, "PME GPU is only implemented for CUDA");
-#endif
-        // put a log line about our final CPU/GPU decision?
-        // gmx_warning("PME will run on %s", pme->bGPU ? "GPU" : "CPU");
-    }
+    pme->gpu  = pmeGPU;  /* Carrying over the single GPU structure */
+    pme->bGPU = bPMEGPU; /* This will be adjusted later during the first pme_gpu_reinit() call. */
 
     /* The required size of the interpolation grid, including overlap.
      * The allocated size (pmegrid_n?) might be slightly larger.

@@ -523,6 +523,40 @@ void pme_gpu_sync_grid(const gmx_pme_t *pme, const gmx_fft_direction dir)
     }
 }
 
+/*! \brief \internal
+ * Finds out if PME with given inputs is possible to run on GPU.
+ *
+ * \param[in]  pme          The PME structure.
+ * \param[out] error        The error message if the input is not supported on GPU.
+ * \returns                 TRUE if this PME input is possible to run on GPU, FALSE otherwise.
+ */
+gmx_bool pme_gpu_check_restrictions(const gmx_pme_t *pme,
+                                    std::string     &error)
+{
+    if (pme->nnodes != 1)
+    {
+        error.append("PME is only implemented for a single rank on GPU. ");
+    }
+    if (pme->pme_order != 4)
+    {
+        error.append("PME is only implemented for the interpolation order of 4 on GPU. ");
+    }
+    if (pme->bFEP)
+    {
+        error.append("PME is only implemented for a single grid on GPU. ");
+    }
+    if (pme->doLJ)
+    {
+        error.append("PME LJ is not implemented on GPU. ");
+    }
+    if (sizeof(real) != sizeof(float))
+    {
+        error.append("PME is only implemented for single precision on GPU. ");
+    }
+
+    return error.empty();
+}
+
 /* The exposed PME GPU functions follow below */
 
 void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_opt_t *gpu_opt)
@@ -535,22 +569,35 @@ void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_o
     const gmx_bool firstInit = !pme->gpu;
     if (firstInit)
     {
+        std::string error;
+        pme->bGPU = pme_gpu_check_restrictions(pme, error);
+        if (!pme->bGPU)
+        {
+            gmx_fatal(FARGS, error.c_str());
+        }
+        /* Should we put a log line about our final CPU/GPU decision? */
+        // gmx_warning("PME will run on %s", pme->bGPU ? "GPU" : "CPU");
+
         snew(pme->gpu, 1);
         cudaError_t stat;
 
         /* GPU selection copied from non-bondeds */
         const int PMEGPURank = pme->nodeid;
+        /* This is a node id within PME MPI communication group.
+         * It doesn't make much sense as a gpu index, right? */
         char      gpu_err_str[STRLEN];
         assert(hwinfo);
         assert(hwinfo->gpu_info.gpu_dev);
         assert(gpu_opt->dev_use);
 
-        int   forcedGPUId       = -1;
         char *forcedGPUIdString = getenv("GMX_PME_GPU_ID");
         if (forcedGPUIdString)
         {
-            forcedGPUId = atoi(forcedGPUIdString);
-            printf("PME rank %d trying to use GPU %d\n", PMEGPURank, forcedGPUId);
+            int forcedGPUId = atoi(forcedGPUIdString); /* This is a CUDA PU id */
+            if (debug)
+            {
+                fprintf(debug, "PME GPU rank %d trying to use GPU %d\n", PMEGPURank, forcedGPUId);
+            }
             stat = cudaSetDevice(forcedGPUId);
             CU_RET_ERR(stat, "PME failed to set the GPU device");
         }

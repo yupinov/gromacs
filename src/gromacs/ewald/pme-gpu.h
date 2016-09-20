@@ -219,4 +219,6 @@ CUDA_FUNC_QUALIFIER void pme_gpu_launch_gather(const gmx_pme_t      *CUDA_FUNC_A
 
 
 
+
+
 #endif // PMEGPU_H
