@@ -302,9 +302,9 @@ struct pme_gpu_kernel_params
 };
 
 /*! \brief \internal
- * The main PME CUDA structure, included in the PME CPU structure by pointer.
+ * The main PME CUDA structure, included in the PME GPU structure by the mainData pointer.
  */
-struct gmx_pme_cuda_t
+struct pme_gpu_cuda_t
 {
     /*! \brief The CUDA stream where everything related to the PME happens. */
     cudaStream_t pmeStream;
@@ -320,25 +320,12 @@ struct gmx_pme_cuda_t
     cudaEvent_t syncSolveGridD2H;
 
     /* Permanent settings set on initialization */
-    /*! \brief A boolean which tells if the solving is performed on GPU. Currently always TRUE */
-    gmx_bool bGPUSolve;
-    /*! \brief A boolean which tells if the gathering is performed on GPU. Currently always TRUE */
-    gmx_bool bGPUGather;
-    /*! \brief A boolean which tells if the FFT is performed on GPU. Currently TRUE for a single MPI rank. */
-    gmx_bool bGPUFFT;
-    /*! \brief A convenience boolean which tells if there is only one PME GPU process. */
-    gmx_bool bGPUSingle;
     /*! \brief A boolean which tells whether the complex and real grids for FFT are different or same. Currenty TRUE. */
     gmx_bool bOutOfPlaceFFT;
     /*! \brief A boolean which tells if the CUDA timing events are enabled.
      * TRUE by default, disabled by setting the environment variable GMX_DISABLE_CUDA_TIMING.
      */
     gmx_bool bTiming;
-    /*! \brief A boolean which tells the PME to call the pme_gpu_reinit_atoms at the beginning of the run.
-     * The DD pme_gpu_reinit_atoms gets called in gmx_pmeonly instead.
-     * Set to TRUE initially, then to FALSE after pme_gpu_init_atoms_once is called.
-     */
-    gmx_bool bNeedToUpdateAtoms;
 
     //gmx_bool bUseTextureObjects;  /* If false, then use references [unused] */
 
@@ -439,61 +426,8 @@ struct gmx_pme_cuda_t
  */
 gmx_inline gmx_bool pme_gpu_timings_enabled(const gmx_pme_t *pme)
 {
-    return pme_gpu_enabled(pme) && pme->gpu->bTiming;
+    return pme_gpu_enabled(pme) && pme->gpu->mainData->bTiming;
 }
-
-/*! \libinternal
- * \brief
- *
- * Tells if PME performs the gathering stage on GPU.
- *
- * \param[in] pme            The PME data structure.
- * \returns                  TRUE if the gathering is performed on GPU, FALSE otherwise.
- */
-gmx_inline gmx_bool pme_gpu_performs_gather(const gmx_pme_t *pme)
-{
-    return pme_gpu_enabled(pme) && pme->gpu->bGPUGather;
-}
-
-/*! \libinternal
- * \brief
- *
- * Tells if PME performs the FFT stages on GPU.
- *
- * \param[in] pme            The PME data structure.
- * \returns                  TRUE if FFT is performed on GPU, FALSE otherwise.
- */
-gmx_inline gmx_bool pme_gpu_performs_FFT(const gmx_pme_t *pme)
-{
-    return pme_gpu_enabled(pme) && pme->gpu->bGPUFFT;
-}
-
-/*! \libinternal
- * \brief
- *
- * Tells if PME performs the grid (un-)wrapping on GPU.
- *
- * \param[in] pme            The PME data structure.
- * \returns                  TRUE if (un-)wrapping is performed on GPU, FALSE otherwise.
- */
-gmx_inline gmx_bool pme_gpu_performs_wrapping(const gmx_pme_t *pme)
-{
-    return pme_gpu_enabled(pme) && pme->gpu->bGPUSingle;
-}
-
-/*! \libinternal
- * \brief
- *
- * Tells if PME performs the grid solving on GPU.
- *
- * \param[in] pme            The PME data structure.
- * \returns                  TRUE if solving is performed on GPU, FALSE otherwise.
- */
-gmx_inline gmx_bool pme_gpu_performs_solve(const gmx_pme_t *pme)
-{
-    return pme_gpu_enabled(pme) && pme->gpu->bGPUSolve;
-}
-
 
 // dumping all the CUDA-specific PME functions here...
 
@@ -516,7 +450,7 @@ void gmx_parallel_3dfft_complex_limits_gpu(const gmx_parallel_3dfft_gpu_t pfft_s
                                            ivec                           local_size);
 
 /*! \brief
- * Waits for the PME GPU output forces copy to the CPU buffer (pme->gpu->forcesHost) to finish.
+ * Waits for the PME GPU output forces copy to the CPU buffer (pme->gpu->mainData->forcesHost) to finish.
  *
  * \param[in] pme  The PME structure.
  */

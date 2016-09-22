@@ -44,6 +44,22 @@
 #include "gromacs/utility/fatalerror.h"
 #include "pme.h"
 
+// this will only copy the forces buffer (with results from listed calculations, etc.) to the GPU (for bClearF == false),
+// launch the gather kernel, copy the result back
+void pme_gpu_launch_gather(const gmx_pme_t                 *pme,
+                           gmx_wallcycle_t gmx_unused       wcycle,
+                           gmx_bool                         bClearForces)
+{
+    if (!pme_gpu_performs_gather(pme))
+    {
+        return;
+    }
+
+    wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
+    pme_gpu_gather(pme, bClearForces);
+    wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
+}
+
 void pme_gpu_get_results(const gmx_pme_t *pme,
                          gmx_wallcycle_t  wcycle,
                          matrix           vir_q,

@@ -136,7 +136,7 @@ void pme_gpu_start_timing(const gmx_pme_t *pme, size_t PMEStageId)
     if (pme_gpu_timings_enabled(pme))
     {
         GMX_ASSERT(PMEStageId < gtPME_EVENT_COUNT, "Wrong PME GPU timign event index");
-        pme->gpu->timingEvents[PMEStageId]->start_recording(pme->gpu->pmeStream);
+        pme->gpu->mainData->timingEvents[PMEStageId]->start_recording(pme->gpu->mainData->pmeStream);
     }
 }
 
@@ -145,7 +145,7 @@ void pme_gpu_stop_timing(const gmx_pme_t *pme, size_t PMEStageId)
     if (pme_gpu_timings_enabled(pme))
     {
         GMX_ASSERT(PMEStageId < gtPME_EVENT_COUNT, "Wrong PME GPU timign event index");
-        pme->gpu->timingEvents[PMEStageId]->stop_recording(pme->gpu->pmeStream);
+        pme->gpu->mainData->timingEvents[PMEStageId]->stop_recording(pme->gpu->mainData->pmeStream);
     }
 }
 
@@ -163,8 +163,8 @@ void pme_gpu_get_timings(const gmx_pme_t *pme, gmx_wallclock_gpu_t **timings)
         }
         for (size_t i = 0; i < gtPME_EVENT_COUNT; i++)
         {
-            (*timings)->pme.timing[i].t = pme->gpu->timingEvents[i]->get_total_time_milliseconds();
-            (*timings)->pme.timing[i].c = pme->gpu->timingEvents[i]->get_call_count();
+            (*timings)->pme.timing[i].t = pme->gpu->mainData->timingEvents[i]->get_total_time_milliseconds();
+            (*timings)->pme.timing[i].c = pme->gpu->mainData->timingEvents[i]->get_call_count();
         }
     }
 }
@@ -175,7 +175,7 @@ void pme_gpu_update_timings(const gmx_pme_t *pme)
     {
         for (size_t i = 0; i < gtPME_EVENT_COUNT; i++)
         {
-            pme->gpu->timingEvents[i]->update();
+            pme->gpu->mainData->timingEvents[i]->update();
         }
     }
 }
@@ -184,11 +184,11 @@ void pme_gpu_init_timings(const gmx_pme_t *pme)
 {
     if (pme_gpu_timings_enabled(pme))
     {
-        cudaStreamSynchronize(pme->gpu->pmeStream);
+        cudaStreamSynchronize(pme->gpu->mainData->pmeStream);
         for (size_t i = 0; i < gtPME_EVENT_COUNT; i++)
         {
-            pme->gpu->timingEvents[i] = new pme_gpu_timing();
-            pme->gpu->timingEvents[i]->enable();
+            pme->gpu->mainData->timingEvents[i] = new pme_gpu_timing();
+            pme->gpu->mainData->timingEvents[i]->enable();
         }
     }
 }
@@ -199,9 +199,9 @@ void pme_gpu_destroy_timings(const gmx_pme_t *pme)
     {
         for (size_t i = 0; i < gtPME_EVENT_COUNT; i++)
         {
-            delete pme->gpu->timingEvents[i];
+            delete pme->gpu->mainData->timingEvents[i];
         }
-        memset(pme->gpu->timingEvents, 0, sizeof(pme->gpu->timingEvents));
+        memset(pme->gpu->mainData->timingEvents, 0, sizeof(pme->gpu->mainData->timingEvents));
     }
 }
 
@@ -211,7 +211,7 @@ void pme_gpu_reset_timings(const gmx_pme_t *pme)
     {
         for (size_t i = 0; i < gtPME_EVENT_COUNT; i++)
         {
-            pme->gpu->timingEvents[i]->reset();
+            pme->gpu->mainData->timingEvents[i]->reset();
         }
     }
 }

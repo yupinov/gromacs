@@ -46,28 +46,28 @@
 
 /*! \brief
  *
- * Copies the forces from the CPU buffer (pme->gpu->forcesHost) to the GPU
+ * Copies the forces from the CPU buffer (pme->gpu->mainData->forcesHost) to the GPU
  * (to reduce them with the PME GPU gathered forces).
  * To be called after the bonded calculations.
  * FIXME: either this functon goes to the pme.cu, or the other functions go out of the pme.cu...
  */
 void pme_gpu_copy_input_forces(const gmx_pme_t *pme)
 {
-    GMX_ASSERT(pme->gpu->forcesHost, "NULL host forces pointer in PME GPU");
-    const size_t forcesSize = DIM * pme->gpu->kernelParams.atoms.nAtoms * sizeof(float);
+    GMX_ASSERT(pme->gpu->mainData->forcesHost, "NULL host forces pointer in PME GPU");
+    const size_t forcesSize = DIM * pme->gpu->mainData->kernelParams.atoms.nAtoms * sizeof(float);
     assert(forcesSize > 0);
-    cu_copy_H2D_async(pme->gpu->kernelParams.atoms.forces, pme->gpu->forcesHost, forcesSize, pme->gpu->pmeStream);
+    cu_copy_H2D_async(pme->gpu->mainData->kernelParams.atoms.forces, pme->gpu->mainData->forcesHost, forcesSize, pme->gpu->mainData->pmeStream);
 }
 
 void pme_gpu_sync_output_forces(const gmx_pme_t *pme)
 {
-    cudaStream_t s    = pme->gpu->pmeStream;
-    cudaError_t  stat = cudaStreamWaitEvent(s, pme->gpu->syncForcesD2H, 0);
+    cudaStream_t s    = pme->gpu->mainData->pmeStream;
+    cudaError_t  stat = cudaStreamWaitEvent(s, pme->gpu->mainData->syncForcesD2H, 0);
     CU_RET_ERR(stat, "Error while waiting for the PME GPU forces");
 
-    for (int i = 0; i < DIM * pme->gpu->kernelParams.atoms.nAtoms; i++)
+    for (int i = 0; i < DIM * pme->gpu->mainData->kernelParams.atoms.nAtoms; i++)
     {
-        GMX_ASSERT(!isnan(pme->gpu->forcesHost[i]), "PME GPU - wrong forces produced.");
+        GMX_ASSERT(!isnan(pme->gpu->mainData->forcesHost[i]), "PME GPU - wrong forces produced.");
     }
 }
 
@@ -415,18 +415,18 @@ void pme_gpu_gather(const gmx_pme_t *pme,
         pme_gpu_copy_input_forces(pme);
     }
 
-    cudaStream_t s = pme->gpu->pmeStream;
+    cudaStream_t s = pme->gpu->mainData->pmeStream;
 
     const int    order = pme->pme_order;
 
-    if (!pme->gpu->bGPUFFT)
+    if (!pme_gpu_performs_FFT(pme))
     {
         /* Copying the input CPU grid */
         const int       grid_index = 0;
         float          *grid       = pme->pmegrid[grid_index].grid.grid;
-        const size_t    gridSize   = pme->gpu->kernelParams.grid.localGridSizePadded.x *
-            pme->gpu->kernelParams.grid.localGridSizePadded.y * pme->gpu->kernelParams.grid.localGridSizePadded.z * sizeof(float);
-        cu_copy_H2D_async(pme->gpu->kernelParams.grid.realGrid, grid, gridSize, s);
+        const size_t    gridSize   = pme->gpu->mainData->kernelParams.grid.localGridSizePadded.x *
+            pme->gpu->mainData->kernelParams.grid.localGridSizePadded.y * pme->gpu->mainData->kernelParams.grid.localGridSizePadded.z * sizeof(float);
+        cu_copy_H2D_async(pme->gpu->mainData->kernelParams.grid.realGrid, grid, gridSize, s);
     }
 
     if (pme_gpu_performs_wrapping(pme))
@@ -435,16 +435,16 @@ void pme_gpu_gather(const gmx_pme_t *pme,
         const int    blockSize = 4 * warp_size; //yupinov thsi is everywhere! and architecture-specific
         const int    overlap   = order - 1;
 
-        const int    nx              = pme->gpu->kernelParams.grid.localGridSize.x;
-        const int    ny              = pme->gpu->kernelParams.grid.localGridSize.y;
-        const int    nz              = pme->gpu->kernelParams.grid.localGridSize.z;
+        const int    nx              = pme->gpu->mainData->kernelParams.grid.localGridSize.x;
+        const int    ny              = pme->gpu->mainData->kernelParams.grid.localGridSize.y;
+        const int    nz              = pme->gpu->mainData->kernelParams.grid.localGridSize.z;
         const int    overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
         const int    nBlocks         = (overlappedCells + blockSize - 1) / blockSize;
 
         if (order == 4)
         {
             pme_gpu_start_timing(pme, gtPME_UNWRAP);
-            pme_unwrap_kernel<4> <<< nBlocks, blockSize, 0, s>>> (pme->gpu->kernelParams);
+            pme_unwrap_kernel<4> <<< nBlocks, blockSize, 0, s>>> (pme->gpu->mainData->kernelParams);
             CU_LAUNCH_ERR("pme_unwrap_kernel");
             pme_gpu_stop_timing(pme, gtPME_UNWRAP);
 
@@ -458,7 +458,7 @@ void pme_gpu_gather(const gmx_pme_t *pme,
     /* The gathering kernel */
     const int blockSize         = 4 * warp_size;
     const int particlesPerBlock = blockSize / order / order;
-    dim3 nBlocks(pme->gpu->nAtomsPadded / particlesPerBlock);
+    dim3 nBlocks(pme->gpu->mainData->nAtomsPadded / particlesPerBlock);
     dim3 dimBlock(order, order, particlesPerBlock);
 
     pme_gpu_start_timing(pme, gtPME_GATHER);
@@ -466,11 +466,11 @@ void pme_gpu_gather(const gmx_pme_t *pme,
     {
         if (bOverwriteForces)
         {
-            pme_gather_kernel<4, blockSize / 4 / 4, TRUE> <<< nBlocks, dimBlock, 0, s>>> (pme->gpu->kernelParams);
+            pme_gather_kernel<4, blockSize / 4 / 4, TRUE> <<< nBlocks, dimBlock, 0, s>>> (pme->gpu->mainData->kernelParams);
         }
         else
         {
-            pme_gather_kernel<4, blockSize / 4 / 4, FALSE> <<< nBlocks, dimBlock, 0, s>>> (pme->gpu->kernelParams);
+            pme_gather_kernel<4, blockSize / 4 / 4, FALSE> <<< nBlocks, dimBlock, 0, s>>> (pme->gpu->mainData->kernelParams);
         }
     }
     else
@@ -481,8 +481,8 @@ void pme_gpu_gather(const gmx_pme_t *pme,
     pme_gpu_stop_timing(pme, gtPME_GATHER);
 
     /* Copying the output forces */
-    const size_t forcesSize   = DIM * pme->gpu->kernelParams.atoms.nAtoms * sizeof(float);
-    cu_copy_D2H_async(pme->gpu->forcesHost, pme->gpu->kernelParams.atoms.forces, forcesSize, s);
-    cudaError_t  stat = cudaEventRecord(pme->gpu->syncForcesD2H, s);
+    const size_t forcesSize   = DIM * pme->gpu->mainData->kernelParams.atoms.nAtoms * sizeof(float);
+    cu_copy_D2H_async(pme->gpu->mainData->forcesHost, pme->gpu->mainData->kernelParams.atoms.forces, forcesSize, s);
+    cudaError_t  stat = cudaEventRecord(pme->gpu->mainData->syncForcesD2H, s);
     CU_RET_ERR(stat, "PME gather forces sync fail");
 }

@@ -49,6 +49,7 @@
 #include "gromacs/math/gmxcomplex.h"
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/timing/gpu_timing.h"
+#include "pme-gpu-types.h"
 #include "pme-internal.h"
 
 struct gmx_hw_info_t;
@@ -191,6 +192,72 @@ CUDA_FUNC_QUALIFIER void pme_gpu_get_timings(const gmx_pme_t      *CUDA_FUNC_ARG
                                              gmx_wallclock_gpu_t **CUDA_FUNC_ARGUMENT(timings)) CUDA_FUNC_TERM
 
 
+
+
+/*! \libinternal
+ * \brief
+ *
+ * Tells if PME performs the gathering stage on GPU.
+ *
+ * \param[in] pme            The PME data structure.
+ * \returns                  TRUE if the gathering is performed on GPU, FALSE otherwise.
+ */
+gmx_inline gmx_bool pme_gpu_performs_gather(const gmx_pme_t *pme)
+{
+    return pme_gpu_enabled(pme) && pme->gpu->bGPUGather;
+}
+
+/*! \libinternal
+ * \brief
+ *
+ * Tells if PME performs the FFT stages on GPU.
+ *
+ * \param[in] pme            The PME data structure.
+ * \returns                  TRUE if FFT is performed on GPU, FALSE otherwise.
+ */
+gmx_inline gmx_bool pme_gpu_performs_FFT(const gmx_pme_t *pme)
+{
+    return pme_gpu_enabled(pme) && pme->gpu->bGPUFFT;
+}
+
+/*! \libinternal
+ * \brief
+ *
+ * Tells if PME performs the grid (un-)wrapping on GPU.
+ *
+ * \param[in] pme            The PME data structure.
+ * \returns                  TRUE if (un-)wrapping is performed on GPU, FALSE otherwise.
+ */
+gmx_inline gmx_bool pme_gpu_performs_wrapping(const gmx_pme_t *pme)
+{
+    return pme_gpu_enabled(pme) && pme->gpu->bGPUSingle;
+}
+
+/*! \brief \internal
+ * Tells if PME performs the grid solving on GPU.
+ *
+ * \param[in] pme            The PME data structure.
+ * \returns                  TRUE if solving is performed on GPU, FALSE otherwise.
+ */
+gmx_inline gmx_bool pme_gpu_performs_solve(const gmx_pme_t *pme)
+{
+    return pme_gpu_enabled(pme) && pme->gpu->bGPUSolve;
+}
+
+/*! \brief \internal
+ * Tells if PME runs on multiple GPUs.
+ *
+ * \param[in] pme            The PME data structure.
+ * \returns                  TRUE if PME runs on multiple GPUs, FALSE otherwise.
+ */
+gmx_inline gmx_bool pme_gpu_uses_dd(const gmx_pme_t *pme)
+{
+    return pme_gpu_enabled(pme) && !pme->gpu->bGPUSingle;
+}
+
+
+
+
 void pme_gpu_get_results(const gmx_pme_t *pme,
                          gmx_wallcycle_t  wcycle,
                          matrix           vir_q,
@@ -213,9 +280,9 @@ CUDA_FUNC_QUALIFIER void pme_gpu_launch(gmx_pme_t         *CUDA_FUNC_ARGUMENT(pm
 // copying calculated forces (e.g. listed) onto GPU (only for bClearF == false), gather, copying forces back
 // for separate PME ranks there is no precalculated forces, so bClearF has to be true
 // so there is no reason not to put this call directly back into pme_gpu_launch for bClearF == true
-CUDA_FUNC_QUALIFIER void pme_gpu_launch_gather(const gmx_pme_t      *CUDA_FUNC_ARGUMENT(pme),
-                                               gmx_wallcycle_t       CUDA_FUNC_ARGUMENT(wcycle),
-                                               gmx_bool              CUDA_FUNC_ARGUMENT(bClearForces)) CUDA_FUNC_TERM
+void pme_gpu_launch_gather(const gmx_pme_t      *pme,
+                           gmx_wallcycle_t       wcycle,
+                           gmx_bool              bClearForces);
 
 
 

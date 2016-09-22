@@ -48,18 +48,36 @@
 extern "C" {
 #endif
 
-#if GMX_GPU == GMX_GPU_OPENCL
-typedef int gmx_pme_gpu_t;
-#endif
-
 #if GMX_GPU == GMX_GPU_CUDA
-struct gmx_pme_cuda_t;
-typedef struct gmx_pme_cuda_t gmx_pme_gpu_t;
+struct pme_gpu_cuda_t;
+typedef pme_gpu_cuda_t pme_gpu_specific_t;
+#else
+typedef int pme_gpu_specific_t;
 #endif
 
-#if GMX_GPU == GMX_GPU_NONE
-typedef int gmx_pme_gpu_t;
-#endif
+/*! \brief \internal
+ * The main PME GPU structure, included in the PME CPU structure by pointer.
+ */
+struct gmx_pme_gpu_t
+{
+    /* Permanent settings set on initialization */
+    /*! \brief A boolean which tells if the solving is performed on GPU. Currently always TRUE */
+    gmx_bool bGPUSolve;
+    /*! \brief A boolean which tells if the gathering is performed on GPU. Currently always TRUE */
+    gmx_bool bGPUGather;
+    /*! \brief A boolean which tells if the FFT is performed on GPU. Currently TRUE for a single MPI rank. */
+    gmx_bool bGPUFFT;
+    /*! \brief A convenience boolean which tells if there is only one PME GPU process. */
+    gmx_bool bGPUSingle;
+    /*! \brief A boolean which tells the PME to call the pme_gpu_reinit_atoms at the beginning of the run.
+     * The DD pme_gpu_reinit_atoms gets called in gmx_pmeonly instead.
+     * Set to TRUE initially, then to FALSE after the first MD step.
+     */
+    gmx_bool bNeedToUpdateAtoms;
+
+    /*! \brief The pointer to the GPU-framework specific data. */
+    pme_gpu_specific_t *mainData; /* TODO: think of a meaningful name */
+};
 
 #ifdef __cplusplus
 }
