@@ -192,11 +192,11 @@ CUDA_FUNC_QUALIFIER void pme_gpu_get_timings(const gmx_pme_t      *CUDA_FUNC_ARG
                                              gmx_wallclock_gpu_t **CUDA_FUNC_ARGUMENT(timings)) CUDA_FUNC_TERM
 
 
+/* GPU framework-agnostic functions follow */
 
+/* The convenience PME GPU status getters */
 
-/*! \libinternal
- * \brief
- *
+/*! \brief \internal
  * Tells if PME performs the gathering stage on GPU.
  *
  * \param[in] pme            The PME data structure.
@@ -207,9 +207,7 @@ gmx_inline gmx_bool pme_gpu_performs_gather(const gmx_pme_t *pme)
     return pme_gpu_enabled(pme) && pme->gpu->bGPUGather;
 }
 
-/*! \libinternal
- * \brief
- *
+/*! \brief \internal
  * Tells if PME performs the FFT stages on GPU.
  *
  * \param[in] pme            The PME data structure.
@@ -220,9 +218,7 @@ gmx_inline gmx_bool pme_gpu_performs_FFT(const gmx_pme_t *pme)
     return pme_gpu_enabled(pme) && pme->gpu->bGPUFFT;
 }
 
-/*! \libinternal
- * \brief
- *
+/*! \brief \internal
  * Tells if PME performs the grid (un-)wrapping on GPU.
  *
  * \param[in] pme            The PME data structure.
@@ -255,37 +251,63 @@ gmx_inline gmx_bool pme_gpu_uses_dd(const gmx_pme_t *pme)
     return pme_gpu_enabled(pme) && !pme->gpu->bGPUSingle;
 }
 
+/* The main PME GPU functions */
 
+/*! \brief \internal
+ * Launches most of the PME GPU stages, except for gathering and its force manipulations.
+ * The FFT can be launched on CPU instead of GPU.
+ *
+ * \param[in]  pme            The PME data structure.
+ * \param[in]  nAtoms         The number of local atoms.
+ *                            Only needed for the first MD step (late initialization).
+ * \param[in]  x              The array of local atoms' coordinates.
+ * \param[out] f              The array of local atoms' resulting forces. Unless we do a reduction???
+ * \param[in]  charges        The array of local atoms' charges.
+ *                            Only needed for the first MD step (late initialization).
+ * \param[in]  box            The unit cell box.
+ * \param[in]  wcycle         The wallclock counter.
+ * \param[in]  flags          The combination of flags to affect the PME computation.
+ *                            TODO: document, rethink the flag handling.
+ */
+void pme_gpu_launch(gmx_pme_t         *pme,
+                    int                nAtoms,
+                    rvec              *x,
+                    rvec              *f,
+                    real              *charges,
+                    matrix             box,
+                    gmx_wallcycle_t    wcycle,
+                    int                flags);
+/*! \brief \internal
+ * Launches the PME GPU gathering and its force manipulations. TODO: rethink the whole separate gathering launch.
+ *
+ * \param[in]  pme            The PME data structure.
+ * \param[in]  wcycle         The wallclock counter.
+ * \param[in]  bClearForces   The boolean which tells whether the gathering kernel overwrites
+ *                            the host array with the output PME forces (TRUE),
+ *                            or copies its contents to the GPU and reduces the PME forces into that
+ *                            (FALSE). The reduction is currently non-atomic.
+ */
+void pme_gpu_launch_gather(const gmx_pme_t      *pme,
+                           gmx_wallcycle_t       wcycle,
+                           gmx_bool              bClearForces);
 
-
+/*! \brief \internal
+ * Gets the output forces and virial/energy if corresponding flags are (were?) passed in.
+ *
+ * \param[in]  pme            The PME data structure.
+ * \param[in]  wcycle         The wallclock counter.
+ * \param[out] vir_q          The output virial matrix.
+ * \param[out] energy_q       The output energy.
+ * \param[in]  flags          The combination of flags to affect the output.
+ *                            Pass GMX_PME_CALC_ENER_VIR to get the virial and energy.
+ *                            GMX_PME_CALC_F should be affecting the force output,
+ *                            but likely will not as the force copy has already been scheduled before.
+ *                            TODO: rethink the flag handling.
+ */
 void pme_gpu_get_results(const gmx_pme_t *pme,
                          gmx_wallcycle_t  wcycle,
                          matrix           vir_q,
                          real            *energy_q,
                          int              flags);
-
-// launches first part of PME GPU - from spread up to and including FFT C2R
-// and copying energy/virial back
-CUDA_FUNC_QUALIFIER void pme_gpu_launch(gmx_pme_t         *CUDA_FUNC_ARGUMENT(pme),
-                                        int                CUDA_FUNC_ARGUMENT(nAtoms),
-                                        rvec              *CUDA_FUNC_ARGUMENT(x),
-                                        rvec              *CUDA_FUNC_ARGUMENT(f),
-                                        real              *CUDA_FUNC_ARGUMENT(charges),
-                                        matrix             CUDA_FUNC_ARGUMENT(box),
-                                        gmx_wallcycle_t    CUDA_FUNC_ARGUMENT(wcycle),
-                                        int                CUDA_FUNC_ARGUMENT(flags)) CUDA_FUNC_TERM
-
-
-// launches the rest of the PME GPU:
-// copying calculated forces (e.g. listed) onto GPU (only for bClearF == false), gather, copying forces back
-// for separate PME ranks there is no precalculated forces, so bClearF has to be true
-// so there is no reason not to put this call directly back into pme_gpu_launch for bClearF == true
-void pme_gpu_launch_gather(const gmx_pme_t      *pme,
-                           gmx_wallcycle_t       wcycle,
-                           gmx_bool              bClearForces);
-
-
-
-
 
 #endif // PMEGPU_H

@@ -34,15 +34,188 @@
  */
 
 /*! \internal \file
- *  \brief Implements PME GPU functions which do not require framework-specific code.
+ *  \brief Implements PME GPU functions which do not require GPU framework-specific code.
  *
  *  \author Aleksei Iupinov <a.yupinov@gmail.com>
  */
 
 #include "gmxpre.h"
 
+#include <assert.h>
+#include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
 #include "pme.h"
+#include "pme-grid.h"
+#include "pme-solve.h"
+
+/*! \brief \internal
+ * A convenience wrapper for launching either the GPU or CPU FFT.
+ *
+ * \param[in] pme            The PME structure.
+ * \param[in] grid_index     The grid index - should currently always be 0.
+ * \param[in] dir            The FFT direction enum.
+ * \param[in] wcycle         The wallclock counter.
+ */
+void gmx_parallel_3dfft_execute_gpu_wrapper(gmx_pme_t              *pme,
+                                            const int               grid_index,
+                                            enum gmx_fft_direction  dir,
+                                            gmx_wallcycle_t         wcycle)
+{
+    assert(grid_index == 0);
+    if (pme_gpu_performs_FFT(pme))
+    {
+        wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
+        pme_gpu_3dfft(pme, dir, grid_index);
+        wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
+    }
+    else
+    {
+        wallcycle_start(wcycle, ewcPME_FFT);
+#pragma omp parallel for num_threads(pme->nthread) schedule(static)
+        for (int thread = 0; thread < pme->nthread; thread++)
+        {
+            gmx_parallel_3dfft_execute(pme->pfft_setup[grid_index], dir, thread, wcycle);
+        }
+        wallcycle_stop(wcycle, ewcPME_FFT);
+    }
+}
+
+/* Finally, the actual PME step code.
+ * Together, they are a GPU counterpart to gmx_pme_do, albeit cut down due to unsupported features
+ */
+
+void pme_gpu_launch(gmx_pme_t      *pme,
+                    int             nAtoms,
+                    rvec            x[],
+                    rvec            f[],
+                    real            charges[],
+                    matrix          box,
+                    gmx_wallcycle_t wcycle,
+                    int             flags)
+{
+    if (!pme_gpu_enabled(pme))
+    {
+        return;
+    }
+
+    pmegrids_t          *pmegrid     = NULL;
+    real                *grid        = NULL;
+    real                *fftgrid;
+    t_complex           *cfftgrid;
+    gmx_bool             bFirst;
+    const gmx_bool       bCalcEnerVir            = flags & GMX_PME_CALC_ENER_VIR;
+    const gmx_bool       bBackFFT                = flags & (GMX_PME_CALC_F | GMX_PME_CALC_POT);
+
+    assert(pme->nnodes > 0);
+    assert(pme->nnodes == 1 || pme->ndecompdim > 0);
+
+    bFirst = TRUE;
+
+    wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME);
+    if (pme->gpu->bNeedToUpdateAtoms)
+    {
+        /* This only does a one-time atom data init at the first MD step.
+         * Later, pme_gpu_reinit_atoms is called when needed after gmx_pme_recv_coeffs_coords.
+         */
+        pme_gpu_reinit_atoms(pme, nAtoms, charges);
+        pme->gpu->bNeedToUpdateAtoms = FALSE;
+    }
+    pme_gpu_set_io_ranges(pme, x, f);              /* Should this be called every step, or on DD/DLB, or on bCalcEnerVir change? */
+    pme_gpu_start_step(pme, box);                  /* This copies the coordinates, and updates the unit cell box (if it has changed) */
+    wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
+
+    const unsigned int grid_index = 0;
+
+    /* Unpack structure */
+    pmegrid     = &pme->pmegrid[grid_index];
+    fftgrid     = pme->fftgrid[grid_index];
+    cfftgrid    = pme->cfftgrid[grid_index];
+
+    grid = pmegrid->grid.grid;
+
+    // no bBackFFT, no bCalcF checks
+
+    if (flags & GMX_PME_SPREAD)
+    {
+        /* Spread the coefficients on a grid */
+        wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
+        pme_gpu_spread(pme, &pme->atc[0], grid_index, &pmegrid->grid, bFirst, TRUE);
+        wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
+
+        //if (!pme->bUseThreads)
+        {
+            if (!pme_gpu_performs_wrapping(pme))
+            {
+                wrap_periodic_pmegrid(pme, grid);
+            }
+
+            /* sum contributions to local grid from other nodes */
+#if GMX_MPI
+            if (pme->nnodes > 1)
+            {
+                gmx_sum_qgrid_dd(pme, grid, GMX_SUM_GRID_FORWARD);
+                where();
+            }
+#endif
+            if (!pme_gpu_performs_FFT(pme))
+            {
+                copy_pmegrid_to_fftgrid(pme, grid, fftgrid, grid_index);
+            }
+        }
+    }
+
+    try
+    {
+        if (flags & GMX_PME_SOLVE)
+        {
+            /* do 3d-fft */
+            gmx_parallel_3dfft_execute_gpu_wrapper(pme, grid_index, GMX_FFT_REAL_TO_COMPLEX,
+                                                   wcycle);
+
+            /* solve in k-space for our local cells */
+            if (pme_gpu_performs_solve(pme))
+            {
+                wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
+                pme_gpu_solve(pme, cfftgrid, bCalcEnerVir);
+                wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
+            }
+            else
+            {
+#pragma omp parallel for num_threads(pme->nthread) schedule(static)
+                for (int thread = 0; thread < pme->nthread; thread++)
+                {
+                    solve_pme_yzx(pme, cfftgrid,
+                                  box[XX][XX]*box[YY][YY]*box[ZZ][ZZ],
+                                  bCalcEnerVir, pme->nthread, thread);
+                }
+            }
+        }
+
+        if (bBackFFT)
+        {
+            /* do 3d-invfft */
+            gmx_parallel_3dfft_execute_gpu_wrapper(pme, grid_index, GMX_FFT_COMPLEX_TO_REAL, wcycle);
+
+            if (!pme_gpu_performs_FFT(pme) || !pme_gpu_performs_gather(pme))
+            {
+#pragma omp parallel for num_threads(pme->nthread) schedule(static)
+                for (int thread = 0; thread < pme->nthread; thread++)
+                {
+                    copy_fftgrid_to_pmegrid(pme, fftgrid, grid, grid_index, pme->nthread, thread);
+                }
+            }
+        }
+    } GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
+
+    if (bBackFFT)
+    {
+        /* distribute local grid to all nodes */
+        if (!pme_gpu_performs_wrapping(pme))
+        {
+            unwrap_periodic_pmegrid(pme, grid);
+        }
+    }
+}
 
 // this will only copy the forces buffer (with results from listed calculations, etc.) to the GPU (for bClearF == false),
 // launch the gather kernel, copy the result back

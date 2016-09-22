@@ -302,7 +302,7 @@ struct pme_gpu_kernel_params
 };
 
 /*! \brief \internal
- * The main PME CUDA structure, included in the PME GPU structure by the archSpecific pointer.
+ * The main PME CUDA-specific data structure, included in the PME GPU structure by the archSpecific pointer.
  */
 struct pme_gpu_cuda_t
 {
@@ -320,7 +320,7 @@ struct pme_gpu_cuda_t
     cudaEvent_t syncSolveGridD2H;
 
     /* Permanent settings set on initialization */
-    /*! \brief A boolean which tells whether the complex and real grids for FFT are different or same. Currenty TRUE. */
+    /*! \brief A boolean which tells whether the complex and real grids for cuFFT are different or same. Currenty TRUE. */
     gmx_bool bOutOfPlaceFFT;
     /*! \brief A boolean which tells if the CUDA timing events are enabled.
      * TRUE by default, disabled by setting the environment variable GMX_DISABLE_CUDA_TIMING.
