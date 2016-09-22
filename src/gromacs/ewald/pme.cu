@@ -34,7 +34,7 @@
  */
 
 /*! \internal \file
- *  \brief Implements common PME GPU routines in CUDA.
+ *  \brief Implements PME GPU functions in CUDA.
  *
  *  \author Aleksei Iupinov <a.yupinov@gmail.com>
  */
@@ -1021,40 +1021,4 @@ void pme_gpu_launch_gather(const gmx_pme_t                 *pme,
     wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
     pme_gpu_gather(pme, bClearForces);
     wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
-}
-
-void pme_gpu_get_results(const gmx_pme_t *pme,
-                         gmx_wallcycle_t  wcycle,
-                         matrix           vir_q,
-                         real            *energy_q,
-                         int              flags)
-{
-    if (!pme_gpu_enabled(pme))
-    {
-        return;
-    }
-
-    const gmx_bool       bCalcEnerVir            = flags & GMX_PME_CALC_ENER_VIR;
-    const gmx_bool       bCalcF                  = flags & GMX_PME_CALC_F;
-
-    wallcycle_sub_start(wcycle, ewcsWAIT_GPU_PME);
-    pme_gpu_finish_step(pme, bCalcF, bCalcEnerVir);
-    wallcycle_sub_stop(wcycle, ewcsWAIT_GPU_PME);
-
-    if (bCalcEnerVir)
-    {
-        if (pme->doCoulomb)
-        {
-            pme_gpu_get_energy_virial(pme, energy_q, vir_q);
-            if (debug)
-            {
-                fprintf(debug, "Electrostatic PME mesh energy [GPU]: %g\n", *energy_q);
-            }
-        }
-        else
-        {
-            *energy_q = 0;
-        }
-    }
-    /* No bCalcF code since currently forces are copied to the output host buffer with no transformation. */
 }

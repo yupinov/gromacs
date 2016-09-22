@@ -191,11 +191,11 @@ CUDA_FUNC_QUALIFIER void pme_gpu_get_timings(const gmx_pme_t      *CUDA_FUNC_ARG
                                              gmx_wallclock_gpu_t **CUDA_FUNC_ARGUMENT(timings)) CUDA_FUNC_TERM
 
 
-CUDA_FUNC_QUALIFIER void pme_gpu_get_results(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
-                                             gmx_wallcycle_t  CUDA_FUNC_ARGUMENT(wcycle),
-                                             matrix           CUDA_FUNC_ARGUMENT(vir_q),
-                                             real            *CUDA_FUNC_ARGUMENT(energy_q),
-                                             int              CUDA_FUNC_ARGUMENT(flags)) CUDA_FUNC_TERM
+void pme_gpu_get_results(const gmx_pme_t *pme,
+                         gmx_wallcycle_t  wcycle,
+                         matrix           vir_q,
+                         real            *energy_q,
+                         int              flags);
 
 // launches first part of PME GPU - from spread up to and including FFT C2R
 // and copying energy/virial back
