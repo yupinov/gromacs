@@ -75,8 +75,10 @@ struct gmx_pme_gpu_t
      */
     gmx_bool bNeedToUpdateAtoms;
 
-    /*! \brief The pointer to the GPU-framework specific data. */
-    pme_gpu_specific_t *mainData; /* TODO: think of a meaningful name */
+    /*! \brief The pointer to the GPU-framework specific data, such as CUDA streams.
+     * Ideally, kernel parameter structure should not live there...
+     */
+    pme_gpu_specific_t *archSpecific;
 };
 
 #ifdef __cplusplus

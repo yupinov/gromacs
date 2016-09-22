@@ -100,9 +100,9 @@ void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndat
 
     memset(setup->local_offset, 0, sizeof(setup->local_offset)); //!
 
-    setup->realGrid = (cufftReal *)pme->gpu->mainData->kernelParams.grid.realGrid;
+    setup->realGrid = (cufftReal *)pme->gpu->archSpecific->kernelParams.grid.realGrid;
     assert(setup->realGrid);
-    setup->complexGrid = (cufftComplex *)pme->gpu->mainData->kernelParams.grid.fourierGrid;
+    setup->complexGrid = (cufftComplex *)pme->gpu->archSpecific->kernelParams.grid.fourierGrid;
 
     /*
        result = cufftPlan3d(&setup->planR2C, setup->ndata_real[XX], setup->ndata_real[YY], setup->ndata_real[ZZ], CUFFT_R2C);
@@ -136,7 +136,7 @@ void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndat
         gmx_fatal(FARGS, "cufftPlanMany C2R error %d\n", result);
     }
 
-    cudaStream_t s = pme->gpu->mainData->pmeStream;
+    cudaStream_t s = pme->gpu->archSpecific->pmeStream;
     assert(s);
     result = cufftSetStream(setup->planR2C, s);
     if (result != CUFFT_SUCCESS)
@@ -194,7 +194,7 @@ void pme_gpu_3dfft(gmx_pme_t        *pme,
                    gmx_fft_direction dir,
                    const int         grid_index)
 {
-    gmx_parallel_3dfft_gpu_t setup = pme->gpu->mainData->pfft_setup_gpu[grid_index];
+    gmx_parallel_3dfft_gpu_t setup = pme->gpu->archSpecific->pfft_setup_gpu[grid_index];
 
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {

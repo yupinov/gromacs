@@ -302,7 +302,7 @@ struct pme_gpu_kernel_params
 };
 
 /*! \brief \internal
- * The main PME CUDA structure, included in the PME GPU structure by the mainData pointer.
+ * The main PME CUDA structure, included in the PME GPU structure by the archSpecific pointer.
  */
 struct pme_gpu_cuda_t
 {
@@ -426,7 +426,7 @@ struct pme_gpu_cuda_t
  */
 gmx_inline gmx_bool pme_gpu_timings_enabled(const gmx_pme_t *pme)
 {
-    return pme_gpu_enabled(pme) && pme->gpu->mainData->bTiming;
+    return pme_gpu_enabled(pme) && pme->gpu->archSpecific->bTiming;
 }
 
 // dumping all the CUDA-specific PME functions here...
@@ -450,7 +450,7 @@ void gmx_parallel_3dfft_complex_limits_gpu(const gmx_parallel_3dfft_gpu_t pfft_s
                                            ivec                           local_size);
 
 /*! \brief
- * Waits for the PME GPU output forces copy to the CPU buffer (pme->gpu->mainData->forcesHost) to finish.
+ * Waits for the PME GPU output forces copy to the CPU buffer (pme->gpu->archSpecific->forcesHost) to finish.
  *
  * \param[in] pme  The PME structure.
  */

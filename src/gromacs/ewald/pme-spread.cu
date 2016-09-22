@@ -609,7 +609,7 @@ __global__ void pme_wrap_kernel(const pme_gpu_kernel_params kernelParams)
 
 void pme_gpu_realloc_and_copy_fract_shifts(const gmx_pme_t *pme)
 {
-    cudaStream_t s = pme->gpu->mainData->pmeStream;
+    cudaStream_t s = pme->gpu->archSpecific->pmeStream;
 
     const int    nx = pme->nkx; //replace
     const int    ny = pme->nky;
@@ -619,19 +619,19 @@ void pme_gpu_realloc_and_copy_fract_shifts(const gmx_pme_t *pme)
     /* This is the number of neighbor cells that is also hardcoded in make_gridindex5_to_localindex and should be the same */
 
     const int3 fshOffset = {0, cellCount * nx, cellCount * (nx + ny)};
-    memcpy(&pme->gpu->mainData->kernelParams.grid.fshOffset, &fshOffset, sizeof(fshOffset));
+    memcpy(&pme->gpu->archSpecific->kernelParams.grid.fshOffset, &fshOffset, sizeof(fshOffset));
 
     const int    newFractShiftsSize  = cellCount * (nx + ny + nz);
 
     /* Two arrays, same size */
-    int currentSizeTemp      = pme->gpu->mainData->fractShiftsSize;
-    int currentSizeTempAlloc = pme->gpu->mainData->fractShiftsSizeAlloc;
-    cu_realloc_buffered((void **)&pme->gpu->mainData->kernelParams.grid.fshArray, NULL, sizeof(float),
-                        &currentSizeTemp, &currentSizeTempAlloc, newFractShiftsSize, pme->gpu->mainData->pmeStream, true);
-    float *fshArray = pme->gpu->mainData->kernelParams.grid.fshArray;
-    cu_realloc_buffered((void **)&pme->gpu->mainData->kernelParams.grid.nnArray, NULL, sizeof(int),
-                        &pme->gpu->mainData->fractShiftsSize, &pme->gpu->mainData->fractShiftsSizeAlloc, newFractShiftsSize, pme->gpu->mainData->pmeStream, true);
-    int *nnArray = pme->gpu->mainData->kernelParams.grid.nnArray;
+    int currentSizeTemp      = pme->gpu->archSpecific->fractShiftsSize;
+    int currentSizeTempAlloc = pme->gpu->archSpecific->fractShiftsSizeAlloc;
+    cu_realloc_buffered((void **)&pme->gpu->archSpecific->kernelParams.grid.fshArray, NULL, sizeof(float),
+                        &currentSizeTemp, &currentSizeTempAlloc, newFractShiftsSize, pme->gpu->archSpecific->pmeStream, true);
+    float *fshArray = pme->gpu->archSpecific->kernelParams.grid.fshArray;
+    cu_realloc_buffered((void **)&pme->gpu->archSpecific->kernelParams.grid.nnArray, NULL, sizeof(int),
+                        &pme->gpu->archSpecific->fractShiftsSize, &pme->gpu->archSpecific->fractShiftsSizeAlloc, newFractShiftsSize, pme->gpu->archSpecific->pmeStream, true);
+    int *nnArray = pme->gpu->archSpecific->kernelParams.grid.nnArray;
 
     //yupinov pinning?
 
@@ -660,7 +660,7 @@ void pme_gpu_realloc_and_copy_fract_shifts(const gmx_pme_t *pme)
         rd.res.linear.sizeInBytes   = newFractShiftsSize * sizeof(float);
         memset(&td, 0, sizeof(td));
         td.readMode                 = cudaReadModeElementType;
-        stat = cudaCreateTextureObject(&pme->gpu->mainData->kernelParams.grid.fshTexture, &rd, &td, NULL);
+        stat = cudaCreateTextureObject(&pme->gpu->archSpecific->kernelParams.grid.fshTexture, &rd, &td, NULL);
         CU_RET_ERR(stat, "cudaCreateTextureObject on fsh_d failed");
 
 
@@ -672,7 +672,7 @@ void pme_gpu_realloc_and_copy_fract_shifts(const gmx_pme_t *pme)
         rd.res.linear.sizeInBytes   = newFractShiftsSize * sizeof(int);
         memset(&td, 0, sizeof(td));
         td.readMode                 = cudaReadModeElementType;
-        stat = cudaCreateTextureObject(&pme->gpu->mainData->kernelParams.grid.nnTexture, &rd, &td, NULL);
+        stat = cudaCreateTextureObject(&pme->gpu->archSpecific->kernelParams.grid.nnTexture, &rd, &td, NULL);
         CU_RET_ERR(stat, "cudaCreateTextureObject on nn_d failed");
     }
     //else
@@ -694,8 +694,8 @@ void pme_gpu_realloc_and_copy_fract_shifts(const gmx_pme_t *pme)
 void pme_gpu_free_fract_shifts(const gmx_pme_t *pme)
 {
     /* Two arrays, same size */
-    cu_free_buffered(pme->gpu->mainData->kernelParams.grid.fshArray);
-    cu_free_buffered(pme->gpu->mainData->kernelParams.grid.nnArray, &pme->gpu->mainData->fractShiftsSize, &pme->gpu->mainData->fractShiftsSizeAlloc);
+    cu_free_buffered(pme->gpu->archSpecific->kernelParams.grid.fshArray);
+    cu_free_buffered(pme->gpu->archSpecific->kernelParams.grid.nnArray, &pme->gpu->archSpecific->fractShiftsSize, &pme->gpu->archSpecific->fractShiftsSizeAlloc);
     /* TODO: unbind textures here! */
 }
 
@@ -716,7 +716,7 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
     // bDoSplines is always false - untested
     // bSpread is always true - untested, unfinished
 
-    cudaStream_t s = pme->gpu->mainData->pmeStream;
+    cudaStream_t s = pme->gpu->archSpecific->pmeStream;
 
     //int nx = pmegrid->s[XX], ny = pmegrid->s[YY], nz = pmegrid->s[ZZ];
     const int order   = pmegrid->order;
@@ -739,10 +739,10 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
     const int splineParticlesPerBlock = particlesPerBlock; //blockSize / DIM; - can be easily changed, just have to pass spread theta stride to the spline kernel!
     // duplicated below!
 
-    dim3 nBlocksSpread(pme->gpu->mainData->nAtomsPadded / particlesPerBlock);
-    dim3 nBlocksSpline((pme->gpu->mainData->kernelParams.atoms.nAtoms + splineParticlesPerBlock - 1) / splineParticlesPerBlock); //???
-    dim3 dimBlockSpread(order, order, particlesPerBlock);                                                                        // used for spline_and_spread / spread
-    dim3 dimBlockSpline(splineParticlesPerBlock, DIM);                                                                           // used for spline
+    dim3 nBlocksSpread(pme->gpu->archSpecific->nAtomsPadded / particlesPerBlock);
+    dim3 nBlocksSpline((pme->gpu->archSpecific->kernelParams.atoms.nAtoms + splineParticlesPerBlock - 1) / splineParticlesPerBlock); //???
+    dim3 dimBlockSpread(order, order, particlesPerBlock);                                                                            // used for spline_and_spread / spread
+    dim3 dimBlockSpline(splineParticlesPerBlock, DIM);                                                                               // used for spline
     switch (order)
     {
         case 4:
@@ -751,14 +751,14 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                 if (bCalcSplines)
                 {
                     pme_gpu_start_timing(pme, gtPME_SPLINE);
-                    pme_spline_kernel<4, blockSize / 4 / 4> <<< nBlocksSpline, dimBlockSpline, 0, s>>> (pme->gpu->mainData->kernelParams);
+                    pme_spline_kernel<4, blockSize / 4 / 4> <<< nBlocksSpline, dimBlockSpline, 0, s>>> (pme->gpu->archSpecific->kernelParams);
                     CU_LAUNCH_ERR("pme_spline_kernel");
                     pme_gpu_stop_timing(pme, gtPME_SPLINE);
                 }
                 if (bSpread)
                 {
                     pme_gpu_start_timing(pme, gtPME_SPREAD);
-                    pme_spread_kernel<4, blockSize / 4 / 4> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (pme->gpu->mainData->kernelParams);
+                    pme_spread_kernel<4, blockSize / 4 / 4> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (pme->gpu->archSpecific->kernelParams);
                     CU_LAUNCH_ERR("pme_spread_kernel");
                     pme_gpu_stop_timing(pme, gtPME_SPREAD);
                 }
@@ -770,7 +770,7 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                 {
                     if (bSpread)
                     {
-                        pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, TRUE> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (pme->gpu->mainData->kernelParams);
+                        pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, TRUE> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (pme->gpu->archSpecific->kernelParams);
                     }
                     else
                     {
@@ -792,7 +792,7 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                 const int nBlocks         = (overlappedCells + blockSize - 1) / blockSize;
 
                 pme_gpu_start_timing(pme, gtPME_WRAP);
-                pme_wrap_kernel<4> <<< nBlocks, blockSize, 0, s>>> (pme->gpu->mainData->kernelParams);
+                pme_wrap_kernel<4> <<< nBlocks, blockSize, 0, s>>> (pme->gpu->archSpecific->kernelParams);
                 CU_LAUNCH_ERR("pme_wrap_kernel");
                 pme_gpu_stop_timing(pme, gtPME_WRAP);
             }
@@ -804,12 +804,12 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
 
     if (!pme_gpu_performs_FFT(pme) && bSpread)
     {
-        cu_copy_D2H_async(pmegrid->grid, pme->gpu->mainData->kernelParams.grid.realGrid, gridSize, s);
-        cudaError_t stat = cudaEventRecord(pme->gpu->mainData->syncSpreadGridD2H, s);
+        cu_copy_D2H_async(pmegrid->grid, pme->gpu->archSpecific->kernelParams.grid.realGrid, gridSize, s);
+        cudaError_t stat = cudaEventRecord(pme->gpu->archSpecific->syncSpreadGridD2H, s);
         CU_RET_ERR(stat, "PME spread grid sync fail");
     }
     /*
-       if (!pme->gpu->mainData->bGPUGather)
+       if (!pme_gpu_performs_gather(pme))
        {
         // FIXME: spline parameters layout is not the same on GPU => this would would fail with CPU gather.
         // Also no accounting for PME communication (bGPUSingle check?)
