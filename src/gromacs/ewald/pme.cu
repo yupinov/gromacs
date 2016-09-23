@@ -69,7 +69,7 @@
 void pme_gpu_alloc_energy_virial(const gmx_pme_t *pme)
 {
     const size_t energyAndVirialSize = PME_GPU_VIRIAL_AND_ENERGY_COUNT * sizeof(float);
-    cudaError_t  stat                = cudaMalloc((void **)&pme->gpu->archSpecific->kernelParams.constants.virialAndEnergy, energyAndVirialSize);
+    cudaError_t  stat                = cudaMalloc((void **)&pme->gpu->kernelParams.constants.virialAndEnergy, energyAndVirialSize);
     CU_RET_ERR(stat, "cudaMalloc failed on PME energy and virial");
     pmalloc((void **)&pme->gpu->archSpecific->virialAndEnergyHost, energyAndVirialSize);
 }
@@ -81,9 +81,9 @@ void pme_gpu_alloc_energy_virial(const gmx_pme_t *pme)
  */
 void pme_gpu_free_energy_virial(const gmx_pme_t *pme)
 {
-    cudaError_t stat = cudaFree(pme->gpu->archSpecific->kernelParams.constants.virialAndEnergy);
+    cudaError_t stat = cudaFree(pme->gpu->kernelParams.constants.virialAndEnergy);
     CU_RET_ERR(stat, "cudaFree failed on PME energy and virial");
-    pme->gpu->archSpecific->kernelParams.constants.virialAndEnergy = NULL;
+    pme->gpu->kernelParams.constants.virialAndEnergy = NULL;
     pfree(pme->gpu->archSpecific->virialAndEnergyHost);
     pme->gpu->archSpecific->virialAndEnergyHost = NULL;
 }
@@ -95,7 +95,7 @@ void pme_gpu_free_energy_virial(const gmx_pme_t *pme)
  */
 void pme_gpu_clear_energy_virial(const gmx_pme_t *pme)
 {
-    cudaError_t stat = cudaMemsetAsync(pme->gpu->archSpecific->kernelParams.constants.virialAndEnergy, 0,
+    cudaError_t stat = cudaMemsetAsync(pme->gpu->kernelParams.constants.virialAndEnergy, 0,
                                        PME_GPU_VIRIAL_AND_ENERGY_COUNT * sizeof(float), pme->gpu->archSpecific->pmeStream);
     CU_RET_ERR(stat, "PME energies/virial cudaMemsetAsync error");
 }
@@ -129,10 +129,10 @@ void pme_gpu_get_energy_virial(const gmx_pme_t *pme, real *energy, matrix virial
 void pme_gpu_realloc_and_copy_bspline_values(const gmx_pme_t *pme)
 {
     const int splineValuesOffset[DIM] = {0, pme->nkx, pme->nkx + pme->nky}; //?replace nkx
-    memcpy(&pme->gpu->archSpecific->kernelParams.grid.splineValuesOffset, &splineValuesOffset, sizeof(splineValuesOffset));
+    memcpy(&pme->gpu->kernelParams.grid.splineValuesOffset, &splineValuesOffset, sizeof(splineValuesOffset));
 
     const int newSplineValuesSize = pme->nkx + pme->nky + pme->nkz;
-    cu_realloc_buffered((void **)&pme->gpu->archSpecific->kernelParams.grid.splineValuesArray, NULL, sizeof(float),
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.grid.splineValuesArray, NULL, sizeof(float),
                         &pme->gpu->archSpecific->splineValuesSize, &pme->gpu->archSpecific->splineValuesSizeAlloc, newSplineValuesSize, pme->gpu->archSpecific->pmeStream, true);
 
     for (int i = 0; i < DIM; i++)
@@ -161,7 +161,7 @@ void pme_gpu_realloc_and_copy_bspline_values(const gmx_pme_t *pme)
         }
         memcpy(pme->gpu->archSpecific->splineValuesHost[i], pme->bsp_mod[i], modSize);
         //yupinov instead use pinning here as well!
-        cu_copy_H2D_async(pme->gpu->archSpecific->kernelParams.grid.splineValuesArray + splineValuesOffset[i], pme->gpu->archSpecific->splineValuesHost[i], modSize, pme->gpu->archSpecific->pmeStream);
+        cu_copy_H2D_async(pme->gpu->kernelParams.grid.splineValuesArray + splineValuesOffset[i], pme->gpu->archSpecific->splineValuesHost[i], modSize, pme->gpu->archSpecific->pmeStream);
     }
 }
 
@@ -176,7 +176,7 @@ void pme_gpu_free_bspline_values(const gmx_pme_t *pme)
     {
         pfree(pme->gpu->archSpecific->splineValuesHost[i]);
     }
-    cu_free_buffered(pme->gpu->archSpecific->kernelParams.grid.splineValuesArray, &pme->gpu->archSpecific->splineValuesSize, &pme->gpu->archSpecific->splineValuesSizeAlloc);
+    cu_free_buffered(pme->gpu->kernelParams.grid.splineValuesArray, &pme->gpu->archSpecific->splineValuesSize, &pme->gpu->archSpecific->splineValuesSizeAlloc);
 }
 
 /*! \brief \internal
@@ -186,9 +186,9 @@ void pme_gpu_free_bspline_values(const gmx_pme_t *pme)
  */
 void pme_gpu_copy_wrap_zones(const gmx_pme_t *pme)
 {
-    const int nx      = pme->gpu->archSpecific->kernelParams.grid.localGridSize.x;
-    const int ny      = pme->gpu->archSpecific->kernelParams.grid.localGridSize.y;
-    const int nz      = pme->gpu->archSpecific->kernelParams.grid.localGridSize.z;
+    const int nx      = pme->gpu->kernelParams.grid.localGridSize[XX];
+    const int ny      = pme->gpu->kernelParams.grid.localGridSize[YY];
+    const int nz      = pme->gpu->kernelParams.grid.localGridSize[ZZ];
     const int overlap = pme->pme_order - 1;
 
     /* Cell counts in the 7 overlapped grid parts */
@@ -220,8 +220,8 @@ void pme_gpu_copy_wrap_zones(const gmx_pme_t *pme)
     {
         cellsAccumCount_h[i] = cellsAccumCount_h[i] + cellsAccumCount_h[i - 1];
     }
-    memcpy(pme->gpu->archSpecific->kernelParams.grid.overlapSizes, zoneSizesYZ_h, sizeof(zoneSizesYZ_h));
-    memcpy(pme->gpu->archSpecific->kernelParams.grid.overlapCellCounts, cellsAccumCount_h, sizeof(cellsAccumCount_h));
+    memcpy(pme->gpu->kernelParams.grid.overlapSizes, zoneSizesYZ_h, sizeof(zoneSizesYZ_h));
+    memcpy(pme->gpu->kernelParams.grid.overlapCellCounts, cellsAccumCount_h, sizeof(cellsAccumCount_h));
 }
 
 /*! \brief \internal
@@ -233,7 +233,7 @@ void pme_gpu_realloc_forces(const gmx_pme_t *pme)
 {
     const size_t newForcesSize = pme->gpu->archSpecific->nAtomsAlloc * DIM;
     assert(newForcesSize > 0);
-    cu_realloc_buffered((void **)&pme->gpu->archSpecific->kernelParams.atoms.forces, NULL, sizeof(float),
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.atoms.forces, NULL, sizeof(float),
                         &pme->gpu->archSpecific->forcesSize, &pme->gpu->archSpecific->forcesSizeAlloc, newForcesSize, pme->gpu->archSpecific->pmeStream, true);
 }
 
@@ -244,7 +244,7 @@ void pme_gpu_realloc_forces(const gmx_pme_t *pme)
  */
 void pme_gpu_free_forces(const gmx_pme_t *pme)
 {
-    cu_free_buffered(pme->gpu->archSpecific->kernelParams.atoms.forces, &pme->gpu->archSpecific->forcesSize, &pme->gpu->archSpecific->forcesSizeAlloc);
+    cu_free_buffered(pme->gpu->kernelParams.atoms.forces, &pme->gpu->archSpecific->forcesSize, &pme->gpu->archSpecific->forcesSizeAlloc);
 }
 
 /*! \brief \internal
@@ -258,14 +258,14 @@ void pme_gpu_realloc_coordinates(const gmx_pme_t *pme)
 {
     const size_t newCoordinatesSize = pme->gpu->archSpecific->nAtomsAlloc * DIM;
     assert(newCoordinatesSize > 0);
-    cu_realloc_buffered((void **)&pme->gpu->archSpecific->kernelParams.atoms.coordinates, NULL, sizeof(float),
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.atoms.coordinates, NULL, sizeof(float),
                         &pme->gpu->archSpecific->coordinatesSize, &pme->gpu->archSpecific->coordinatesSizeAlloc, newCoordinatesSize, pme->gpu->archSpecific->pmeStream, true);
 #if PME_GPU_USE_PADDING
-    const size_t paddingIndex = DIM * pme->gpu->archSpecific->kernelParams.atoms.nAtoms;
+    const size_t paddingIndex = DIM * pme->gpu->kernelParams.atoms.nAtoms;
     const size_t paddingCount = DIM * pme->gpu->archSpecific->nAtomsAlloc - paddingIndex;
     if (paddingCount > 0)
     {
-        cudaError_t stat = cudaMemsetAsync(pme->gpu->archSpecific->kernelParams.atoms.coordinates + paddingIndex, 0, paddingCount * sizeof(float), pme->gpu->archSpecific->pmeStream);
+        cudaError_t stat = cudaMemsetAsync(pme->gpu->kernelParams.atoms.coordinates + paddingIndex, 0, paddingCount * sizeof(float), pme->gpu->archSpecific->pmeStream);
         CU_RET_ERR(stat, "PME failed to clear the padded coordinates");
     }
 #endif
@@ -281,7 +281,7 @@ void pme_gpu_realloc_coordinates(const gmx_pme_t *pme)
 void pme_gpu_copy_coordinates(const gmx_pme_t *pme)
 {
     assert(pme->gpu->archSpecific->coordinatesHost);
-    cu_copy_H2D_async(pme->gpu->archSpecific->kernelParams.atoms.coordinates, pme->gpu->archSpecific->coordinatesHost, pme->gpu->archSpecific->kernelParams.atoms.nAtoms * DIM * sizeof(float), pme->gpu->archSpecific->pmeStream);
+    cu_copy_H2D_async(pme->gpu->kernelParams.atoms.coordinates, pme->gpu->archSpecific->coordinatesHost, pme->gpu->kernelParams.atoms.nAtoms * DIM * sizeof(float), pme->gpu->archSpecific->pmeStream);
 }
 
 /*! \brief \internal
@@ -291,7 +291,7 @@ void pme_gpu_copy_coordinates(const gmx_pme_t *pme)
  */
 void pme_gpu_free_coordinates(const gmx_pme_t *pme)
 {
-    cu_free_buffered(pme->gpu->archSpecific->kernelParams.atoms.coordinates, &pme->gpu->archSpecific->coordinatesSize, &pme->gpu->archSpecific->coordinatesSizeAlloc);
+    cu_free_buffered(pme->gpu->kernelParams.atoms.coordinates, &pme->gpu->archSpecific->coordinatesSize, &pme->gpu->archSpecific->coordinatesSizeAlloc);
 }
 
 /*! \brief \internal
@@ -307,15 +307,15 @@ void pme_gpu_realloc_and_copy_coefficients(const gmx_pme_t *pme)
     assert(pme->gpu->archSpecific->coefficientsHost);
     const size_t newCoefficientsSize = pme->gpu->archSpecific->nAtomsAlloc;
     assert(newCoefficientsSize > 0);
-    cu_realloc_buffered((void **)&pme->gpu->archSpecific->kernelParams.atoms.coefficients, NULL, sizeof(float),
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.atoms.coefficients, NULL, sizeof(float),
                         &pme->gpu->archSpecific->coefficientsSize, &pme->gpu->archSpecific->coefficientsSizeAlloc, newCoefficientsSize, pme->gpu->archSpecific->pmeStream, true);
-    cu_copy_H2D_async(pme->gpu->archSpecific->kernelParams.atoms.coefficients, pme->gpu->archSpecific->coefficientsHost, pme->gpu->archSpecific->kernelParams.atoms.nAtoms * sizeof(float), pme->gpu->archSpecific->pmeStream);
+    cu_copy_H2D_async(pme->gpu->kernelParams.atoms.coefficients, pme->gpu->archSpecific->coefficientsHost, pme->gpu->kernelParams.atoms.nAtoms * sizeof(float), pme->gpu->archSpecific->pmeStream);
 #if PME_GPU_USE_PADDING
-    const size_t paddingIndex = pme->gpu->archSpecific->kernelParams.atoms.nAtoms;
+    const size_t paddingIndex = pme->gpu->kernelParams.atoms.nAtoms;
     const size_t paddingCount = pme->gpu->archSpecific->nAtomsAlloc - paddingIndex;
     if (paddingCount > 0)
     {
-        cudaError_t stat = cudaMemsetAsync(pme->gpu->archSpecific->kernelParams.atoms.coefficients + paddingIndex, 0, paddingCount * sizeof(float), pme->gpu->archSpecific->pmeStream);
+        cudaError_t stat = cudaMemsetAsync(pme->gpu->kernelParams.atoms.coefficients + paddingIndex, 0, paddingCount * sizeof(float), pme->gpu->archSpecific->pmeStream);
         CU_RET_ERR(stat, "PME failed to clear the padded charges");
     }
 #endif
@@ -328,7 +328,7 @@ void pme_gpu_realloc_and_copy_coefficients(const gmx_pme_t *pme)
  */
 void pme_gpu_free_charges(const gmx_pme_t *pme)
 {
-    cu_free_buffered(pme->gpu->archSpecific->kernelParams.atoms.coefficients, &pme->gpu->archSpecific->coefficientsSize, &pme->gpu->archSpecific->coefficientsSizeAlloc);
+    cu_free_buffered(pme->gpu->kernelParams.atoms.coefficients, &pme->gpu->archSpecific->coefficientsSize, &pme->gpu->archSpecific->coefficientsSizeAlloc);
 }
 
 /*! \brief \internal
@@ -346,9 +346,9 @@ void pme_gpu_realloc_spline_data(const gmx_pme_t *pme)
     /* Two arrays of the same size */
     int currentSizeTemp      = pme->gpu->archSpecific->splineDataSize;
     int currentSizeTempAlloc = pme->gpu->archSpecific->splineDataSizeAlloc;
-    cu_realloc_buffered((void **)&pme->gpu->archSpecific->kernelParams.atoms.theta, NULL, sizeof(float),
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.atoms.theta, NULL, sizeof(float),
                         &currentSizeTemp, &currentSizeTempAlloc, newSplineDataSize, pme->gpu->archSpecific->pmeStream, true);
-    cu_realloc_buffered((void **)&pme->gpu->archSpecific->kernelParams.atoms.dtheta, NULL, sizeof(float),
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.atoms.dtheta, NULL, sizeof(float),
                         &pme->gpu->archSpecific->splineDataSize, &pme->gpu->archSpecific->splineDataSizeAlloc, newSplineDataSize, pme->gpu->archSpecific->pmeStream, true);
 }
 
@@ -360,8 +360,8 @@ void pme_gpu_realloc_spline_data(const gmx_pme_t *pme)
 void pme_gpu_free_spline_data(const gmx_pme_t *pme)
 {
     /* Two arrays of the same size */
-    cu_free_buffered(pme->gpu->archSpecific->kernelParams.atoms.theta);
-    cu_free_buffered(pme->gpu->archSpecific->kernelParams.atoms.dtheta, &pme->gpu->archSpecific->splineDataSize, &pme->gpu->archSpecific->splineDataSizeAlloc);
+    cu_free_buffered(pme->gpu->kernelParams.atoms.theta);
+    cu_free_buffered(pme->gpu->kernelParams.atoms.dtheta, &pme->gpu->archSpecific->splineDataSize, &pme->gpu->archSpecific->splineDataSizeAlloc);
 }
 
 /*! \brief \internal
@@ -373,7 +373,7 @@ void pme_gpu_realloc_grid_indices(const gmx_pme_t *pme)
 {
     const size_t newIndicesSize = DIM * pme->gpu->archSpecific->nAtomsAlloc;
     assert(newIndicesSize > 0);
-    cu_realloc_buffered((void **)&pme->gpu->archSpecific->kernelParams.atoms.gridlineIndices, NULL, sizeof(int),
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.atoms.gridlineIndices, NULL, sizeof(int),
                         &pme->gpu->archSpecific->gridlineIndicesSize, &pme->gpu->archSpecific->gridlineIndicesSizeAlloc, newIndicesSize, pme->gpu->archSpecific->pmeStream, true);
 }
 
@@ -384,7 +384,7 @@ void pme_gpu_realloc_grid_indices(const gmx_pme_t *pme)
  */
 void pme_gpu_free_grid_indices(const gmx_pme_t *pme)
 {
-    cu_free_buffered(pme->gpu->archSpecific->kernelParams.atoms.gridlineIndices, &pme->gpu->archSpecific->gridlineIndicesSize, &pme->gpu->archSpecific->gridlineIndicesSizeAlloc);
+    cu_free_buffered(pme->gpu->kernelParams.atoms.gridlineIndices, &pme->gpu->archSpecific->gridlineIndicesSize, &pme->gpu->archSpecific->gridlineIndicesSizeAlloc);
 }
 
 /*! \brief \internal
@@ -404,15 +404,15 @@ void pme_gpu_realloc_grids(const gmx_pme_t *pme)
         /* Allocate a separate complex grid */
         int tempGridSize      = pme->gpu->archSpecific->gridSize;
         int tempGridSizeAlloc = pme->gpu->archSpecific->gridSizeAlloc;
-        cu_realloc_buffered((void **)&pme->gpu->archSpecific->kernelParams.grid.fourierGrid, NULL, sizeof(float),
+        cu_realloc_buffered((void **)&pme->gpu->kernelParams.grid.fourierGrid, NULL, sizeof(float),
                             &tempGridSize, &tempGridSizeAlloc, newGridSize, pme->gpu->archSpecific->pmeStream, true);
     }
-    cu_realloc_buffered((void **)&pme->gpu->archSpecific->kernelParams.grid.realGrid, NULL, sizeof(float),
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.grid.realGrid, NULL, sizeof(float),
                         &pme->gpu->archSpecific->gridSize, &pme->gpu->archSpecific->gridSizeAlloc, newGridSize, pme->gpu->archSpecific->pmeStream, true);
     if (!pme->gpu->archSpecific->bOutOfPlaceFFT)
     {
         /* Using the same grid */
-        pme->gpu->archSpecific->kernelParams.grid.fourierGrid = (float2 *)(pme->gpu->archSpecific->kernelParams.grid.realGrid);
+        pme->gpu->kernelParams.grid.fourierGrid = pme->gpu->kernelParams.grid.realGrid;
     }
 }
 
@@ -426,9 +426,9 @@ void pme_gpu_free_grids(const gmx_pme_t *pme)
     if (pme->gpu->archSpecific->bOutOfPlaceFFT)
     {
         /* Free a separate complex grid of the same size */
-        cu_free_buffered(pme->gpu->archSpecific->kernelParams.grid.fourierGrid);
+        cu_free_buffered(pme->gpu->kernelParams.grid.fourierGrid);
     }
-    cu_free_buffered(pme->gpu->archSpecific->kernelParams.grid.realGrid, &pme->gpu->archSpecific->gridSize, &pme->gpu->archSpecific->gridSizeAlloc);
+    cu_free_buffered(pme->gpu->kernelParams.grid.realGrid, &pme->gpu->archSpecific->gridSize, &pme->gpu->archSpecific->gridSizeAlloc);
 }
 
 /*! \brief \internal
@@ -438,7 +438,7 @@ void pme_gpu_free_grids(const gmx_pme_t *pme)
  */
 void pme_gpu_clear_grids(const gmx_pme_t *pme)
 {
-    cudaError_t stat = cudaMemsetAsync(pme->gpu->archSpecific->kernelParams.grid.realGrid, 0, pme->gpu->archSpecific->gridSize * sizeof(float), pme->gpu->archSpecific->pmeStream);
+    cudaError_t stat = cudaMemsetAsync(pme->gpu->kernelParams.grid.realGrid, 0, pme->gpu->archSpecific->gridSize * sizeof(float), pme->gpu->archSpecific->pmeStream);
     /* Should the complex grid be cleared in some weird case? */
     CU_RET_ERR(stat, "cudaMemsetAsync on the PME grid error");
 }
@@ -461,15 +461,15 @@ void pme_gpu_reinit_step(const gmx_pme_t *pme)
  */
 void pme_gpu_reinit_grids(const gmx_pme_t *pme)
 {
-    pme->gpu->archSpecific->kernelParams.grid.ewaldFactor = (M_PI * M_PI) / (pme->ewaldcoeff_q * pme->ewaldcoeff_q);
+    pme->gpu->kernelParams.grid.ewaldFactor = (M_PI * M_PI) / (pme->ewaldcoeff_q * pme->ewaldcoeff_q);
 
     /* The grid size variants */
     const int3   localGridSize = {pme->nkx, pme->nky, pme->nkz};
-    memcpy(&pme->gpu->archSpecific->kernelParams.grid.localGridSize, &localGridSize, sizeof(localGridSize));
+    memcpy(&pme->gpu->kernelParams.grid.localGridSize, &localGridSize, sizeof(localGridSize));
     const float3 localGridSizeFP = {(float)localGridSize.x, (float)localGridSize.y, (float)localGridSize.z};
-    memcpy(&pme->gpu->archSpecific->kernelParams.grid.localGridSizeFP, &localGridSizeFP, sizeof(localGridSizeFP));
+    memcpy(&pme->gpu->kernelParams.grid.localGridSizeFP, &localGridSizeFP, sizeof(localGridSizeFP));
     const int3   localGridSizePadded = {pme->pmegrid_nx, pme->pmegrid_ny, pme->pmegrid_nz};
-    memcpy(&pme->gpu->archSpecific->kernelParams.grid.localGridSizePadded, &localGridSizePadded, sizeof(localGridSizePadded));
+    memcpy(&pme->gpu->kernelParams.grid.localGridSizePadded, &localGridSizePadded, sizeof(localGridSizePadded));
 
     pme_gpu_copy_wrap_zones(pme);
     pme_gpu_realloc_and_copy_fract_shifts(pme);
@@ -578,6 +578,7 @@ void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_o
 
         snew(pme->gpu, 1);
         snew(pme->gpu->archSpecific, 1);
+
         cudaError_t stat;
 
         /* GPU selection copied from non-bondeds */
@@ -670,7 +671,7 @@ void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_o
         pme_gpu_alloc_energy_virial(pme);
 
         assert(pme->epsilon_r != 0.0f);
-        pme->gpu->archSpecific->kernelParams.constants.elFactor = ONE_4PI_EPS0 / pme->epsilon_r;
+        pme->gpu->kernelParams.constants.elFactor = ONE_4PI_EPS0 / pme->epsilon_r;
 
         snew(pme->gpu->archSpecific->pfft_setup_gpu, pme->ngrids);
     }
@@ -764,8 +765,8 @@ void pme_gpu_start_step(const gmx_pme_t *pme, const matrix box)
     {
         memcpy(pme->gpu->archSpecific->previousBox, box, boxMemorySize);
 
-        pme->gpu->archSpecific->kernelParams.step.boxVolume = box[XX][XX] * box[YY][YY] * box[ZZ][ZZ];
-        assert(pme->gpu->archSpecific->kernelParams.step.boxVolume != 0.0f);
+        pme->gpu->kernelParams.step.boxVolume = box[XX][XX] * box[YY][YY] * box[ZZ][ZZ];
+        assert(pme->gpu->kernelParams.step.boxVolume != 0.0f);
 
         matrix recipBox;
         gmx::invertBoxMatrix(box, recipBox);
@@ -779,7 +780,7 @@ void pme_gpu_start_step(const gmx_pme_t *pme, const matrix box)
             {             0.0, recipBox[YY][YY], recipBox[ZZ][YY]},
             {             0.0,              0.0, recipBox[ZZ][ZZ]}
         };
-        memcpy(pme->gpu->archSpecific->kernelParams.step.recipBox, newRecipBox, boxMemorySize);
+        memcpy(pme->gpu->kernelParams.step.recipBox, newRecipBox, boxMemorySize);
     }
 }
 
@@ -790,7 +791,7 @@ void pme_gpu_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, float *coeffic
         return;
     }
 
-    pme->gpu->archSpecific->kernelParams.atoms.nAtoms = nAtoms;
+    pme->gpu->kernelParams.atoms.nAtoms = nAtoms;
     const int      alignment = 8; // FIXME: this is particlesPerBlock
     pme->gpu->archSpecific->nAtomsPadded = ((nAtoms + alignment - 1) / alignment) * alignment;
     int            nAtomsAlloc   = PME_GPU_USE_PADDING ? pme->gpu->archSpecific->nAtomsPadded : nAtoms;

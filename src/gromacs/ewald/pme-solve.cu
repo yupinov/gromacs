@@ -60,13 +60,13 @@ __global__ void pme_solve_kernel
     (const int localCountMajor, const int localCountMiddle, const int localCountMinor,
     const int localOffsetMinor, const int localOffsetMajor, const int localOffsetMiddle,
     const int localSizeMinor, /*const int localSizeMajor,*/ const int localSizeMiddle,
-    const struct pme_gpu_kernel_params kernelParams
+    const struct pme_gpu_kernel_params_t kernelParams
     )
 {
     /* Global memory pointers */
-    const float * __restrict__ splineValueMinorGlobal    = kernelParams.grid.splineValuesArray + (YZXOrdering ? kernelParams.grid.splineValuesOffset.x : kernelParams.grid.splineValuesOffset.z);
-    const float * __restrict__ splineValueMiddleGlobal   = kernelParams.grid.splineValuesArray + (YZXOrdering ? kernelParams.grid.splineValuesOffset.z : kernelParams.grid.splineValuesOffset.y);
-    const float * __restrict__ splineValueMajorGlobal    = kernelParams.grid.splineValuesArray + (YZXOrdering ? kernelParams.grid.splineValuesOffset.y : kernelParams.grid.splineValuesOffset.x);
+    const float * __restrict__ splineValueMajorGlobal    = kernelParams.grid.splineValuesArray + kernelParams.grid.splineValuesOffset[YZXOrdering ? YY : XX];
+    const float * __restrict__ splineValueMiddleGlobal   = kernelParams.grid.splineValuesArray + kernelParams.grid.splineValuesOffset[YZXOrdering ? ZZ : YY];
+    const float * __restrict__ splineValueMinorGlobal    = kernelParams.grid.splineValuesArray + kernelParams.grid.splineValuesOffset[YZXOrdering ? XX : ZZ];
     float * __restrict__       virialAndEnergyGlobal     = kernelParams.constants.virialAndEnergy;
 
 
@@ -80,15 +80,15 @@ __global__ void pme_solve_kernel
     const int blockSize = THREADS_PER_BLOCK;
     //const int threadId = blockId * blockSize + threadLocalId;
 
-    float2 * __restrict__  globalGrid = kernelParams.grid.fourierGrid;
+    float2 * __restrict__  globalGrid = (float2 *)kernelParams.grid.fourierGrid;
 
-    const int              nMinor  = !YZXOrdering ? kernelParams.grid.localGridSize.z : kernelParams.grid.localGridSize.x; //yupinov fix all pme->nkx and such
-    const int              nMajor  = !YZXOrdering ? kernelParams.grid.localGridSize.x : kernelParams.grid.localGridSize.y;
-    const int              nMiddle = !YZXOrdering ? kernelParams.grid.localGridSize.y : kernelParams.grid.localGridSize.z;
+    const int              nMajor  = kernelParams.grid.localGridSize[YZXOrdering ? ZZ : YY];
+    const int              nMiddle = kernelParams.grid.localGridSize[YZXOrdering ? ZZ : YY];
+    const int              nMinor  = kernelParams.grid.localGridSize[YZXOrdering ? XX : ZZ]; //yupinov fix all pme->nkx and such
 
-    int                    maxkMajor  = (nMajor + 1) / 2;  //X or Y
-    int                    maxkMiddle = (nMiddle + 1) / 2; //Y OR Z => only check for !YZX
-    int                    maxkMinor  = (nMinor + 1) / 2;  //Z or X => only check for YZX
+    int                    maxkMajor  = (nMajor + 1) / 2;                                    //X or Y
+    int                    maxkMiddle = (nMiddle + 1) / 2;                                   //Y OR Z => only check for !YZX
+    int                    maxkMinor  = (nMinor + 1) / 2;                                    //Z or X => only check for YZX
 
     float                  energy = 0.0f;
     float                  virxx  = 0.0f, virxy = 0.0f, virxz = 0.0f, viryy = 0.0f, viryz = 0.0f, virzz = 0.0f;
@@ -157,9 +157,9 @@ __global__ void pme_solve_kernel
 
         if (notZeroPoint)
         {
-            mhxk       = mX * kernelParams.step.recipBox[XX].x;
-            mhyk       = mX * kernelParams.step.recipBox[XX].y + mY * kernelParams.step.recipBox[YY].y;
-            mhzk       = mX * kernelParams.step.recipBox[XX].z + mY * kernelParams.step.recipBox[YY].z + mZ * kernelParams.step.recipBox[ZZ].z;
+            mhxk       = mX * kernelParams.step.recipBox[XX][XX];
+            mhyk       = mX * kernelParams.step.recipBox[XX][YY] + mY * kernelParams.step.recipBox[YY][YY];
+            mhzk       = mX * kernelParams.step.recipBox[XX][ZZ] + mY * kernelParams.step.recipBox[YY][ZZ] + mZ * kernelParams.step.recipBox[ZZ][ZZ];
 
             m2k        = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
             float denom = m2k * float(M_PI) * kernelParams.step.boxVolume * splineValueMajorGlobal[kMajor] * splineValueMiddleGlobal[kMiddle] * splineValueMinorGlobal[kMinor];
@@ -320,7 +320,7 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
 
     const int   gridSize = local_size[XX] * local_size[YY] * local_size[ZZ] * sizeof(float2);
 
-    float2     *grid_d = (float2 *)pme->gpu->archSpecific->kernelParams.grid.fourierGrid;
+    float2     *grid_d = (float2 *)pme->gpu->kernelParams.grid.fourierGrid;
     if (!pme_gpu_performs_FFT(pme))
     {
         cu_copy_H2D_async(grid_d, grid, gridSize, s);
@@ -350,7 +350,7 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
             (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim],
              local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
              local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-             pme->gpu->archSpecific->kernelParams);
+             pme->gpu->kernelParams);
         }
         else
         {
@@ -358,7 +358,7 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
             (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
              local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
              local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-             pme->gpu->archSpecific->kernelParams);
+             pme->gpu->kernelParams);
         }
     }
     else
@@ -369,7 +369,7 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
             (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim],
              local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
              local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-             pme->gpu->archSpecific->kernelParams);
+             pme->gpu->kernelParams);
         }
         else
         {
@@ -377,7 +377,7 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
             (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
              local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
              local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-             pme->gpu->archSpecific->kernelParams);
+             pme->gpu->kernelParams);
         }
     }
     CU_LAUNCH_ERR("pme_solve_kernel");
@@ -386,7 +386,7 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
 
     if (bEnerVir)
     {
-        cu_copy_D2H_async(pme->gpu->archSpecific->virialAndEnergyHost, pme->gpu->archSpecific->kernelParams.constants.virialAndEnergy,
+        cu_copy_D2H_async(pme->gpu->archSpecific->virialAndEnergyHost, pme->gpu->kernelParams.constants.virialAndEnergy,
                           PME_GPU_VIRIAL_AND_ENERGY_COUNT * sizeof(float), s);
         cudaError_t stat = cudaEventRecord(pme->gpu->archSpecific->syncEnerVirD2H, s);
         CU_RET_ERR(stat, "PME solve energy/virial sync fail");

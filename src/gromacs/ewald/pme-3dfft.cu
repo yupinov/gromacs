@@ -100,9 +100,9 @@ void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndat
 
     memset(setup->local_offset, 0, sizeof(setup->local_offset)); //!
 
-    setup->realGrid = (cufftReal *)pme->gpu->archSpecific->kernelParams.grid.realGrid;
+    setup->realGrid = (cufftReal *)pme->gpu->kernelParams.grid.realGrid;
     assert(setup->realGrid);
-    setup->complexGrid = (cufftComplex *)pme->gpu->archSpecific->kernelParams.grid.fourierGrid;
+    setup->complexGrid = (cufftComplex *)pme->gpu->kernelParams.grid.fourierGrid;
 
     /*
        result = cufftPlan3d(&setup->planR2C, setup->ndata_real[XX], setup->ndata_real[YY], setup->ndata_real[ZZ], CUFFT_R2C);

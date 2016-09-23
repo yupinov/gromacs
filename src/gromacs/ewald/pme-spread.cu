@@ -75,16 +75,16 @@ template <
     const int order,
     const int particlesPerBlock
     >
-__device__ __forceinline__ void calculate_splines(const float3 * __restrict__     coordinates,
-                                                  float * __restrict__            coefficient,
-                                                  float * __restrict__            theta,
-                                                  int * __restrict__              gridlineIndices,
-                                                  const pme_gpu_kernel_params     kernelParams,
-                                                  const int                       globalIndexCalc,
-                                                  const int                       localIndexCalc,
-                                                  const int                       globalIndexBase,
-                                                  const int                       dimIndex,
-                                                  const int                       orderIndex)
+__device__ __forceinline__ void calculate_splines(const float3 * __restrict__       coordinates,
+                                                  float * __restrict__              coefficient,
+                                                  float * __restrict__              theta,
+                                                  int * __restrict__                gridlineIndices,
+                                                  const pme_gpu_kernel_params_t     kernelParams,
+                                                  const int                         globalIndexCalc,
+                                                  const int                         localIndexCalc,
+                                                  const int                         globalIndexBase,
+                                                  const int                         dimIndex,
+                                                  const int                         orderIndex)
 {
     /* Global memory pointers */
     float * __restrict__ thetaGlobal           = kernelParams.atoms.theta;
@@ -123,22 +123,22 @@ __device__ __forceinline__ void calculate_splines(const float3 * __restrict__   
              */
             switch (dimIndex)
             {
-                case 0:
-                    fShiftIndex = kernelParams.grid.fshOffset.x;
-                    n           = kernelParams.grid.localGridSizeFP.x;
-                    t           = x.x * kernelParams.step.recipBox[dimIndex].x + x.y * kernelParams.step.recipBox[dimIndex].y + x.z * kernelParams.step.recipBox[dimIndex].z;
+                case XX:
+                    fShiftIndex = kernelParams.grid.fshOffset[XX];
+                    n           = kernelParams.grid.localGridSizeFP[XX];
+                    t           = x.x * kernelParams.step.recipBox[dimIndex][XX] + x.y * kernelParams.step.recipBox[dimIndex][YY] + x.z * kernelParams.step.recipBox[dimIndex][ZZ];
                     break;
 
-                case 1:
-                    fShiftIndex = kernelParams.grid.fshOffset.y;
-                    n           = kernelParams.grid.localGridSizeFP.y;
-                    t           = /*x.x * kernelParams.step.recipbox[dimIndex].x + */ x.y * kernelParams.step.recipBox[dimIndex].y + x.z * kernelParams.step.recipBox[dimIndex].z;
+                case YY:
+                    fShiftIndex = kernelParams.grid.fshOffset[YY];
+                    n           = kernelParams.grid.localGridSizeFP[YY];
+                    t           = /*x.x * kernelParams.step.recipbox[dimIndex][XX] + */ x.y * kernelParams.step.recipBox[dimIndex][YY] + x.z * kernelParams.step.recipBox[dimIndex][ZZ];
                     break;
 
-                case 2:
-                    fShiftIndex = kernelParams.grid.fshOffset.z;
-                    n           = kernelParams.grid.localGridSizeFP.z;
-                    t           = /*x.x * kernelParams.step.recipbox[dimIndex].x + x.y * kernelParams.step.recipbox[dimIndex].y + */ x.z * kernelParams.step.recipBox[dimIndex].z;
+                case ZZ:
+                    fShiftIndex = kernelParams.grid.fshOffset[ZZ];
+                    n           = kernelParams.grid.localGridSizeFP[ZZ];
+                    t           = /*x.x * kernelParams.step.recipbox[dimIndex][XX] + x.y * kernelParams.step.recipbox[dimIndex][YY] + */ x.z * kernelParams.step.recipBox[dimIndex][ZZ];
                     break;
             }
 
@@ -248,18 +248,18 @@ template <
     const int order,
     const int particlesPerBlock
     >
-__device__ __forceinline__ void spread_charges(const float * __restrict__      coefficient,
-                                               const pme_gpu_kernel_params     kernelParams,
-                                               const int                       globalIndex,
-                                               const int                       localIndex,
-                                               const int * __restrict__        gridlineIndices,
-                                               const float * __restrict__      theta)
+__device__ __forceinline__ void spread_charges(const float * __restrict__        coefficient,
+                                               const pme_gpu_kernel_params_t     kernelParams,
+                                               const int                         globalIndex,
+                                               const int                         localIndex,
+                                               const int * __restrict__          gridlineIndices,
+                                               const float * __restrict__        theta)
 {
     /* Global memory pointer */
     float * __restrict__ gridGlobal = kernelParams.grid.realGrid;
 
-    const int            pny        = kernelParams.grid.localGridSizePadded.y;
-    const int            pnz        = kernelParams.grid.localGridSizePadded.z;
+    const int            pny        = kernelParams.grid.localGridSizePadded[YY];
+    const int            pnz        = kernelParams.grid.localGridSizePadded[ZZ];
 
     const int            offx = 0, offy = 0, offz = 0;
     // unused for now
@@ -303,9 +303,9 @@ __device__ __forceinline__ void spread_charges(const float * __restrict__      c
 template <
     const int particlesPerBlock
     >
-__device__ __forceinline__ void stage_charges(const int                   threadLocalId,
-                                              float * __restrict__        coefficient,
-                                              const pme_gpu_kernel_params kernelParams)
+__device__ __forceinline__ void stage_charges(const int                     threadLocalId,
+                                              float * __restrict__          coefficient,
+                                              const pme_gpu_kernel_params_t kernelParams)
 {
     /* Global memory pointer */
     const float * __restrict__   coefficientGlobal = kernelParams.atoms.coefficients;
@@ -324,9 +324,9 @@ __device__ __forceinline__ void stage_charges(const int                   thread
 template <
     const int particlesPerBlock
     >
-__device__ __forceinline__ void stage_coordinates(const int                   threadLocalId,
-                                                  float * __restrict__        coordinates,
-                                                  const pme_gpu_kernel_params kernelParams)
+__device__ __forceinline__ void stage_coordinates(const int                     threadLocalId,
+                                                  float * __restrict__          coordinates,
+                                                  const pme_gpu_kernel_params_t kernelParams)
 {
     /* Global memory pointer */
     const float * __restrict__  coordinatesGlobal = kernelParams.atoms.coordinates;
@@ -351,7 +351,7 @@ template <
 __launch_bounds__(THREADS_PER_BLOCK, MIN_BLOCKS_PER_MP)
 //#endif
 //yupinov put bounds on separate kernels as well
-__global__ void pme_spline_and_spread_kernel(const pme_gpu_kernel_params kernelParams)
+__global__ void pme_spline_and_spread_kernel(const pme_gpu_kernel_params_t kernelParams)
 {
     /* Gridline indices, ivec */
     __shared__ int                gridlineIndices[PME_SPREADGATHER_BLOCK_DATA_SIZE];
@@ -430,7 +430,7 @@ template <
     const int order,
     const int particlesPerBlock
     >
-__global__ void pme_spline_kernel(const pme_gpu_kernel_params kernelParams)
+__global__ void pme_spline_kernel(const pme_gpu_kernel_params_t kernelParams)
 {
     // gridline indices
     __shared__ int               gridlineIndices[PME_SPREADGATHER_BLOCK_DATA_SIZE];
@@ -470,7 +470,7 @@ __global__ void pme_spline_kernel(const pme_gpu_kernel_params kernelParams)
 
 template
 <const int order, const int particlesPerBlock>
-__global__ void pme_spread_kernel(const pme_gpu_kernel_params kernelParams)
+__global__ void pme_spread_kernel(const pme_gpu_kernel_params_t kernelParams)
 {
     /* Global memory pointers */
     const int * __restrict__   gridlineIndicesGlobal = kernelParams.atoms.gridlineIndices;
@@ -525,7 +525,7 @@ __global__ void pme_spread_kernel(const pme_gpu_kernel_params kernelParams)
 template <
     const int order
     >
-__global__ void pme_wrap_kernel(const pme_gpu_kernel_params kernelParams)
+__global__ void pme_wrap_kernel(const pme_gpu_kernel_params_t kernelParams)
 {
     const int blockId = blockIdx.x
         + blockIdx.y * gridDim.x
@@ -537,11 +537,11 @@ __global__ void pme_wrap_kernel(const pme_gpu_kernel_params kernelParams)
 
     float * __restrict__ gridGlobal = kernelParams.grid.realGrid;
 
-    const int            nx  = kernelParams.grid.localGridSize.x;
-    const int            ny  = kernelParams.grid.localGridSize.y;
-    const int            nz  = kernelParams.grid.localGridSize.z;
-    const int            pny = kernelParams.grid.localGridSizePadded.y;
-    const int            pnz = kernelParams.grid.localGridSizePadded.z;
+    const int            nx  = kernelParams.grid.localGridSize[XX];
+    const int            ny  = kernelParams.grid.localGridSize[YY];
+    const int            nz  = kernelParams.grid.localGridSize[ZZ];
+    const int            pny = kernelParams.grid.localGridSizePadded[YY];
+    const int            pnz = kernelParams.grid.localGridSizePadded[ZZ];
 
     // should use ldg.128
 
@@ -553,7 +553,7 @@ __global__ void pme_wrap_kernel(const pme_gpu_kernel_params kernelParams)
             zoneIndex++;
         }
         while (threadId >= kernelParams.grid.overlapCellCounts[zoneIndex]);
-        const int2 zoneSizeYZ = kernelParams.grid.overlapSizes[zoneIndex];
+        const int2 zoneSizeYZ = ((const __restrict__ int2 *)kernelParams.grid.overlapSizes)[zoneIndex];
         // this is the overlapped cells's index relative to the current zone
         const int  cellIndex = (zoneIndex > 0) ? (threadId - kernelParams.grid.overlapCellCounts[zoneIndex - 1]) : threadId;
 
@@ -619,19 +619,19 @@ void pme_gpu_realloc_and_copy_fract_shifts(const gmx_pme_t *pme)
     /* This is the number of neighbor cells that is also hardcoded in make_gridindex5_to_localindex and should be the same */
 
     const int3 fshOffset = {0, cellCount * nx, cellCount * (nx + ny)};
-    memcpy(&pme->gpu->archSpecific->kernelParams.grid.fshOffset, &fshOffset, sizeof(fshOffset));
+    memcpy(&pme->gpu->kernelParams.grid.fshOffset, &fshOffset, sizeof(fshOffset));
 
     const int    newFractShiftsSize  = cellCount * (nx + ny + nz);
 
     /* Two arrays, same size */
     int currentSizeTemp      = pme->gpu->archSpecific->fractShiftsSize;
     int currentSizeTempAlloc = pme->gpu->archSpecific->fractShiftsSizeAlloc;
-    cu_realloc_buffered((void **)&pme->gpu->archSpecific->kernelParams.grid.fshArray, NULL, sizeof(float),
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.grid.fshArray, NULL, sizeof(float),
                         &currentSizeTemp, &currentSizeTempAlloc, newFractShiftsSize, pme->gpu->archSpecific->pmeStream, true);
-    float *fshArray = pme->gpu->archSpecific->kernelParams.grid.fshArray;
-    cu_realloc_buffered((void **)&pme->gpu->archSpecific->kernelParams.grid.nnArray, NULL, sizeof(int),
+    float *fshArray = pme->gpu->kernelParams.grid.fshArray;
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.grid.nnArray, NULL, sizeof(int),
                         &pme->gpu->archSpecific->fractShiftsSize, &pme->gpu->archSpecific->fractShiftsSizeAlloc, newFractShiftsSize, pme->gpu->archSpecific->pmeStream, true);
-    int *nnArray = pme->gpu->archSpecific->kernelParams.grid.nnArray;
+    int *nnArray = pme->gpu->kernelParams.grid.nnArray;
 
     //yupinov pinning?
 
@@ -660,7 +660,7 @@ void pme_gpu_realloc_and_copy_fract_shifts(const gmx_pme_t *pme)
         rd.res.linear.sizeInBytes   = newFractShiftsSize * sizeof(float);
         memset(&td, 0, sizeof(td));
         td.readMode                 = cudaReadModeElementType;
-        stat = cudaCreateTextureObject(&pme->gpu->archSpecific->kernelParams.grid.fshTexture, &rd, &td, NULL);
+        stat = cudaCreateTextureObject(&pme->gpu->kernelParams.grid.fshTexture, &rd, &td, NULL);
         CU_RET_ERR(stat, "cudaCreateTextureObject on fsh_d failed");
 
 
@@ -672,7 +672,7 @@ void pme_gpu_realloc_and_copy_fract_shifts(const gmx_pme_t *pme)
         rd.res.linear.sizeInBytes   = newFractShiftsSize * sizeof(int);
         memset(&td, 0, sizeof(td));
         td.readMode                 = cudaReadModeElementType;
-        stat = cudaCreateTextureObject(&pme->gpu->archSpecific->kernelParams.grid.nnTexture, &rd, &td, NULL);
+        stat = cudaCreateTextureObject(&pme->gpu->kernelParams.grid.nnTexture, &rd, &td, NULL);
         CU_RET_ERR(stat, "cudaCreateTextureObject on nn_d failed");
     }
     //else
@@ -694,8 +694,8 @@ void pme_gpu_realloc_and_copy_fract_shifts(const gmx_pme_t *pme)
 void pme_gpu_free_fract_shifts(const gmx_pme_t *pme)
 {
     /* Two arrays, same size */
-    cu_free_buffered(pme->gpu->archSpecific->kernelParams.grid.fshArray);
-    cu_free_buffered(pme->gpu->archSpecific->kernelParams.grid.nnArray, &pme->gpu->archSpecific->fractShiftsSize, &pme->gpu->archSpecific->fractShiftsSizeAlloc);
+    cu_free_buffered(pme->gpu->kernelParams.grid.fshArray);
+    cu_free_buffered(pme->gpu->kernelParams.grid.nnArray, &pme->gpu->archSpecific->fractShiftsSize, &pme->gpu->archSpecific->fractShiftsSizeAlloc);
     /* TODO: unbind textures here! */
 }
 
@@ -740,9 +740,9 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
     // duplicated below!
 
     dim3 nBlocksSpread(pme->gpu->archSpecific->nAtomsPadded / particlesPerBlock);
-    dim3 nBlocksSpline((pme->gpu->archSpecific->kernelParams.atoms.nAtoms + splineParticlesPerBlock - 1) / splineParticlesPerBlock); //???
-    dim3 dimBlockSpread(order, order, particlesPerBlock);                                                                            // used for spline_and_spread / spread
-    dim3 dimBlockSpline(splineParticlesPerBlock, DIM);                                                                               // used for spline
+    dim3 nBlocksSpline((pme->gpu->kernelParams.atoms.nAtoms + splineParticlesPerBlock - 1) / splineParticlesPerBlock); //???
+    dim3 dimBlockSpread(order, order, particlesPerBlock);                                                              // used for spline_and_spread / spread
+    dim3 dimBlockSpline(splineParticlesPerBlock, DIM);                                                                 // used for spline
     switch (order)
     {
         case 4:
@@ -751,14 +751,14 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                 if (bCalcSplines)
                 {
                     pme_gpu_start_timing(pme, gtPME_SPLINE);
-                    pme_spline_kernel<4, blockSize / 4 / 4> <<< nBlocksSpline, dimBlockSpline, 0, s>>> (pme->gpu->archSpecific->kernelParams);
+                    pme_spline_kernel<4, blockSize / 4 / 4> <<< nBlocksSpline, dimBlockSpline, 0, s>>> (pme->gpu->kernelParams);
                     CU_LAUNCH_ERR("pme_spline_kernel");
                     pme_gpu_stop_timing(pme, gtPME_SPLINE);
                 }
                 if (bSpread)
                 {
                     pme_gpu_start_timing(pme, gtPME_SPREAD);
-                    pme_spread_kernel<4, blockSize / 4 / 4> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (pme->gpu->archSpecific->kernelParams);
+                    pme_spread_kernel<4, blockSize / 4 / 4> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (pme->gpu->kernelParams);
                     CU_LAUNCH_ERR("pme_spread_kernel");
                     pme_gpu_stop_timing(pme, gtPME_SPREAD);
                 }
@@ -770,7 +770,7 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                 {
                     if (bSpread)
                     {
-                        pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, TRUE> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (pme->gpu->archSpecific->kernelParams);
+                        pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, TRUE> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (pme->gpu->kernelParams);
                     }
                     else
                     {
@@ -792,7 +792,7 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                 const int nBlocks         = (overlappedCells + blockSize - 1) / blockSize;
 
                 pme_gpu_start_timing(pme, gtPME_WRAP);
-                pme_wrap_kernel<4> <<< nBlocks, blockSize, 0, s>>> (pme->gpu->archSpecific->kernelParams);
+                pme_wrap_kernel<4> <<< nBlocks, blockSize, 0, s>>> (pme->gpu->kernelParams);
                 CU_LAUNCH_ERR("pme_wrap_kernel");
                 pme_gpu_stop_timing(pme, gtPME_WRAP);
             }
@@ -804,7 +804,7 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
 
     if (!pme_gpu_performs_FFT(pme) && bSpread)
     {
-        cu_copy_D2H_async(pmegrid->grid, pme->gpu->archSpecific->kernelParams.grid.realGrid, gridSize, s);
+        cu_copy_D2H_async(pmegrid->grid, pme->gpu->kernelParams.grid.realGrid, gridSize, s);
         cudaError_t stat = cudaEventRecord(pme->gpu->archSpecific->syncSpreadGridD2H, s);
         CU_RET_ERR(stat, "PME spread grid sync fail");
     }
