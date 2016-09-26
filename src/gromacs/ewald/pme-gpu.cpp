@@ -42,11 +42,62 @@
 #include "gmxpre.h"
 
 #include <assert.h>
+#include <string.h>
+#include "gromacs/math/invertmatrix.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
 #include "pme.h"
 #include "pme-grid.h"
 #include "pme-solve.h"
+
+void pme_gpu_set_io_ranges(const gmx_pme_t *pme, rvec *coordinates, rvec *forces)
+{
+    if (!pme_gpu_enabled(pme))
+    {
+        return;
+    }
+
+    pme->gpu->forcesHost       = reinterpret_cast<float *>(forces);
+    pme->gpu->coordinatesHost  = reinterpret_cast<float *>(coordinates);
+    /* TODO: pin the host pointers */
+}
+
+void pme_gpu_start_step(const gmx_pme_t *pme, const matrix box)
+{
+    if (!pme_gpu_enabled(pme))
+    {
+        return;
+    }
+
+    pme_gpu_copy_coordinates(pme);
+
+    const size_t   boxMemorySize        = sizeof(matrix);
+    const gmx_bool haveToUpdateUnitCell = memcmp(pme->gpu->previousBox, box, boxMemorySize);
+    /* There could be a pressure coupling check here, but this is more straightforward.
+     * This is an exact comparison of float values though.
+     */
+    if (haveToUpdateUnitCell)
+    {
+        memcpy(pme->gpu->previousBox, box, boxMemorySize);
+
+        pme->gpu->kernelParams.step.boxVolume = box[XX][XX] * box[YY][YY] * box[ZZ][ZZ];
+        assert(pme->gpu->kernelParams.step.boxVolume != 0.0f);
+
+        matrix recipBox;
+        gmx::invertBoxMatrix(box, recipBox);
+        /* The GPU recipBox is transposed as compared to the CPU recipBox.
+         * Spread uses matrix columns (while solve and gather use rows).
+         * There is no particular reason for this; it might be further rethought/optimized for better access patterns.
+         */
+        const float newRecipBox[DIM][DIM] =
+        {
+            {recipBox[XX][XX], recipBox[YY][XX], recipBox[ZZ][XX]},
+            {             0.0, recipBox[YY][YY], recipBox[ZZ][YY]},
+            {             0.0,              0.0, recipBox[ZZ][ZZ]}
+        };
+        memcpy(pme->gpu->kernelParams.step.recipBox, newRecipBox, boxMemorySize);
+    }
+}
 
 /*! \brief \internal
  * A convenience wrapper for launching either the GPU or CPU FFT.

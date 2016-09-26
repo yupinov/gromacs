@@ -57,6 +57,26 @@ struct gmx_gpu_opt_t;
 
 // internal data handling
 
+/*! \brief \internal
+ * Copies the forces from the CPU buffer (pme->gpu->forcesHost) to the GPU
+ * (to reduce them with the PME GPU gathered forces).
+ * To be called after the bonded calculations.
+ * Does nothing on non-CUDA builds.
+ *
+ * \param[in] pme            The PME structure.
+ */
+CUDA_FUNC_QUALIFIER void pme_gpu_copy_input_forces(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
+
+
+/*! \brief \internal
+ * Copies the input coordinates from the CPU buffer (pme->gpu->coordinatesHost) onto the GPU.
+ *
+ * \param[in] pme            The PME structure.
+ *
+ * Needs to be called every MD step. The coordinates are then used in the spline calculation.
+ */
+CUDA_FUNC_QUALIFIER void pme_gpu_copy_coordinates(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme));
+
 // A GPU counterpart to gmx_parallel_3dfft_execute
 CUDA_FUNC_QUALIFIER void pme_gpu_3dfft(gmx_pme_t             *CUDA_FUNC_ARGUMENT(pme),
                                        enum gmx_fft_direction CUDA_FUNC_ARGUMENT(dir),
@@ -116,14 +136,14 @@ CUDA_FUNC_QUALIFIER void pme_gpu_reinit(gmx_pme_t           *CUDA_FUNC_ARGUMENT(
 CUDA_FUNC_QUALIFIER void pme_gpu_destroy(gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)) CUDA_FUNC_TERM
 
 /*! \brief
- * Starts the PME GPU step (copies coordinates onto GPU, possibly sets the unit cell parameters). Does nothing on non-CUDA builds.
+ * Starts the PME GPU step (copies coordinates onto GPU, possibly sets the unit cell parameters).
+ * Does nothing if PME on GPU is disabled.
  *
  * \param[in] pme     The PME structure.
  * \param[in] box     The unit cell box which does not necessarily change every step (only with pressure coupling enabled).
  *                    Currently it is simply compared with the previous one to determine if it needs to be updated.
  */
-CUDA_FUNC_QUALIFIER void pme_gpu_start_step(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
-                                            const matrix     CUDA_FUNC_ARGUMENT(box)) CUDA_FUNC_TERM
+void pme_gpu_start_step(const gmx_pme_t *pme, const matrix box);
 
 /*! \brief \internal
  * Finishes the PME GPU step, waiting for the output forces and/or energy/virial to be copied to the host. Does nothing on non-CUDA builds.
@@ -162,7 +182,8 @@ CUDA_FUNC_QUALIFIER void pme_gpu_reinit_atoms(const gmx_pme_t  *CUDA_FUNC_ARGUME
                                               float            *CUDA_FUNC_ARGUMENT(coefficients)) CUDA_FUNC_TERM
 
 /*! \brief \internal
- * Sets the host-side I/O buffers in the PME GPU. Does nothing on non-CUDA builds.
+ * Sets the host-side I/O buffers in the PME GPU.
+ * Does nothing if PME on GPU is disabled.
  *
  * \param[in] pme            The PME structure.
  * \param[in] coordinates    The pointer to the host-side array of particle coordinates in rvec format.
@@ -170,10 +191,7 @@ CUDA_FUNC_QUALIFIER void pme_gpu_reinit_atoms(const gmx_pme_t  *CUDA_FUNC_ARGUME
  *                           It will be used for output, but can also be used for input,
  *                           if bClearForces is passed as false to the pme_gpu_launch_gather.
  */
-CUDA_FUNC_QUALIFIER void pme_gpu_set_io_ranges(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
-                                               rvec            *CUDA_FUNC_ARGUMENT(coordinates),
-                                               rvec            *CUDA_FUNC_ARGUMENT(forces)) CUDA_FUNC_TERM
-
+void pme_gpu_set_io_ranges(const gmx_pme_t *pme, rvec *coordinates, rvec *forces);
 
 /*! \brief \internal
  * Resets the PME GPU timings. To be called at the reset step. Does nothing on non-CUDA builds.

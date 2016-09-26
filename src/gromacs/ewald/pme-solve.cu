@@ -386,7 +386,7 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
 
     if (bEnerVir)
     {
-        cu_copy_D2H_async(pme->gpu->archSpecific->virialAndEnergyHost, pme->gpu->kernelParams.constants.virialAndEnergy,
+        cu_copy_D2H_async(pme->gpu->virialAndEnergyHost, pme->gpu->kernelParams.constants.virialAndEnergy,
                           PME_GPU_VIRIAL_AND_ENERGY_COUNT * sizeof(float), s);
         cudaError_t stat = cudaEventRecord(pme->gpu->archSpecific->syncEnerVirD2H, s);
         CU_RET_ERR(stat, "PME solve energy/virial sync fail");

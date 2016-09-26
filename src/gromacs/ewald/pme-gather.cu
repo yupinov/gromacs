@@ -46,33 +46,6 @@
 
 /*! \brief
  *
- * Copies the forces from the CPU buffer (pme->gpu->archSpecific->forcesHost) to the GPU
- * (to reduce them with the PME GPU gathered forces).
- * To be called after the bonded calculations.
- * FIXME: either this functon goes to the pme.cu, or the other functions go out of the pme.cu...
- */
-void pme_gpu_copy_input_forces(const gmx_pme_t *pme)
-{
-    GMX_ASSERT(pme->gpu->archSpecific->forcesHost, "NULL host forces pointer in PME GPU");
-    const size_t forcesSize = DIM * pme->gpu->kernelParams.atoms.nAtoms * sizeof(float);
-    assert(forcesSize > 0);
-    cu_copy_H2D_async(pme->gpu->kernelParams.atoms.forces, pme->gpu->archSpecific->forcesHost, forcesSize, pme->gpu->archSpecific->pmeStream);
-}
-
-void pme_gpu_sync_output_forces(const gmx_pme_t *pme)
-{
-    cudaStream_t s    = pme->gpu->archSpecific->pmeStream;
-    cudaError_t  stat = cudaStreamWaitEvent(s, pme->gpu->archSpecific->syncForcesD2H, 0);
-    CU_RET_ERR(stat, "Error while waiting for the PME GPU forces");
-
-    for (int i = 0; i < DIM * pme->gpu->kernelParams.atoms.nAtoms; i++)
-    {
-        GMX_ASSERT(!isnan(pme->gpu->archSpecific->forcesHost[i]), "PME GPU - wrong forces produced.");
-    }
-}
-
-/*! \brief
- *
  * An inline CUDA function: unroll the dynamic index accesses to the constant grid sizes to avoid local memory operations.
  */
 __device__ __forceinline__ float read_grid_size(const float *localGridSizeFP,
@@ -481,8 +454,10 @@ void pme_gpu_gather(const gmx_pme_t *pme,
     pme_gpu_stop_timing(pme, gtPME_GATHER);
 
     /* Copying the output forces */
+    //yupinov copy input forces here as well
+    //or the other way
     const size_t forcesSize   = DIM * pme->gpu->kernelParams.atoms.nAtoms * sizeof(float);
-    cu_copy_D2H_async(pme->gpu->archSpecific->forcesHost, pme->gpu->kernelParams.atoms.forces, forcesSize, s);
+    cu_copy_D2H_async(pme->gpu->forcesHost, pme->gpu->kernelParams.atoms.forces, forcesSize, s);
     cudaError_t  stat = cudaEventRecord(pme->gpu->archSpecific->syncForcesD2H, s);
     CU_RET_ERR(stat, "PME gather forces sync fail");
 }

@@ -51,11 +51,8 @@ extern "C" {
 #if GMX_GPU == GMX_GPU_CUDA
 struct pme_gpu_cuda_t;
 typedef pme_gpu_cuda_t pme_gpu_specific_t;
-struct pme_gpu_cuda_grid_params_t;
-typedef pme_gpu_cuda_grid_params_t pme_gpu_grid_params_specific_t;
 #else
 typedef int pme_gpu_specific_t;
-typedef int pme_gpu_grid_params_specific_t;
 #endif
 
 /*! \brief \internal
@@ -118,7 +115,7 @@ struct pme_gpu_grid_params_t
     /*! \brief Offsets for X/Y/Z components of fshArray and nnArray */
     int                 fshOffset[DIM];
 
-    /* These are the only CUDA-specific kernel parameters.
+    /* These are CUDA-specific kernel parameters.
      * Their actual type is cudaTextureObject_t (which is typedef'd as unsigned long long by CUDA itself).
      * Please don't use them outside of CUDA code.
      */
@@ -139,7 +136,7 @@ struct pme_gpu_atom_params_t
     int    nAtoms;
     /*! \brief Pointer to the global GPU memory with input rvec atom coordinates.
      * The coordinates themselves change and need to be copied to the GPU every MD step,
-     * but the pointer changes only on DD.
+     * but reallocation happens only on DD.
      */
     float *coordinates;
     /*! \brief Pointer to the global GPU memory with input atom charges.
@@ -148,7 +145,7 @@ struct pme_gpu_atom_params_t
     float  *coefficients;
     /*! \brief Pointer to the global GPU memory with input/output rvec atom forces.
      * The forces change and need to be copied from (and possibly to) the GPU every MD step,
-     * but the pointer changes only on DD.
+     * but reallocation happens only on DD.
      */
     float  *forces;
     /*! \brief Pointer to the global GPU memory with ivec atom gridline indices.
@@ -212,17 +209,39 @@ struct gmx_pme_gpu_t
     gmx_bool bGPUFFT;
     /*! \brief A convenience boolean which tells if there is only one PME GPU process. */
     gmx_bool bGPUSingle;
-    /*! \brief A boolean which tells the PME to call the pme_gpu_reinit_atoms at the beginning of the run.
-     * The DD pme_gpu_reinit_atoms gets called in gmx_pmeonly instead.
+    /*! \brief A boolean which tells the PME to call pme_gpu_reinit_atoms() at the beginning of the run.
      * Set to TRUE initially, then to FALSE after the first MD step.
+     * The pme_gpu_reinit_atoms() after the DD gets called directly in gmx_pmeonly.
      */
-    gmx_bool                               bNeedToUpdateAtoms;
+    gmx_bool bNeedToUpdateAtoms;
 
-    pme_gpu_kernel_params_t                kernelParams;
-
-    /*! \brief The pointer to the GPU-framework specific data, such as CUDA streams.
-     * Ideally, kernel parameter structure should not live there...
+    /*! \brief The unit cell box from the previous step.
+     * Only used to know if the kernelParams.step needs to be updated.
      */
+    matrix previousBox;
+
+    /* These are the host-side input/output pointers */
+    /* TODO: not far in the future there will be a device input/output pointers too */
+    /*! \brief Input coordinates (XYZ rvec) */
+    float  *coordinatesHost;
+    /*! \brief Input charges */
+    float  *coefficientsHost;
+    /*! \brief Output forces (and possibly the input if pme_kernel_gather does the reduction) */
+    float  *forcesHost;      /* rvec/float3 */
+    /*! \brief Virial and energy intermediate host-side buffer, managed and pinned by PME GPU entirely. Size is PME_GPU_VIRIAL_AND_ENERGY_COUNT. */
+    float  *virialAndEnergyHost;
+    /*! \brief B-spline values intermediate host-side buffers, managed and pinned by PME GPU entirely. Sizes are the grid sizes. */
+    float  *splineValuesHost[DIM];
+    /*! \brief Sizes of the corresponding splineValuesHost arrays in bytes */
+    size_t  splineValuesHostSizes[DIM]; //oh god the naming
+
+    /*! \brief A single structure encompassing all the PME data used on GPU.
+     * This should be the only parameter to all the PME GPU kernels (FIXME: pme_solve_kernel).
+     * Can probably be copied to the constant GPU memory once per MD step (or even less often) instead of being a parameter.
+     */
+    pme_gpu_kernel_params_t kernelParams;
+
+    /*! \brief The pointer to the GPU-framework specific host-side data, such as CUDA streams and events.*/
     pme_gpu_specific_t *archSpecific;
 };
 

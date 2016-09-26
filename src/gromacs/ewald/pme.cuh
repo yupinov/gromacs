@@ -194,38 +194,11 @@ struct pme_gpu_cuda_t
 
     //gmx_bool bUseTextureObjects;  /* If false, then use references [unused] */
 
-    /*! \brief A single structure encompassing all the PME data used on GPU.
-     * This is the only parameter to all the PME CUDA kernels.
-     * Can probably be copied to the constant GPU memory once per MD step (or even less often) instead of being a parameter.
-     */
-
-
     gmx_device_info_t                   *deviceInfo;
 
     pme_gpu_timing                      *timingEvents[gtPME_EVENT_COUNT];
 
     gmx_parallel_3dfft_gpu_t            *pfft_setup_gpu;
-
-    /*! \brief The unit cell box from the previous step.
-     * Only used to know if the kernelParams.step needs to be updated.
-     */
-    matrix previousBox;
-
-    /* These are the host-side input/output pointers */
-    /* TODO: not far in the future there will be a device input/output pointers too */
-    /* Input */
-    float  *coordinatesHost;  /* rvec/float3 */
-    float  *coefficientsHost;
-    /* Output (and possibly input if pme_kernel_gather does the reduction) */
-    float  *forcesHost;      /* rvec/float3 */
-    /* Should the virial + energy live here as well? */
-    /*! \brief Virial and energy intermediate host-side buffer, managed and pinned by PME GPU entirely. Size is PME_GPU_VIRIAL_AND_ENERGY_COUNT. */
-    float *virialAndEnergyHost;
-    /*! \brief B-spline values (temporary?) intermediate host-side buffers, managed and pinned by PME GPU entirely. Sizes are the grid sizes. */
-    float *splineValuesHost[DIM];
-    /*! \brief Sizes of the corresponding splineValuesHost arrays in bytes */
-    size_t splineValuesHostSizes[DIM]; //oh god the names
-    /*! \brief Sizes of the corresponding splineValuesHost arrays in bytes */
 
     /*! \brief Number of local atoms, padded to be divisible by particlesPerBlock.
      * Used for kernel scheduling.
