@@ -55,7 +55,7 @@
 struct gmx_hw_info_t;
 struct gmx_gpu_opt_t;
 
-// internal data handling
+/* Internal data handling */
 
 /*! \brief \internal
  * Copies the forces from the CPU buffer (pme->gpu->forcesHost) to the GPU
@@ -77,29 +77,6 @@ CUDA_FUNC_QUALIFIER void pme_gpu_copy_input_forces(const gmx_pme_t *CUDA_FUNC_AR
  */
 CUDA_FUNC_QUALIFIER void pme_gpu_copy_coordinates(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme));
 
-// A GPU counterpart to gmx_parallel_3dfft_execute
-CUDA_FUNC_QUALIFIER void pme_gpu_3dfft(gmx_pme_t             *CUDA_FUNC_ARGUMENT(pme),
-                                       enum gmx_fft_direction CUDA_FUNC_ARGUMENT(dir),
-                                       const int              CUDA_FUNC_ARGUMENT(grid_index)) CUDA_FUNC_TERM
-
-
-// A GPU counterpart to the spread_on_grid
-CUDA_FUNC_QUALIFIER void pme_gpu_spread(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
-                                        pme_atomcomm_t  *CUDA_FUNC_ARGUMENT(atc),
-                                        const int        CUDA_FUNC_ARGUMENT(grid_index),
-                                        pmegrid_t       *CUDA_FUNC_ARGUMENT(pmegrid),
-                                        const gmx_bool   CUDA_FUNC_ARGUMENT(bCalcSplines),
-                                        const gmx_bool   CUDA_FUNC_ARGUMENT(bSpread)) CUDA_FUNC_TERM
-
-// A GPU counterpart to the gather_f_bsplines
-CUDA_FUNC_QUALIFIER void pme_gpu_gather(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
-                                        const gmx_bool   CUDA_FUNC_ARGUMENT(bOverwriteForces)) CUDA_FUNC_TERM
-
-// A GPU counterpart to the solve_pme_yzx
-CUDA_FUNC_QUALIFIER void pme_gpu_solve(
-        gmx_pme_t     *CUDA_FUNC_ARGUMENT(pme),
-        t_complex     *CUDA_FUNC_ARGUMENT(grid),
-        const gmx_bool CUDA_FUNC_ARGUMENT(bEnerVir)) CUDA_FUNC_TERM
 
 // nice external functions
 
@@ -268,6 +245,31 @@ gmx_inline gmx_bool pme_gpu_uses_dd(const gmx_pme_t *pme)
 {
     return pme_gpu_enabled(pme) && !pme->gpu->bGPUSingle;
 }
+
+/* GPU functions of separate stages */
+
+// A GPU counterpart to the spread_on_grid
+CUDA_FUNC_QUALIFIER void pme_gpu_spread(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
+                                        pme_atomcomm_t  *CUDA_FUNC_ARGUMENT(atc),
+                                        const int        CUDA_FUNC_ARGUMENT(grid_index),
+                                        pmegrid_t       *CUDA_FUNC_ARGUMENT(pmegrid),
+                                        const gmx_bool   CUDA_FUNC_ARGUMENT(bCalcSplines),
+                                        const gmx_bool   CUDA_FUNC_ARGUMENT(bSpread)) CUDA_FUNC_TERM
+
+// A GPU counterpart to gmx_parallel_3dfft_execute
+CUDA_FUNC_QUALIFIER void pme_gpu_3dfft(gmx_pme_t             *CUDA_FUNC_ARGUMENT(pme),
+                                       enum gmx_fft_direction CUDA_FUNC_ARGUMENT(dir),
+                                       const int              CUDA_FUNC_ARGUMENT(grid_index)) CUDA_FUNC_TERM
+
+// A GPU counterpart to the solve_pme_yzx
+CUDA_FUNC_QUALIFIER void pme_gpu_solve(
+        gmx_pme_t     *CUDA_FUNC_ARGUMENT(pme),
+        t_complex     *CUDA_FUNC_ARGUMENT(grid),
+        const gmx_bool CUDA_FUNC_ARGUMENT(bEnerVir)) CUDA_FUNC_TERM
+
+// A GPU counterpart to the gather_f_bsplines
+CUDA_FUNC_QUALIFIER void pme_gpu_gather(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
+                                        const gmx_bool   CUDA_FUNC_ARGUMENT(bOverwriteForces)) CUDA_FUNC_TERM
 
 /* The main PME GPU functions */
 

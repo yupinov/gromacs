@@ -34,9 +34,11 @@
  */
 
 /*! \internal \file
- * \brief This file defines the PME CUDA data structures,
+ * \brief This file defines the PME CUDA-specific data structures,
  * various compile-time constants shared among the PME CUDA kernels,
  * and also names some PME CUDA memory management routines.
+ * Ideally this file should contain just all the CUDA-specific stuff
+ * which doesn't fit into pme-gpu.h and pme-gpu-types.h.
  *
  * \author Aleksei Iupinov <a.yupinov@gmail.com>
  */
@@ -51,6 +53,45 @@
 #include "pme-gpu.h"
 #include "pme-3dfft.cuh"
 #include "pme-timings.cuh"
+
+
+/* Some general defines for PME CUDA behaviour follow.
+ * Some of the might be possible to turn into booleans and/or be moved into pme-gpu.h.
+ */
+
+#define PME_GPU_USE_PADDING 1
+/* 0: The atom data GPU buffers are sized precisely according to the number of atoms.
+ *    The atom index checks in the spread/gather code potentially hinder the performance.
+ * 1: The atom data GPU buffers are padded with zeroes so that the number of atoms
+ *    potentially fitting is divisible by particlesPerBlock (currently always 8).
+ *    The atom index checks are not performed. There should be a performance win, but how big is it, remains to be seen.
+ *    Additional cudaMemsetAsync calls are done occasionally (only charges/coordinates; spline data is always recalculated now).
+ */
+
+#define PME_GPU_SKIP_ZEROES 0
+/* 0: Atoms with zero charges are processed by PME. Could introduce some overhead.
+ * 1: Atoms with zero charges are not processed by PME. Adds branching to the spread/gather.
+ *    Could be good for performance in specific systems with lots of neutral atoms.
+ */
+
+#define PME_GPU_VIRIAL_AND_ENERGY_COUNT 7
+/* This is a number of output floats of PME solve.
+ * 6 floats for symmetric virial matrix + 1 float for reciprocal energy.
+ * Better to have a magic number like this defined in one place.
+ * Works better as a define - for more concise CUDA kernel.
+ */
+
+/* Using textures instead of global memory. Only in spread now, but B-spline moduli in solving could also be texturized. */
+#define PME_USE_TEXTURES 1
+#if PME_USE_TEXTURES
+/* Using texture objects as opposed to texture references
+ * FIXME: rely entirely on dynamic device info instead, remove more ugly #ifs
+ */
+#define PME_USE_TEXOBJ 1
+#endif
+
+/* TODO: move all the kernel blocksizes here, as they are all over the place */
+
 
 /*
     Here is a current memory layout for the theta/dtheta B-spline float parameter arrays.
@@ -89,42 +130,6 @@
  */
 #define PME_SPREADGATHER_BLOCK_DATA_SIZE (particlesPerBlock * DIM)
 
-
-
-
-// and block sizes should also be here....
-
-
-/* Using textures instead of global memory. Only in spread now, but B-spline moduli in solving could also be texturized. */
-#define PME_USE_TEXTURES 1
-#if PME_USE_TEXTURES
-/* Using texture objects as opposed to texture references
- * FIXME: rely entirely on dynamic device info instead, remove more ugly #ifs
- */
-#define PME_USE_TEXOBJ 1
-#endif
-
-#define PME_GPU_USE_PADDING 1
-/* 0: The atom data GPU buffers are sized precisely according to the number of atoms.
- *    The atom index checks in the spread/gather code potentially hinder the performance.
- * 1: The atom data GPU buffers are padded with zeroes so that the number of atoms potentially fitting is divisible by particlesPerBlock.
- *    The atom index checks are not performed. There should be a performance win, but how big is it, remains to be seen.
- *    Additional cudaMemsetAsync calls are done occasionally (only charges/coordinates; spline data is always recalculated now).
- */
-
-#define PME_GPU_SKIP_ZEROES 0
-/* 0: Atoms with zero charges are processed by PME. Could introduce some overhead.
- * 1: Atoms with zero charges are not processed by PME. Adds branching to the spread/gather.
- *    Could be good for performance in specific systems with lots of neutral atoms.
- */
-
-#define PME_GPU_VIRIAL_AND_ENERGY_COUNT 7
-/* This is a number of output floats of PME solve.
- * 6 floats for symmetric virial matrix + 1 float for reciprocal energy.
- * Better to have a magic number like this defined in one place.
- * Works better as a define - for more concise CUDA kernel.
- */
-
 /*! \brief \internal
  * An inline CUDA function for checking the global atom data indices against the atom data array sizes.
  *
@@ -153,18 +158,6 @@ int __device__ __forceinline__ pme_gpu_check_atom_charge(const float coefficient
     assert(!isnan(coefficient));
     return PME_GPU_SKIP_ZEROES ? (coefficient != 0.0f) : 1;
 }
-
-//yupinov fractional shifts
-// gridline indices (including the neighboring cells) - basically, a modulo operation lookup table
-// Functions as CPU pme_grid with overlap and as fftgrid
-// Used only for out-of-place cuFFT, functions as CPU cfftgrid
-
-/* PME GPU data structures.
- * They describe all the fixed-size data that needs to be accesses by the CUDA kernels.
- * Pointers to the particle/grid/spline data live here as well.
- * The data is split into sub-structures depending on its update rate.
- */
-
 
 /*! \brief \internal
  * The main PME CUDA-specific data structure, included in the PME GPU structure by the archSpecific pointer.
@@ -265,11 +258,6 @@ gmx_inline gmx_bool pme_gpu_timings_enabled(const gmx_pme_t *pme)
 {
     return pme_gpu_enabled(pme) && pme->gpu->archSpecific->bTiming;
 }
-
-// dumping all the CUDA-specific PME functions here...
-
-
-
 
 // copies the nn and fsh to the device (used in PME spread(spline))
 void pme_gpu_realloc_and_copy_fract_shifts(const gmx_pme_t *pme);

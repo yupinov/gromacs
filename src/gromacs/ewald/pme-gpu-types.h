@@ -34,7 +34,8 @@
  */
 
 /*! \libinternal \file
- *  \brief Defines PME GPU data structure.
+ *  \brief Defines the GPU-agnostic PME GPU data structures:
+ *  (the host-side PME GPU data, and the GPU function parameters).
  *
  *  \author Aleksei Iupinov <a.yupinov@gmail.com>
  */
@@ -48,13 +49,18 @@
 extern "C" {
 #endif
 
-
+/* A typedef for including the GPU framework-specific data by pointer */
 #if GMX_GPU == GMX_GPU_CUDA
 struct pme_gpu_cuda_t;
 typedef pme_gpu_cuda_t pme_gpu_specific_t;
 #else
 typedef int pme_gpu_specific_t;
 #endif
+
+/* What follows is all the PME GPU function arguments,
+ * sorted into several structures depending on the update rate.
+ * This is almost entirely GPU agnostic (float3 replaced by float[3], etc.).
+ * The only exception are 2 cudaTextureObject_t disguised as unsigned long long. */
 
 /*! \brief \internal
  * A GPU data structure for storing the constant PME data.
@@ -197,7 +203,7 @@ struct pme_gpu_kernel_params_t
 };
 
 /*! \brief \internal
- * The main PME GPU structure, included in the PME CPU structure by pointer.
+ * The main PME GPU host structure, included in the PME CPU structure by pointer.
  */
 struct gmx_pme_gpu_t
 {
