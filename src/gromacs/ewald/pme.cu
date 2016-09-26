@@ -54,6 +54,7 @@
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
+#include "pme-3dfft.cuh"
 #include "pme.cuh"
 #include "pme.h"
 #include "pme-grid.h"
@@ -496,7 +497,7 @@ void pme_gpu_reinit_grids(const gmx_pme_t *pme)
     {
         for (int i = 0; i < pme->ngrids; ++i)
         {
-            gmx_parallel_3dfft_init_gpu(&pme->gpu->archSpecific->pfft_setup_gpu[i], (int *)&localGridSize, pme);
+            pme_gpu_init_3dfft(&pme->gpu->archSpecific->pfft_setup_gpu[i], (int *)&localGridSize, pme);
         }
     }
 }
@@ -723,7 +724,7 @@ void pme_gpu_destroy(gmx_pme_t *pme)
     {
         for (int i = 0; i < pme->ngrids; i++)
         {
-            gmx_parallel_3dfft_destroy_gpu(pme->gpu->archSpecific->pfft_setup_gpu[i]);
+            pme_gpu_destroy_3dfft(pme->gpu->archSpecific->pfft_setup_gpu[i]);
         }
         sfree(pme->gpu->archSpecific->pfft_setup_gpu);
     }

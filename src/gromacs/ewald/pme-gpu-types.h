@@ -48,6 +48,7 @@
 extern "C" {
 #endif
 
+
 #if GMX_GPU == GMX_GPU_CUDA
 struct pme_gpu_cuda_t;
 typedef pme_gpu_cuda_t pme_gpu_specific_t;

@@ -135,7 +135,7 @@ void pme_gpu_start_timing(const gmx_pme_t *pme, size_t PMEStageId)
 {
     if (pme_gpu_timings_enabled(pme))
     {
-        GMX_ASSERT(PMEStageId < gtPME_EVENT_COUNT, "Wrong PME GPU timign event index");
+        GMX_ASSERT(PMEStageId < gtPME_EVENT_COUNT, "Wrong PME GPU timing event index");
         pme->gpu->archSpecific->timingEvents[PMEStageId]->start_recording(pme->gpu->archSpecific->pmeStream);
     }
 }
@@ -144,7 +144,7 @@ void pme_gpu_stop_timing(const gmx_pme_t *pme, size_t PMEStageId)
 {
     if (pme_gpu_timings_enabled(pme))
     {
-        GMX_ASSERT(PMEStageId < gtPME_EVENT_COUNT, "Wrong PME GPU timign event index");
+        GMX_ASSERT(PMEStageId < gtPME_EVENT_COUNT, "Wrong PME GPU timing event index");
         pme->gpu->archSpecific->timingEvents[PMEStageId]->stop_recording(pme->gpu->archSpecific->pmeStream);
     }
 }

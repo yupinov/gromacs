@@ -67,8 +67,6 @@ struct t_commrec;
 struct t_inputrec;
 struct gmx_pme_gpu_t;
 
-typedef struct gmx_parallel_3dfft_gpu *gmx_parallel_3dfft_gpu_t; //yupinov ?????
-
 //@{
 //! Grid indices for A state for charge and Lennard-Jones C6
 #define PME_GRID_QA    0

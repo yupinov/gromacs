@@ -65,7 +65,7 @@ struct gmx_parallel_3dfft_gpu
     ivec          local_offset;
 };
 
-void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndata, const gmx_pme_t *pme)
+void pme_gpu_init_3dfft(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndata, const gmx_pme_t *pme)
 {
     cufftResult_t            result;
     gmx_parallel_3dfft_gpu_t setup;
@@ -91,9 +91,9 @@ void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndat
     memcpy(setup->size_real, ndata, sizeof(setup->size_real));
 
     memcpy(setup->size_complex, setup->size_real, sizeof(setup->size_real));
-    GMX_RELEASE_ASSERT(setup->size_complex[ZZ] % 2 == 0, "odd inplace cuFFT dimension size");
+    GMX_RELEASE_ASSERT(setup->size_complex[ZZ] % 2 == 0, "Odd inplace cuFFT dimension size");
     setup->size_complex[ZZ] /= 2;
-    // this is alright because Z includes overlap
+    // This is alright because Z includes overlap
 
     const int gridSizeComplex = setup->size_complex[XX] * setup->size_complex[YY] * setup->size_complex[ZZ];
     const int gridSizeReal    = setup->size_real[XX] * setup->size_real[YY] * setup->size_real[ZZ];
@@ -104,16 +104,16 @@ void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndat
     assert(setup->realGrid);
     setup->complexGrid = (cufftComplex *)pme->gpu->kernelParams.grid.fourierGrid;
 
+    /* Commented code for a simple 3D grid with no padding */
     /*
        result = cufftPlan3d(&setup->planR2C, setup->ndata_real[XX], setup->ndata_real[YY], setup->ndata_real[ZZ], CUFFT_R2C);
        if (result != CUFFT_SUCCESS)
-        gmx_fatal(FARGS, "cufftPlan3d R2C error %d\n", result);
+       gmx_fatal(FARGS, "cufftPlan3d R2C error %d\n", result);
 
        result = cufftPlan3d(&setup->planC2R, setup->ndata_real[XX], setup->ndata_real[YY], setup->ndata_real[ZZ], CUFFT_C2R);
        if (result != CUFFT_SUCCESS)
-        gmx_fatal(FARGS, "cufftPlan3d C2R error %d\n", result);
+       gmx_fatal(FARGS, "cufftPlan3d C2R error %d\n", result);
      */
-
 
     const int rank = 3, batch = 1;
     result = cufftPlanMany(&setup->planR2C, rank, setup->ndata_real,
@@ -151,10 +151,10 @@ void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndat
     }
 }
 
-void gmx_parallel_3dfft_real_limits_gpu(gmx_parallel_3dfft_gpu_t      setup,
-                                        ivec                          local_ndata,
-                                        ivec                          local_offset,
-                                        ivec                          local_size)
+void pme_gpu_get_3dfft_real_limits(gmx_parallel_3dfft_gpu_t      setup,
+                                   ivec                          local_ndata,
+                                   ivec                          local_offset,
+                                   ivec                          local_size)
 {
     if (local_ndata)
     {
@@ -170,10 +170,10 @@ void gmx_parallel_3dfft_real_limits_gpu(gmx_parallel_3dfft_gpu_t      setup,
     }
 }
 
-void gmx_parallel_3dfft_complex_limits_gpu(const gmx_parallel_3dfft_gpu_t setup,
-                                           ivec                           local_ndata,
-                                           ivec                           local_offset,
-                                           ivec                           local_size)
+void pme_gpu_get_3dfft_complex_limits(const gmx_parallel_3dfft_gpu_t setup,
+                                      ivec                           local_ndata,
+                                      ivec                           local_offset,
+                                      ivec                           local_size)
 {
     if (local_ndata)
     {
@@ -198,35 +198,27 @@ void pme_gpu_3dfft(gmx_pme_t        *pme,
 
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {
-
         pme_gpu_start_timing(pme, gtPME_FFT_R2C);
-
         cufftResult_t result = cufftExecR2C(setup->planR2C, setup->realGrid, setup->complexGrid);
-
         pme_gpu_stop_timing(pme, gtPME_FFT_R2C);
-
         if (result)
         {
-            fprintf(stderr, "cufft R2C error %d\n", result);
+            gmx_fatal(FARGS, "cufft R2C error %d\n", result);
         }
     }
     else
     {
-
         pme_gpu_start_timing(pme, gtPME_FFT_C2R);
-
         cufftResult_t result = cufftExecC2R(setup->planC2R, setup->complexGrid, setup->realGrid);
-
         pme_gpu_stop_timing(pme, gtPME_FFT_C2R);
-
         if (result)
         {
-            fprintf(stderr, "cufft C2R error %d\n", result);
+            gmx_fatal(FARGS, "cufft C2R error %d\n", result);
         }
     }
 }
 
-void gmx_parallel_3dfft_destroy_gpu(const gmx_parallel_3dfft_gpu_t &pfft_setup)
+void pme_gpu_destroy_3dfft(const gmx_parallel_3dfft_gpu_t &pfft_setup)
 {
     if (pfft_setup)
     {

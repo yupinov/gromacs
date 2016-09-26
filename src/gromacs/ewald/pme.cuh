@@ -49,8 +49,8 @@
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 #include "pme-gpu.h"
+#include "pme-3dfft.cuh"
 #include "pme-timings.cuh"
-
 
 /*
     Here is a current memory layout for the theta/dtheta B-spline float parameter arrays.
@@ -196,9 +196,9 @@ struct pme_gpu_cuda_t
 
     gmx_device_info_t                   *deviceInfo;
 
-    pme_gpu_timing                      *timingEvents[gtPME_EVENT_COUNT];
-
     gmx_parallel_3dfft_gpu_t            *pfft_setup_gpu;
+
+    pme_gpu_timing                      *timingEvents[gtPME_EVENT_COUNT];
 
     /*! \brief Number of local atoms, padded to be divisible by particlesPerBlock.
      * Used for kernel scheduling.
@@ -254,8 +254,7 @@ struct pme_gpu_cuda_t
     int gridSizeAlloc;
 };
 
-/*! \libinternal
- * \brief
+/*! \brief \internal
  *
  * Tells if CUDA-based performance tracking is enabled for PME.
  *
@@ -269,7 +268,6 @@ gmx_inline gmx_bool pme_gpu_timings_enabled(const gmx_pme_t *pme)
 
 // dumping all the CUDA-specific PME functions here...
 
-void gmx_parallel_3dfft_destroy_gpu(const gmx_parallel_3dfft_gpu_t &pfft_setup);
 
 
 
@@ -277,15 +275,7 @@ void gmx_parallel_3dfft_destroy_gpu(const gmx_parallel_3dfft_gpu_t &pfft_setup);
 void pme_gpu_realloc_and_copy_fract_shifts(const gmx_pme_t *pme);
 void pme_gpu_free_fract_shifts(const gmx_pme_t *pme);
 
-// clearing
-void gmx_parallel_3dfft_init_gpu(gmx_parallel_3dfft_gpu_t *pfft_setup,
-                                 ivec                      ndata,
-                                 const gmx_pme_t          *pme);
 
-void gmx_parallel_3dfft_complex_limits_gpu(const gmx_parallel_3dfft_gpu_t pfft_setup,
-                                           ivec                           local_ndata,
-                                           ivec                           local_offset,
-                                           ivec                           local_size);
 
 /*! \brief
  * Waits for the PME GPU output forces copy to the CPU buffer (pme->gpu->archSpecific->forcesHost) to finish.

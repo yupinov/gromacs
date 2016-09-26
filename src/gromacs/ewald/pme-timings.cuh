@@ -42,7 +42,6 @@
 #ifndef PME_TIMINGS_CUH
 #define PME_TIMINGS_CUH
 
-#include "pme-internal.h"
 #include "gromacs/timing/gpu_timing.h"
 
 /*! \libinternal
@@ -50,7 +49,6 @@
  * This is a GPU timing class, based on CUDA events.
  *
  * Note that the data reported by CUDA events is not really reliable with multiple CUDA streams (e.g. PME and NB).
- * Therefore, it might be not that useful.
  *
  * \ingroup module_ewald
  */
@@ -71,21 +69,21 @@ class pme_gpu_timing
          * \param[in] s   The CUDA stream where the event being measured takes place.
          */
         void start_recording(cudaStream_t s);
-
         /*! \brief
          * To be called after the kernel/transfer launch.
          *
          * \param[in] s   The CUDA stream where the event being measured took place.
          */
         void stop_recording(cudaStream_t s);
-
         /*! \brief To be called after stop_recording and the CUDA stream of the event has been synchronised. */
         void update();
-
-        // to be called once if needed
+        /*! \brief Enables the timing event once. */
         void enable();
+        /*! \brief Resets the timing event total time/call count. */
         void reset();
+        /*! \brief Gets total time recorded. */
         real get_total_time_milliseconds();
+        /*! \brief Gets total call count recorded. */
         unsigned int get_call_count();
 };
 

@@ -43,6 +43,7 @@
 
 #include "gromacs/utility/gmxassert.h"
 #include "pme.cuh"
+#include "pme-3dfft.cuh"
 #include "pme-gpu.h"   //?
 #include "pme-internal.h"
 #include "pme-solve.h"
@@ -307,7 +308,7 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
 
     if (pme_gpu_performs_FFT(pme))
     {
-        gmx_parallel_3dfft_complex_limits_gpu(pme->gpu->archSpecific->pfft_setup_gpu[PME_GRID_QA], local_ndata, local_offset, local_size);
+        pme_gpu_get_3dfft_complex_limits(pme->gpu->archSpecific->pfft_setup_gpu[PME_GRID_QA], local_ndata, local_offset, local_size);
     }
     else
     {
