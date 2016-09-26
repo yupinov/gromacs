@@ -54,7 +54,6 @@
 #include "pme-3dfft.cuh"
 #include "pme-timings.cuh"
 
-
 /* Some general defines for PME CUDA behaviour follow.
  * Some of the might be possible to turn into booleans and/or be moved into pme-gpu.h.
  */
@@ -160,6 +159,28 @@ int __device__ __forceinline__ pme_gpu_check_atom_charge(const float coefficient
 }
 
 /*! \brief \internal
+ * Reallocates and copies the pre-computed fractional coordinates' shifts to the GPU.
+ *
+ * \param[in] pme            The PME structure.
+ */
+void pme_gpu_realloc_and_copy_fract_shifts(const gmx_pme_t *pme);
+
+/*! \brief \internal
+ * Frees the pre-computed fractional coordinates' shifts on the GPU.
+ *
+ * \param[in] pme            The PME structure.
+ */
+void pme_gpu_free_fract_shifts(const gmx_pme_t *pme);
+
+/*! \brief
+ * Waits for the PME GPU output forces copy to the CPU buffer (pme->gpu->forcesHost) to finish.
+ *
+ * \param[in] pme  The PME structure.
+ */
+void pme_gpu_sync_output_forces(const gmx_pme_t *pme);
+
+
+/*! \brief \internal
  * The main PME CUDA-specific data structure, included in the PME GPU structure by the archSpecific pointer.
  */
 struct pme_gpu_cuda_t
@@ -246,30 +267,5 @@ struct pme_gpu_cuda_t
     /*! \brief Both the kernelParams.grid.realGrid (and possibly kernelParams.grid.fourierGrid) float element count (reserved) */
     int gridSizeAlloc;
 };
-
-/*! \brief \internal
- *
- * Tells if CUDA-based performance tracking is enabled for PME.
- *
- * \param[in] pme            The PME data structure.
- * \returns                  TRUE if timings are enabled, FALSE otherwise.
- */
-gmx_inline gmx_bool pme_gpu_timings_enabled(const gmx_pme_t *pme)
-{
-    return pme_gpu_enabled(pme) && pme->gpu->archSpecific->bTiming;
-}
-
-// copies the nn and fsh to the device (used in PME spread(spline))
-void pme_gpu_realloc_and_copy_fract_shifts(const gmx_pme_t *pme);
-void pme_gpu_free_fract_shifts(const gmx_pme_t *pme);
-
-
-
-/*! \brief
- * Waits for the PME GPU output forces copy to the CPU buffer (pme->gpu->archSpecific->forcesHost) to finish.
- *
- * \param[in] pme  The PME structure.
- */
-void pme_gpu_sync_output_forces(const gmx_pme_t *pme);
 
 #endif

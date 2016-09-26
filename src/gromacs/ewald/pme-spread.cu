@@ -611,7 +611,7 @@ void pme_gpu_realloc_and_copy_fract_shifts(const gmx_pme_t *pme)
 {
     cudaStream_t s = pme->gpu->archSpecific->pmeStream;
 
-    const int    nx = pme->nkx; //replace
+    const int    nx = pme->nkx; /* TODO: replace */
     const int    ny = pme->nky;
     const int    nz = pme->nkz;
 

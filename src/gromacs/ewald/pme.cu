@@ -152,14 +152,14 @@ void pme_gpu_realloc_and_copy_bspline_values(const gmx_pme_t *pme)
                 break;
         }
         size_t  modSize  = gridSize * sizeof(float);
-        /* reallocate the host buffer */
+        /* Reallocate the host buffer */
         if ((pme->gpu->splineValuesHost[i] == NULL) || (pme->gpu->splineValuesHostSizes[i] < modSize))
         {
             pfree(pme->gpu->splineValuesHost[i]);
             pmalloc((void **)&pme->gpu->splineValuesHost[i], modSize);
         }
         memcpy(pme->gpu->splineValuesHost[i], pme->bsp_mod[i], modSize);
-        //yupinov instead use pinning here as well!
+        /* TODO: use pinning here as well! */
         cu_copy_H2D_async(pme->gpu->kernelParams.grid.splineValuesArray + splineValuesOffset[i], pme->gpu->splineValuesHost[i], modSize, pme->gpu->archSpecific->pmeStream);
     }
 }
@@ -574,7 +574,7 @@ gmx_bool pme_gpu_check_restrictions(const gmx_pme_t *pme,
     return error.empty();
 }
 
-/* The exposed PME GPU functions follow below */
+/* The external PME GPU functions follow below */
 
 void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_opt_t *gpu_opt)
 {
@@ -598,15 +598,14 @@ void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_o
 
         cudaError_t stat;
 
-        /* GPU selection copied from non-bondeds */
+        /* FIXME: fix the GPU ID selection as well as initialization */
         const int PMEGPURank = pme->nodeid;
         /* This is a node id within PME MPI communication group.
-         * It doesn't make much sense as a gpu index, right? */
+         * It doesn't really make much sense as a gpu index, right? */
         char      gpu_err_str[STRLEN];
         assert(hwinfo);
         assert(hwinfo->gpu_info.gpu_dev);
         assert(gpu_opt->dev_use);
-
         char *forcedGPUIdString = getenv("GMX_PME_GPU_ID");
         if (forcedGPUIdString)
         {
@@ -655,7 +654,7 @@ void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_o
         pme->gpu->archSpecific->bTiming = (getenv("GMX_DISABLE_CUDA_TIMING") == NULL); /* This should also check for NB GPU being launched, and NB should check for PME GPU! */
 
         //pme->gpu->archSpecific->bUseTextureObjects = (pme->gpu->archSpecific->deviceInfo->prop.major >= 3);
-        //yupinov - have to fix the GPU id selection, forced GPUIdHack?
+        /* TODO: have to fix the GPU id selection, forced GPUIdHack?*/
 
         /* Creating a PME CUDA stream */
 #if GMX_CUDA_VERSION >= 5050

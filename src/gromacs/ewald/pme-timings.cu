@@ -131,6 +131,17 @@ unsigned int pme_gpu_timing::get_call_count()
 
 /* The general PME GPU timing functions */
 
+/*! \brief \internal
+ * Tells if CUDA-based performance tracking is enabled for PME.
+ *
+ * \param[in] pme            The PME data structure.
+ * \returns                  TRUE if timings are enabled, FALSE otherwise.
+ */
+gmx_inline gmx_bool pme_gpu_timings_enabled(const gmx_pme_t *pme)
+{
+    return pme_gpu_enabled(pme) && pme->gpu->archSpecific->bTiming;
+}
+
 void pme_gpu_start_timing(const gmx_pme_t *pme, size_t PMEStageId)
 {
     if (pme_gpu_timings_enabled(pme))
