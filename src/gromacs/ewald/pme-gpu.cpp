@@ -268,8 +268,6 @@ void pme_gpu_launch(gmx_pme_t      *pme,
     }
 }
 
-// this will only copy the forces buffer (with results from listed calculations, etc.) to the GPU (for bClearF == false),
-// launch the gather kernel, copy the result back
 void pme_gpu_launch_gather(const gmx_pme_t                 *pme,
                            gmx_wallcycle_t gmx_unused       wcycle,
                            gmx_bool                         bClearForces)
