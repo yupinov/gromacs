@@ -43,10 +43,12 @@
 
 #include <assert.h>
 #include <string.h>
+
+#include "gromacs/ewald/pme.h"
 #include "gromacs/math/invertmatrix.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
-#include "pme.h"
+
 #include "pme-grid.h"
 #include "pme-solve.h"
 
@@ -83,19 +85,24 @@ void pme_gpu_start_step(const gmx_pme_t *pme, const matrix box)
         pme->gpu->kernelParams.step.boxVolume = box[XX][XX] * box[YY][YY] * box[ZZ][ZZ];
         assert(pme->gpu->kernelParams.step.boxVolume != 0.0f);
 
+#if GMX_DOUBLE
+        assert("PME is single-precision only on GPU. You shouldn't be seeing this message!");
+#else
         matrix recipBox;
         gmx::invertBoxMatrix(box, recipBox);
         /* The GPU recipBox is transposed as compared to the CPU recipBox.
          * Spread uses matrix columns (while solve and gather use rows).
          * There is no particular reason for this; it might be further rethought/optimized for better access patterns.
          */
-        const float newRecipBox[DIM][DIM] =
+
+        const real newRecipBox[DIM][DIM] =
         {
             {recipBox[XX][XX], recipBox[YY][XX], recipBox[ZZ][XX]},
             {             0.0, recipBox[YY][YY], recipBox[ZZ][YY]},
             {             0.0,              0.0, recipBox[ZZ][ZZ]}
         };
         memcpy(pme->gpu->kernelParams.step.recipBox, newRecipBox, boxMemorySize);
+#endif
     }
 }
 

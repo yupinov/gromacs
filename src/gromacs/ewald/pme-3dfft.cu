@@ -42,19 +42,21 @@
 #include "gmxpre.h"
 
 #include <assert.h>
-#include <cufft.h>
-#include "pme-gpu.h"
-#include "pme.cuh"
 
+#include <cufft.h>
+
+#include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
-#include "gromacs/gpu_utils/cudautils.cuh"
+
+#include "pme.cuh"
+#include "pme-gpu.h"
 
 struct gmx_parallel_3dfft_gpu
 {
-    ivec          ndata_real;
-    ivec          size_real;
-    ivec          size_complex;
+    ivec          nDataReal;
+    ivec          sizeReal;
+    ivec          sizeComplex;
 
     cufftHandle   planR2C;
     cufftHandle   planC2R;
@@ -62,20 +64,20 @@ struct gmx_parallel_3dfft_gpu
     cufftComplex *complexGrid;
 
     /* unused */
-    ivec          local_offset;
+    ivec          localOffset;
 };
 
-void pme_gpu_init_3dfft(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndata, const gmx_pme_t *pme)
+void pme_gpu_init_3dfft(gmx_parallel_3dfft_gpu_t *pfftSetup, ivec ndata, const gmx_pme_t *pme)
 {
     cufftResult_t            result;
     gmx_parallel_3dfft_gpu_t setup;
     snew(setup, 1);
 
-    setup->ndata_real[0] = ndata[XX];
-    setup->ndata_real[1] = ndata[YY];
-    setup->ndata_real[2] = ndata[ZZ];
+    setup->nDataReal[0] = ndata[XX];
+    setup->nDataReal[1] = ndata[YY];
+    setup->nDataReal[2] = ndata[ZZ];
 
-    *pfft_setup = setup;
+    *pfftSetup = setup;
 
     if (!pme_gpu_uses_dd(pme))
     {
@@ -88,17 +90,17 @@ void pme_gpu_init_3dfft(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndata, const 
         gmx_fatal(FARGS, "FFT decomposition not implemented");
     }
 
-    memcpy(setup->size_real, ndata, sizeof(setup->size_real));
+    memcpy(setup->sizeReal, ndata, sizeof(setup->sizeReal));
 
-    memcpy(setup->size_complex, setup->size_real, sizeof(setup->size_real));
-    GMX_RELEASE_ASSERT(setup->size_complex[ZZ] % 2 == 0, "Odd inplace cuFFT dimension size");
-    setup->size_complex[ZZ] /= 2;
+    memcpy(setup->sizeComplex, setup->sizeReal, sizeof(setup->sizeReal));
+    GMX_RELEASE_ASSERT(setup->sizeComplex[ZZ] % 2 == 0, "Odd inplace cuFFT dimension size");
+    setup->sizeComplex[ZZ] /= 2;
     // This is alright because Z includes overlap
 
-    const int gridSizeComplex = setup->size_complex[XX] * setup->size_complex[YY] * setup->size_complex[ZZ];
-    const int gridSizeReal    = setup->size_real[XX] * setup->size_real[YY] * setup->size_real[ZZ];
+    const int gridSizeComplex = setup->sizeComplex[XX] * setup->sizeComplex[YY] * setup->sizeComplex[ZZ];
+    const int gridSizeReal    = setup->sizeReal[XX] * setup->sizeReal[YY] * setup->sizeReal[ZZ];
 
-    memset(setup->local_offset, 0, sizeof(setup->local_offset)); //!
+    memset(setup->localOffset, 0, sizeof(setup->localOffset)); //!
 
     setup->realGrid = (cufftReal *)pme->gpu->kernelParams.grid.realGrid;
     assert(setup->realGrid);
@@ -116,9 +118,9 @@ void pme_gpu_init_3dfft(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndata, const 
      */
 
     const int rank = 3, batch = 1;
-    result = cufftPlanMany(&setup->planR2C, rank, setup->ndata_real,
-                           setup->size_real, 1, gridSizeReal,
-                           setup->size_complex, 1, gridSizeComplex,
+    result = cufftPlanMany(&setup->planR2C, rank, setup->nDataReal,
+                           setup->sizeReal, 1, gridSizeReal,
+                           setup->sizeComplex, 1, gridSizeComplex,
                            CUFFT_R2C,
                            batch);
     if (result != CUFFT_SUCCESS)
@@ -126,9 +128,9 @@ void pme_gpu_init_3dfft(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndata, const 
         gmx_fatal(FARGS, "cufftPlanMany R2C error %d\n", result);
     }
 
-    result = cufftPlanMany(&setup->planC2R, rank, setup->ndata_real,
-                           setup->size_complex, 1, gridSizeComplex,
-                           setup->size_real, 1, gridSizeReal,
+    result = cufftPlanMany(&setup->planC2R, rank, setup->nDataReal,
+                           setup->sizeComplex, 1, gridSizeComplex,
+                           setup->sizeReal, 1, gridSizeReal,
                            CUFFT_C2R,
                            batch);
     if (result != CUFFT_SUCCESS)
@@ -152,41 +154,41 @@ void pme_gpu_init_3dfft(gmx_parallel_3dfft_gpu_t *pfft_setup, ivec ndata, const 
 }
 
 void pme_gpu_get_3dfft_real_limits(gmx_parallel_3dfft_gpu_t      setup,
-                                   ivec                          local_ndata,
-                                   ivec                          local_offset,
-                                   ivec                          local_size)
+                                   ivec                          localNData,
+                                   ivec                          localOffset,
+                                   ivec                          localSize)
 {
-    if (local_ndata)
+    if (localNData)
     {
-        memcpy(local_ndata, setup->ndata_real, sizeof(setup->ndata_real));
+        memcpy(localNData, setup->nDataReal, sizeof(setup->nDataReal));
     }
-    if (local_size)
+    if (localSize)
     {
-        memcpy(local_size, setup->size_real, sizeof(setup->size_real));
+        memcpy(localSize, setup->sizeReal, sizeof(setup->sizeReal));
     }
-    if (local_offset)
+    if (localOffset)
     {
-        memcpy(local_offset, setup->local_offset, sizeof(setup->local_offset));
+        memcpy(localOffset, setup->localOffset, sizeof(setup->localOffset));
     }
 }
 
 void pme_gpu_get_3dfft_complex_limits(const gmx_parallel_3dfft_gpu_t setup,
-                                      ivec                           local_ndata,
-                                      ivec                           local_offset,
-                                      ivec                           local_size)
+                                      ivec                           localNData,
+                                      ivec                           localOffset,
+                                      ivec                           localSize)
 {
-    if (local_ndata)
+    if (localNData)
     {
-        memcpy(local_ndata, setup->ndata_real, sizeof(setup->ndata_real));
-        local_ndata[ZZ] = local_ndata[ZZ] / 2 + 1;
+        memcpy(localNData, setup->nDataReal, sizeof(setup->nDataReal));
+        localNData[ZZ] = localNData[ZZ] / 2 + 1;
     }
-    if (local_size)
+    if (localSize)
     {
-        memcpy(local_size, setup->size_complex, sizeof(setup->size_complex));
+        memcpy(localSize, setup->sizeComplex, sizeof(setup->sizeComplex));
     }
-    if (local_offset)
+    if (localOffset)
     {
-        memcpy(local_offset, setup->local_offset, sizeof(setup->local_offset));
+        memcpy(localOffset, setup->localOffset, sizeof(setup->localOffset));
     }
 }
 
@@ -218,23 +220,23 @@ void pme_gpu_3dfft(gmx_pme_t        *pme,
     }
 }
 
-void pme_gpu_destroy_3dfft(const gmx_parallel_3dfft_gpu_t &pfft_setup)
+void pme_gpu_destroy_3dfft(const gmx_parallel_3dfft_gpu_t &pfftSetup)
 {
-    if (pfft_setup)
+    if (pfftSetup)
     {
         cufftResult_t result;
 
-        result = cufftDestroy(pfft_setup->planR2C);
+        result = cufftDestroy(pfftSetup->planR2C);
         if (result != CUFFT_SUCCESS)
         {
             gmx_fatal(FARGS, "cufftDestroy R2C error %d\n", result);
         }
-        result = cufftDestroy(pfft_setup->planC2R);
+        result = cufftDestroy(pfftSetup->planC2R);
         if (result != CUFFT_SUCCESS)
         {
             gmx_fatal(FARGS, "cufftDestroy C2R error %d\n", result);
         }
 
-        sfree(pfft_setup);
+        sfree(pfftSetup);
     }
 }

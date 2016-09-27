@@ -43,6 +43,7 @@
 #define PME3DFFT_CUH
 
 #include "gmxpre.h"
+
 #include "pme-internal.h"
 
 typedef struct gmx_parallel_3dfft_gpu *gmx_parallel_3dfft_gpu_t; // TODO: refactor
@@ -55,7 +56,7 @@ typedef struct gmx_parallel_3dfft_gpu *gmx_parallel_3dfft_gpu_t; // TODO: refact
  * \param[in] ndata                 The PME real-space grid size.
  * \param[in] pme                   The PME data structure.
  */
-void pme_gpu_init_3dfft(gmx_parallel_3dfft_gpu_t *pfft_setup,
+void pme_gpu_init_3dfft(gmx_parallel_3dfft_gpu_t *pfftSetup,
                         ivec                      ndata,
                         const gmx_pme_t          *pme);
 
@@ -64,7 +65,7 @@ void pme_gpu_init_3dfft(gmx_parallel_3dfft_gpu_t *pfft_setup,
  *
  * \param     pfft_setup            The CUDA FFT structure to be destroyed.
  */
-void pme_gpu_destroy_3dfft(const gmx_parallel_3dfft_gpu_t &pfft_setup);
+void pme_gpu_destroy_3dfft(const gmx_parallel_3dfft_gpu_t &pfftSetup);
 
 /*! \brief \internal
  *
@@ -75,9 +76,9 @@ void pme_gpu_destroy_3dfft(const gmx_parallel_3dfft_gpu_t &pfft_setup);
  * \param[out]   local_offset          The offsets of the local grid.
  * \param[out]   local_size            The numbers of complex elements (with padding) in the local grid.
  */
-void pme_gpu_get_3dfft_complex_limits(const gmx_parallel_3dfft_gpu_t pfft_setup,
-                                      ivec                           local_ndata,
-                                      ivec                           local_offset,
-                                      ivec                           local_size);
+void pme_gpu_get_3dfft_complex_limits(const gmx_parallel_3dfft_gpu_t pfftSetup,
+                                      ivec                           localNData,
+                                      ivec                           localOffset,
+                                      ivec                           localSize);
 
 #endif // PME3DFFT_CUH

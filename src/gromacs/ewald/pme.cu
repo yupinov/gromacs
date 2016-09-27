@@ -43,20 +43,23 @@
 
 /* GPU initialization includes */
 #include "gromacs/gpu_utils/gpu_utils.h"
-#include "gromacs/utility/cstringutil.h"
 #include "gromacs/hardware/hw_info.h"
+#include "gromacs/utility/cstringutil.h"
 #include "gromacs/utility/logger.h"
 
 /* The rest */
+#include "pme.h"
+
 #include <assert.h>
+
 #include "gromacs/gpu_utils/pmalloc_cuda.h"
 #include "gromacs/math/units.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
-#include "pme-3dfft.cuh"
+
 #include "pme.cuh"
-#include "pme.h"
+#include "pme-3dfft.cuh"
 #include "pme-grid.h"
 #include "pme-solve.h"
 
@@ -191,7 +194,6 @@ void pme_gpu_copy_wrap_zones(const gmx_pme_t *pme)
     const int overlap = pme->pme_order - 1;
 
     /* Cell counts in the 7 overlapped grid parts */
-    /* Is this correct? No Z alignment changes? */
     const int3 zoneSizes_h[PME_GPU_OVERLAP_ZONES_COUNT] =
     {
         {     nx,        ny,   overlap},
@@ -297,7 +299,7 @@ void pme_gpu_realloc_coordinates(const gmx_pme_t *pme)
 
 void pme_gpu_copy_coordinates(const gmx_pme_t *pme)
 {
-    assert(pme->gpu->archSpecific->coordinatesHost);
+    assert(pme->gpu->coordinatesHost);
     cu_copy_H2D_async(pme->gpu->kernelParams.atoms.coordinates, pme->gpu->coordinatesHost, pme->gpu->kernelParams.atoms.nAtoms * DIM * sizeof(float), pme->gpu->archSpecific->pmeStream);
 }
 
@@ -461,6 +463,67 @@ void pme_gpu_clear_grids(const gmx_pme_t *pme)
 }
 
 /*! \brief \internal
+ * Reallocates and copies the pre-computed fractional coordinates' shifts to the GPU.
+ *
+ * \param[in] pme            The PME structure.
+ */
+void pme_gpu_realloc_and_copy_fract_shifts(const gmx_pme_t *pme)
+{
+    cudaStream_t s = pme->gpu->archSpecific->pmeStream;
+
+    const int    nx = pme->nkx; /* TODO: replace */
+    const int    ny = pme->nky;
+    const int    nz = pme->nkz;
+
+    const int    cellCount = 5;
+    /* This is the number of neighbor cells that is also hardcoded in make_gridindex5_to_localindex and should be the same */
+
+    const int3 fshOffset = {0, cellCount * nx, cellCount * (nx + ny)};
+    memcpy(&pme->gpu->kernelParams.grid.fshOffset, &fshOffset, sizeof(fshOffset));
+
+    const int    newFractShiftsSize  = cellCount * (nx + ny + nz);
+
+    /* Two arrays, same size */
+    int currentSizeTemp      = pme->gpu->archSpecific->fractShiftsSize;
+    int currentSizeTempAlloc = pme->gpu->archSpecific->fractShiftsSizeAlloc;
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.grid.fshArray, NULL, sizeof(float),
+                        &currentSizeTemp, &currentSizeTempAlloc,
+                        newFractShiftsSize, pme->gpu->archSpecific->pmeStream, true);
+    float *fshArray = pme->gpu->kernelParams.grid.fshArray;
+    cu_realloc_buffered((void **)&pme->gpu->kernelParams.grid.nnArray, NULL, sizeof(int),
+                        &pme->gpu->archSpecific->fractShiftsSize, &pme->gpu->archSpecific->fractShiftsSizeAlloc,
+                        newFractShiftsSize, pme->gpu->archSpecific->pmeStream, true);
+    int *nnArray = pme->gpu->kernelParams.grid.nnArray;
+
+    /* TODO: pinning */
+
+    cu_copy_H2D_async(fshArray + fshOffset.x, pme->fshx, cellCount * nx * sizeof(float), s);
+    cu_copy_H2D_async(fshArray + fshOffset.y, pme->fshy, cellCount * ny * sizeof(float), s);
+    cu_copy_H2D_async(fshArray + fshOffset.z, pme->fshz, cellCount * nz * sizeof(float), s);
+
+    cu_copy_H2D_async(nnArray + fshOffset.x, pme->nnx, cellCount * nx * sizeof(int), s);
+    cu_copy_H2D_async(nnArray + fshOffset.y, pme->nny, cellCount * ny * sizeof(int), s);
+    cu_copy_H2D_async(nnArray + fshOffset.z, pme->nnz, cellCount * nz * sizeof(int), s);
+
+    /* TODO: fix the textures code */
+    pme_gpu_make_fract_shifts_textures(pme);
+}
+
+/*! \brief \internal
+ * Frees the pre-computed fractional coordinates' shifts on the GPU.
+ *
+ * \param[in] pme            The PME structure.
+ */
+void pme_gpu_free_fract_shifts(const gmx_pme_t *pme)
+{
+    /* Two arrays, same size */
+    cu_free_buffered(pme->gpu->kernelParams.grid.fshArray);
+    cu_free_buffered(pme->gpu->kernelParams.grid.nnArray, &pme->gpu->archSpecific->fractShiftsSize, &pme->gpu->archSpecific->fractShiftsSizeAlloc);
+
+    pme_gpu_free_fract_shifts_textures(pme);
+}
+
+/*! \brief \internal
  * The PME GPU reinitialization function that is called both at the end of any MD step and on any load balancing step.
  *
  * \param[in] pme            The PME structure.
@@ -514,7 +577,7 @@ void pme_gpu_sync_energy_virial(const gmx_pme_t *pme)
 
     for (int j = 0; j < PME_GPU_VIRIAL_AND_ENERGY_COUNT; j++)
     {
-        GMX_ASSERT(!isnan(pme->gpu->archSpecific->virialAndEnergyHost[j]), "PME GPU produces incorrect energy/virial.");
+        GMX_ASSERT(!isnan(pme->gpu->virialAndEnergyHost[j]), "PME GPU produces incorrect energy/virial.");
     }
 }
 
@@ -566,10 +629,11 @@ gmx_bool pme_gpu_check_restrictions(const gmx_pme_t *pme,
     {
         error.append("PME LJ is not implemented on GPU. ");
     }
-    if (sizeof(real) != sizeof(float))
+#if GMX_DOUBLE
     {
         error.append("PME is only implemented for single precision on GPU. ");
     }
+#endif
 
     return error.empty();
 }
@@ -619,11 +683,11 @@ void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_o
         }
         else
         {
-            pme->gpu->archSpecific->deviceInfo = &hwinfo->gpu_info.gpu_dev[gpu_opt->dev_use[PMEGPURank]];
+            pme->gpu->deviceInfo = &hwinfo->gpu_info.gpu_dev[gpu_opt->dev_use[PMEGPURank]];
             const gmx::MDLogger temp;
             if (!init_gpu(temp, PMEGPURank, gpu_err_str, &hwinfo->gpu_info, gpu_opt))
             {
-                gmx_fatal(FARGS, "Could not select GPU %d for PME rank %d\n", pme->gpu->archSpecific->deviceInfo->id, PMEGPURank);
+                gmx_fatal(FARGS, "Could not select GPU %d for PME rank %d\n", pme->gpu->deviceInfo->id, PMEGPURank);
             }
         }
 
@@ -653,7 +717,7 @@ void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_o
 
         pme->gpu->archSpecific->bTiming = (getenv("GMX_DISABLE_CUDA_TIMING") == NULL); /* This should also check for NB GPU being launched, and NB should check for PME GPU! */
 
-        //pme->gpu->archSpecific->bUseTextureObjects = (pme->gpu->archSpecific->deviceInfo->prop.major >= 3);
+        //pme->gpu->archSpecific->bUseTextureObjects = (pme->gpu->deviceInfo->prop.major >= 3);
         /* TODO: have to fix the GPU id selection, forced GPUIdHack?*/
 
         /* Creating a PME CUDA stream */
@@ -751,7 +815,7 @@ void pme_gpu_destroy(gmx_pme_t *pme)
     pme->gpu = NULL;
 }
 
-void pme_gpu_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, float *coefficients)
+void pme_gpu_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, real *coefficients)
 {
     if (!pme_gpu_enabled(pme))
     {

@@ -49,11 +49,13 @@
 extern "C" {
 #endif
 
-/* A typedef for including the GPU framework-specific data by pointer */
+
 #if GMX_GPU == GMX_GPU_CUDA
 struct pme_gpu_cuda_t;
+/*! \brief  A typedef for including the GPU framework-specific data by pointer */
 typedef pme_gpu_cuda_t pme_gpu_specific_t;
 #else
+/*! \brief A dummy typedef */
 typedef int pme_gpu_specific_t;
 #endif
 
@@ -97,8 +99,8 @@ struct pme_gpu_grid_params_t
     /*! \brief Complex grid - used in FFT/solve. If inplace cuFFT is used, then it is the same pointer as realGrid. */
     float  *fourierGrid;
 
-    /* Crude wrap/unwrap overlap zone sizes - can go away with a better rewrite of wrap/unwrap */
-#define PME_GPU_OVERLAP_ZONES_COUNT 7
+    /*! \brief Count of the overlap zones */
+#define PME_GPU_OVERLAP_ZONES_COUNT 7  /* can go away with a better rewrite of wrap/unwrap */
     /*! \brief The Y and Z sizes of the overlap zones */
     int  overlapSizes[2 * PME_GPU_OVERLAP_ZONES_COUNT];
     /*! \brief The total cell counts of the overlap zones */
@@ -241,6 +243,9 @@ struct gmx_pme_gpu_t
     float  *splineValuesHost[DIM];
     /*! \brief Sizes of the corresponding splineValuesHost arrays in bytes */
     size_t  splineValuesHostSizes[DIM]; //oh god the naming
+
+    /*! \brief A pointer to the device used during the execution. */
+    struct gmx_device_info_t                   *deviceInfo;
 
     /*! \brief A single structure encompassing all the PME data used on GPU.
      * This should be the only parameter to all the PME GPU kernels (FIXME: pme_solve_kernel).

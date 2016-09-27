@@ -711,8 +711,8 @@ int gmx_pme_init(struct gmx_pme_t   **pmedata,
     snew(pme->bsp_mod[YY], pme->nky);
     snew(pme->bsp_mod[ZZ], pme->nkz);
 
-    pme->gpu  = pmeGPU;  /* Carrying over the single GPU structure */
-    pme->bGPU = bPMEGPU; /* This will be adjusted later during the first pme_gpu_reinit() call. */
+    pme->gpu  = pmeGPU; /* Carrying over the single GPU structure */
+    pme->bGPU = bPMEGPU;
 
     /* The required size of the interpolation grid, including overlap.
      * The allocated size (pmegrid_n?) might be slightly larger.

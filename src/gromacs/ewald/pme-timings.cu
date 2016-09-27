@@ -40,13 +40,16 @@
  */
 
 #include "gmxpre.h"
+
+#include <cuda.h>
+
+#include "gromacs/ewald/pme.h"
+#include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/timing/gpu_timing.h"
 #include "gromacs/timing/wallcycle.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
-#include "gromacs/gpu_utils/cudautils.cuh"
-#include <cuda.h>
-#include "pme.h"
+
 #include "pme.cuh"
 
 /* The pme_gpu_timing class implementation */

@@ -76,6 +76,7 @@ enum
 struct gmx_wallclock_gpu_pme_t
 {
     /* A separate PME structure to avoid refactoring the NB code for gmx_wallclock_gpu_t later */
+    /*! \brief Array of PME GPU timing data. */
     gmx_nbnxn_kernel_timing_data_t timing[gtPME_EVENT_COUNT];
 };
 
@@ -91,6 +92,7 @@ struct gmx_wallclock_gpu_t
     double                         pl_h2d_t;           /**< pair search step host to device transfer time */
     int                            pl_h2d_c;           /**< pair search step  host to device transfer call count */
 
+    /*! \brief PME GPU timings. */
     struct gmx_wallclock_gpu_pme_t pme;
 };
 

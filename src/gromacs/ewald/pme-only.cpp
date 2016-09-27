@@ -191,7 +191,7 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
         do
         {
             /* Domain decomposition */
-            gmx_bool chargesChanged = FALSE;
+            gmx_bool atomSetChanged = FALSE;
             ret = gmx_pme_recv_coeffs_coords(pme_pp,
                                              &natoms,
                                              &chargeA, &chargeB,
@@ -205,7 +205,7 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
                                              grid_switch,
                                              &ewaldcoeff_q,
                                              &ewaldcoeff_lj,
-                                             &chargesChanged);
+                                             &atomSetChanged);
 
             if (ret == pmerecvqxSWITCHGRID)
             {
@@ -213,7 +213,7 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
                 gmx_pmeonly_switch(&npmedata, &pmedata, grid_switch, ewaldcoeff_q, ewaldcoeff_lj, cr, ir, &pme);
             }
 
-            if (chargesChanged)
+            if (atomSetChanged)
             {
                 pme_gpu_reinit_atoms(pme, natoms, chargeA);
             }

@@ -47,11 +47,14 @@
 #define PME_CUDA_H
 
 #include "gmxpre.h"
+
 #include <assert.h>
-#include "gromacs/gpu_utils/cudautils.cuh"
+
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
-#include "pme-gpu.h"
+#include "gromacs/gpu_utils/cudautils.cuh"
+
 #include "pme-3dfft.cuh"
+#include "pme-gpu.h"
 #include "pme-timings.cuh"
 
 /* Some general defines for PME CUDA behaviour follow.
@@ -158,20 +161,6 @@ int __device__ __forceinline__ pme_gpu_check_atom_charge(const float coefficient
     return PME_GPU_SKIP_ZEROES ? (coefficient != 0.0f) : 1;
 }
 
-/*! \brief \internal
- * Reallocates and copies the pre-computed fractional coordinates' shifts to the GPU.
- *
- * \param[in] pme            The PME structure.
- */
-void pme_gpu_realloc_and_copy_fract_shifts(const gmx_pme_t *pme);
-
-/*! \brief \internal
- * Frees the pre-computed fractional coordinates' shifts on the GPU.
- *
- * \param[in] pme            The PME structure.
- */
-void pme_gpu_free_fract_shifts(const gmx_pme_t *pme);
-
 /*! \brief
  * Waits for the PME GPU output forces copy to the CPU buffer (pme->gpu->forcesHost) to finish.
  *
@@ -207,8 +196,6 @@ struct pme_gpu_cuda_t
     gmx_bool bTiming;
 
     //gmx_bool bUseTextureObjects;  /* If false, then use references [unused] */
-
-    gmx_device_info_t                   *deviceInfo;
 
     gmx_parallel_3dfft_gpu_t            *pfft_setup_gpu;
 
@@ -267,5 +254,8 @@ struct pme_gpu_cuda_t
     /*! \brief Both the kernelParams.grid.realGrid (and possibly kernelParams.grid.fourierGrid) float element count (reserved) */
     int gridSizeAlloc;
 };
+
+void pme_gpu_make_fract_shifts_textures(const gmx_pme_t *pme);
+void pme_gpu_free_fract_shifts_textures(const gmx_pme_t *pme);
 
 #endif
