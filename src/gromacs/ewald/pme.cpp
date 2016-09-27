@@ -724,11 +724,6 @@ int gmx_pme_init(struct gmx_pme_t   **pmedata,
     pme->pmegrid_nz_base = pme->nkz;
     pme->pmegrid_nz      = pme->pmegrid_nz_base + pme->pme_order - 1;
     set_grid_alignment(&pme->pmegrid_nz, pme->pme_order);
-    if (pme_gpu_enabled(pme))
-    {
-        const int alignment = 2; // for complex grid of the same size - would only be useful for inplace, actually
-        pme->pmegrid_nz = (pme->pmegrid_nz + alignment - 1) / alignment * alignment;
-    }
     pme->pmegrid_start_ix = pme->overlap[0].s2g0[pme->nodeid_major];
     pme->pmegrid_start_iy = pme->overlap[1].s2g0[pme->nodeid_minor];
     pme->pmegrid_start_iz = 0;

@@ -560,7 +560,7 @@ void pme_gpu_reinit_grids(const gmx_pme_t *pme)
     {
         for (int i = 0; i < pme->ngrids; ++i)
         {
-            pme_gpu_init_3dfft(&pme->gpu->archSpecific->pfft_setup_gpu[i], (int *)&localGridSize, pme);
+            pme_gpu_init_3dfft(&pme->gpu->archSpecific->pfft_setup_gpu[i], pme);
         }
     }
 }

@@ -52,18 +52,16 @@ typedef struct gmx_parallel_3dfft_gpu *gmx_parallel_3dfft_gpu_t; // TODO: refact
  * Initializes the CUDA FFT structure for performing real-to-complex and complex-to-real 3D FFT
  * on a PME grid of a given size.
  *
- * \param[in] pfft_setup            The CUDA FFT structure to be initialized.
- * \param[in] ndata                 The PME real-space grid size.
+ * \param[in] pfftSetup            The CUDA FFT structure to be initialized.
  * \param[in] pme                   The PME data structure.
  */
 void pme_gpu_init_3dfft(gmx_parallel_3dfft_gpu_t *pfftSetup,
-                        ivec                      ndata,
                         const gmx_pme_t          *pme);
 
 /*! \brief \internal
  * Destroys the CUDA FFT structure.
  *
- * \param     pfft_setup            The CUDA FFT structure to be destroyed.
+ * \param     pfftSetup            The CUDA FFT structure to be destroyed.
  */
 void pme_gpu_destroy_3dfft(const gmx_parallel_3dfft_gpu_t &pfftSetup);
 
@@ -71,10 +69,10 @@ void pme_gpu_destroy_3dfft(const gmx_parallel_3dfft_gpu_t &pfftSetup);
  *
  * Returns the grid dimensions of the local complex PME grid.
  *
- * \param[in]    pfft_setup            The CUDA FFT structure to be examined.
- * \param[out]   local_ndata           The numbers of complex elements in the local grid.
- * \param[out]   local_offset          The offsets of the local grid.
- * \param[out]   local_size            The numbers of complex elements (with padding) in the local grid.
+ * \param[in]    pfftSetup            The CUDA FFT structure to be examined.
+ * \param[out]   localNData           The numbers of complex elements in the local grid.
+ * \param[out]   localOffset          The offsets of the local grid.
+ * \param[out]   localSize            The numbers of complex elements (with padding) in the local grid.
  */
 void pme_gpu_get_3dfft_complex_limits(const gmx_parallel_3dfft_gpu_t pfftSetup,
                                       ivec                           localNData,

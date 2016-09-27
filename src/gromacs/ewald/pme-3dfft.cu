@@ -67,35 +67,25 @@ struct gmx_parallel_3dfft_gpu
     ivec          localOffset;
 };
 
-void pme_gpu_init_3dfft(gmx_parallel_3dfft_gpu_t *pfftSetup, ivec ndata, const gmx_pme_t *pme)
+void pme_gpu_init_3dfft(gmx_parallel_3dfft_gpu_t *pfftSetup, const gmx_pme_t *pme)
 {
     cufftResult_t            result;
     gmx_parallel_3dfft_gpu_t setup;
     snew(setup, 1);
-
-    setup->nDataReal[0] = ndata[XX];
-    setup->nDataReal[1] = ndata[YY];
-    setup->nDataReal[2] = ndata[ZZ];
-
     *pfftSetup = setup;
 
-    if (!pme_gpu_uses_dd(pme))
+    for (int i = 0; i < DIM; i++)
     {
-        ndata[XX] = pme->pmegrid_nx;
-        ndata[YY] = pme->pmegrid_ny;
-        ndata[ZZ] = pme->pmegrid_nz;
+        setup->nDataReal[i]   = pme->gpu->kernelParams.grid.localGridSize[i];
+        setup->sizeComplex[i] = setup->sizeReal[i] = pme->gpu->kernelParams.grid.localGridSizePadded[i];
     }
-    else
-    {
-        gmx_fatal(FARGS, "FFT decomposition not implemented");
-    }
-
-    memcpy(setup->sizeReal, ndata, sizeof(setup->sizeReal));
-
-    memcpy(setup->sizeComplex, setup->sizeReal, sizeof(setup->sizeReal));
-    GMX_RELEASE_ASSERT(setup->sizeComplex[ZZ] % 2 == 0, "Odd inplace cuFFT dimension size");
     setup->sizeComplex[ZZ] /= 2;
-    // This is alright because Z includes overlap
+
+    GMX_ASSERT(!pme_gpu_uses_dd(pme), "FFT decomposition not implemented");
+    if (pme->gpu->archSpecific->bOutOfPlaceFFT)
+    {
+        GMX_ASSERT(setup->sizeComplex[ZZ] % 2 == 0, "Odd inplace cuFFT minor dimension");
+    }
 
     const int gridSizeComplex = setup->sizeComplex[XX] * setup->sizeComplex[YY] * setup->sizeComplex[ZZ];
     const int gridSizeReal    = setup->sizeReal[XX] * setup->sizeReal[YY] * setup->sizeReal[ZZ];
@@ -108,11 +98,11 @@ void pme_gpu_init_3dfft(gmx_parallel_3dfft_gpu_t *pfftSetup, ivec ndata, const g
 
     /* Commented code for a simple 3D grid with no padding */
     /*
-       result = cufftPlan3d(&setup->planR2C, setup->ndata_real[XX], setup->ndata_real[YY], setup->ndata_real[ZZ], CUFFT_R2C);
+       result = cufftPlan3d(&setup->planR2C, setup->ndataReal[XX], setup->ndataReal[YY], setup->ndataReal[ZZ], CUFFT_R2C);
        if (result != CUFFT_SUCCESS)
        gmx_fatal(FARGS, "cufftPlan3d R2C error %d\n", result);
 
-       result = cufftPlan3d(&setup->planC2R, setup->ndata_real[XX], setup->ndata_real[YY], setup->ndata_real[ZZ], CUFFT_C2R);
+       result = cufftPlan3d(&setup->planC2R, setup->ndataReal[XX], setup->ndataReal[YY], setup->ndataReal[ZZ], CUFFT_C2R);
        if (result != CUFFT_SUCCESS)
        gmx_fatal(FARGS, "cufftPlan3d C2R error %d\n", result);
      */
