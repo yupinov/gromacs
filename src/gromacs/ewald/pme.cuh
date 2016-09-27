@@ -162,7 +162,7 @@ int __device__ __forceinline__ pme_gpu_check_atom_charge(const float coefficient
 }
 
 /*! \brief
- * Waits for the PME GPU output forces copy to the CPU buffer (pme->gpu->forcesHost) to finish.
+ * Waits for the PME GPU output forces copy to the CPU buffer (pme->gpu->io.h_forces) to finish.
  *
  * \param[in] pme  The PME structure.
  */

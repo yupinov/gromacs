@@ -80,7 +80,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata, struct t_commrec *cr,
                  real ewaldcoeff_q, real ewaldcoeff_lj,
                  int nthread,
                  gmx_bool bPMEGPU,
-                 gmx_pme_gpu_t *pmeGPU,
+                 pme_gpu_t *pmeGPU,
                  const gmx_hw_info_t *hwinfo = NULL,
                  const gmx_gpu_opt_t *gpu_opt = NULL);
 

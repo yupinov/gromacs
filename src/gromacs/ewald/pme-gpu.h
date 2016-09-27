@@ -59,7 +59,7 @@ struct gmx_gpu_opt_t;
 /* Internal data handling */
 
 /*! \libinternal \brief
- * Copies the forces from the CPU buffer (pme->gpu->forcesHost) to the GPU
+ * Copies the forces from the CPU buffer (pme->gpu->io.h_forces) to the GPU
  * (to reduce them with the PME GPU gathered forces).
  * To be called after the bonded calculations.
  * Does nothing on non-CUDA builds.
@@ -70,7 +70,7 @@ CUDA_FUNC_QUALIFIER void pme_gpu_copy_input_forces(const gmx_pme_t *CUDA_FUNC_AR
 
 
 /*! \libinternal \brief
- * Copies the input coordinates from the CPU buffer (pme->gpu->coordinatesHost) onto the GPU. Does nothing on non-CUDA builds.
+ * Copies the input coordinates from the CPU buffer (pme->gpu->io.h_coordinates) onto the GPU. Does nothing on non-CUDA builds.
  *
  * \param[in] pme            The PME structure.
  *
@@ -202,7 +202,7 @@ CUDA_FUNC_QUALIFIER void pme_gpu_get_timings(const gmx_pme_t      *CUDA_FUNC_ARG
  */
 gmx_inline gmx_bool pme_gpu_performs_gather(const gmx_pme_t *pme)
 {
-    return pme_gpu_enabled(pme) && pme->gpu->bGPUGather;
+    return pme_gpu_enabled(pme) && pme->gpu->settings.bGPUGather;
 }
 
 /*! \libinternal \brief
@@ -213,7 +213,7 @@ gmx_inline gmx_bool pme_gpu_performs_gather(const gmx_pme_t *pme)
  */
 gmx_inline gmx_bool pme_gpu_performs_FFT(const gmx_pme_t *pme)
 {
-    return pme_gpu_enabled(pme) && pme->gpu->bGPUFFT;
+    return pme_gpu_enabled(pme) && pme->gpu->settings.bGPUFFT;
 }
 
 /*! \libinternal \brief
@@ -224,7 +224,7 @@ gmx_inline gmx_bool pme_gpu_performs_FFT(const gmx_pme_t *pme)
  */
 gmx_inline gmx_bool pme_gpu_performs_wrapping(const gmx_pme_t *pme)
 {
-    return pme_gpu_enabled(pme) && pme->gpu->bGPUSingle;
+    return pme_gpu_enabled(pme) && pme->gpu->settings.bGPUSingle;
 }
 
 /*! \libinternal \brief
@@ -235,7 +235,7 @@ gmx_inline gmx_bool pme_gpu_performs_wrapping(const gmx_pme_t *pme)
  */
 gmx_inline gmx_bool pme_gpu_performs_solve(const gmx_pme_t *pme)
 {
-    return pme_gpu_enabled(pme) && pme->gpu->bGPUSolve;
+    return pme_gpu_enabled(pme) && pme->gpu->settings.bGPUSolve;
 }
 
 /*! \libinternal \brief
@@ -246,7 +246,7 @@ gmx_inline gmx_bool pme_gpu_performs_solve(const gmx_pme_t *pme)
  */
 gmx_inline gmx_bool pme_gpu_uses_dd(const gmx_pme_t *pme)
 {
-    return pme_gpu_enabled(pme) && !pme->gpu->bGPUSingle;
+    return pme_gpu_enabled(pme) && !pme->gpu->settings.bGPUSingle;
 }
 
 /* GPU functions of separate stages */

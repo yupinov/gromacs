@@ -73,7 +73,7 @@ void pme_gpu_alloc_energy_virial(const gmx_pme_t *pme)
     const size_t energyAndVirialSize = PME_GPU_VIRIAL_AND_ENERGY_COUNT * sizeof(float);
     cudaError_t  stat                = cudaMalloc((void **)&pme->gpu->kernelParams.constants.virialAndEnergy, energyAndVirialSize);
     CU_RET_ERR(stat, "cudaMalloc failed on PME energy and virial");
-    pmalloc((void **)&pme->gpu->virialAndEnergyHost, energyAndVirialSize);
+    pmalloc((void **)&pme->gpu->io.h_virialAndEnergy, energyAndVirialSize);
 }
 
 /*! \brief \internal
@@ -86,8 +86,8 @@ void pme_gpu_free_energy_virial(const gmx_pme_t *pme)
     cudaError_t stat = cudaFree(pme->gpu->kernelParams.constants.virialAndEnergy);
     CU_RET_ERR(stat, "cudaFree failed on PME energy and virial");
     pme->gpu->kernelParams.constants.virialAndEnergy = NULL;
-    pfree(pme->gpu->virialAndEnergyHost);
-    pme->gpu->virialAndEnergyHost = NULL;
+    pfree(pme->gpu->io.h_virialAndEnergy);
+    pme->gpu->io.h_virialAndEnergy = NULL;
 }
 
 /*! \brief \internal
@@ -113,13 +113,13 @@ void pme_gpu_get_energy_virial(const gmx_pme_t *pme, real *energy, matrix virial
 {
     assert(energy);
     size_t j = 0;
-    virial[XX][XX] = 0.25 * pme->gpu->virialAndEnergyHost[j++];
-    virial[YY][YY] = 0.25 * pme->gpu->virialAndEnergyHost[j++];
-    virial[ZZ][ZZ] = 0.25 * pme->gpu->virialAndEnergyHost[j++];
-    virial[XX][YY] = virial[YY][XX] = 0.25 * pme->gpu->virialAndEnergyHost[j++];
-    virial[XX][ZZ] = virial[ZZ][XX] = 0.25 * pme->gpu->virialAndEnergyHost[j++];
-    virial[YY][ZZ] = virial[ZZ][YY] = 0.25 * pme->gpu->virialAndEnergyHost[j++];
-    *energy        = 0.5 * pme->gpu->virialAndEnergyHost[j++];
+    virial[XX][XX] = 0.25 * pme->gpu->io.h_virialAndEnergy[j++];
+    virial[YY][YY] = 0.25 * pme->gpu->io.h_virialAndEnergy[j++];
+    virial[ZZ][ZZ] = 0.25 * pme->gpu->io.h_virialAndEnergy[j++];
+    virial[XX][YY] = virial[YY][XX] = 0.25 * pme->gpu->io.h_virialAndEnergy[j++];
+    virial[XX][ZZ] = virial[ZZ][XX] = 0.25 * pme->gpu->io.h_virialAndEnergy[j++];
+    virial[YY][ZZ] = virial[ZZ][YY] = 0.25 * pme->gpu->io.h_virialAndEnergy[j++];
+    *energy        = 0.5 * pme->gpu->io.h_virialAndEnergy[j++];
 }
 
 /*! \brief \internal
@@ -156,14 +156,14 @@ void pme_gpu_realloc_and_copy_bspline_values(const gmx_pme_t *pme)
         }
         size_t  modSize  = gridSize * sizeof(float);
         /* Reallocate the host buffer */
-        if ((pme->gpu->splineValuesHost[i] == NULL) || (pme->gpu->splineValuesHostSizes[i] < modSize))
+        if ((pme->gpu->io.h_splineValues[i] == NULL) || (pme->gpu->io.splineValuesSizes[i] < modSize))
         {
-            pfree(pme->gpu->splineValuesHost[i]);
-            pmalloc((void **)&pme->gpu->splineValuesHost[i], modSize);
+            pfree(pme->gpu->io.h_splineValues[i]);
+            pmalloc((void **)&pme->gpu->io.h_splineValues[i], modSize);
         }
-        memcpy(pme->gpu->splineValuesHost[i], pme->bsp_mod[i], modSize);
+        memcpy(pme->gpu->io.h_splineValues[i], pme->bsp_mod[i], modSize);
         /* TODO: use pinning here as well! */
-        cu_copy_H2D_async(pme->gpu->kernelParams.grid.splineValuesArray + splineValuesOffset[i], pme->gpu->splineValuesHost[i], modSize, pme->gpu->archSpecific->pmeStream);
+        cu_copy_H2D_async(pme->gpu->kernelParams.grid.splineValuesArray + splineValuesOffset[i], pme->gpu->io.h_splineValues[i], modSize, pme->gpu->archSpecific->pmeStream);
     }
 }
 
@@ -176,7 +176,7 @@ void pme_gpu_free_bspline_values(const gmx_pme_t *pme)
 {
     for (int i = 0; i < DIM; i++)
     {
-        pfree(pme->gpu->splineValuesHost[i]);
+        pfree(pme->gpu->io.h_splineValues[i]);
     }
     cu_free_buffered(pme->gpu->kernelParams.grid.splineValuesArray, &pme->gpu->archSpecific->splineValuesSize, &pme->gpu->archSpecific->splineValuesSizeAlloc);
 }
@@ -250,14 +250,14 @@ void pme_gpu_free_forces(const gmx_pme_t *pme)
 
 void pme_gpu_copy_input_forces(const gmx_pme_t *pme)
 {
-    GMX_ASSERT(pme->gpu->forcesHost, "NULL host forces pointer in PME GPU");
+    GMX_ASSERT(pme->gpu->io.h_forces, "NULL host forces pointer in PME GPU");
     const size_t forcesSize = DIM * pme->gpu->kernelParams.atoms.nAtoms * sizeof(float);
     assert(forcesSize > 0);
-    cu_copy_H2D_async(pme->gpu->kernelParams.atoms.forces, pme->gpu->forcesHost, forcesSize, pme->gpu->archSpecific->pmeStream);
+    cu_copy_H2D_async(pme->gpu->kernelParams.atoms.forces, pme->gpu->io.h_forces, forcesSize, pme->gpu->archSpecific->pmeStream);
 }
 
 /*! \brief \internal
- * Waits for the PME GPU output forces copying to he CPU buffer (pme->gpu->forcesHost) to finish.
+ * Waits for the PME GPU output forces copying to he CPU buffer (pme->gpu->io.h_forces) to finish.
  *
  * \param[in] pme            The PME structure.
  */
@@ -269,7 +269,7 @@ void pme_gpu_sync_output_forces(const gmx_pme_t *pme)
 
     for (int i = 0; i < DIM * pme->gpu->kernelParams.atoms.nAtoms; i++)
     {
-        GMX_ASSERT(!isnan(pme->gpu->forcesHost[i]), "PME GPU - wrong forces produced.");
+        GMX_ASSERT(!isnan(pme->gpu->io.h_forces[i]), "PME GPU - wrong forces produced.");
     }
 }
 
@@ -299,8 +299,9 @@ void pme_gpu_realloc_coordinates(const gmx_pme_t *pme)
 
 void pme_gpu_copy_coordinates(const gmx_pme_t *pme)
 {
-    assert(pme->gpu->coordinatesHost);
-    cu_copy_H2D_async(pme->gpu->kernelParams.atoms.coordinates, pme->gpu->coordinatesHost, pme->gpu->kernelParams.atoms.nAtoms * DIM * sizeof(float), pme->gpu->archSpecific->pmeStream);
+    assert(pme->gpu->io.h_coordinates);
+    cu_copy_H2D_async(pme->gpu->kernelParams.atoms.coordinates, pme->gpu->io.h_coordinates,
+                      pme->gpu->kernelParams.atoms.nAtoms * DIM * sizeof(float), pme->gpu->archSpecific->pmeStream);
 }
 
 /*! \brief \internal
@@ -314,7 +315,7 @@ void pme_gpu_free_coordinates(const gmx_pme_t *pme)
 }
 
 /*! \brief \internal
- * Reallocates the buffer on the GPU and copies the charges/coefficients from the CPU buffer (pme->gpu->coefficientsHost). Clears the padded part if needed.
+ * Reallocates the buffer on the GPU and copies the charges/coefficients from the CPU buffer (pme->gpu->io.h_coefficients). Clears the padded part if needed.
  *
  * \param[in] pme            The PME structure.
  *
@@ -323,12 +324,12 @@ void pme_gpu_free_coordinates(const gmx_pme_t *pme)
  */
 void pme_gpu_realloc_and_copy_coefficients(const gmx_pme_t *pme)
 {
-    assert(pme->gpu->coefficientsHost);
+    assert(pme->gpu->io.h_coefficients);
     const size_t newCoefficientsSize = pme->gpu->archSpecific->nAtomsAlloc;
     assert(newCoefficientsSize > 0);
     cu_realloc_buffered((void **)&pme->gpu->kernelParams.atoms.coefficients, NULL, sizeof(float),
                         &pme->gpu->archSpecific->coefficientsSize, &pme->gpu->archSpecific->coefficientsSizeAlloc, newCoefficientsSize, pme->gpu->archSpecific->pmeStream, true);
-    cu_copy_H2D_async(pme->gpu->kernelParams.atoms.coefficients, pme->gpu->coefficientsHost, pme->gpu->kernelParams.atoms.nAtoms * sizeof(float), pme->gpu->archSpecific->pmeStream);
+    cu_copy_H2D_async(pme->gpu->kernelParams.atoms.coefficients, pme->gpu->io.h_coefficients, pme->gpu->kernelParams.atoms.nAtoms * sizeof(float), pme->gpu->archSpecific->pmeStream);
 #if PME_GPU_USE_PADDING
     const size_t paddingIndex = pme->gpu->kernelParams.atoms.nAtoms;
     const size_t paddingCount = pme->gpu->archSpecific->nAtomsAlloc - paddingIndex;
@@ -577,7 +578,7 @@ void pme_gpu_sync_energy_virial(const gmx_pme_t *pme)
 
     for (int j = 0; j < PME_GPU_VIRIAL_AND_ENERGY_COUNT; j++)
     {
-        GMX_ASSERT(!isnan(pme->gpu->virialAndEnergyHost[j]), "PME GPU produces incorrect energy/virial.");
+        GMX_ASSERT(!isnan(pme->gpu->h_virialAndEnergy[j]), "PME GPU produces incorrect energy/virial.");
     }
 }
 
@@ -693,19 +694,19 @@ void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_o
 
         /* Some permanent settings are set here */
 
-        pme->gpu->bGPUSingle = pme_gpu_enabled(pme) && (pme->nnodes == 1);
+        pme->gpu->settings.bGPUSingle = pme_gpu_enabled(pme) && (pme->nnodes == 1);
         /* A convenience variable. */
 
-        pme->gpu->bGPUFFT = !pme_gpu_uses_dd(pme) && !getenv("GMX_PME_GPU_FFTW");
+        pme->gpu->settings.bGPUFFT = !pme_gpu_uses_dd(pme) && !getenv("GMX_PME_GPU_FFTW");
         /* cuFFT will only used for a single rank. */
 
-        pme->gpu->bGPUSolve = TRUE;
+        pme->gpu->settings.bGPUSolve = TRUE;
         /* pme->gpu->archSpecific->bGPUFFT - CPU solve with the CPU FFTW is definitely broken at the moment - 20160511 */
 
-        pme->gpu->bGPUGather = TRUE;
+        pme->gpu->settings.bGPUGather = TRUE;
         /* CPU gather has got to be broken as well due to different theta/dtheta layout. */
 
-        pme->gpu->bNeedToUpdateAtoms = TRUE;
+        pme->gpu->settings.bNeedToUpdateAtoms = TRUE;
         /* For the delayed atom data init */
 
         pme->gpu->archSpecific->bOutOfPlaceFFT = TRUE;
@@ -829,7 +830,7 @@ void pme_gpu_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, real *coeffici
     const gmx_bool haveToRealloc = (pme->gpu->archSpecific->nAtomsAlloc < nAtomsAlloc); /* This check might be redundant, but is logical */
     pme->gpu->archSpecific->nAtomsAlloc = nAtomsAlloc;
 
-    pme->gpu->coefficientsHost = reinterpret_cast<float *>(coefficients);
+    pme->gpu->io.h_coefficients = reinterpret_cast<float *>(coefficients);
     pme_gpu_realloc_and_copy_coefficients(pme); /* Could also be checked for haveToRealloc, but the copy always needs to be performed */
 
     if (haveToRealloc)

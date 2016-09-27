@@ -65,7 +65,7 @@
 
 struct t_commrec;
 struct t_inputrec;
-struct gmx_pme_gpu_t;
+struct pme_gpu_t;
 
 //@{
 //! Grid indices for A state for charge and Lennard-Jones C6
@@ -266,7 +266,7 @@ typedef struct gmx_pme_t {
                                              * A permanent variable, should be read using pme_gpu_enabled.
                                              */
 
-    gmx_pme_gpu_t *gpu;                     /* A pointer to the GPU data */
+    pme_gpu_t     *gpu;                     /* A pointer to the GPU data */
 
     int            ljpme_combination_rule;  /* Type of combination rule in LJ-PME */
 

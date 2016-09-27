@@ -59,8 +59,8 @@ void pme_gpu_set_io_ranges(const gmx_pme_t *pme, rvec *coordinates, rvec *forces
         return;
     }
 
-    pme->gpu->forcesHost       = reinterpret_cast<float *>(forces);
-    pme->gpu->coordinatesHost  = reinterpret_cast<float *>(coordinates);
+    pme->gpu->io.h_forces      = reinterpret_cast<float *>(forces);
+    pme->gpu->io.h_coordinates = reinterpret_cast<float *>(coordinates);
     /* TODO: pin the host pointers */
 }
 
@@ -170,13 +170,13 @@ void pme_gpu_launch(gmx_pme_t      *pme,
     bFirst = TRUE;
 
     wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME);
-    if (pme->gpu->bNeedToUpdateAtoms)
+    if (pme->gpu->settings.bNeedToUpdateAtoms)
     {
         /* This only does a one-time atom data init at the first MD step.
          * Later, pme_gpu_reinit_atoms is called when needed after gmx_pme_recv_coeffs_coords.
          */
         pme_gpu_reinit_atoms(pme, nAtoms, charges);
-        pme->gpu->bNeedToUpdateAtoms = FALSE;
+        pme->gpu->settings.bNeedToUpdateAtoms = FALSE;
     }
     pme_gpu_set_io_ranges(pme, x, f);              /* Should this be called every step, or on DD/DLB, or on bCalcEnerVir change? */
     pme_gpu_start_step(pme, box);                  /* This copies the coordinates, and updates the unit cell box (if it has changed) */

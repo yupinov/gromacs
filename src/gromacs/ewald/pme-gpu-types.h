@@ -60,9 +60,10 @@ typedef int pme_gpu_specific_t;
 #endif
 
 /* What follows is all the PME GPU function arguments,
- * sorted into several structures depending on the update rate.
+ * sorted into several device-side structures depending on the update rate.
  * This is almost entirely GPU agnostic (float3 replaced by float[3], etc.).
- * The only exception are 2 cudaTextureObject_t disguised as unsigned long long. */
+ * The only exception are 2 cudaTextureObject_t disguised as unsigned long long.
+ */
 
 /*! \brief \internal
  * A GPU data structure for storing the constant PME data.
@@ -204,10 +205,13 @@ struct pme_gpu_kernel_params_t
     pme_gpu_step_params_t  step;
 };
 
-/*! \brief \internal
- * The main PME GPU host structure, included in the PME CPU structure by pointer.
+/* Here is the host-side structures;
  */
-struct gmx_pme_gpu_t
+
+/*! \brief \internal
+ * The PME GPU settings structure, included in the main PME GPU structure by value.
+ */
+struct pme_gpu_settings_t
 {
     /* Permanent settings set on initialization */
     /*! \brief A boolean which tells if the solving is performed on GPU. Currently always TRUE */
@@ -223,29 +227,50 @@ struct gmx_pme_gpu_t
      * The pme_gpu_reinit_atoms() after the DD gets called directly in gmx_pmeonly.
      */
     gmx_bool bNeedToUpdateAtoms;
+};
+
+/*! \brief \internal
+ * The PME GPU host-side I/O buffers structure, included in the main PME GPU structure by value.
+ * Intermediate internal host buffers live here as well.
+ * And what will happen with the introduction of the external device-side I/O pointers?
+ */
+struct pme_gpu_io_t
+{
+    /*! \brief Input coordinates (XYZ rvec) */
+    float  *h_coordinates;
+    /*! \brief Input charges */
+    float  *h_coefficients;
+    /*! \brief Output forces (and possibly the input if pme_kernel_gather does the reduction) */
+    float  *h_forces;      /* rvec/float3 */
+    /*! \brief Virial and energy intermediate host-side buffer, managed and pinned by PME GPU entirely. Size is PME_GPU_VIRIAL_AND_ENERGY_COUNT. */
+    float  *h_virialAndEnergy;
+    /*! \brief B-spline values intermediate host-side buffers, managed and pinned by PME GPU entirely. Sizes are the grid sizes. */
+    float  *h_splineValues[DIM];
+    /*! \brief Sizes of the corresponding h_splineValues arrays in bytes */
+    size_t  splineValuesSizes[DIM];
+};
+
+/*! \brief \internal
+ * The main PME GPU host structure, included in the PME CPU structure by pointer.
+ */
+struct pme_gpu_t
+{
+    /*! \brief The settings. */
+    pme_gpu_settings_t settings;
+
+    /*! \brief The host-side buffers.
+     * The device-side buffers are buried in kernelParams, but that will have to change.
+     */
+    pme_gpu_io_t io;
 
     /*! \brief The unit cell box from the previous step.
      * Only used to know if the kernelParams.step needs to be updated.
+     * Does not really fit anywhere else, does it?
      */
     matrix previousBox;
 
-    /* These are the host-side input/output pointers */
-    /* TODO: not far in the future there will be a device input/output pointers too */
-    /*! \brief Input coordinates (XYZ rvec) */
-    float  *coordinatesHost;
-    /*! \brief Input charges */
-    float  *coefficientsHost;
-    /*! \brief Output forces (and possibly the input if pme_kernel_gather does the reduction) */
-    float  *forcesHost;      /* rvec/float3 */
-    /*! \brief Virial and energy intermediate host-side buffer, managed and pinned by PME GPU entirely. Size is PME_GPU_VIRIAL_AND_ENERGY_COUNT. */
-    float  *virialAndEnergyHost;
-    /*! \brief B-spline values intermediate host-side buffers, managed and pinned by PME GPU entirely. Sizes are the grid sizes. */
-    float  *splineValuesHost[DIM];
-    /*! \brief Sizes of the corresponding splineValuesHost arrays in bytes */
-    size_t  splineValuesHostSizes[DIM]; //oh god the naming
-
     /*! \brief A pointer to the device used during the execution. */
-    struct gmx_device_info_t                   *deviceInfo;
+    struct gmx_device_info_t *deviceInfo;
 
     /*! \brief A single structure encompassing all the PME data used on GPU.
      * This should be the only parameter to all the PME GPU kernels (FIXME: pme_solve_kernel).

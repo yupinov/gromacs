@@ -457,7 +457,7 @@ void pme_gpu_gather(const gmx_pme_t *pme,
     //yupinov copy input forces here as well
     //or the other way
     const size_t forcesSize   = DIM * pme->gpu->kernelParams.atoms.nAtoms * sizeof(float);
-    cu_copy_D2H_async(pme->gpu->forcesHost, pme->gpu->kernelParams.atoms.forces, forcesSize, s);
+    cu_copy_D2H_async(pme->gpu->io.h_forces, pme->gpu->kernelParams.atoms.forces, forcesSize, s);
     cudaError_t  stat = cudaEventRecord(pme->gpu->archSpecific->syncForcesD2H, s);
     CU_RET_ERR(stat, "PME gather forces sync fail");
 }
