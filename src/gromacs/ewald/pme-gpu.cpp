@@ -34,7 +34,7 @@
  */
 
 /*! \internal \file
- *  \brief Implements PME GPU functions which do not require GPU framework-specific code.
+ * \brief This file contains function implementations for performing the PME calculations on GPU.
  *
  *  \author Aleksei Iupinov <a.yupinov@gmail.com>
  */
@@ -45,65 +45,31 @@
 #include <string.h>
 
 #include "gromacs/ewald/pme.h"
-#include "gromacs/math/invertmatrix.h"
+
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
+
+#include "pme-gpu-internal.h"
 
 #include "pme-grid.h"
 #include "pme-solve.h"
 
-void pme_gpu_set_io_ranges(const gmx_pme_t *pme, rvec *coordinates, rvec *forces)
+gmx_bool gmx_pme_gpu_enabled(const gmx_pme_t *pme)
 {
-    if (!pme_gpu_enabled(pme))
-    {
-        return;
-    }
-
-    pme->gpu->io.h_forces      = reinterpret_cast<float *>(forces);
-    pme->gpu->io.h_coordinates = reinterpret_cast<float *>(coordinates);
-    /* TODO: pin the host pointers */
+    /* Something to think about: should this function be called from all the CUDA_FUNC_QUALIFIER functions?
+     * In other words, should we plan for dynamic toggling of the PME GPU?
+     */
+    return (pme != NULL) && pme->bGPU;
 }
 
-void pme_gpu_start_step(const gmx_pme_t *pme, const matrix box)
+void gmx_pme_gpu_reset_timings(const gmx_pme_t *pme)
 {
-    if (!pme_gpu_enabled(pme))
-    {
-        return;
-    }
+    pme_gpu_reset_timings(pme->gpu);
+}
 
-    pme_gpu_copy_coordinates(pme);
-
-    const size_t   boxMemorySize        = sizeof(matrix);
-    const gmx_bool haveToUpdateUnitCell = memcmp(pme->gpu->previousBox, box, boxMemorySize);
-    /* There could be a pressure coupling check here, but this is more straightforward.
-     * This is an exact comparison of float values though.
-     */
-    if (haveToUpdateUnitCell)
-    {
-        memcpy(pme->gpu->previousBox, box, boxMemorySize);
-
-        pme->gpu->kernelParams.step.boxVolume = box[XX][XX] * box[YY][YY] * box[ZZ][ZZ];
-        assert(pme->gpu->kernelParams.step.boxVolume != 0.0f);
-
-#if GMX_DOUBLE
-        assert("PME is single-precision only on GPU. You shouldn't be seeing this message!");
-#else
-        matrix recipBox;
-        gmx::invertBoxMatrix(box, recipBox);
-        /* The GPU recipBox is transposed as compared to the CPU recipBox.
-         * Spread uses matrix columns (while solve and gather use rows).
-         * There is no particular reason for this; it might be further rethought/optimized for better access patterns.
-         */
-
-        const real newRecipBox[DIM][DIM] =
-        {
-            {recipBox[XX][XX], recipBox[YY][XX], recipBox[ZZ][XX]},
-            {             0.0, recipBox[YY][YY], recipBox[ZZ][YY]},
-            {             0.0,              0.0, recipBox[ZZ][ZZ]}
-        };
-        memcpy(pme->gpu->kernelParams.step.recipBox, newRecipBox, boxMemorySize);
-#endif
-    }
+void gmx_pme_gpu_get_timings(const gmx_pme_t *pme,  gmx_wallclock_gpu_t **timings)
+{
+    pme_gpu_get_timings(pme->gpu, timings);
 }
 
 /*! \brief \internal
@@ -120,10 +86,10 @@ void gmx_parallel_3dfft_execute_gpu_wrapper(gmx_pme_t              *pme,
                                             gmx_wallcycle_t         wcycle)
 {
     assert(grid_index == 0);
-    if (pme_gpu_performs_FFT(pme))
+    if (pme_gpu_performs_FFT(pme->gpu))
     {
         wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
-        pme_gpu_3dfft(pme, dir, grid_index);
+        pme_gpu_3dfft(pme->gpu, dir, grid_index);
         wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
     }
     else
@@ -141,6 +107,7 @@ void gmx_parallel_3dfft_execute_gpu_wrapper(gmx_pme_t              *pme,
 /* Finally, the actual PME step code.
  * Together, they are a GPU counterpart to gmx_pme_do, albeit cut down due to unsupported features
  */
+// TODO: add gmx_ prefix
 
 void pme_gpu_launch(gmx_pme_t      *pme,
                     int             nAtoms,
@@ -151,10 +118,9 @@ void pme_gpu_launch(gmx_pme_t      *pme,
                     gmx_wallcycle_t wcycle,
                     int             flags)
 {
-    if (!pme_gpu_enabled(pme))
-    {
-        return;
-    }
+    GMX_ASSERT(gmx_pme_gpu_enabled(pme), "This is a GPU run of PME.");
+
+    pme_gpu_t           *pmeGPU = pme->gpu;
 
     pmegrids_t          *pmegrid     = NULL;
     real                *grid        = NULL;
@@ -175,11 +141,11 @@ void pme_gpu_launch(gmx_pme_t      *pme,
         /* This only does a one-time atom data init at the first MD step.
          * Later, pme_gpu_reinit_atoms is called when needed after gmx_pme_recv_coeffs_coords.
          */
-        pme_gpu_reinit_atoms(pme, nAtoms, charges);
+        pme_gpu_reinit_atoms(pmeGPU, nAtoms, charges);
         pme->gpu->settings.bNeedToUpdateAtoms = FALSE;
     }
-    pme_gpu_set_io_ranges(pme, x, f);              /* Should this be called every step, or on DD/DLB, or on bCalcEnerVir change? */
-    pme_gpu_start_step(pme, box);                  /* This copies the coordinates, and updates the unit cell box (if it has changed) */
+    pme_gpu_set_io_ranges(pmeGPU, x, f);              /* Should this be called every step, or on DD/DLB, or on bCalcEnerVir change? */
+    pme_gpu_start_step(pmeGPU, box);                  /* This copies the coordinates, and updates the unit cell box (if it has changed) */
     wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
 
     const unsigned int grid_index = 0;
@@ -202,7 +168,7 @@ void pme_gpu_launch(gmx_pme_t      *pme,
 
         //if (!pme->bUseThreads)
         {
-            if (!pme_gpu_performs_wrapping(pme))
+            if (!pme_gpu_performs_wrapping(pmeGPU))
             {
                 wrap_periodic_pmegrid(pme, grid);
             }
@@ -215,7 +181,7 @@ void pme_gpu_launch(gmx_pme_t      *pme,
                 where();
             }
 #endif
-            if (!pme_gpu_performs_FFT(pme))
+            if (!pme_gpu_performs_FFT(pmeGPU))
             {
                 copy_pmegrid_to_fftgrid(pme, grid, fftgrid, grid_index);
             }
@@ -231,7 +197,7 @@ void pme_gpu_launch(gmx_pme_t      *pme,
                                                    wcycle);
 
             /* solve in k-space for our local cells */
-            if (pme_gpu_performs_solve(pme))
+            if (pme_gpu_performs_solve(pmeGPU))
             {
                 wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
                 pme_gpu_solve(pme, cfftgrid, bCalcEnerVir);
@@ -254,7 +220,7 @@ void pme_gpu_launch(gmx_pme_t      *pme,
             /* do 3d-invfft */
             gmx_parallel_3dfft_execute_gpu_wrapper(pme, grid_index, GMX_FFT_COMPLEX_TO_REAL, wcycle);
 
-            if (!pme_gpu_performs_FFT(pme) || !pme_gpu_performs_gather(pme))
+            if (!pme_gpu_performs_FFT(pmeGPU) || !pme_gpu_performs_gather(pmeGPU))
             {
 #pragma omp parallel for num_threads(pme->nthread) schedule(static)
                 for (int thread = 0; thread < pme->nthread; thread++)
@@ -268,7 +234,7 @@ void pme_gpu_launch(gmx_pme_t      *pme,
     if (bBackFFT)
     {
         /* distribute local grid to all nodes */
-        if (!pme_gpu_performs_wrapping(pme))
+        if (!pme_gpu_performs_wrapping(pmeGPU))
         {
             unwrap_periodic_pmegrid(pme, grid);
         }
@@ -279,7 +245,7 @@ void pme_gpu_launch_gather(const gmx_pme_t                 *pme,
                            gmx_wallcycle_t gmx_unused       wcycle,
                            gmx_bool                         bClearForces)
 {
-    if (!pme_gpu_performs_gather(pme))
+    if (!pme_gpu_performs_gather(pme->gpu))
     {
         return;
     }
@@ -289,29 +255,26 @@ void pme_gpu_launch_gather(const gmx_pme_t                 *pme,
     wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
 }
 
-void pme_gpu_get_results(const gmx_pme_t *pme,
-                         gmx_wallcycle_t  wcycle,
-                         matrix           vir_q,
-                         real            *energy_q,
-                         int              flags)
+void gmx_pme_gpu_get_results(const gmx_pme_t *pme,
+                             gmx_wallcycle_t  wcycle,
+                             matrix           vir_q,
+                             real            *energy_q,
+                             int              flags)
 {
-    if (!pme_gpu_enabled(pme))
-    {
-        return;
-    }
+    GMX_ASSERT(pme->bGPU, "gmx_pme_gpu_get_results should not be called on the CPU PME run.");
 
     const gmx_bool       bCalcEnerVir            = flags & GMX_PME_CALC_ENER_VIR;
     const gmx_bool       bCalcF                  = flags & GMX_PME_CALC_F;
 
     wallcycle_sub_start(wcycle, ewcsWAIT_GPU_PME);
-    pme_gpu_finish_step(pme, bCalcF, bCalcEnerVir);
+    pme_gpu_finish_step(pme->gpu, bCalcF, bCalcEnerVir);
     wallcycle_sub_stop(wcycle, ewcsWAIT_GPU_PME);
 
     if (bCalcEnerVir)
     {
         if (pme->doCoulomb)
         {
-            pme_gpu_get_energy_virial(pme, energy_q, vir_q);
+            pme_gpu_get_energy_virial(pme->gpu, energy_q, vir_q);
             if (debug)
             {
                 fprintf(debug, "Electrostatic PME mesh energy [GPU]: %g\n", *energy_q);

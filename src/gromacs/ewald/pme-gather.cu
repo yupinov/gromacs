@@ -43,6 +43,7 @@
 #include <assert.h>
 #include "gromacs/utility/gmxassert.h"
 #include "pme.cuh"
+#include "pme-internal.h"
 
 /*! \brief
  *
@@ -383,43 +384,44 @@ void pme_gpu_gather(const gmx_pme_t *pme,
                     const gmx_bool   bOverwriteForces)
 {
     /* Copying the input CPU forces for reduction */
+    const pme_gpu_t *pmeGPU = pme->gpu;
     if (!bOverwriteForces)
     {
-        pme_gpu_copy_input_forces(pme);
+        pme_gpu_copy_input_forces(pmeGPU);
     }
 
-    cudaStream_t s = pme->gpu->archSpecific->pmeStream;
+    cudaStream_t s = pmeGPU->archSpecific->pmeStream;
 
-    const int    order = pme->pme_order;
+    const int    order = pmeGPU->common->pme_order;
 
-    if (!pme_gpu_performs_FFT(pme))
+    if (!pme_gpu_performs_FFT(pmeGPU))
     {
         /* Copying the input CPU grid */
         const int       grid_index = 0;
         float          *grid       = pme->pmegrid[grid_index].grid.grid;
-        const size_t    gridSize   = pme->gpu->kernelParams.grid.localGridSizePadded[XX] *
-            pme->gpu->kernelParams.grid.localGridSizePadded[YY] * pme->gpu->kernelParams.grid.localGridSizePadded[ZZ] * sizeof(float);
-        cu_copy_H2D_async(pme->gpu->kernelParams.grid.realGrid, grid, gridSize, s);
+        const size_t    gridSize   = pmeGPU->kernelParams.grid.localGridSizePadded[XX] *
+            pmeGPU->kernelParams.grid.localGridSizePadded[YY] * pmeGPU->kernelParams.grid.localGridSizePadded[ZZ] * sizeof(float);
+        cu_copy_H2D_async(pmeGPU->kernelParams.grid.realGrid, grid, gridSize, s);
     }
 
-    if (pme_gpu_performs_wrapping(pme))
+    if (pme_gpu_performs_wrapping(pmeGPU))
     {
         /* The wrapping kernel */
         const int    blockSize = 4 * warp_size; //yupinov thsi is everywhere! and architecture-specific
         const int    overlap   = order - 1;
 
-        const int    nx              = pme->gpu->kernelParams.grid.localGridSize[XX];
-        const int    ny              = pme->gpu->kernelParams.grid.localGridSize[YY];
-        const int    nz              = pme->gpu->kernelParams.grid.localGridSize[ZZ];
+        const int    nx              = pmeGPU->kernelParams.grid.localGridSize[XX];
+        const int    ny              = pmeGPU->kernelParams.grid.localGridSize[YY];
+        const int    nz              = pmeGPU->kernelParams.grid.localGridSize[ZZ];
         const int    overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
         const int    nBlocks         = (overlappedCells + blockSize - 1) / blockSize;
 
         if (order == 4)
         {
-            pme_gpu_start_timing(pme, gtPME_UNWRAP);
-            pme_unwrap_kernel<4> <<< nBlocks, blockSize, 0, s>>> (pme->gpu->kernelParams);
+            pme_gpu_start_timing(pmeGPU, gtPME_UNWRAP);
+            pme_unwrap_kernel<4> <<< nBlocks, blockSize, 0, s>>> (pmeGPU->kernelParams);
             CU_LAUNCH_ERR("pme_unwrap_kernel");
-            pme_gpu_stop_timing(pme, gtPME_UNWRAP);
+            pme_gpu_stop_timing(pmeGPU, gtPME_UNWRAP);
 
         }
         else
@@ -431,19 +433,19 @@ void pme_gpu_gather(const gmx_pme_t *pme,
     /* The gathering kernel */
     const int blockSize         = 4 * warp_size;
     const int particlesPerBlock = blockSize / order / order;
-    dim3 nBlocks(pme->gpu->archSpecific->nAtomsPadded / particlesPerBlock);
+    dim3 nBlocks(pmeGPU->nAtomsPadded / particlesPerBlock);
     dim3 dimBlock(order, order, particlesPerBlock);
 
-    pme_gpu_start_timing(pme, gtPME_GATHER);
+    pme_gpu_start_timing(pmeGPU, gtPME_GATHER);
     if (order == 4)
     {
         if (bOverwriteForces)
         {
-            pme_gather_kernel<4, blockSize / 4 / 4, TRUE> <<< nBlocks, dimBlock, 0, s>>> (pme->gpu->kernelParams);
+            pme_gather_kernel<4, blockSize / 4 / 4, TRUE> <<< nBlocks, dimBlock, 0, s>>> (pmeGPU->kernelParams);
         }
         else
         {
-            pme_gather_kernel<4, blockSize / 4 / 4, FALSE> <<< nBlocks, dimBlock, 0, s>>> (pme->gpu->kernelParams);
+            pme_gather_kernel<4, blockSize / 4 / 4, FALSE> <<< nBlocks, dimBlock, 0, s>>> (pmeGPU->kernelParams);
         }
     }
     else
@@ -451,13 +453,13 @@ void pme_gpu_gather(const gmx_pme_t *pme,
         gmx_fatal(FARGS, "PME GPU gathering: orders other than 4 not implemented!");
     }
     CU_LAUNCH_ERR("pme_gather_kernel");
-    pme_gpu_stop_timing(pme, gtPME_GATHER);
+    pme_gpu_stop_timing(pmeGPU, gtPME_GATHER);
 
     /* Copying the output forces */
     //yupinov copy input forces here as well
     //or the other way
-    const size_t forcesSize   = DIM * pme->gpu->kernelParams.atoms.nAtoms * sizeof(float);
-    cu_copy_D2H_async(pme->gpu->io.h_forces, pme->gpu->kernelParams.atoms.forces, forcesSize, s);
-    cudaError_t  stat = cudaEventRecord(pme->gpu->archSpecific->syncForcesD2H, s);
+    const size_t forcesSize   = DIM * pmeGPU->kernelParams.atoms.nAtoms * sizeof(float);
+    cu_copy_D2H_async(pmeGPU->io.h_forces, pmeGPU->kernelParams.atoms.forces, forcesSize, s);
+    cudaError_t  stat = cudaEventRecord(pmeGPU->archSpecific->syncForcesD2H, s);
     CU_RET_ERR(stat, "PME gather forces sync fail");
 }

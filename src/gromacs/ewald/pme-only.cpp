@@ -127,7 +127,7 @@ static void gmx_pmeonly_switch(int *npmedata, struct gmx_pme_t ***pmedata,
              * This should not cause actual GPU reallocations, at least (the allocated buffers are never shrunk).
              * So, just some grid size updates in the GPU kernel parameters.
              */
-            if (pme_gpu_enabled(pme))
+            if (gmx_pme_gpu_enabled(pme))
             {
                 gmx_pme_reinit(&((*pmedata)[ind]), cr, pme, ir, grid_size, ewaldcoeff_q, ewaldcoeff_lj);
             }
@@ -215,7 +215,7 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
 
             if (atomSetChanged)
             {
-                pme_gpu_reinit_atoms(pme, natoms, chargeA);
+                gmx_pme_reinit_atoms(pme, natoms, chargeA);
             }
 
             if (ret == pmerecvqxRESETCOUNTERS)
@@ -249,17 +249,21 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
 
         const int pme_flags = GMX_PME_DO_ALL_F | (bEnerVir ? GMX_PME_CALC_ENER_VIR : 0);
 
-        gmx_pme_do(pme, 0, natoms, x_pp, f_pp,
-                   chargeA, chargeB, c6A, c6B, sigmaA, sigmaB, box,
-                   cr, maxshift_x, maxshift_y, mynrnb, wcycle,
-                   vir_q, vir_lj,
-                   &energy_q, &energy_lj, lambda_q, lambda_lj, &dvdlambda_q, &dvdlambda_lj,
-                   pme_flags);
-
-        pme_gpu_launch(pme, natoms, x_pp, f_pp, chargeA, box, wcycle, pme_flags);
-        pme_gpu_launch_gather(pme, wcycle, true);
-        pme_gpu_get_results(pme, wcycle, vir_q, &energy_q, pme_flags);
-
+        if (gmx_pme_gpu_enabled(pme))
+        {
+            pme_gpu_launch(pme, natoms, x_pp, f_pp, chargeA, box, wcycle, pme_flags);
+            pme_gpu_launch_gather(pme, wcycle, true);
+            gmx_pme_gpu_get_results(pme, wcycle, vir_q, &energy_q, pme_flags);
+        }
+        else
+        {
+            gmx_pme_do(pme, 0, natoms, x_pp, f_pp,
+                       chargeA, chargeB, c6A, c6B, sigmaA, sigmaB, box,
+                       cr, maxshift_x, maxshift_y, mynrnb, wcycle,
+                       vir_q, vir_lj,
+                       &energy_q, &energy_lj, lambda_q, lambda_lj, &dvdlambda_q, &dvdlambda_lj,
+                       pme_flags);
+        }
         cycles = wallcycle_stop(wcycle, ewcPMEMESH);
 
         gmx_pme_send_force_vir_ener(pme_pp,

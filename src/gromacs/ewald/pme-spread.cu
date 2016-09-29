@@ -607,23 +607,23 @@ __global__ void pme_wrap_kernel(const pme_gpu_kernel_params_t kernelParams)
     }
 }
 
-void pme_gpu_make_fract_shifts_textures(const gmx_pme_t *pme)
+void pme_gpu_make_fract_shifts_textures(pme_gpu_t *pmeGPU)
 {
 #if PME_USE_TEXTURES
-    const int    nx        = pme->nkx; /* TODO: replace */
-    const int    ny        = pme->nky;
-    const int    nz        = pme->nkz;
+    const int    nx        = pmeGPU->common->nk[XX];
+    const int    ny        = pmeGPU->common->nk[YY];
+    const int    nz        = pmeGPU->common->nk[ZZ];
     const int    cellCount = 5;
     /* This is the number of neighbor cells that is also hardcoded in make_gridindex5_to_localindex and should be the same */
     const int    newFractShiftsSize  = cellCount * (nx + ny + nz);
 
-    float       *fshArray = pme->gpu->kernelParams.grid.fshArray;
-    int         *nnArray  = pme->gpu->kernelParams.grid.nnArray;
+    float       *fshArray = pmeGPU->kernelParams.grid.fshArray;
+    int         *nnArray  = pmeGPU->kernelParams.grid.nnArray;
 
     cudaError_t  stat;
 #if PME_USE_TEXOBJ
     //if (use_texobj(dev_info))
-    // should check device info here for CC >= 3.0
+    // TODO: should check device info here for CC >= 3.0
     {
         cudaResourceDesc rd;
         cudaTextureDesc  td;
@@ -636,7 +636,7 @@ void pme_gpu_make_fract_shifts_textures(const gmx_pme_t *pme)
         rd.res.linear.sizeInBytes   = newFractShiftsSize * sizeof(float);
         memset(&td, 0, sizeof(td));
         td.readMode                 = cudaReadModeElementType;
-        stat = cudaCreateTextureObject(&pme->gpu->kernelParams.grid.fshTexture, &rd, &td, NULL);
+        stat = cudaCreateTextureObject(&pmeGPU->kernelParams.grid.fshTexture, &rd, &td, NULL);
         CU_RET_ERR(stat, "cudaCreateTextureObject on fsh_d failed");
 
 
@@ -648,7 +648,7 @@ void pme_gpu_make_fract_shifts_textures(const gmx_pme_t *pme)
         rd.res.linear.sizeInBytes   = newFractShiftsSize * sizeof(int);
         memset(&td, 0, sizeof(td));
         td.readMode                 = cudaReadModeElementType;
-        stat = cudaCreateTextureObject(&pme->gpu->kernelParams.grid.nnTexture, &rd, &td, NULL);
+        stat = cudaCreateTextureObject(&pmeGPU->kernelParams.grid.nnTexture, &rd, &td, NULL);
         CU_RET_ERR(stat, "cudaCreateTextureObject on nn_d failed");
     }
     //else
@@ -668,10 +668,10 @@ void pme_gpu_make_fract_shifts_textures(const gmx_pme_t *pme)
 #endif
 }
 
-void pme_gpu_free_fract_shifts_textures(const gmx_pme_t *pme)
+void pme_gpu_free_fract_shifts_textures(const pme_gpu_t *pmeGPU)
 {
     /* TODO: unbind textures here! */
-    GMX_UNUSED_VALUE(pme);
+    GMX_UNUSED_VALUE(pmeGPU);
 }
 
 void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
@@ -684,17 +684,13 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
     if (!bCalcSplines && !bSpread)
     {
         gmx_fatal(FARGS, "No splining or spreading to be done?"); //yupinov use of gmx_fatal
-
     }
-    //yupinov
-    // bCalcSplines is always true - untested, unfinished
-    // bDoSplines is always false - untested
-    // bSpread is always true - untested, unfinished
+    const pme_gpu_t *pmeGPU = pme->gpu;
 
-    cudaStream_t s = pme->gpu->archSpecific->pmeStream;
+    cudaStream_t     s = pmeGPU->archSpecific->pmeStream;
 
     //int nx = pmegrid->s[XX], ny = pmegrid->s[YY], nz = pmegrid->s[ZZ];
-    const int order   = pmegrid->order;
+    const int order   = pmeGPU->common->pme_order;
     const int overlap = order - 1;
 
     const int pnx = pmegrid->n[XX];
@@ -714,10 +710,10 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
     const int splineParticlesPerBlock = particlesPerBlock; //blockSize / DIM; - can be easily changed, just have to pass spread theta stride to the spline kernel!
     // duplicated below!
 
-    dim3 nBlocksSpread(pme->gpu->archSpecific->nAtomsPadded / particlesPerBlock);
-    dim3 nBlocksSpline((pme->gpu->kernelParams.atoms.nAtoms + splineParticlesPerBlock - 1) / splineParticlesPerBlock); //???
-    dim3 dimBlockSpread(order, order, particlesPerBlock);                                                              // used for spline_and_spread / spread
-    dim3 dimBlockSpline(splineParticlesPerBlock, DIM);                                                                 // used for spline
+    dim3 nBlocksSpread(pmeGPU->nAtomsPadded / particlesPerBlock);
+    dim3 nBlocksSpline((pmeGPU->kernelParams.atoms.nAtoms + splineParticlesPerBlock - 1) / splineParticlesPerBlock); //???
+    dim3 dimBlockSpread(order, order, particlesPerBlock);                                                            // used for spline_and_spread / spread
+    dim3 dimBlockSpline(splineParticlesPerBlock, DIM);                                                               // used for spline
     switch (order)
     {
         case 4:
@@ -725,27 +721,27 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
             {
                 if (bCalcSplines)
                 {
-                    pme_gpu_start_timing(pme, gtPME_SPLINE);
-                    pme_spline_kernel<4, blockSize / 4 / 4> <<< nBlocksSpline, dimBlockSpline, 0, s>>> (pme->gpu->kernelParams);
+                    pme_gpu_start_timing(pmeGPU, gtPME_SPLINE);
+                    pme_spline_kernel<4, blockSize / 4 / 4> <<< nBlocksSpline, dimBlockSpline, 0, s>>> (pmeGPU->kernelParams);
                     CU_LAUNCH_ERR("pme_spline_kernel");
-                    pme_gpu_stop_timing(pme, gtPME_SPLINE);
+                    pme_gpu_stop_timing(pmeGPU, gtPME_SPLINE);
                 }
                 if (bSpread)
                 {
-                    pme_gpu_start_timing(pme, gtPME_SPREAD);
-                    pme_spread_kernel<4, blockSize / 4 / 4> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (pme->gpu->kernelParams);
+                    pme_gpu_start_timing(pmeGPU, gtPME_SPREAD);
+                    pme_spread_kernel<4, blockSize / 4 / 4> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (pmeGPU->kernelParams);
                     CU_LAUNCH_ERR("pme_spread_kernel");
-                    pme_gpu_stop_timing(pme, gtPME_SPREAD);
+                    pme_gpu_stop_timing(pmeGPU, gtPME_SPREAD);
                 }
             }
             else // a single monster kernel here
             {
-                pme_gpu_start_timing(pme, gtPME_SPLINEANDSPREAD);
+                pme_gpu_start_timing(pmeGPU, gtPME_SPLINEANDSPREAD);
                 if (bCalcSplines)
                 {
                     if (bSpread)
                     {
-                        pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, TRUE> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (pme->gpu->kernelParams);
+                        pme_spline_and_spread_kernel<4, blockSize / 4 / 4, TRUE, TRUE> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (pmeGPU->kernelParams);
                     }
                     else
                     {
@@ -757,19 +753,19 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                     gmx_fatal(FARGS, "the code for bCalcSplines==false was not tested!");
                 }
                 CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
-                pme_gpu_stop_timing(pme, gtPME_SPLINEANDSPREAD);
+                pme_gpu_stop_timing(pmeGPU, gtPME_SPLINEANDSPREAD);
             }
-            if (bSpread && pme_gpu_performs_wrapping(pme))
+            if (bSpread && pme_gpu_performs_wrapping(pmeGPU))
             {
                 /* Wrapping the resulting grid on a GPU as a separate small kernel */
                 const int blockSize       = 4 * warp_size; //yupinov this is everywhere! and architecture-specific
                 const int overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
                 const int nBlocks         = (overlappedCells + blockSize - 1) / blockSize;
 
-                pme_gpu_start_timing(pme, gtPME_WRAP);
-                pme_wrap_kernel<4> <<< nBlocks, blockSize, 0, s>>> (pme->gpu->kernelParams);
+                pme_gpu_start_timing(pmeGPU, gtPME_WRAP);
+                pme_wrap_kernel<4> <<< nBlocks, blockSize, 0, s>>> (pmeGPU->kernelParams);
                 CU_LAUNCH_ERR("pme_wrap_kernel");
-                pme_gpu_stop_timing(pme, gtPME_WRAP);
+                pme_gpu_stop_timing(pmeGPU, gtPME_WRAP);
             }
             break;
 
@@ -777,10 +773,10 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
             gmx_fatal(FARGS, "the code for pme_order != 4 was not tested!");
     }
 
-    if (!pme_gpu_performs_FFT(pme) && bSpread)
+    if (!pme_gpu_performs_FFT(pmeGPU) && bSpread)
     {
-        cu_copy_D2H_async(pmegrid->grid, pme->gpu->kernelParams.grid.realGrid, gridSize, s);
-        cudaError_t stat = cudaEventRecord(pme->gpu->archSpecific->syncSpreadGridD2H, s);
+        cu_copy_D2H_async(pmegrid->grid, pmeGPU->kernelParams.grid.realGrid, gridSize, s);
+        cudaError_t stat = cudaEventRecord(pmeGPU->archSpecific->syncSpreadGridD2H, s);
         CU_RET_ERR(stat, "PME spread grid sync fail");
     }
     /*

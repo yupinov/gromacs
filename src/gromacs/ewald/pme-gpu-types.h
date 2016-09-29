@@ -45,10 +45,13 @@
 
 #include "config.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include "gromacs/math/vectypes.h"
+#include "gromacs/utility/basedefinitions.h"
 
+#include <memory>
+#include <vector>
+
+struct gmx_hw_info;
 
 #if GMX_GPU == GMX_GPU_CUDA
 struct pme_gpu_cuda_t;
@@ -222,9 +225,9 @@ struct pme_gpu_settings_t
     gmx_bool bGPUFFT;
     /*! \brief A convenience boolean which tells if there is only one PME GPU process. */
     gmx_bool bGPUSingle;
-    /*! \brief A boolean which tells the PME to call pme_gpu_reinit_atoms() at the beginning of the run.
+    /*! \brief A boolean which tells the PME GP to call pme_gpu_reinit_atoms() at the beginning of the run.
      * Set to TRUE initially, then to FALSE after the first MD step.
-     * The pme_gpu_reinit_atoms() after the DD gets called directly in gmx_pmeonly.
+     * The pme_reinit_atoms() after the DD gets called directly in gmx_pmeonly.
      */
     gmx_bool bNeedToUpdateAtoms;
 };
@@ -251,10 +254,50 @@ struct pme_gpu_io_t
 };
 
 /*! \brief \internal
+ * The PME GPU structure for all the data copied directly from the CPU PME structure.
+ * The copying is done when the CPU PME structure is already (re-)initialized
+ * (pme_gpu_reinit is called at the end of gmx_pme_init).
+ * All the variables here are named almost the same way as in gmx_pme_t.
+ * The types are different: pointers are replaced by vectors.
+ * The initial reasoning was to separate CUDA and MPI code
+ * (work with gmx_pme_t members => include pme-internal.h => include gmxmpi.h => get CUDA compilation problems),
+ * however, isolating dependencies should be good in general.
+ * Included in the main PME GPU structure by value.
+ */
+struct pme_shared_t
+{
+    /*! \brief Grid count - currently always 1 on GPU */
+    int ngrids;
+    /*! \brief Grid dimensions - nkx, nky, nkz */
+    int nk[DIM];
+    /*! \brief Padded grid dimensions - pmegrid_nx, pmegrid_ny, pmegrid_nz
+     * TODO: find out if these are really needed for the CPU FFT compatibility.
+     */
+    int  pmegrid_n[DIM];
+    /*! \brief PME interpolation order */
+    int  pme_order;
+    /*! \brief Ewald splitting coefficient for Coulomb */
+    real ewaldcoeff_q;
+    /*! \brief Electrostatics parameter */
+    real epsilon_r;
+    /* The PME coefficient spreading grid sizes/strides, includes pme_order-1 */
+    //int        pmegrid_nx, pmegrid_ny, pmegrid_nz;
+    /*! \brief Gridline indices - nnx, nny, nnz */
+    std::vector<int>  nn[DIM];
+    /*! \brief Fractional shifts - fshx, fshy, fshz */
+    std::vector<real> fsh[DIM];
+    /*! \brief Precomputed B-spline values */
+    std::vector<real> bsp_mod[DIM];
+};
+
+/*! \brief \internal
  * The main PME GPU host structure, included in the PME CPU structure by pointer.
  */
 struct pme_gpu_t
 {
+    /*! \brief The information copied once per reinit from the CPU structure. */
+    pme_shared_t *common;
+
     /*! \brief The settings. */
     pme_gpu_settings_t settings;
 
@@ -268,6 +311,18 @@ struct pme_gpu_t
      * Does not really fit anywhere else, does it?
      */
     matrix previousBox;
+    /*! \brief Number of local atoms, padded to be divisible by particlesPerBlock.
+     * Used for kernel scheduling.
+     * kernelParams.atoms.nAtoms is the actual atom count to be used for data copying.
+     */
+    int nAtomsPadded;
+    /*! \brief Number of local atoms, padded to be divisible by particlesPerBlock if (PME_GPU_USE_PADDING == 1).
+     * Used only as a basic size for almost all the atom data allocations
+     * (spline parameter data is also aligned by PME_SPREADGATHER_PARTICLES_PER_WARP).
+     * This should be the same as (PME_GPU_USE_PADDING ? nAtomsPadded : kernelParams.atoms.nAtoms).
+     * kernelParams.atoms.nAtoms is the actual atom count to be used for data copying.
+     */
+    int nAtomsAlloc;
 
     /*! \brief A pointer to the device used during the execution. */
     struct gmx_device_info_t *deviceInfo;
@@ -278,12 +333,8 @@ struct pme_gpu_t
      */
     pme_gpu_kernel_params_t kernelParams;
 
-    /*! \brief The pointer to the GPU-framework specific host-side data, such as CUDA streams and events.*/
+    /*! \brief The pointer to mostly GPU-framework specific host-side data, such as CUDA streams and events. */
     pme_gpu_specific_t *archSpecific;
 };
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif // PMEGPUTYPES_H

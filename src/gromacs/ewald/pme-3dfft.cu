@@ -67,7 +67,7 @@ struct gmx_parallel_3dfft_gpu
     ivec          localOffset;
 };
 
-void pme_gpu_init_3dfft(gmx_parallel_3dfft_gpu_t *pfftSetup, const gmx_pme_t *pme)
+void pme_gpu_init_3dfft_plan(gmx_parallel_3dfft_gpu_t *pfftSetup, const pme_gpu_t *pmeGPU)
 {
     cufftResult_t            result;
     gmx_parallel_3dfft_gpu_t setup;
@@ -76,25 +76,25 @@ void pme_gpu_init_3dfft(gmx_parallel_3dfft_gpu_t *pfftSetup, const gmx_pme_t *pm
 
     for (int i = 0; i < DIM; i++)
     {
-        setup->nDataReal[i]   = pme->gpu->kernelParams.grid.localGridSize[i];
-        setup->sizeComplex[i] = setup->sizeReal[i] = pme->gpu->kernelParams.grid.localGridSizePadded[i];
+        setup->nDataReal[i]   = pmeGPU->kernelParams.grid.localGridSize[i];
+        setup->sizeComplex[i] = setup->sizeReal[i] = pmeGPU->kernelParams.grid.localGridSizePadded[i];
     }
-    setup->sizeComplex[ZZ] /= 2;
-
-    GMX_ASSERT(!pme_gpu_uses_dd(pme), "FFT decomposition not implemented");
-    if (pme->gpu->archSpecific->bOutOfPlaceFFT)
+    if (!pmeGPU->archSpecific->bOutOfPlaceFFT)
     {
         GMX_ASSERT(setup->sizeComplex[ZZ] % 2 == 0, "Odd inplace cuFFT minor dimension");
     }
+    setup->sizeComplex[ZZ] /= 2;
+
+    GMX_ASSERT(!pme_gpu_uses_dd(pmeGPU), "FFT decomposition not implemented");
 
     const int gridSizeComplex = setup->sizeComplex[XX] * setup->sizeComplex[YY] * setup->sizeComplex[ZZ];
     const int gridSizeReal    = setup->sizeReal[XX] * setup->sizeReal[YY] * setup->sizeReal[ZZ];
 
     memset(setup->localOffset, 0, sizeof(setup->localOffset)); //!
 
-    setup->realGrid = (cufftReal *)pme->gpu->kernelParams.grid.realGrid;
+    setup->realGrid = (cufftReal *)pmeGPU->kernelParams.grid.realGrid;
     assert(setup->realGrid);
-    setup->complexGrid = (cufftComplex *)pme->gpu->kernelParams.grid.fourierGrid;
+    setup->complexGrid = (cufftComplex *)pmeGPU->kernelParams.grid.fourierGrid;
 
     /* Commented code for a simple 3D grid with no padding */
     /*
@@ -128,7 +128,7 @@ void pme_gpu_init_3dfft(gmx_parallel_3dfft_gpu_t *pfftSetup, const gmx_pme_t *pm
         gmx_fatal(FARGS, "cufftPlanMany C2R error %d\n", result);
     }
 
-    cudaStream_t s = pme->gpu->archSpecific->pmeStream;
+    cudaStream_t s = pmeGPU->archSpecific->pmeStream;
     assert(s);
     result = cufftSetStream(setup->planR2C, s);
     if (result != CUFFT_SUCCESS)
@@ -182,17 +182,17 @@ void pme_gpu_get_3dfft_complex_limits(const gmx_parallel_3dfft_gpu_t setup,
     }
 }
 
-void pme_gpu_3dfft(gmx_pme_t        *pme,
-                   gmx_fft_direction dir,
-                   const int         grid_index)
+void pme_gpu_3dfft(const pme_gpu_t        *pmeGPU,
+                   gmx_fft_direction       dir,
+                   const int               grid_index)
 {
-    gmx_parallel_3dfft_gpu_t setup = pme->gpu->archSpecific->pfft_setup_gpu[grid_index];
+    gmx_parallel_3dfft_gpu_t setup = pmeGPU->archSpecific->pfft_setup_gpu[grid_index];
 
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {
-        pme_gpu_start_timing(pme, gtPME_FFT_R2C);
+        pme_gpu_start_timing(pmeGPU, gtPME_FFT_R2C);
         cufftResult_t result = cufftExecR2C(setup->planR2C, setup->realGrid, setup->complexGrid);
-        pme_gpu_stop_timing(pme, gtPME_FFT_R2C);
+        pme_gpu_stop_timing(pmeGPU, gtPME_FFT_R2C);
         if (result)
         {
             gmx_fatal(FARGS, "cufft R2C error %d\n", result);
@@ -200,9 +200,9 @@ void pme_gpu_3dfft(gmx_pme_t        *pme,
     }
     else
     {
-        pme_gpu_start_timing(pme, gtPME_FFT_C2R);
+        pme_gpu_start_timing(pmeGPU, gtPME_FFT_C2R);
         cufftResult_t result = cufftExecC2R(setup->planC2R, setup->complexGrid, setup->realGrid);
-        pme_gpu_stop_timing(pme, gtPME_FFT_C2R);
+        pme_gpu_stop_timing(pmeGPU, gtPME_FFT_C2R);
         if (result)
         {
             gmx_fatal(FARGS, "cufft C2R error %d\n", result);
@@ -210,7 +210,7 @@ void pme_gpu_3dfft(gmx_pme_t        *pme,
     }
 }
 
-void pme_gpu_destroy_3dfft(const gmx_parallel_3dfft_gpu_t &pfftSetup)
+void pme_gpu_destroy_3dfft_plan(const gmx_parallel_3dfft_gpu_t &pfftSetup)
 {
     if (pfftSetup)
     {

@@ -135,6 +135,7 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
                        matrix     box,
                        int        flags)
 {
+    //yupinov why do we need this?
     int         i;
     gmx_bool    bSB;
     int         pme_flags;
@@ -182,13 +183,16 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
                         /* We don't calculate f, but we do want the potential */
                         pme_flags |= GMX_PME_CALC_POT;
                     }
-                    pme_gpu_launch(fr->pmedata,
-                                   md->homenr - fr->n_tpi,
-                                   x, fr->f_novirsum,
-                                   md->chargeA,
-                                   bSB ? boxs : box,
-                                   wcycle,
-                                   pme_flags);
+                    if (gmx_pme_gpu_enabled(fr->pmedata))
+                    {
+                        pme_gpu_launch(fr->pmedata,
+                                       md->homenr - fr->n_tpi,
+                                       x, fr->f_novirsum,
+                                       md->chargeA,
+                                       bSB ? boxs : box,
+                                       wcycle,
+                                       pme_flags);
+                    }
                 }
             }
         }
@@ -554,7 +558,10 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                                                    fr->vir_el_recip);
             }
 
-            pme_gpu_launch_gather(fr->pmedata, wcycle, false);
+            if (gmx_pme_gpu_enabled(fr->pmedata))
+            {
+                pme_gpu_launch_gather(fr->pmedata, wcycle, false);
+            }
 
             enerd->dvdl_lin[efptCOUL] += dvdl_long_range_correction_q;
             enerd->dvdl_lin[efptVDW]  += dvdl_long_range_correction_lj;
@@ -581,37 +588,37 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                         pme_flags |= GMX_PME_CALC_POT;
                     }
 
-                    if (!pme_gpu_enabled(fr->pmedata))
+                    if (!gmx_pme_gpu_enabled(fr->pmedata))
                     {
                         wallcycle_start(wcycle, ewcPMEMESH);
-                    }
-                    status = gmx_pme_do(fr->pmedata,
-                                        0, md->homenr - fr->n_tpi,
-                                        x, fr->f_novirsum,
-                                        md->chargeA, md->chargeB,
-                                        md->sqrt_c6A, md->sqrt_c6B,
-                                        md->sigmaA, md->sigmaB,
-                                        bSB ? boxs : box, cr,
-                                        DOMAINDECOMP(cr) ? dd_pme_maxshift_x(cr->dd) : 0,
-                                        DOMAINDECOMP(cr) ? dd_pme_maxshift_y(cr->dd) : 0,
-                                        nrnb, wcycle,
-                                        fr->vir_el_recip, fr->vir_lj_recip,
-                                        &Vlr_q, &Vlr_lj,
-                                        lambda[efptCOUL], lambda[efptVDW],
-                                        &dvdl_long_range_q, &dvdl_long_range_lj, pme_flags);
-                    if (!pme_gpu_enabled(fr->pmedata))
-                    {
+                        status = gmx_pme_do(fr->pmedata,
+                                            0, md->homenr - fr->n_tpi,
+                                            x, fr->f_novirsum,
+                                            md->chargeA, md->chargeB,
+                                            md->sqrt_c6A, md->sqrt_c6B,
+                                            md->sigmaA, md->sigmaB,
+                                            bSB ? boxs : box, cr,
+                                            DOMAINDECOMP(cr) ? dd_pme_maxshift_x(cr->dd) : 0,
+                                            DOMAINDECOMP(cr) ? dd_pme_maxshift_y(cr->dd) : 0,
+                                            nrnb, wcycle,
+                                            fr->vir_el_recip, fr->vir_lj_recip,
+                                            &Vlr_q, &Vlr_lj,
+                                            lambda[efptCOUL], lambda[efptVDW],
+                                            &dvdl_long_range_q, &dvdl_long_range_lj, pme_flags);
                         *cycles_pme = wallcycle_stop(wcycle, ewcPMEMESH);
+                        if (status != 0)
+                        {
+                            gmx_fatal(FARGS, "Error %d in reciprocal PME routine", status);
+                        }
                     }
-                    if (status != 0)
+                    else
                     {
-                        gmx_fatal(FARGS, "Error %d in reciprocal PME routine", status);
+                        gmx_pme_gpu_get_results(fr->pmedata,
+                                                wcycle,
+                                                fr->vir_el_recip,
+                                                &Vlr_q,
+                                                pme_flags);
                     }
-                    pme_gpu_get_results(fr->pmedata,
-                                        wcycle,
-                                        fr->vir_el_recip,
-                                        &Vlr_q,
-                                        pme_flags);
                     /* We should try to do as little computation after
                      * this as possible, because parallel PME synchronizes
                      * the nodes, so we want all load imbalance of the

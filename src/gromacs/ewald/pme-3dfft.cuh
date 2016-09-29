@@ -44,26 +44,28 @@
 
 #include "gmxpre.h"
 
-#include "pme-internal.h"
+#include "gromacs/fft/fft.h"
+
+#include "pme-gpu-types.h"
 
 typedef struct gmx_parallel_3dfft_gpu *gmx_parallel_3dfft_gpu_t; // TODO: refactor
 
 /*! \brief \internal
- * Initializes the CUDA FFT structure for performing real-to-complex and complex-to-real 3D FFT
+ * Initializes the CUDA FFT plan for performing real-to-complex and complex-to-real 3D FFT
  * on a PME grid of a given size.
  *
  * \param[in] pfftSetup            The CUDA FFT structure to be initialized.
- * \param[in] pme                   The PME data structure.
+ * \param[in] pmeGPU               The PME GPU data structure.
  */
-void pme_gpu_init_3dfft(gmx_parallel_3dfft_gpu_t *pfftSetup,
-                        const gmx_pme_t          *pme);
+void pme_gpu_init_3dfft_plan(gmx_parallel_3dfft_gpu_t *pfftSetup,
+                             const pme_gpu_t          *pme);
 
 /*! \brief \internal
- * Destroys the CUDA FFT structure.
+ * Destroys the CUDA FFT plan.
  *
  * \param     pfftSetup            The CUDA FFT structure to be destroyed.
  */
-void pme_gpu_destroy_3dfft(const gmx_parallel_3dfft_gpu_t &pfftSetup);
+void pme_gpu_destroy_3dfft_plan(const gmx_parallel_3dfft_gpu_t &pfftSetup);
 
 /*! \brief \internal
  *

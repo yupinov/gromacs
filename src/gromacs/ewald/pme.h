@@ -174,4 +174,15 @@ void gmx_pme_receive_f(struct t_commrec *cr,
                        real *dvdlambda_q, real *dvdlambda_lj,
                        float *pme_cycles);
 
+/*! \brief
+ * This function should manage the local atoms data update after the DD (charges, coordinates, etc.).
+ * Currently it only manages the PME on GPU, as the PME CPU call gmx_pme_do() gets passed the input pointers each step.
+ * It also isn't but should be called during the initial setup, before the first MD step.
+ *
+ * \param[in] pme            The PME structure.
+ * \param[in] nAtoms         The number of particles.
+ * \param[in] coefficients   The pointer to the array of particle charges.
+ */
+void gmx_pme_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, real *coefficients);
+
 #endif

@@ -54,34 +54,10 @@
 #include "gromacs/gpu_utils/cudautils.cuh"
 
 #include "pme-3dfft.cuh"
-#include "pme-gpu.h"
+#include "pme-gpu-internal.h"
 #include "pme-timings.cuh"
 
-/* Some general defines for PME CUDA behaviour follow.
- * Some of the might be possible to turn into booleans and/or be moved into pme-gpu.h.
- */
-
-#define PME_GPU_USE_PADDING 1
-/* 0: The atom data GPU buffers are sized precisely according to the number of atoms.
- *    The atom index checks in the spread/gather code potentially hinder the performance.
- * 1: The atom data GPU buffers are padded with zeroes so that the number of atoms
- *    potentially fitting is divisible by particlesPerBlock (currently always 8).
- *    The atom index checks are not performed. There should be a performance win, but how big is it, remains to be seen.
- *    Additional cudaMemsetAsync calls are done occasionally (only charges/coordinates; spline data is always recalculated now).
- */
-
-#define PME_GPU_SKIP_ZEROES 0
-/* 0: Atoms with zero charges are processed by PME. Could introduce some overhead.
- * 1: Atoms with zero charges are not processed by PME. Adds branching to the spread/gather.
- *    Could be good for performance in specific systems with lots of neutral atoms.
- */
-
-#define PME_GPU_VIRIAL_AND_ENERGY_COUNT 7
-/* This is a number of output floats of PME solve.
- * 6 floats for symmetric virial matrix + 1 float for reciprocal energy.
- * Better to have a magic number like this defined in one place.
- * Works better as a define - for more concise CUDA kernel.
- */
+/* Some CUDA-specific defines for PME behaviour follow. */
 
 /* Using textures instead of global memory. Only in spread now, but B-spline moduli in solving could also be texturized. */
 #define PME_USE_TEXTURES 1
@@ -161,14 +137,6 @@ int __device__ __forceinline__ pme_gpu_check_atom_charge(const float coefficient
     return PME_GPU_SKIP_ZEROES ? (coefficient != 0.0f) : 1;
 }
 
-/*! \brief
- * Waits for the PME GPU output forces copy to the CPU buffer (pme->gpu->io.h_forces) to finish.
- *
- * \param[in] pme  The PME structure.
- */
-void pme_gpu_sync_output_forces(const gmx_pme_t *pme);
-
-
 /*! \brief \internal
  * The main PME CUDA-specific data structure, included in the PME GPU structure by the archSpecific pointer.
  */
@@ -200,19 +168,6 @@ struct pme_gpu_cuda_t
     gmx_parallel_3dfft_gpu_t            *pfft_setup_gpu;
 
     pme_gpu_timing                      *timingEvents[gtPME_EVENT_COUNT];
-
-    /*! \brief Number of local atoms, padded to be divisible by particlesPerBlock.
-     * Used for kernel scheduling.
-     * kernelParams.atoms.nAtoms is the actual atom count to be used for data copying.
-     */
-    int nAtomsPadded;
-    /*! \brief Number of local atoms, padded to be divisible by particlesPerBlock if (PME_GPU_USE_PADDING == 1).
-     * Used only as a basic size for almost all the atom data allocations
-     * (spline parameter data is also aligned by PME_SPREADGATHER_PARTICLES_PER_WARP).
-     * This should be the same as (PME_GPU_USE_PADDING ? nAtomsPadded : kernelParams.atoms.nAtoms).
-     * kernelParams.atoms.nAtoms is the actual atom count to be used for data copying.
-     */
-    int nAtomsAlloc;
 
     /* GPU arrays element counts (not the arrays sizes in bytes!).
      * They might be larger than the actual meaningful data sizes.
@@ -255,7 +210,7 @@ struct pme_gpu_cuda_t
     int gridSizeAlloc;
 };
 
-void pme_gpu_make_fract_shifts_textures(const gmx_pme_t *pme);
-void pme_gpu_free_fract_shifts_textures(const gmx_pme_t *pme);
+void pme_gpu_make_fract_shifts_textures(pme_gpu_t *pmeGPU);
+void pme_gpu_free_fract_shifts_textures(const pme_gpu_t *pmeGPU);
 
 #endif

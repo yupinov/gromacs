@@ -295,20 +295,20 @@ __global__ void pme_solve_kernel
 void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
 {
     /* do recip sum over local cells in grid */
-
-    const gmx_bool YZXOrdering = !pme_gpu_performs_FFT(pme);
+    const pme_gpu_t *pmeGPU      = pme->gpu;
+    const gmx_bool   YZXOrdering = !pme_gpu_performs_FFT(pmeGPU);
     /* true: y major, z middle, x minor or continuous - the CPU FFTW way */
     /* false: x major, y middle, z minor - the single rank GPU cuFFT way */
     //printf("ordering %d\n", YZXOrdering);
 
-    cudaStream_t s = pme->gpu->archSpecific->pmeStream;
+    cudaStream_t s = pmeGPU->archSpecific->pmeStream;
 
     ivec         local_ndata, local_offset, local_size, complex_order;
     /* Dimensions should be identical for A/B grid, so we just use A here */
 
-    if (pme_gpu_performs_FFT(pme))
+    if (pme_gpu_performs_FFT(pmeGPU))
     {
-        pme_gpu_get_3dfft_complex_limits(pme->gpu->archSpecific->pfft_setup_gpu[PME_GRID_QA], local_ndata, local_offset, local_size);
+        pme_gpu_get_3dfft_complex_limits(pmeGPU->archSpecific->pfft_setup_gpu[PME_GRID_QA], local_ndata, local_offset, local_size);
     }
     else
     {
@@ -321,8 +321,8 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
 
     const int   gridSize = local_size[XX] * local_size[YY] * local_size[ZZ] * sizeof(float2);
 
-    float2     *grid_d = (float2 *)pme->gpu->kernelParams.grid.fourierGrid;
-    if (!pme_gpu_performs_FFT(pme))
+    float2     *grid_d = (float2 *)pmeGPU->kernelParams.grid.fourierGrid;
+    if (!pme_gpu_performs_FFT(pmeGPU))
     {
         cu_copy_H2D_async(grid_d, grid, gridSize, s);
     }
@@ -341,7 +341,7 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
                 (local_ndata[middleDim] + gridLinesPerBlock - 1) / gridLinesPerBlock, // rounded up middle dimension block number
                 local_ndata[majorDim]);
 
-    pme_gpu_start_timing(pme, gtPME_SOLVE);
+    pme_gpu_start_timing(pmeGPU, gtPME_SOLVE);
 
     if (YZXOrdering)
     {
@@ -351,7 +351,7 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
             (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim],
              local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
              local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-             pme->gpu->kernelParams);
+             pmeGPU->kernelParams);
         }
         else
         {
@@ -359,7 +359,7 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
             (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
              local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
              local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-             pme->gpu->kernelParams);
+             pmeGPU->kernelParams);
         }
     }
     else
@@ -370,7 +370,7 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
             (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim],
              local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
              local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-             pme->gpu->kernelParams);
+             pmeGPU->kernelParams);
         }
         else
         {
@@ -378,25 +378,25 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
             (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
              local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
              local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-             pme->gpu->kernelParams);
+             pmeGPU->kernelParams);
         }
     }
     CU_LAUNCH_ERR("pme_solve_kernel");
 
-    pme_gpu_stop_timing(pme, gtPME_SOLVE);
+    pme_gpu_stop_timing(pmeGPU, gtPME_SOLVE);
 
     if (bEnerVir)
     {
-        cu_copy_D2H_async(pme->gpu->io.h_virialAndEnergy, pme->gpu->kernelParams.constants.virialAndEnergy,
+        cu_copy_D2H_async(pmeGPU->io.h_virialAndEnergy, pmeGPU->kernelParams.constants.virialAndEnergy,
                           PME_GPU_VIRIAL_AND_ENERGY_COUNT * sizeof(float), s);
-        cudaError_t stat = cudaEventRecord(pme->gpu->archSpecific->syncEnerVirD2H, s);
+        cudaError_t stat = cudaEventRecord(pmeGPU->archSpecific->syncEnerVirD2H, s);
         CU_RET_ERR(stat, "PME solve energy/virial sync fail");
     }
 
-    if (!pme_gpu_performs_FFT(pme))
+    if (!pme_gpu_performs_FFT(pmeGPU))
     {
         cu_copy_D2H_async(grid, grid_d, gridSize, s);
-        cudaError_t stat = cudaEventRecord(pme->gpu->archSpecific->syncSolveGridD2H, s);
+        cudaError_t stat = cudaEventRecord(pmeGPU->archSpecific->syncSolveGridD2H, s);
         CU_RET_ERR(stat, "PME solve grid sync fail");
     }
 }

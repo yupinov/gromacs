@@ -87,51 +87,20 @@ class pme_gpu_timing
         unsigned int get_call_count();
 };
 
-/*! \libinternal
- * \brief
- *
- * Allocates and initializes the PME GPU timings.
- *
- * \param[in] pme            The PME data structure.
- */
-void pme_gpu_init_timings(const gmx_pme_t *pme);
-
-/*! \libinternal
- * \brief
- *
- * Destroys the PME GPU timings.
- *
- * \param[in] pme            The PME data structure.
- */
-void pme_gpu_destroy_timings(const gmx_pme_t *pme);
-
-/*! \libinternal
- * \brief
- *
+/*! \libinternal \brief
  * Starts timing the certain PME GPU stage during a single step (if timings are enabled).
  *
- * \param[in] pme            The PME data structure.
+ * \param[in] pmeGPU         The PME GPU data structure.
  * \param[in] PMEStageId     The PME GPU stage gtPME_ index from the enum in src/gromacs/timing/gpu_timing.h
  */
-void pme_gpu_start_timing(const gmx_pme_t *pme, size_t PMEStageId);
+void pme_gpu_start_timing(const pme_gpu_t *pmeGPU, size_t PMEStageId);
 
-/*! \libinternal
- * \brief
- *
+/*! \libinternal \brief
  * Stops timing the certain PME GPU stage during a single step (if timings are enabled).
  *
- * \param[in] pme            The PME data structure.
+ * \param[in] pmeGPU         The PME GPU data structure.
  * \param[in] PMEStageId     The PME GPU stage gtPME_ index from the enum in src/gromacs/timing/gpu_timing.h
  */
-void pme_gpu_stop_timing(const gmx_pme_t *pme, size_t PMEStageId);
-
-/*! \libinternal
- * \brief
- *
- * Finalizes all the PEM GPU stage timings for the current step. Should be called at the end of every step.
- *
- * \param[in] pme            The PME data structure.
- */
-void pme_gpu_update_timings(const gmx_pme_t *pme);
+void pme_gpu_stop_timing(const pme_gpu_t *pmeGPU, size_t PMEStageId);
 
 #endif

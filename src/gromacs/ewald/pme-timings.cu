@@ -51,6 +51,7 @@
 #include "gromacs/utility/smalloc.h"
 
 #include "pme.cuh"
+#include "pme-gpu-internal.h"
 
 /* The pme_gpu_timing class implementation */
 
@@ -140,32 +141,32 @@ unsigned int pme_gpu_timing::get_call_count()
  * \param[in] pme            The PME data structure.
  * \returns                  TRUE if timings are enabled, FALSE otherwise.
  */
-gmx_inline gmx_bool pme_gpu_timings_enabled(const gmx_pme_t *pme)
+gmx_inline gmx_bool pme_gpu_timings_enabled(const pme_gpu_t *pmeGPU)
 {
-    return pme_gpu_enabled(pme) && pme->gpu->archSpecific->bTiming;
+    return pmeGPU->archSpecific->bTiming;
 }
 
-void pme_gpu_start_timing(const gmx_pme_t *pme, size_t PMEStageId)
+void pme_gpu_start_timing(const pme_gpu_t *pmeGPU, size_t PMEStageId)
 {
-    if (pme_gpu_timings_enabled(pme))
+    if (pme_gpu_timings_enabled(pmeGPU))
     {
         GMX_ASSERT(PMEStageId < gtPME_EVENT_COUNT, "Wrong PME GPU timing event index");
-        pme->gpu->archSpecific->timingEvents[PMEStageId]->start_recording(pme->gpu->archSpecific->pmeStream);
+        pmeGPU->archSpecific->timingEvents[PMEStageId]->start_recording(pmeGPU->archSpecific->pmeStream);
     }
 }
 
-void pme_gpu_stop_timing(const gmx_pme_t *pme, size_t PMEStageId)
+void pme_gpu_stop_timing(const pme_gpu_t *pmeGPU, size_t PMEStageId)
 {
-    if (pme_gpu_timings_enabled(pme))
+    if (pme_gpu_timings_enabled(pmeGPU))
     {
         GMX_ASSERT(PMEStageId < gtPME_EVENT_COUNT, "Wrong PME GPU timing event index");
-        pme->gpu->archSpecific->timingEvents[PMEStageId]->stop_recording(pme->gpu->archSpecific->pmeStream);
+        pmeGPU->archSpecific->timingEvents[PMEStageId]->stop_recording(pmeGPU->archSpecific->pmeStream);
     }
 }
 
-void pme_gpu_get_timings(const gmx_pme_t *pme, gmx_wallclock_gpu_t **timings)
+void pme_gpu_get_timings(const pme_gpu_t *pmeGPU, gmx_wallclock_gpu_t **timings)
 {
-    if (pme_gpu_timings_enabled(pme))
+    if (pme_gpu_timings_enabled(pmeGPU))
     {
         GMX_RELEASE_ASSERT(timings, "Null GPU timing pointer");
         if (!*timings)
@@ -177,55 +178,55 @@ void pme_gpu_get_timings(const gmx_pme_t *pme, gmx_wallclock_gpu_t **timings)
         }
         for (size_t i = 0; i < gtPME_EVENT_COUNT; i++)
         {
-            (*timings)->pme.timing[i].t = pme->gpu->archSpecific->timingEvents[i]->get_total_time_milliseconds();
-            (*timings)->pme.timing[i].c = pme->gpu->archSpecific->timingEvents[i]->get_call_count();
+            (*timings)->pme.timing[i].t = pmeGPU->archSpecific->timingEvents[i]->get_total_time_milliseconds();
+            (*timings)->pme.timing[i].c = pmeGPU->archSpecific->timingEvents[i]->get_call_count();
         }
     }
 }
 
-void pme_gpu_update_timings(const gmx_pme_t *pme)
+void pme_gpu_update_timings(const pme_gpu_t *pmeGPU)
 {
-    if (pme_gpu_timings_enabled(pme))
+    if (pme_gpu_timings_enabled(pmeGPU))
     {
         for (size_t i = 0; i < gtPME_EVENT_COUNT; i++)
         {
-            pme->gpu->archSpecific->timingEvents[i]->update();
+            pmeGPU->archSpecific->timingEvents[i]->update();
         }
     }
 }
 
-void pme_gpu_init_timings(const gmx_pme_t *pme)
+void pme_gpu_init_timings(const pme_gpu_t *pmeGPU)
 {
-    if (pme_gpu_timings_enabled(pme))
+    if (pme_gpu_timings_enabled(pmeGPU))
     {
-        cudaStreamSynchronize(pme->gpu->archSpecific->pmeStream);
+        pme_gpu_synchronize(pmeGPU);
         for (size_t i = 0; i < gtPME_EVENT_COUNT; i++)
         {
-            pme->gpu->archSpecific->timingEvents[i] = new pme_gpu_timing();
-            pme->gpu->archSpecific->timingEvents[i]->enable();
+            pmeGPU->archSpecific->timingEvents[i] = new pme_gpu_timing();
+            pmeGPU->archSpecific->timingEvents[i]->enable();
         }
     }
 }
 
-void pme_gpu_destroy_timings(const gmx_pme_t *pme)
+void pme_gpu_destroy_timings(const pme_gpu_t *pmeGPU)
 {
-    if (pme_gpu_timings_enabled(pme))
+    if (pme_gpu_timings_enabled(pmeGPU))
     {
         for (size_t i = 0; i < gtPME_EVENT_COUNT; i++)
         {
-            delete pme->gpu->archSpecific->timingEvents[i];
+            delete pmeGPU->archSpecific->timingEvents[i];
         }
-        memset(pme->gpu->archSpecific->timingEvents, 0, sizeof(pme->gpu->archSpecific->timingEvents));
+        memset(pmeGPU->archSpecific->timingEvents, 0, sizeof(pmeGPU->archSpecific->timingEvents));
     }
 }
 
-void pme_gpu_reset_timings(const gmx_pme_t *pme)
+void pme_gpu_reset_timings(const pme_gpu_t *pmeGPU)
 {
-    if (pme_gpu_timings_enabled(pme))
+    if (pme_gpu_timings_enabled(pmeGPU))
     {
         for (size_t i = 0; i < gtPME_EVENT_COUNT; i++)
         {
-            pme->gpu->archSpecific->timingEvents[i]->reset();
+            pmeGPU->archSpecific->timingEvents[i]->reset();
         }
     }
 }

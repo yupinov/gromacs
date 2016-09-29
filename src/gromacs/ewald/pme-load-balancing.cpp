@@ -824,7 +824,7 @@ pme_load_balance(pme_load_balancing_t      *pme_lb,
          * This can lead to a lot of reallocations for PME GPU.
          * Would be nicer if the allocated grid list was hidden within a single pmedata structure.
          */
-        if ((pme_lb->setup[pme_lb->cur].pmedata == NULL) || pme_gpu_enabled(pme_lb->setup[pme_lb->cur].pmedata))
+        if ((pme_lb->setup[pme_lb->cur].pmedata == NULL) || gmx_pme_gpu_enabled(pme_lb->setup[pme_lb->cur].pmedata))
         {
             /* Generate a new PME data structure,
              * copying part of the old pointers.
