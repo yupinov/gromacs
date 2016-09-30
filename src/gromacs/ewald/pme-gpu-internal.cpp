@@ -33,7 +33,7 @@
  * the research papers on the package. Check out http://www.gromacs.org.
  */
 
-/*! \libinternal \file
+/*! \internal \file
  *
  * \brief This file contains internal function implementations
  * for performing the PME calculations on GPU.
@@ -44,17 +44,22 @@
 
 #include "gmxpre.h"
 
-#include "pme-gpu-internal.h"
-#include "pme-gpu.h"
+#include "config.h"
 
 #include <cassert>
+#include <cstdlib>
 #include <cstring>
 
+#include <string>
+
+#include "gromacs/gpu_utils/gpu_utils.h"
 #include "gromacs/math/invertmatrix.h"
 #include "gromacs/math/units.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/smalloc.h"
-#include "gromacs/gpu_utils/gpu_utils.h"
+
+#include "pme-gpu.h"
+#include "pme-internal.h"
 
 void pme_gpu_set_io_ranges(pme_gpu_t *pmeGPU, rvec *coordinates, rvec *forces)
 {
@@ -111,7 +116,7 @@ void pme_gpu_start_step(pme_gpu_t *pmeGPU, const matrix box)
     }
 }
 
-/*! \brief \internal
+/*! \brief \libinternal
  * The PME GPU reinitialization function that is called both at the end of any MD step and on any load balancing step.
  *
  * \param[in] pmeGPU            The PME GPU structure.
@@ -139,7 +144,7 @@ void pme_gpu_finish_step(const pme_gpu_t *pmeGPU, const gmx_bool bCalcF, const g
     pme_gpu_reinit_step(pmeGPU);
 }
 
-/*! \brief \internal
+/*! \brief \libinternal
  * Copies the grid sizes for overlapping (used in the PME wrap/unwrap).
  *
  * \param[in] pmeGPU             The PME GPU structure.
@@ -183,7 +188,7 @@ void pme_gpu_copy_wrap_zones(const pme_gpu_t *pmeGPU)
     memcpy((void *)pmeGPU->kernelParams.grid.overlapCellCounts, cellsAccumCount_h, sizeof(cellsAccumCount_h));
 }
 
-/*! \brief \internal
+/*! \brief \libinternal
  * (Re-)initializes all the PME GPU data related to the grid size and cut-off.
  *
  * \param[in] pmeGPU            The PME GPU structure.
@@ -207,13 +212,12 @@ void pme_gpu_reinit_grids(pme_gpu_t *pmeGPU)
     pme_gpu_reinit_3dfft(pmeGPU);
 }
 
-#include "pme-internal.h"
 /* Several GPU functions that refer to the CPU PME data live here.
  * We would like to keep these away from the GPU-framework specific code for clarity,
  * as well as compilation issues with MPI.
  */
 
-/*! \brief \internal
+/*! \brief \libinternal
  * Copies everything useful from the PME CPU to the PME GPU structure.
  * The goal is to minimize interaction with the PME CPU structure in the GPU code.
  *
@@ -247,7 +251,7 @@ void pme_gpu_fetch_shared_data(const gmx_pme_t *pme)
     pmeGPU->common->nn[ZZ].assign(pme->nnz, pme->nnz + magic * pme->nkz);
 }
 
-/*! \brief \internal
+/*! \brief \libinternal
  * Finds out if PME with given inputs is possible to run on GPU.
  *
  * \param[in]  pme          The PME structure.
@@ -307,7 +311,7 @@ void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_o
 
         pme->gpu       = new pme_gpu_t();
         pmeGPU         = pme->gpu;
-        pmeGPU->common = std::shared_ptr<pme_shared_t>(new pme_shared_t);
+        pmeGPU->common = std::shared_ptr<pme_shared_t>(new pme_shared_t());
 
         /* Some permanent settings are set here */
         pmeGPU->settings.bGPUSingle = (pme->nnodes == 1);
@@ -334,7 +338,7 @@ void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_o
         assert(pmeGPU->common->epsilon_r != 0.0f);
         pmeGPU->kernelParams.constants.elFactor = ONE_4PI_EPS0 / pmeGPU->common->epsilon_r;
         // assert(pmeGPU->common->ngrids == 1);
-        // this assert will fail now because PME CPU is stupid and has 2 grids min
+        // this assert will fail now because PME CPU is stupid and has 2 grids minimum
     }
 
     pme_gpu_reinit_grids(pmeGPU);

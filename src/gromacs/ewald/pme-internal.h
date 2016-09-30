@@ -62,6 +62,7 @@
 #include "gromacs/timing/wallcycle.h"
 #include "gromacs/timing/walltime_accounting.h"
 #include "gromacs/utility/gmxmpi.h"
+
 #include "pme-gpu-internal.h"
 
 struct t_commrec;
@@ -264,7 +265,7 @@ typedef struct gmx_pme_t {
     real           epsilon_r;
 
     gmx_bool       bGPU;                    /* Are we using the GPU acceleration for PME purposes?
-                                             * A permanent variable, should be read using pme_gpu_enabled.
+                                             * A permanent variable, should be read using gmx_pme_gpu_enabled.
                                              */
 
     pme_gpu_t     *gpu;                     /* A pointer to the GPU data.

@@ -34,9 +34,10 @@
  */
 
 /*! \internal \file
- * \brief This file contains function implementations for performing the PME calculations on GPU.
+ * \brief Implements high-level PME GPU functions which do not require GPU framework-specific code.
  *
- *  \author Aleksei Iupinov <a.yupinov@gmail.com>
+ * \author Aleksei Iupinov <a.yupinov@gmail.com>
+ * \ingroup module_ewald
  */
 
 #include "gmxpre.h"
@@ -45,12 +46,10 @@
 #include <string.h>
 
 #include "gromacs/ewald/pme.h"
-
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
 
 #include "pme-gpu-internal.h"
-
 #include "pme-grid.h"
 #include "pme-solve.h"
 

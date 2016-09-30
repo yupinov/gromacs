@@ -47,8 +47,9 @@
 #include "gmxpre.h"
 
 #include <cassert>
-#include <vector>
+
 #include <memory>
+#include <vector>
 
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 #include "gromacs/gpu_utils/cudautils.cuh"

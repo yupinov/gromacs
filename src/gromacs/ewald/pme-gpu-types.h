@@ -34,10 +34,11 @@
  */
 
 /*! \libinternal \file
- *  \brief Defines the GPU-agnostic PME GPU data structures:
- *  (the host-side PME GPU data, and the GPU function parameters).
+ * \brief Defines the GPU-agnostic PME GPU data structures
+ * (the host-side PME GPU data, and the GPU function parameters).
  *
- *  \author Aleksei Iupinov <a.yupinov@gmail.com>
+ * \author Aleksei Iupinov <a.yupinov@gmail.com>
+ * \ingroup module_ewald
  */
 
 #ifndef PMEGPUTYPES_H
@@ -45,17 +46,17 @@
 
 #include "config.h"
 
-#include "gromacs/math/vectypes.h"
-#include "gromacs/utility/basedefinitions.h"
-
 #include <memory>
 #include <vector>
+
+#include "gromacs/math/vectypes.h"
+#include "gromacs/utility/basedefinitions.h"
 
 struct gmx_hw_info;
 
 #if GMX_GPU == GMX_GPU_CUDA
 struct pme_gpu_cuda_t;
-/*! \brief  A typedef for including the GPU framework-specific data by pointer */
+/*! \brief A typedef for including the GPU framework-specific data by pointer */
 typedef pme_gpu_cuda_t pme_gpu_specific_t;
 #else
 /*! \brief A dummy typedef */
@@ -68,9 +69,8 @@ typedef int pme_gpu_specific_t;
  * The only exception are 2 cudaTextureObject_t disguised as unsigned long long.
  */
 
-/*! \brief \internal
+/*! \internal \brief
  * A GPU data structure for storing the constant PME data.
- *
  * This only has to be initialized once.
  */
 struct pme_gpu_const_params_t
@@ -82,9 +82,8 @@ struct pme_gpu_const_params_t
     float *virialAndEnergy;
 };
 
-/*! \brief \internal
+/*! \internal \brief
  * A GPU data structure for storing the PME data related to the grid size and cut-off.
- *
  * This only has to be updated every DLB step.
  */
 struct pme_gpu_grid_params_t
@@ -138,9 +137,8 @@ struct pme_gpu_grid_params_t
     unsigned long long nnTexture;
 };
 
-/*! \brief \internal
+/*! \internal \brief
  * A GPU data structure for storing the PME data of the atoms, local to this process' domain partition.
- *
  * This only has to be updated every DD step.
  */
 struct pme_gpu_atom_params_t
@@ -175,7 +173,7 @@ struct pme_gpu_atom_params_t
     float  *dtheta;
 };
 
-/*! \brief \internal
+/*! \internal \brief
  * A GPU data structure for storing the PME data which might change every MD step.
  */
 struct pme_gpu_step_params_t
@@ -193,8 +191,8 @@ struct pme_gpu_step_params_t
     float  boxVolume;
 };
 
-/*! \brief \internal
- * A single structure encompassing all the PME data used in GPU kernels.
+/*! \internal \brief
+ * A single structure encompassing all the PME data used in GPU kernels on device.
  */
 struct pme_gpu_kernel_params_t
 {
@@ -208,10 +206,9 @@ struct pme_gpu_kernel_params_t
     pme_gpu_step_params_t  step;
 };
 
-/* Here is the host-side structures;
- */
+/* Here are the host-side structures */
 
-/*! \brief \internal
+/*! \internal \brief
  * The PME GPU settings structure, included in the main PME GPU structure by value.
  */
 struct pme_gpu_settings_t
@@ -232,7 +229,7 @@ struct pme_gpu_settings_t
     gmx_bool bNeedToUpdateAtoms;
 };
 
-/*! \brief \internal
+/*! \internal \brief
  * The PME GPU host-side I/O buffers structure, included in the main PME GPU structure by value.
  * Intermediate internal host buffers live here as well.
  * And what will happen with the introduction of the external device-side I/O pointers?
@@ -253,7 +250,7 @@ struct pme_gpu_io_t
     size_t  splineValuesSizes[DIM];
 };
 
-/*! \brief \internal
+/*! \internal \brief
  * The PME GPU structure for all the data copied directly from the CPU PME structure.
  * The copying is done when the CPU PME structure is already (re-)initialized
  * (pme_gpu_reinit is called at the end of gmx_pme_init).
@@ -290,7 +287,7 @@ struct pme_shared_t
     std::vector<real> bsp_mod[DIM];
 };
 
-/*! \brief \internal
+/*! \internal \brief
  * The main PME GPU host structure, included in the PME CPU structure by pointer.
  */
 struct pme_gpu_t

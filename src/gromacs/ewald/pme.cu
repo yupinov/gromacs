@@ -37,10 +37,12 @@
  * \brief This file contains internal CUDA function implementations
  * for performing the PME calculations on GPU.
  *
- *  \author Aleksei Iupinov <a.yupinov@gmail.com>
+ * \author Aleksei Iupinov <a.yupinov@gmail.com>
  */
 
 #include "gmxpre.h"
+
+#include "config.h"
 
 /* GPU initialization includes */
 #include "gromacs/gpu_utils/gpu_utils.h"

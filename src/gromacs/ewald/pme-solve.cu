@@ -41,14 +41,16 @@
 
 #include "gmxpre.h"
 
+#include "pme-solve.h"
+
+#include <memory>
+
 #include "gromacs/utility/gmxassert.h"
+
 #include "pme.cuh"
 #include "pme-3dfft.cuh"
 #include "pme-gpu.h"   //?
 #include "pme-internal.h"
-#include "pme-solve.h"
-
-#include <memory>
 
 #define THREADS_PER_BLOCK (4 * warp_size)
 

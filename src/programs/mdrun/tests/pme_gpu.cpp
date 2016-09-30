@@ -42,6 +42,7 @@
 #include "gmxpre.h"
 
 #include "gromacs/utility/stringutil.h"
+
 #include "energyreader.h"
 #include "moduletest.h"
 

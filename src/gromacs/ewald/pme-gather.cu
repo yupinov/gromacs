@@ -40,8 +40,11 @@
  */
 
 #include "gmxpre.h"
+
 #include <assert.h>
+
 #include "gromacs/utility/gmxassert.h"
+
 #include "pme.cuh"
 #include "pme-internal.h"
 

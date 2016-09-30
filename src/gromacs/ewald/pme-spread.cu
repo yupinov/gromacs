@@ -45,12 +45,11 @@
 
 #include <assert.h>
 
-#include "pme.h"
-#include "pme-internal.h"
-
+#include "gromacs/ewald/pme.h"
 #include "gromacs/utility/fatalerror.h"
 
 #include "pme.cuh"
+#include "pme-internal.h"
 
 #define PME_GPU_PARALLEL_SPLINE 1
 /* This define affects the spline calculation behaviour in the spreading kernel.

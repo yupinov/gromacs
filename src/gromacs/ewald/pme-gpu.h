@@ -38,6 +38,7 @@
  * \brief This file contains exposed function definitions for performing the PME calculations on GPU.
  *
  * \author Aleksei Iupinov <a.yupinov@gmail.com>
+ * \inlibraryapi
  * \ingroup module_ewald
  */
 

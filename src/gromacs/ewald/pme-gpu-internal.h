@@ -33,7 +33,7 @@
  * the research papers on the package. Check out http://www.gromacs.org.
  */
 
-/*! \libinternal \file
+/*! \internal \file
  *
  * \brief This file contains internal function definitions for performing the PME calculations on GPU.
  * These are not meant to be exposed outside of the PME GPU code.
@@ -51,6 +51,7 @@
 #include "gromacs/fft/fft.h"
 #include "gromacs/gpu_utils/gpu_macros.h"
 #include "gromacs/utility/basedefinitions.h"
+
 #include "pme-gpu-types.h"
 
 struct gmx_hw_info_t;
@@ -62,34 +63,37 @@ struct gmx_wallclock_gpu_t;
  * Some of the might be possible to turn into booleans.
  */
 
-#define PME_GPU_USE_PADDING 1
-/* 0: The atom data GPU buffers are sized precisely according to the number of atoms.
+/*! \brief \libinternal
+ * 0: The atom data GPU buffers are sized precisely according to the number of atoms.
  *    The atom index checks in the spread/gather code potentially hinder the performance.
  * 1: The atom data GPU buffers are padded with zeroes so that the number of atoms
  *    potentially fitting is divisible by particlesPerBlock (currently always 8).
  *    The atom index checks are not performed. There should be a performance win, but how big is it, remains to be seen.
  *    Additional cudaMemsetAsync calls are done occasionally (only charges/coordinates; spline data is always recalculated now).
  */
+#define PME_GPU_USE_PADDING 1
 
-#define PME_GPU_SKIP_ZEROES 0
-/* 0: Atoms with zero charges are processed by PME. Could introduce some overhead.
+/*! \brief \libinternal
+ * 0: Atoms with zero charges are processed by PME. Could introduce some overhead.
  * 1: Atoms with zero charges are not processed by PME. Adds branching to the spread/gather.
  *    Could be good for performance in specific systems with lots of neutral atoms.
  */
+#define PME_GPU_SKIP_ZEROES 0
 
-#define PME_GPU_VIRIAL_AND_ENERGY_COUNT 7
-/* This is a number of output floats of PME solve.
+/*! \brief \libinternal
+ * This is a number of output floats of PME solve.
  * 6 floats for symmetric virial matrix + 1 float for reciprocal energy.
  * Better to have a magic number like this defined in one place.
  * Works better as a define - for more concise CUDA kernel.
  */
+#define PME_GPU_VIRIAL_AND_ENERGY_COUNT 7
 
 /* A block of CUDA-only functions that live in pme.cu */
 
 /*! \libinternal \brief
  * Synchronizes the current step, waiting for the GPU kernels/transfers to finish.
  *
- * \param[in] pmeGPU         The PME GPU structure.
+ * \param[in] pmeGPU            The PME GPU structure.
  */
 CUDA_FUNC_QUALIFIER void pme_gpu_synchronize(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU)) CUDA_FUNC_TERM
 
@@ -336,36 +340,36 @@ CUDA_FUNC_QUALIFIER void pme_gpu_destroy_3dfft(const pme_gpu_t *CUDA_FUNC_ARGUME
 /*! \libinternal \brief
  * Allocates and initializes the PME GPU timings.
  *
- * \param[in] pmeGPU         The PME GPU data structure.
+ * \param[in] pmeGPU         The PME GPU structure.
  */
 CUDA_FUNC_QUALIFIER void pme_gpu_init_timings(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU)) CUDA_FUNC_TERM
 
 /*! \libinternal \brief
  * Destroys the PME GPU timings.
  *
- * \param[in] pmeGPU         The PME GPU data structure.
+ * \param[in] pmeGPU         The PME GPU structure.
  */
 CUDA_FUNC_QUALIFIER void pme_gpu_destroy_timings(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU)) CUDA_FUNC_TERM
 
 /*! \libinternal \brief
  * Finalizes all the PME GPU stage timings for the current step. Should be called at the end of every step.
  *
- * \param[in] pmeGPU            The PME GPU data structure.
+ * \param[in] pmeGPU         The PME GPU structure.
  */
 CUDA_FUNC_QUALIFIER void pme_gpu_update_timings(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU)) CUDA_FUNC_TERM
 
 /*! \brief
  * Resets the PME GPU timings. To be called at the reset step.
  *
- * \param[in] pmeGPU            The PME GPU structure.
+ * \param[in] pmeGPU         The PME GPU structure.
  */
 CUDA_FUNC_QUALIFIER void pme_gpu_reset_timings(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU)) CUDA_FUNC_TERM
 
 /*! \libinternal \brief
  * Copies the PME GPU timings to the gmx_wallclock_gpu_t structure (for log output). To be called at the run end.
  *
- * \param[in] pmeGPU            The PME GPU structure.
- * \param[in] timings           The gmx_wallclock_gpu_t structure.
+ * \param[in] pmeGPU         The PME GPU structure.
+ * \param[in] timings        The gmx_wallclock_gpu_t structure.
  */
 CUDA_FUNC_QUALIFIER void pme_gpu_get_timings(const pme_gpu_t      *CUDA_FUNC_ARGUMENT(pmeGPU),
                                              gmx_wallclock_gpu_t **CUDA_FUNC_ARGUMENT(timings)) CUDA_FUNC_TERM
@@ -375,7 +379,7 @@ CUDA_FUNC_QUALIFIER void pme_gpu_get_timings(const pme_gpu_t      *CUDA_FUNC_ARG
 /*! \libinternal \brief
  * Tells if PME runs on multiple GPUs with the decomposition.
  *
- * \param[in] pme            The PME data structure.
+ * \param[in] pmeGPU         The PME GPU structure.
  * \returns                  TRUE if PME runs on multiple GPUs, FALSE otherwise.
  */
 gmx_inline gmx_bool pme_gpu_uses_dd(const pme_gpu_t *pmeGPU)
@@ -386,7 +390,7 @@ gmx_inline gmx_bool pme_gpu_uses_dd(const pme_gpu_t *pmeGPU)
 /*! \libinternal \brief
  * Tells if PME performs the gathering stage on GPU.
  *
- * \param[in] pme            The PME data structure.
+ * \param[in] pmeGPU         The PME GPU structure.
  * \returns                  TRUE if the gathering is performed on GPU, FALSE otherwise.
  */
 gmx_inline gmx_bool pme_gpu_performs_gather(const pme_gpu_t *pmeGPU)
@@ -397,7 +401,7 @@ gmx_inline gmx_bool pme_gpu_performs_gather(const pme_gpu_t *pmeGPU)
 /*! \libinternal \brief
  * Tells if PME performs the FFT stages on GPU.
  *
- * \param[in] pme            The PME data structure.
+ * \param[in] pmeGPU         The PME GPU structure.
  * \returns                  TRUE if FFT is performed on GPU, FALSE otherwise.
  */
 gmx_inline gmx_bool pme_gpu_performs_FFT(const pme_gpu_t *pmeGPU)
@@ -408,7 +412,7 @@ gmx_inline gmx_bool pme_gpu_performs_FFT(const pme_gpu_t *pmeGPU)
 /*! \libinternal \brief
  * Tells if PME performs the grid (un-)wrapping on GPU.
  *
- * \param[in] pme            The PME data structure.
+ * \param[in] pmeGPU         The PME GPU structure.
  * \returns                  TRUE if (un-)wrapping is performed on GPU, FALSE otherwise.
  */
 gmx_inline gmx_bool pme_gpu_performs_wrapping(const pme_gpu_t *pmeGPU)
@@ -419,7 +423,7 @@ gmx_inline gmx_bool pme_gpu_performs_wrapping(const pme_gpu_t *pmeGPU)
 /*! \libinternal \brief
  * Tells if PME performs the grid solving on GPU.
  *
- * \param[in] pme            The PME data structure.
+ * \param[in] pmeGPU         The PME GPU structure.
  * \returns                  TRUE if solving is performed on GPU, FALSE otherwise.
  */
 gmx_inline gmx_bool pme_gpu_performs_solve(const pme_gpu_t *pmeGPU)
@@ -456,8 +460,8 @@ void pme_gpu_get_energy_virial(const pme_gpu_t *pmeGPU, real *energy, matrix vir
  * Does nothing if PME on GPU is disabled.
  *
  * \param[in] pmeGPU         The PME GPU structure.
- * \param[in] box     The unit cell box which does not necessarily change every step (only with pressure coupling enabled).
- *                    Currently it is simply compared with the previous one to determine if it needs to be updated.
+ * \param[in] box            The unit cell box which does not necessarily change every step (only with pressure coupling enabled).
+ *                           Currently it is simply compared with the previous one to determine if it needs to be updated.
  */
 void pme_gpu_start_step(pme_gpu_t *pmeGPU, const matrix box);
 
