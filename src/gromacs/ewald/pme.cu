@@ -390,7 +390,7 @@ void pme_gpu_init_specific(pme_gpu_t *pmeGPU, const gmx_hw_info_t *hwinfo, const
     }
 
     /* Allocate the GPU-specific structure itself */
-    snew(pmeGPU->archSpecific, 1);
+    pmeGPU->archSpecific = std::shared_ptr<pme_gpu_specific_t>(new pme_gpu_specific_t());
 
     pmeGPU->archSpecific->bOutOfPlaceFFT = TRUE;
     /* This should give better performance, according to the cuFFT documentation.
@@ -428,9 +428,6 @@ void pme_gpu_destroy_specific(const pme_gpu_t *pmeGPU)
     /* Destroy the CUDA stream */
     cudaError_t stat = cudaStreamDestroy(pmeGPU->archSpecific->pmeStream);
     CU_RET_ERR(stat, "PME cudaStreamDestroy error");
-
-    /* Free the GPU-specific structure itself */
-    sfree(pmeGPU->archSpecific);
 }
 
 void pme_gpu_init_sync_events(const pme_gpu_t *pmeGPU)
@@ -463,26 +460,15 @@ void pme_gpu_reinit_3dfft(const pme_gpu_t *pmeGPU)
 {
     if (pme_gpu_performs_FFT(pmeGPU))
     {
-        if (!pmeGPU->archSpecific->pfft_setup_gpu)
+        pmeGPU->archSpecific->pfft_setup_gpu.resize(0); // FIXME: reallocations
+        for (int i = 0; i < pmeGPU->common->ngrids; i++)
         {
-            snew(pmeGPU->archSpecific->pfft_setup_gpu, pmeGPU->common->ngrids);
-        }
-        for (int i = 0; i < pmeGPU->common->ngrids; ++i)
-        {
-            pme_gpu_init_3dfft_plan(&pmeGPU->archSpecific->pfft_setup_gpu[i], pmeGPU);
-            // leaky - new allocations each reinit
+            pmeGPU->archSpecific->pfft_setup_gpu.push_back(std::unique_ptr<gmx_parallel_3dfft_gpu_t>(new gmx_parallel_3dfft_gpu_t(pmeGPU)));
         }
     }
 }
 
 void pme_gpu_destroy_3dfft(const pme_gpu_t *pmeGPU)
 {
-    if (pmeGPU->archSpecific->pfft_setup_gpu)
-    {
-        for (int i = 0; i < pmeGPU->common->ngrids; i++)
-        {
-            pme_gpu_destroy_3dfft_plan(pmeGPU->archSpecific->pfft_setup_gpu[i]);
-        }
-        sfree(pmeGPU->archSpecific->pfft_setup_gpu);
-    }
+    pmeGPU->archSpecific->pfft_setup_gpu.resize(0);
 }

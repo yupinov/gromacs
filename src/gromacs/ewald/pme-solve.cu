@@ -48,6 +48,7 @@
 #include "pme-internal.h"
 #include "pme-solve.h"
 
+#include <memory>
 
 #define THREADS_PER_BLOCK (4 * warp_size)
 
@@ -308,7 +309,7 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
 
     if (pme_gpu_performs_FFT(pmeGPU))
     {
-        pme_gpu_get_3dfft_complex_limits(pmeGPU->archSpecific->pfft_setup_gpu[PME_GRID_QA], local_ndata, local_offset, local_size);
+        pmeGPU->archSpecific->pfft_setup_gpu[PME_GRID_QA]->get_complex_limits(local_ndata, local_offset, local_size);
     }
     else
     {

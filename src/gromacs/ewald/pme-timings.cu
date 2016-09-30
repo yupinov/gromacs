@@ -150,7 +150,7 @@ void pme_gpu_start_timing(const pme_gpu_t *pmeGPU, size_t PMEStageId)
 {
     if (pme_gpu_timings_enabled(pmeGPU))
     {
-        GMX_ASSERT(PMEStageId < gtPME_EVENT_COUNT, "Wrong PME GPU timing event index");
+        GMX_ASSERT(PMEStageId < pmeGPU->archSpecific->timingEvents.size(), "Wrong PME GPU timing event index");
         pmeGPU->archSpecific->timingEvents[PMEStageId]->start_recording(pmeGPU->archSpecific->pmeStream);
     }
 }
@@ -159,7 +159,7 @@ void pme_gpu_stop_timing(const pme_gpu_t *pmeGPU, size_t PMEStageId)
 {
     if (pme_gpu_timings_enabled(pmeGPU))
     {
-        GMX_ASSERT(PMEStageId < gtPME_EVENT_COUNT, "Wrong PME GPU timing event index");
+        GMX_ASSERT(PMEStageId < pmeGPU->archSpecific->timingEvents.size(), "Wrong PME GPU timing event index");
         pmeGPU->archSpecific->timingEvents[PMEStageId]->stop_recording(pmeGPU->archSpecific->pmeStream);
     }
 }
@@ -173,10 +173,10 @@ void pme_gpu_get_timings(const pme_gpu_t *pmeGPU, gmx_wallclock_gpu_t **timings)
         {
             // alloc for PME-only run
             snew(*timings, 1);
+            /* FIXME: this is not freed, should be shared */
             // init_timings(*timings);
-            // frankly, it's just memset..
         }
-        for (size_t i = 0; i < gtPME_EVENT_COUNT; i++)
+        for (size_t i = 0; i < pmeGPU->archSpecific->timingEvents.size(); i++)
         {
             (*timings)->pme.timing[i].t = pmeGPU->archSpecific->timingEvents[i]->get_total_time_milliseconds();
             (*timings)->pme.timing[i].c = pmeGPU->archSpecific->timingEvents[i]->get_call_count();
@@ -188,7 +188,7 @@ void pme_gpu_update_timings(const pme_gpu_t *pmeGPU)
 {
     if (pme_gpu_timings_enabled(pmeGPU))
     {
-        for (size_t i = 0; i < gtPME_EVENT_COUNT; i++)
+        for (size_t i = 0; i < pmeGPU->archSpecific->timingEvents.size(); i++)
         {
             pmeGPU->archSpecific->timingEvents[i]->update();
         }
@@ -202,7 +202,7 @@ void pme_gpu_init_timings(const pme_gpu_t *pmeGPU)
         pme_gpu_synchronize(pmeGPU);
         for (size_t i = 0; i < gtPME_EVENT_COUNT; i++)
         {
-            pmeGPU->archSpecific->timingEvents[i] = new pme_gpu_timing();
+            pmeGPU->archSpecific->timingEvents.push_back(std::unique_ptr<pme_gpu_timing>(new pme_gpu_timing()));
             pmeGPU->archSpecific->timingEvents[i]->enable();
         }
     }
@@ -212,11 +212,7 @@ void pme_gpu_destroy_timings(const pme_gpu_t *pmeGPU)
 {
     if (pme_gpu_timings_enabled(pmeGPU))
     {
-        for (size_t i = 0; i < gtPME_EVENT_COUNT; i++)
-        {
-            delete pmeGPU->archSpecific->timingEvents[i];
-        }
-        memset(pmeGPU->archSpecific->timingEvents, 0, sizeof(pmeGPU->archSpecific->timingEvents));
+        pmeGPU->archSpecific->timingEvents.resize(0);
     }
 }
 
@@ -224,7 +220,7 @@ void pme_gpu_reset_timings(const pme_gpu_t *pmeGPU)
 {
     if (pme_gpu_timings_enabled(pmeGPU))
     {
-        for (size_t i = 0; i < gtPME_EVENT_COUNT; i++)
+        for (size_t i = 0; i < pmeGPU->archSpecific->timingEvents.size(); i++)
         {
             pmeGPU->archSpecific->timingEvents[i]->reset();
         }

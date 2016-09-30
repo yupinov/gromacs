@@ -44,41 +44,58 @@
 
 #include "gmxpre.h"
 
+#include <cufft.h>
+
 #include "gromacs/fft/fft.h"
 
 #include "pme-gpu-types.h"
 
-typedef struct gmx_parallel_3dfft_gpu *gmx_parallel_3dfft_gpu_t; // TODO: refactor
+/*! \brief \internal A 3D FFT class for performing R2C/C2R transforms */
+class gmx_parallel_3dfft_gpu_t
+{
+    ivec          nDataReal;
+    ivec          sizeReal;
+    ivec          sizeComplex;
 
-/*! \brief \internal
- * Initializes the CUDA FFT plan for performing real-to-complex and complex-to-real 3D FFT
- * on a PME grid of a given size.
- *
- * \param[in] pfftSetup            The CUDA FFT structure to be initialized.
- * \param[in] pmeGPU               The PME GPU data structure.
- */
-void pme_gpu_init_3dfft_plan(gmx_parallel_3dfft_gpu_t *pfftSetup,
-                             const pme_gpu_t          *pme);
+    cufftHandle   planR2C;
+    cufftHandle   planC2R;
+    cufftReal    *realGrid;
+    cufftComplex *complexGrid;
 
-/*! \brief \internal
- * Destroys the CUDA FFT plan.
- *
- * \param     pfftSetup            The CUDA FFT structure to be destroyed.
- */
-void pme_gpu_destroy_3dfft_plan(const gmx_parallel_3dfft_gpu_t &pfftSetup);
-
-/*! \brief \internal
- *
- * Returns the grid dimensions of the local complex PME grid.
- *
- * \param[in]    pfftSetup            The CUDA FFT structure to be examined.
- * \param[out]   localNData           The numbers of complex elements in the local grid.
- * \param[out]   localOffset          The offsets of the local grid.
- * \param[out]   localSize            The numbers of complex elements (with padding) in the local grid.
- */
-void pme_gpu_get_3dfft_complex_limits(const gmx_parallel_3dfft_gpu_t pfftSetup,
-                                      ivec                           localNData,
-                                      ivec                           localOffset,
-                                      ivec                           localSize);
+    /* unused */
+    ivec          localOffset;
+    public:
+        /*! \brief
+         * Constructs CUDA FFT plans for performing 3D FFT on a PME grid.
+         *
+         * \param[in] pmeGPU                  The PME GPU structure.
+         */
+        gmx_parallel_3dfft_gpu_t(const pme_gpu_t *pmeGPU);
+        /*! \brief Destroys CUDA FFT plans. */
+        ~gmx_parallel_3dfft_gpu_t();
+        /*! \brief
+         * Returns the grid dimensions of the local real-space grid.
+         *
+         * \param[out]   localNData           The numbers of real elements in the local grid.
+         * \param[out]   localOffset          The offsets of the local grid.
+         * \param[out]   localSize            The numbers of real elements (with padding) in the local grid.
+         */
+        void get_real_limits(ivec localNData, ivec localOffset, ivec localSize);
+        /*! \brief
+         * Returns the grid dimensions of the local complex grid.
+         *
+         * \param[out]   localNData           The numbers of complex elements in the local grid.
+         * \param[out]   localOffset          The offsets of the local grid.
+         * \param[out]   localSize            The numbers of complex elements (with padding) in the local grid.
+         */
+        void get_complex_limits(ivec localNData, ivec localOffset, ivec localSize);
+        /*! \brief
+         * Performs the 3D FFT.
+         *
+         * \param[in] dir                     The transform direction.
+         * \returns                           The cuFFT result code (0 if no error).
+         */
+        cufftResult_t perform_3dfft(gmx_fft_direction dir);
+};
 
 #endif // PME3DFFT_CUH

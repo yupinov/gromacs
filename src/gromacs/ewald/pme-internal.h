@@ -267,7 +267,10 @@ typedef struct gmx_pme_t {
                                              * A permanent variable, should be read using pme_gpu_enabled.
                                              */
 
-    pme_gpu_t     *gpu;                     /* A pointer to the GPU data */
+    pme_gpu_t     *gpu;                     /* A pointer to the GPU data.
+                                             * This should be std::shared_ptr since GPU structure is unique
+                                             * while the CPU structures might theoretically be many
+                                             */
 
     int            ljpme_combination_rule;  /* Type of combination rule in LJ-PME */
 

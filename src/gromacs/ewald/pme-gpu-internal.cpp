@@ -204,7 +204,7 @@ void pme_gpu_reinit_grids(pme_gpu_t *pmeGPU)
     pme_gpu_realloc_and_copy_fract_shifts(pmeGPU);
     pme_gpu_realloc_and_copy_bspline_values(pmeGPU);
     pme_gpu_realloc_grids(pmeGPU);
-    pme_gpu_reinit_3dfft(pmeGPU); // FIXME: this is a memory leak - allocating new plans each time!
+    pme_gpu_reinit_3dfft(pmeGPU);
 }
 
 #include "pme-internal.h"
@@ -305,9 +305,9 @@ void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_o
             gmx_fatal(FARGS, error.c_str());
         }
 
-        snew(pmeGPU, 1);
-        pme->gpu       = pmeGPU;
-        pmeGPU->common = new pme_shared_t;
+        pme->gpu       = new pme_gpu_t();
+        pmeGPU         = pme->gpu;
+        pmeGPU->common = std::shared_ptr<pme_shared_t>(new pme_shared_t);
 
         /* Some permanent settings are set here */
         pmeGPU->settings.bGPUSingle = (pme->nnodes == 1);
@@ -364,8 +364,7 @@ void pme_gpu_destroy(pme_gpu_t *pmeGPU)
     /* Free the GPU-framework specific data last */
     pme_gpu_destroy_specific(pmeGPU);
 
-    delete pmeGPU->common;
-    sfree(pmeGPU);
+    delete pmeGPU;
 }
 
 void pme_gpu_reinit_atoms(pme_gpu_t *pmeGPU, const int nAtoms, real *coefficients)

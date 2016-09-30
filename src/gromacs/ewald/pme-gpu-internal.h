@@ -50,7 +50,7 @@
 
 #include "gromacs/fft/fft.h"
 #include "gromacs/gpu_utils/gpu_macros.h"
-
+#include "gromacs/utility/basedefinitions.h"
 #include "pme-gpu-types.h"
 
 struct gmx_hw_info_t;

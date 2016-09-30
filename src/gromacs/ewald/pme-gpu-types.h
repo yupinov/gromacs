@@ -296,7 +296,7 @@ struct pme_shared_t
 struct pme_gpu_t
 {
     /*! \brief The information copied once per reinit from the CPU structure. */
-    pme_shared_t *common;
+    std::shared_ptr<pme_shared_t> common; // TODO: make the CPU structure use the same type
 
     /*! \brief The settings. */
     pme_gpu_settings_t settings;
@@ -334,7 +334,7 @@ struct pme_gpu_t
     pme_gpu_kernel_params_t kernelParams;
 
     /*! \brief The pointer to mostly GPU-framework specific host-side data, such as CUDA streams and events. */
-    pme_gpu_specific_t *archSpecific;
+    std::shared_ptr<pme_gpu_specific_t> archSpecific; /* TODO: make it an unique_ptr - how to make a deleter? */
 };
 
 #endif // PMEGPUTYPES_H

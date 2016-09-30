@@ -34,11 +34,9 @@
  */
 
 /*! \internal \file
- * \brief This file defines the PME CUDA-specific data structures,
+ * \brief This file defines the PME CUDA-specific data structure,
  * various compile-time constants shared among the PME CUDA kernels,
  * and also names some PME CUDA memory management routines.
- * Ideally this file should contain just all the CUDA-specific stuff
- * which doesn't fit into pme-gpu.h and pme-gpu-types.h.
  *
  * \author Aleksei Iupinov <a.yupinov@gmail.com>
  */
@@ -48,7 +46,9 @@
 
 #include "gmxpre.h"
 
-#include <assert.h>
+#include <cassert>
+#include <vector>
+#include <memory>
 
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 #include "gromacs/gpu_utils/cudautils.cuh"
@@ -165,9 +165,9 @@ struct pme_gpu_cuda_t
 
     //gmx_bool bUseTextureObjects;  /* If false, then use references [unused] */
 
-    gmx_parallel_3dfft_gpu_t            *pfft_setup_gpu;
+    std::vector<std::unique_ptr<gmx_parallel_3dfft_gpu_t > > pfft_setup_gpu;
 
-    pme_gpu_timing                      *timingEvents[gtPME_EVENT_COUNT];
+    std::vector<std::unique_ptr<pme_gpu_timing> >            timingEvents;
 
     /* GPU arrays element counts (not the arrays sizes in bytes!).
      * They might be larger than the actual meaningful data sizes.
