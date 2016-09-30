@@ -34,11 +34,9 @@
  */
 
 /*! \internal \file
- * \brief This file defines the PME CUDA-specific data structures,
+ * \brief This file defines the PME CUDA-specific data structure,
  * various compile-time constants shared among the PME CUDA kernels,
  * and also names some PME CUDA memory management routines.
- * Ideally this file should contain just all the CUDA-specific stuff
- * which doesn't fit into pme-gpu.h and pme-gpu-types.h.
  *
  * \author Aleksei Iupinov <a.yupinov@gmail.com>
  */
