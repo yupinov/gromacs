@@ -41,6 +41,7 @@
 
 #include "gromacs/math/vectypes.h"
 #include "gromacs/mdtypes/md_enums.h"
+#include "gromacs/utility/alignedallocator.h"
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
 
@@ -74,7 +75,7 @@ enum {
 extern const char *est_names[estNR];
 
 /* This vector is not padded yet, padding will be added soon */
-typedef std::vector<gmx::RVec> PaddedRVecVector;
+typedef std::vector<gmx::RVec, gmx::AlignedAllocator<gmx::RVec>> PaddedRVecVector;
 
 typedef struct history_t
 {

@@ -661,7 +661,7 @@ static int do_cpte_double(XDR *xd, int cptp, int ecpt, int sflags,
 
 
 static int do_cpte_rvecs(XDR *xd, int cptp, int ecpt, int sflags,
-                         int n, std::vector<gmx::RVec> *v, FILE *list)
+                         int n, PaddedRVecVector *v, FILE *list)
 {
     rvec *v_rvec;
 
