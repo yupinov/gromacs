@@ -86,9 +86,9 @@ void gmx_parallel_3dfft_execute_gpu_wrapper(gmx_pme_t              *pme,
     assert(grid_index == 0);
     if (pme_gpu_performs_FFT(pme->gpu))
     {
-        wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
+        wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_FFT);
         pme_gpu_3dfft(pme->gpu, dir, grid_index);
-        wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
+        wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_FFT);
     }
     else
     {
@@ -118,6 +118,8 @@ void pme_gpu_launch(gmx_pme_t      *pme,
 {
     GMX_ASSERT(gmx_pme_gpu_enabled(pme), "This is a GPU run of PME.");
 
+    wallcycle_start(wcycle, ewcLAUNCH_GPU_PME);
+
     pme_gpu_t           *pmeGPU = pme->gpu;
 
     pmegrids_t          *pmegrid     = NULL;
@@ -133,7 +135,7 @@ void pme_gpu_launch(gmx_pme_t      *pme,
 
     bFirst = TRUE;
 
-    wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME);
+    wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_INIT);
     if (pme->gpu->settings.bNeedToUpdateAtoms)
     {
         /* This only does a one-time atom data init at the first MD step.
@@ -144,7 +146,7 @@ void pme_gpu_launch(gmx_pme_t      *pme,
     }
     pme_gpu_set_io_ranges(pmeGPU, x, f);              /* Should this be called every step, or on DD/DLB, or on bCalcEnerVir change? */
     pme_gpu_start_step(pmeGPU, box);                  /* This copies the coordinates, and updates the unit cell box (if it has changed) */
-    wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
+    wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_INIT);
 
     const unsigned int grid_index = 0;
 
@@ -160,9 +162,9 @@ void pme_gpu_launch(gmx_pme_t      *pme,
     if (flags & GMX_PME_SPREAD)
     {
         /* Spread the coefficients on a grid */
-        wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
+        wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_SPREAD);
         pme_gpu_spread(pme, &pme->atc[0], grid_index, &pmegrid->grid, bFirst, TRUE);
-        wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
+        wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_SPREAD);
 
         //if (!pme->bUseThreads)
         {
@@ -197,9 +199,9 @@ void pme_gpu_launch(gmx_pme_t      *pme,
             /* solve in k-space for our local cells */
             if (pme_gpu_performs_solve(pmeGPU))
             {
-                wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
+                wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_SOLVE);
                 pme_gpu_solve(pme, cfftgrid, bCalcEnerVir);
-                wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
+                wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_SOLVE);
             }
             else
             {
@@ -237,6 +239,8 @@ void pme_gpu_launch(gmx_pme_t      *pme,
             unwrap_periodic_pmegrid(pme, grid);
         }
     }
+
+    wallcycle_stop(wcycle, ewcLAUNCH_GPU_PME);
 }
 
 void pme_gpu_launch_gather(const gmx_pme_t                 *pme,
@@ -248,9 +252,11 @@ void pme_gpu_launch_gather(const gmx_pme_t                 *pme,
         return;
     }
 
-    wallcycle_sub_start_nocount(wcycle, ewcsLAUNCH_GPU_PME);
+    wallcycle_start_nocount(wcycle, ewcLAUNCH_GPU_PME);
+    wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_GATHER);
     pme_gpu_gather(pme, bClearForces);
-    wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME);
+    wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_GATHER);
+    wallcycle_stop(wcycle, ewcLAUNCH_GPU_PME);
 }
 
 void gmx_pme_gpu_get_results(const gmx_pme_t *pme,
@@ -264,9 +270,16 @@ void gmx_pme_gpu_get_results(const gmx_pme_t *pme,
     const gmx_bool       bCalcEnerVir            = flags & GMX_PME_CALC_ENER_VIR;
     const gmx_bool       bCalcF                  = flags & GMX_PME_CALC_F;
 
+    // FIXME
+    wallcycle_stop(wcycle, ewcFORCE);
+
+    wallcycle_start(wcycle, ewcWAIT_GPU_PME);
     wallcycle_sub_start(wcycle, ewcsWAIT_GPU_PME);
     pme_gpu_finish_step(pme->gpu, bCalcF, bCalcEnerVir);
     wallcycle_sub_stop(wcycle, ewcsWAIT_GPU_PME);
+    wallcycle_stop(wcycle, ewcWAIT_GPU_PME);
+
+    wallcycle_start_nocount(wcycle, ewcFORCE);
 
     if (bCalcEnerVir)
     {
