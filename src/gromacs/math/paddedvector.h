@@ -45,6 +45,7 @@
 
 #include <vector>
 
+#include "gromacs/utility/alignedallocator.h"
 #include "gromacs/math/vectypes.h"
 
 namespace gmx
@@ -53,7 +54,7 @@ namespace gmx
 /*! \brief Temporary definition of a type usable for SIMD-style loads of RVec quantities.
  *
  * \todo This vector is not padded yet, padding will be added soon */
-using PaddedRVecVector = std::vector<gmx::RVec>;
+using PaddedRVecVector = std::vector < gmx::RVec, gmx::AlignedAllocator < gmx::RVec>>;
 
 } // namespace gmx
 
