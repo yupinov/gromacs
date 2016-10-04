@@ -43,13 +43,16 @@
 
 #include "gmxpre.h"
 
-#include <assert.h>
+#include <cassert>
 
 #include "gromacs/ewald/pme.h"
+#include "gromacs/gpu_utils/cuda_arch_utils.cuh"
+#include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/utility/fatalerror.h"
 
 #include "pme.cuh"
 #include "pme-internal.h"
+#include "pme-timings.cuh"
 
 #define PME_GPU_PARALLEL_SPLINE 1
 /* This define affects the spline calculation behaviour in the spreading kernel.
@@ -67,7 +70,7 @@ texture<float, 1, cudaReadModeElementType> fshTextureRef;
 #endif
 
 
-/* This is the PME GPU spline calculation .
+/* This is the PME GPU spline calculation.
  * It corresponds to the CPU codepath functions calc_interpolation_idx and make_bsplines.
  */
 template <
@@ -679,7 +682,7 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                     const gmx_bool bCalcSplines,
                     const gmx_bool bSpread)
 {
-    const gmx_bool bSeparateKernels = false;  // significantly slower if true
+    const gmx_bool bSeparateKernels = FALSE;  // significantly slower if true
     if (!bCalcSplines && !bSpread)
     {
         gmx_fatal(FARGS, "No splining or spreading to be done?"); //yupinov use of gmx_fatal

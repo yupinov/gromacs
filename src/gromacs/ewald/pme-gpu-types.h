@@ -256,9 +256,7 @@ struct pme_gpu_io_t
  * (pme_gpu_reinit is called at the end of gmx_pme_init).
  * All the variables here are named almost the same way as in gmx_pme_t.
  * The types are different: pointers are replaced by vectors.
- * The initial reasoning was to separate CUDA and MPI code
- * (work with gmx_pme_t members => include pme-internal.h => include gmxmpi.h => get CUDA compilation problems),
- * however, isolating dependencies should be good in general.
+ * TODO: use the shared data with the PME CPU.
  * Included in the main PME GPU structure by value.
  */
 struct pme_shared_t

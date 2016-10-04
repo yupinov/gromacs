@@ -42,8 +42,7 @@
 
 #include "gmxpre.h"
 
-#include <assert.h>
-#include <string.h>
+#include <cassert>
 
 #include "gromacs/ewald/pme.h"
 #include "gromacs/utility/exceptions.h"

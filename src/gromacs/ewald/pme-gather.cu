@@ -41,12 +41,15 @@
 
 #include "gmxpre.h"
 
-#include <assert.h>
+#include <cassert>
 
+#include "gromacs/gpu_utils/cuda_arch_utils.cuh"
+#include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/utility/gmxassert.h"
 
 #include "pme.cuh"
 #include "pme-internal.h"
+#include "pme-timings.cuh"
 
 /*! \brief
  *
@@ -61,7 +64,7 @@ __device__ __forceinline__ float read_grid_size(const float *localGridSizeFP,
         case YY: return localGridSizeFP[YY];
         case ZZ: return localGridSizeFP[ZZ];
     }
-    assert(false);
+    assert(FALSE);
     return 0.0f;
 }
 

@@ -873,7 +873,7 @@ static void dump_grid(FILE *fp,
 {
     int            x, y, z;
 
-    const gmx_bool YZXadjust = true; // ((g == (real *)pme->cfftgrid[0]) && (!pme->bGPUFFT));
+    const gmx_bool YZXadjust = TRUE; // ((g == (real *)pme->cfftgrid[0]) && (!pme->bGPUFFT));
 
     for (x = 0; x < nx; x++)
     {

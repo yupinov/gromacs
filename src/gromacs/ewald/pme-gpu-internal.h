@@ -46,18 +46,15 @@
 #ifndef PMEGPUINTERNAL_H
 #define PMEGPUINTERNAL_H
 
-#include "gmxpre.h"
+#include "gromacs/fft/fft.h"                   // for the enum gmx_fft_direction
+#include "gromacs/gpu_utils/gpu_macros.h"      // for the CUDA_FUNC_ macros
 
-#include "gromacs/fft/fft.h"
-#include "gromacs/gpu_utils/gpu_macros.h"
-#include "gromacs/utility/basedefinitions.h"
-
-#include "pme-gpu-types.h"
+#include "pme-gpu-types.h"                     // for the inline functions accessing pme_gpu_t members
 
 struct gmx_hw_info_t;
 struct gmx_gpu_opt_t;
-struct gmx_pme_t;
-struct gmx_wallclock_gpu_t;
+struct gmx_pme_t;                              // only used in pme_gpu_reinit
+struct gmx_wallclock_gpu_t;                    // only used in pme_gpu_get_timings
 
 /* Some general defines for PME GPU behaviour follow.
  * Some of the might be possible to turn into booleans.
@@ -384,6 +381,35 @@ CUDA_FUNC_QUALIFIER void pme_gpu_reset_timings(const pme_gpu_t *CUDA_FUNC_ARGUME
  */
 CUDA_FUNC_QUALIFIER void pme_gpu_get_timings(const pme_gpu_t      *CUDA_FUNC_ARGUMENT(pmeGPU),
                                              gmx_wallclock_gpu_t **CUDA_FUNC_ARGUMENT(timings)) CUDA_FUNC_TERM
+
+/* Separate PME GPU stages, living in ther own *.cu files */
+
+#include "pme-internal.h"
+//#include "gromacs/math/gmxcomplex.h"
+// A GPU counterpart to the spread_on_grid
+CUDA_FUNC_QUALIFIER void pme_gpu_spread(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
+                                        pme_atomcomm_t  *CUDA_FUNC_ARGUMENT(atc),
+                                        const int        CUDA_FUNC_ARGUMENT(grid_index),
+                                        pmegrid_t       *CUDA_FUNC_ARGUMENT(pmegrid),
+                                        const gmx_bool   CUDA_FUNC_ARGUMENT(bCalcSplines),
+                                        const gmx_bool   CUDA_FUNC_ARGUMENT(bSpread)) CUDA_FUNC_TERM
+
+// A GPU counterpart to gmx_parallel_3dfft_execute
+CUDA_FUNC_QUALIFIER void pme_gpu_3dfft(const pme_gpu_t       *CUDA_FUNC_ARGUMENT(pmeGPU),
+                                       enum gmx_fft_direction CUDA_FUNC_ARGUMENT(dir),
+                                       const int              CUDA_FUNC_ARGUMENT(grid_index)) CUDA_FUNC_TERM
+
+// A GPU counterpart to the solve_pme_yzx
+CUDA_FUNC_QUALIFIER void pme_gpu_solve(
+        gmx_pme_t     *CUDA_FUNC_ARGUMENT(pme),
+        t_complex     *CUDA_FUNC_ARGUMENT(grid),
+        const gmx_bool CUDA_FUNC_ARGUMENT(bEnerVir)) CUDA_FUNC_TERM
+
+// A GPU counterpart to the gather_f_bsplines
+CUDA_FUNC_QUALIFIER void pme_gpu_gather(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
+                                        const gmx_bool   CUDA_FUNC_ARGUMENT(bOverwriteForces)) CUDA_FUNC_TERM
+
+
 
 /* The inlined convenience PME GPU status getters */
 

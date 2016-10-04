@@ -252,7 +252,7 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
         if (gmx_pme_gpu_enabled(pme))
         {
             pme_gpu_launch(pme, natoms, x_pp, f_pp, chargeA, box, wcycle, pme_flags);
-            pme_gpu_launch_gather(pme, wcycle, true);
+            pme_gpu_launch_gather(pme, wcycle, TRUE);
             gmx_pme_gpu_get_results(pme, wcycle, vir_q, &energy_q, pme_flags);
         }
         else

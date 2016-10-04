@@ -108,6 +108,7 @@
 
 #include "calculate-spline-moduli.h"
 #include "pme-gather.h"
+#include "pme-gpu-internal.h"
 #include "pme-grid.h"
 #include "pme-internal.h"
 #include "pme-redistribute.h"

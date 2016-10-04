@@ -42,28 +42,27 @@
 #ifndef PME3DFFT_CUH
 #define PME3DFFT_CUH
 
-#include "gmxpre.h"
+#include <cufft.h>                  // for the cufft types
 
-#include <cufft.h>
+#include "gromacs/fft/fft.h"        // for the enum gmx_fft_direction
+#include "gromacs/math/vectypes.h"  // for the ivec
 
-#include "gromacs/fft/fft.h"
-
-#include "pme-gpu-types.h"
+struct pme_gpu_t;
 
 /*! \brief \internal A 3D FFT class for performing R2C/C2R transforms */
 class gmx_parallel_3dfft_gpu_t
 {
-    ivec          nDataReal;
-    ivec          sizeReal;
-    ivec          sizeComplex;
+    ivec          _nDataReal;
+    ivec          _sizeReal;
+    ivec          _sizeComplex;
 
-    cufftHandle   planR2C;
-    cufftHandle   planC2R;
-    cufftReal    *realGrid;
-    cufftComplex *complexGrid;
+    cufftHandle   _planR2C;
+    cufftHandle   _planC2R;
+    cufftReal    *_realGrid;
+    cufftComplex *_complexGrid;
 
     /* unused */
-    ivec          localOffset;
+    ivec          _localOffset;
     public:
         /*! \brief
          * Constructs CUDA FFT plans for performing 3D FFT on a PME grid.

@@ -44,19 +44,14 @@
 #ifndef PME_CUDA_H
 #define PME_CUDA_H
 
-#include "gmxpre.h"
+#include <cassert>            // for the asserts within inline functions
 
-#include <cassert>
+#include "pme-gpu-internal.h" // for the general PME GPU behaviour defines
+#include "pme-timings.cuh"    // FIXME: for the pme_gpu_timing unique_ptr vector
 
-#include <memory>
-#include <vector>
 
-#include "gromacs/gpu_utils/cuda_arch_utils.cuh"
-#include "gromacs/gpu_utils/cudautils.cuh"
-
-#include "pme-3dfft.cuh"
-#include "pme-gpu-internal.h"
-#include "pme-timings.cuh"
+class pme_gpu_timing;
+class gmx_parallel_3dfft_gpu_t;
 
 /* Some CUDA-specific defines for PME behaviour follow. */
 
@@ -172,7 +167,7 @@ struct pme_gpu_cuda_t
      */
     gmx_bool bTiming;
 
-    //gmx_bool bUseTextureObjects;  /* If false, then use references [unused] */
+    //gmx_bool bUseTextureObjects;  /* If FALSE, then use references [unused] */
 
     std::vector<std::unique_ptr<gmx_parallel_3dfft_gpu_t > > pfft_setup_gpu;
 

@@ -41,96 +41,92 @@
 
 #include "gmxpre.h"
 
-#include <cuda.h>
+#include "pme-timings.cuh"
 
-#include "gromacs/ewald/pme.h"
 #include "gromacs/gpu_utils/cudautils.cuh"
-#include "gromacs/timing/gpu_timing.h"
-#include "gromacs/timing/wallcycle.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
 
 #include "pme.cuh"
-#include "pme-gpu-internal.h"
 
 /* The pme_gpu_timing class implementation */
 
 pme_gpu_timing::pme_gpu_timing()
 {
-    initialized = false;
+    _initialized = FALSE;
     reset();
 }
 
 pme_gpu_timing::~pme_gpu_timing()
 {
-    if (initialized)
+    if (_initialized)
     {
         cudaError_t stat;
-        stat = cudaEventDestroy(event_start);
+        stat = cudaEventDestroy(_eventStart);
         CU_RET_ERR(stat, "PME timing cudaEventDestroy fail");
-        stat = cudaEventDestroy(event_stop);
+        stat = cudaEventDestroy(_eventStop);
         CU_RET_ERR(stat, "PME timing cudaEventDestroy fail");
-        initialized = false;
+        _initialized = FALSE;
     }
 }
 
 void pme_gpu_timing::enable()
 {
-    if (!initialized)
+    if (!_initialized)
     {
         cudaError_t stat;
-        stat = cudaEventCreate(&event_start, cudaEventDefault);
+        stat = cudaEventCreate(&_eventStart, cudaEventDefault);
         CU_RET_ERR(stat, "PME timing cudaEventCreate fail");
-        stat = cudaEventCreate(&event_stop, cudaEventDefault);
+        stat = cudaEventCreate(&_eventStop, cudaEventDefault);
         CU_RET_ERR(stat, "PME timing cudaEventCreate fail");
-        initialized = true;
+        _initialized = TRUE;
     }
 }
 
 void pme_gpu_timing::start_recording(cudaStream_t s)
 {
-    if (initialized)
+    if (_initialized)
     {
-        cudaError_t stat = cudaEventRecord(event_start, s);
+        cudaError_t stat = cudaEventRecord(_eventStart, s);
         CU_RET_ERR(stat, "PME timing cudaEventRecord fail");
     }
 }
 
 void pme_gpu_timing::stop_recording(cudaStream_t s)
 {
-    if (initialized)
+    if (_initialized)
     {
-        cudaError_t stat = cudaEventRecord(event_stop, s);
+        cudaError_t stat = cudaEventRecord(_eventStop, s);
         CU_RET_ERR(stat, "PME timing cudaEventRecord fail");
-        call_count++;
+        _callCount++;
     }
 }
 
 void pme_gpu_timing::reset()
 {
-    total_milliseconds = 0.0;
-    call_count         = 0;
+    _totalMilliseconds = 0.0;
+    _callCount         = 0;
 }
 
 void pme_gpu_timing::update()
 {
-    if (initialized && (call_count > 0)) /* Only the touched events needed */
+    if (_initialized && (_callCount > 0)) /* Only the touched events needed */
     {
-        real        milliseconds = 0.0;
-        cudaError_t stat         = cudaEventElapsedTime(&milliseconds, event_start, event_stop);
+        float        milliseconds = 0.0;
+        cudaError_t  stat         = cudaEventElapsedTime(&milliseconds, _eventStart, _eventStop);
         CU_RET_ERR(stat, "PME timing cudaEventElapsedTime fail");
-        total_milliseconds += milliseconds;
+        _totalMilliseconds += milliseconds;
     }
 }
 
-real pme_gpu_timing::get_total_time_milliseconds()
+float pme_gpu_timing::get_total_time_milliseconds()
 {
-    return total_milliseconds;
+    return _totalMilliseconds;
 }
 
 unsigned int pme_gpu_timing::get_call_count()
 {
-    return call_count;
+    return _callCount;
 }
 
 /* The general PME GPU timing functions */

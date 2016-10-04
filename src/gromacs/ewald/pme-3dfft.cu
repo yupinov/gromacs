@@ -41,55 +41,54 @@
 
 #include "gmxpre.h"
 
-#include <assert.h>
+#include "pme-3dfft.cuh"
 
-#include "gromacs/gpu_utils/cudautils.cuh"
+#include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/gmxassert.h"
-#include "gromacs/utility/smalloc.h"
 
 #include "pme.cuh"
-#include "pme-gpu.h"
+#include "pme-gpu-types.h"
 
 gmx_parallel_3dfft_gpu_t::gmx_parallel_3dfft_gpu_t(const pme_gpu_t *pmeGPU)
 {
     for (int i = 0; i < DIM; i++)
     {
-        this->nDataReal[i]   = pmeGPU->kernelParams.grid.localGridSize[i];
-        this->sizeComplex[i] = this->sizeReal[i] = pmeGPU->kernelParams.grid.localGridSizePadded[i];
+        _nDataReal[i]   = pmeGPU->kernelParams.grid.localGridSize[i];
+        _sizeComplex[i] = _sizeReal[i] = pmeGPU->kernelParams.grid.localGridSizePadded[i];
     }
     if (!pmeGPU->archSpecific->bOutOfPlaceFFT)
     {
-        GMX_ASSERT(this->sizeComplex[ZZ] % 2 == 0, "Odd inplace cuFFT minor dimension");
+        GMX_ASSERT(_sizeComplex[ZZ] % 2 == 0, "Odd inplace cuFFT minor dimension");
     }
-    this->sizeComplex[ZZ] /= 2;
+    _sizeComplex[ZZ] /= 2;
 
     GMX_ASSERT(!pme_gpu_uses_dd(pmeGPU), "FFT decomposition not implemented");
 
-    const int gridSizeComplex = this->sizeComplex[XX] * this->sizeComplex[YY] * this->sizeComplex[ZZ];
-    const int gridSizeReal    = this->sizeReal[XX] * this->sizeReal[YY] * this->sizeReal[ZZ];
+    const int gridSizeComplex = _sizeComplex[XX] * _sizeComplex[YY] * _sizeComplex[ZZ];
+    const int gridSizeReal    = _sizeReal[XX] * _sizeReal[YY] * _sizeReal[ZZ];
 
-    memset(this->localOffset, 0, sizeof(this->localOffset)); //!
+    memset(_localOffset, 0, sizeof(_localOffset)); //!
 
-    this->realGrid = (cufftReal *)pmeGPU->kernelParams.grid.realGrid;
-    assert(this->realGrid);
-    this->complexGrid = (cufftComplex *)pmeGPU->kernelParams.grid.fourierGrid;
+    _realGrid = (cufftReal *)pmeGPU->kernelParams.grid.realGrid;
+    assert(_realGrid);
+    _complexGrid = (cufftComplex *)pmeGPU->kernelParams.grid.fourierGrid;
 
     /* Commented code for a simple 3D grid with no padding */
     /*
-       result = cufftPlan3d(&this->planR2C, this->ndataReal[XX], this->ndataReal[YY], this->ndataReal[ZZ], CUFFT_R2C);
+       result = cufftPlan3d(&_planR2C, _ndataReal[XX], _ndataReal[YY], _ndataReal[ZZ], CUFFT_R2C);
        if (result != CUFFT_SUCCESS)
        gmx_fatal(FARGS, "cufftPlan3d R2C error %d\n", result);
 
-       result = cufftPlan3d(&this->planC2R, this->ndataReal[XX], this->ndataReal[YY], this->ndataReal[ZZ], CUFFT_C2R);
+       result = cufftPlan3d(&_planC2R, _ndataReal[XX], _ndataReal[YY], _ndataReal[ZZ], CUFFT_C2R);
        if (result != CUFFT_SUCCESS)
        gmx_fatal(FARGS, "cufftPlan3d C2R error %d\n", result);
      */
 
     cufftResult_t             result;
     const int                 rank = 3, batch = 1;
-    result = cufftPlanMany(&this->planR2C, rank, this->nDataReal,
-                           this->sizeReal, 1, gridSizeReal,
-                           this->sizeComplex, 1, gridSizeComplex,
+    result = cufftPlanMany(&_planR2C, rank, _nDataReal,
+                           _sizeReal, 1, gridSizeReal,
+                           _sizeComplex, 1, gridSizeComplex,
                            CUFFT_R2C,
                            batch);
     if (result != CUFFT_SUCCESS)
@@ -97,9 +96,9 @@ gmx_parallel_3dfft_gpu_t::gmx_parallel_3dfft_gpu_t(const pme_gpu_t *pmeGPU)
         gmx_fatal(FARGS, "cufftPlanMany R2C error %d\n", result);
     }
 
-    result = cufftPlanMany(&this->planC2R, rank, this->nDataReal,
-                           this->sizeComplex, 1, gridSizeComplex,
-                           this->sizeReal, 1, gridSizeReal,
+    result = cufftPlanMany(&_planC2R, rank, _nDataReal,
+                           _sizeComplex, 1, gridSizeComplex,
+                           _sizeReal, 1, gridSizeReal,
                            CUFFT_C2R,
                            batch);
     if (result != CUFFT_SUCCESS)
@@ -109,13 +108,13 @@ gmx_parallel_3dfft_gpu_t::gmx_parallel_3dfft_gpu_t(const pme_gpu_t *pmeGPU)
 
     cudaStream_t s = pmeGPU->archSpecific->pmeStream;
     assert(s);
-    result = cufftSetStream(this->planR2C, s);
+    result = cufftSetStream(_planR2C, s);
     if (result != CUFFT_SUCCESS)
     {
         gmx_fatal(FARGS, "cufftSetStream R2C error %d\n", result);
     }
 
-    result = cufftSetStream(this->planC2R, s);
+    result = cufftSetStream(_planC2R, s);
     if (result != CUFFT_SUCCESS)
     {
         gmx_fatal(FARGS, "cufftSetStream C2R error %d\n", result);
@@ -125,12 +124,12 @@ gmx_parallel_3dfft_gpu_t::gmx_parallel_3dfft_gpu_t(const pme_gpu_t *pmeGPU)
 gmx_parallel_3dfft_gpu_t::~gmx_parallel_3dfft_gpu_t()
 {
     cufftResult_t result;
-    result = cufftDestroy(this->planR2C);
+    result = cufftDestroy(_planR2C);
     if (result != CUFFT_SUCCESS)
     {
         gmx_fatal(FARGS, "cufftDestroy R2C error %d\n", result);
     }
-    result = cufftDestroy(this->planC2R);
+    result = cufftDestroy(_planC2R);
     if (result != CUFFT_SUCCESS)
     {
         gmx_fatal(FARGS, "cufftDestroy C2R error %d\n", result);
@@ -141,15 +140,15 @@ void gmx_parallel_3dfft_gpu_t::get_real_limits(ivec localNData, ivec localOffset
 {
     if (localNData)
     {
-        memcpy(localNData, this->nDataReal, sizeof(this->nDataReal));
+        memcpy(localNData, _nDataReal, sizeof(_nDataReal));
     }
     if (localSize)
     {
-        memcpy(localSize, this->sizeReal, sizeof(this->sizeReal));
+        memcpy(localSize, _sizeReal, sizeof(_sizeReal));
     }
     if (localOffset)
     {
-        memcpy(localOffset, this->localOffset, sizeof(this->localOffset));
+        memcpy(localOffset, _localOffset, sizeof(_localOffset));
     }
 }
 
@@ -157,16 +156,16 @@ void gmx_parallel_3dfft_gpu_t::get_complex_limits(ivec localNData, ivec localOff
 {
     if (localNData)
     {
-        memcpy(localNData, this->nDataReal, sizeof(this->nDataReal));
+        memcpy(localNData, _nDataReal, sizeof(_nDataReal));
         localNData[ZZ] = localNData[ZZ] / 2 + 1;
     }
     if (localSize)
     {
-        memcpy(localSize, this->sizeComplex, sizeof(this->sizeComplex));
+        memcpy(localSize, _sizeComplex, sizeof(_sizeComplex));
     }
     if (localOffset)
     {
-        memcpy(localOffset, this->localOffset, sizeof(this->localOffset));
+        memcpy(localOffset, _localOffset, sizeof(_localOffset));
     }
 }
 
@@ -175,11 +174,11 @@ cufftResult_t gmx_parallel_3dfft_gpu_t::perform_3dfft(gmx_fft_direction dir)
     cufftResult_t result;
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {
-        result = cufftExecR2C(this->planR2C, this->realGrid, this->complexGrid);
+        result = cufftExecR2C(_planR2C, _realGrid, _complexGrid);
     }
     else
     {
-        result = cufftExecC2R(this->planC2R, this->complexGrid, this->realGrid);
+        result = cufftExecC2R(_planC2R, _complexGrid, _realGrid);
     }
     return result;
 }

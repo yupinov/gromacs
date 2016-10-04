@@ -42,7 +42,10 @@
 #ifndef PME_TIMINGS_CUH
 #define PME_TIMINGS_CUH
 
-#include "gromacs/timing/gpu_timing.h"
+#include "gromacs/timing/gpu_timing.h"       // for the PME GPU timing events enum
+#include "gromacs/utility/basedefinitions.h"
+
+struct pme_gpu_t;
 
 /*! \libinternal
  * \brief
@@ -54,10 +57,10 @@
  */
 class pme_gpu_timing
 {
-    bool         initialized;             /* Starts at false, set to true once */
-    cudaEvent_t  event_start, event_stop; /* The internal timing events */
-    unsigned int call_count;              /* Stars at 0, increased by stop_recording */
-    real         total_milliseconds;      /* Starts at 0.0, increased by update */
+    gmx_bool      _initialized;            /* Starts at FALSE, set to TRUE once */
+    cudaEvent_t   _eventStart, _eventStop; /* The internal timing events */
+    unsigned int  _callCount;              /* Stars at 0, increased by stop_recording */
+    float         _totalMilliseconds;      /* Starts at 0.0, increased by update */
 
     public:
         pme_gpu_timing();
@@ -82,7 +85,7 @@ class pme_gpu_timing
         /*! \brief Resets the timing event total time/call count. */
         void reset();
         /*! \brief Gets total time recorded. */
-        real get_total_time_milliseconds();
+        float get_total_time_milliseconds();
         /*! \brief Gets total call count recorded. */
         unsigned int get_call_count();
 };

@@ -45,16 +45,12 @@
 #ifndef PMEGPU_H
 #define PMEGPU_H
 
-#include "gromacs/gpu_utils/gpu_macros.h"
-#include "gromacs/math/gmxcomplex.h"
-#include "gromacs/math/vectypes.h"
-#include "gromacs/timing/gpu_timing.h"
-#include "gromacs/timing/wallcycle.h"
-
-#include "pme-gpu-types.h"
+#include "gromacs/fft/fft.h"           // for the enum gmx_fft_direction
+#include "gromacs/timing/wallcycle.h"  // FIXME: for the gmx_wallcycle_t
 
 struct gmx_pme_t;
 struct gmx_wallclock_gpu_t;
+struct pme_gpu_t;
 
 /*! \brief
  * Finds out if PME is set to run on GPU. Not to be called on per-step basis.
@@ -79,33 +75,6 @@ void gmx_pme_gpu_reset_timings(const gmx_pme_t *pme);
  */
 void gmx_pme_gpu_get_timings(const gmx_pme_t      *pme,
                              gmx_wallclock_gpu_t **timings);
-
-/* GPU functions of separate stages */
-
-#include "pme-internal.h"
-
-// A GPU counterpart to the spread_on_grid
-CUDA_FUNC_QUALIFIER void pme_gpu_spread(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
-                                        pme_atomcomm_t  *CUDA_FUNC_ARGUMENT(atc),
-                                        const int        CUDA_FUNC_ARGUMENT(grid_index),
-                                        pmegrid_t       *CUDA_FUNC_ARGUMENT(pmegrid),
-                                        const gmx_bool   CUDA_FUNC_ARGUMENT(bCalcSplines),
-                                        const gmx_bool   CUDA_FUNC_ARGUMENT(bSpread)) CUDA_FUNC_TERM
-
-// A GPU counterpart to gmx_parallel_3dfft_execute
-CUDA_FUNC_QUALIFIER void pme_gpu_3dfft(const pme_gpu_t       *CUDA_FUNC_ARGUMENT(pmeGPU),
-                                       enum gmx_fft_direction CUDA_FUNC_ARGUMENT(dir),
-                                       const int              CUDA_FUNC_ARGUMENT(grid_index)) CUDA_FUNC_TERM
-
-// A GPU counterpart to the solve_pme_yzx
-CUDA_FUNC_QUALIFIER void pme_gpu_solve(
-        gmx_pme_t     *CUDA_FUNC_ARGUMENT(pme),
-        t_complex     *CUDA_FUNC_ARGUMENT(grid),
-        const gmx_bool CUDA_FUNC_ARGUMENT(bEnerVir)) CUDA_FUNC_TERM
-
-// A GPU counterpart to the gather_f_bsplines
-CUDA_FUNC_QUALIFIER void pme_gpu_gather(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
-                                        const gmx_bool   CUDA_FUNC_ARGUMENT(bOverwriteForces)) CUDA_FUNC_TERM
 
 /* The main PME GPU functions */
 

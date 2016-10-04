@@ -56,6 +56,8 @@
 
 #include <assert.h>
 
+#include "gromacs/gpu_utils/cuda_arch_utils.cuh"
+#include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/pmalloc_cuda.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
@@ -364,7 +366,7 @@ void pme_gpu_sync_energy_virial(const pme_gpu_t *pmeGPU)
 void pme_gpu_sync_grid(const pme_gpu_t *pmeGPU, const gmx_fft_direction dir)
 {
     /* FIXME: this function does not actually seem to be used when it should be, with CPU FFT? */
-    gmx_bool syncGPUGrid = ((dir == GMX_FFT_REAL_TO_COMPLEX) ? true : pme_gpu_performs_solve(pmeGPU));
+    gmx_bool syncGPUGrid = ((dir == GMX_FFT_REAL_TO_COMPLEX) ? TRUE : pme_gpu_performs_solve(pmeGPU));
     if (syncGPUGrid)
     {
         cudaEvent_t syncEvent = (dir == GMX_FFT_REAL_TO_COMPLEX) ? pmeGPU->archSpecific->syncSpreadGridD2H : pmeGPU->archSpecific->syncSolveGridD2H;

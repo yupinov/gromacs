@@ -63,8 +63,6 @@
 #include "gromacs/timing/walltime_accounting.h"
 #include "gromacs/utility/gmxmpi.h"
 
-#include "pme-gpu-internal.h"
-
 struct t_commrec;
 struct t_inputrec;
 struct pme_gpu_t;

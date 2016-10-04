@@ -45,12 +45,15 @@
 
 #include <memory>
 
+#include "gromacs/ewald/pme-gpu.h"   //?
+#include "gromacs/gpu_utils/cuda_arch_utils.cuh"
+#include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/utility/gmxassert.h"
 
 #include "pme.cuh"
 #include "pme-3dfft.cuh"
-#include "pme-gpu.h"   //?
 #include "pme-internal.h"
+#include "pme-timings.cuh"
 
 #define THREADS_PER_BLOCK (4 * warp_size)
 

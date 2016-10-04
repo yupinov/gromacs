@@ -44,6 +44,8 @@
 
 #include "gmxpre.h"
 
+#include "pme-gpu-internal.h"
+
 #include "config.h"
 
 #include <cassert>
@@ -52,13 +54,12 @@
 
 #include <string>
 
+#include "gromacs/ewald/pme-gpu.h"
 #include "gromacs/gpu_utils/gpu_utils.h"
 #include "gromacs/math/invertmatrix.h"
 #include "gromacs/math/units.h"
 #include "gromacs/utility/fatalerror.h"
-#include "gromacs/utility/smalloc.h"
 
-#include "pme-gpu.h"
 #include "pme-internal.h"
 
 void pme_gpu_set_io_ranges(pme_gpu_t *pmeGPU, rvec *coordinates, rvec *forces)
