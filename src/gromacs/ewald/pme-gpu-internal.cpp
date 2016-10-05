@@ -65,7 +65,9 @@
 void pme_gpu_set_io_ranges(pme_gpu_t *pmeGPU, rvec *coordinates, rvec *forces)
 {
     pmeGPU->io.h_forces      = reinterpret_cast<float *>(forces);
+    pme_gpu_make_sure_memory_is_pinned((void **)&pmeGPU->io.h_forces, DIM * pmeGPU->kernelParams.atoms.nAtoms * sizeof(float));
     pmeGPU->io.h_coordinates = reinterpret_cast<float *>(coordinates);
+    pme_gpu_make_sure_memory_is_pinned((void **)&pmeGPU->io.h_coordinates, DIM * pmeGPU->kernelParams.atoms.nAtoms * sizeof(float));
 }
 
 void pme_gpu_get_energy_virial(const pme_gpu_t *pmeGPU, real *energy, matrix virial)
@@ -382,6 +384,7 @@ void pme_gpu_reinit_atoms(pme_gpu_t *pmeGPU, const int nAtoms, real *coefficient
     pmeGPU->nAtomsAlloc = nAtomsAlloc;
 
     pmeGPU->io.h_coefficients = reinterpret_cast<float *>(coefficients);
+    pme_gpu_make_sure_memory_is_pinned((void **)&pmeGPU->io.h_coefficients, nAtoms * sizeof(float));
     pme_gpu_realloc_and_copy_coefficients(pmeGPU); /* Could also be checked for haveToRealloc, but the copy always needs to be performed */
 
     if (haveToRealloc)

@@ -319,6 +319,17 @@ CUDA_FUNC_QUALIFIER void pme_gpu_init_sync_events(const pme_gpu_t *CUDA_FUNC_ARG
 CUDA_FUNC_QUALIFIER void pme_gpu_destroy_sync_events(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU)) CUDA_FUNC_TERM
 
 /*! \libinternal \brief
+ * Makes sure that the memory is aligned by 4096 and pagelocked.
+ * A temporary hack to make the PME CUDA copies non-blocking.
+ * Should be done during the allocation instead, if done the proper way.
+ *
+ * \param[in] h_ptr   The host buffer pointer.
+ * \param[in] bytes   The buffer's size in bytes.
+ */
+CUDA_FUNC_QUALIFIER void pme_gpu_make_sure_memory_is_pinned(void **CUDA_FUNC_ARGUMENT(h_ptr),
+                                                            size_t CUDA_FUNC_ARGUMENT(bytes)) CUDA_FUNC_TERM
+
+/*! \libinternal \brief
  * Initializes the CUDA FFT structures.
  *
  * \param[in] pmeGPU  The PME GPU structure.
