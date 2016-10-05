@@ -155,7 +155,7 @@ alignedMalloc(std::size_t bytes)
     // So, for now we're semi-lazy and just align to 128 bytes!
     //
     // TODO LINCS code is copying this assumption independently (for now)
-    std::size_t alignment = 128;
+    std::size_t alignment = 4096; //hack for PME GPU; was 128
 
     void   *    p;
 
