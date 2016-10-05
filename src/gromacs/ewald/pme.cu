@@ -460,33 +460,6 @@ void pme_gpu_destroy_sync_events(const pme_gpu_t *pmeGPU)
     CU_RET_ERR(stat, "cudaEventDestroy failed on syncSolveGridH2D");
 }
 
-#if PME_GPU_PAGELOCKING_HACK
-#include <set>
-static std::set<void *> pageLockedPointers;
-#endif
-
-void pme_gpu_make_sure_memory_is_pinned(void **h_ptr, size_t bytes)
-{
-#if PME_GPU_PAGELOCKING_HACK
-    if (!pageLockedPointers.count(*h_ptr))
-    {
-        cudaError_t stat = cudaHostRegister(*h_ptr, bytes, cudaHostRegisterDefault);
-        if (stat == cudaErrorHostMemoryAlreadyRegistered)
-        {
-            cudaGetLastError(); // suppress "Already mapped" message
-        }
-        else
-        {
-            CU_RET_ERR(stat, "Could not pin the PME GPU memory");
-        }
-        pageLockedPointers.insert(*h_ptr);
-    }
-#else
-    GMX_UNUSED_VALUE(h_ptr);
-    GMX_UNUSED_VALUE(bytes);
-#endif
-}
-
 void pme_gpu_reinit_3dfft(const pme_gpu_t *pmeGPU)
 {
     if (pme_gpu_performs_FFT(pmeGPU))
