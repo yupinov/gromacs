@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2015, by the GROMACS development team, led by
+ * Copyright (c) 2015,2016, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -155,7 +155,7 @@ alignedMalloc(std::size_t bytes)
     // So, for now we're semi-lazy and just align to 128 bytes!
     //
     // TODO LINCS code is copying this assumption independently (for now)
-    std::size_t alignment = 128;
+    std::size_t alignment = 4096; //hack for PME GPU; was 128
 
     void   *    p;
 

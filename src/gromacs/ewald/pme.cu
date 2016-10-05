@@ -473,17 +473,11 @@ void pme_gpu_make_sure_memory_is_pinned(void **h_ptr, size_t bytes)
         cudaError_t stat = cudaHostRegister(*h_ptr, bytes, cudaHostRegisterDefault);
         if (stat == cudaErrorHostMemoryAlreadyRegistered)
         {
-            cudaGetLastError(); // suppress "already mapped"
+            cudaGetLastError(); // suppress "Already mapped" message
         }
-        else if (stat != cudaSuccess)
+        else
         {
-            // realloc
-            void *h_newPtr = NULL;
-            pmalloc(&h_newPtr, bytes);
-            memcpy(h_newPtr, *h_ptr, bytes);
-            sfree_aligned(*h_ptr);
-            *h_ptr = h_newPtr;
-            // FIXME: bonded forces are calculated later
+            CU_RET_ERR(stat, "Could not pin the {ME GPU memory");
         }
         pageLockedPointers.insert(*h_ptr);
     }
