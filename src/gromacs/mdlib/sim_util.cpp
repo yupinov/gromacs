@@ -207,21 +207,18 @@ void print_start(FILE *fplog, t_commrec *cr,
                         walltime_accounting_get_start_time_stamp(walltime_accounting));
 }
 
-static void sum_forces(int start, int end, rvec f[], rvec flr[])
+static void sum_forces(rvec f[], const PaddedRVecVector *forceToAdd)
 {
-    int i;
+    /* TODO: remove this - 1 when padding is properly implemented */
+    int         end  = forceToAdd->size() - 1;
+    const rvec *fAdd = as_rvec_array(forceToAdd->data());
 
-    if (gmx_debug_at)
-    {
-        pr_rvecs(debug, 0, "fsr", f+start, end-start);
-        pr_rvecs(debug, 0, "flr", flr+start, end-start);
-    }
     // cppcheck-suppress unreadVariable
     int gmx_unused nt = gmx_omp_nthreads_get(emntDefault);
 #pragma omp parallel for num_threads(nt) schedule(static)
-    for (i = start; i < end; i++)
+    for (int i = 0; i < end; i++)
     {
-        rvec_inc(f[i], flr[i]);
+        rvec_inc(f[i], fAdd[i]);
     }
 }
 
@@ -374,7 +371,7 @@ static void pme_receive_force_ener(t_commrec      *cr,
     wallcycle_start(wcycle, ewcPP_PMEWAITRECVF);
     dvdl_q  = 0;
     dvdl_lj = 0;
-    gmx_pme_receive_f(cr, fr->f_novirsum, fr->vir_el_recip, &e_q,
+    gmx_pme_receive_f(cr, as_rvec_array(fr->f_novirsum->data()), fr->vir_el_recip, &e_q,
                       fr->vir_lj_recip, &e_lj, &dvdl_q, &dvdl_lj,
                       &cycles_seppme);
     enerd->term[F_COUL_RECIP] += e_q;
@@ -431,7 +428,7 @@ static void post_process_forces(t_commrec *cr,
              * if the constructing atoms aren't local.
              */
             wallcycle_start(wcycle, ewcVSITESPREAD);
-            spread_vsite_f(vsite, x, fr->f_novirsum, NULL,
+            spread_vsite_f(vsite, x, as_rvec_array(fr->f_novirsum->data()), NULL,
                            (flags & GMX_FORCE_VIRIAL), fr->vir_el_recip,
                            nrnb,
                            &top->idef, fr->ePBC, fr->bMolPBC, graph, box, cr);
@@ -440,15 +437,8 @@ static void post_process_forces(t_commrec *cr,
         if (flags & GMX_FORCE_VIRIAL)
         {
             /* Now add the forces, this is local */
-            if (fr->bDomDec)
-            {
-                sum_forces(0, fr->f_novirsum_n, f, fr->f_novirsum);
-            }
-            else
-            {
-                sum_forces(0, mdatoms->homenr,
-                           f, fr->f_novirsum);
-            }
+            sum_forces(f, fr->f_novirsum);
+
             if (EEL_FULL(fr->eeltype))
             {
                 /* Add the mesh contribution to the virial */
@@ -790,7 +780,7 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
                          gmx_localtop_t *top,
                          gmx_groups_t gmx_unused *groups,
                          matrix box, rvec x[], history_t *hist,
-                         rvec f[],
+                         PaddedRVecVector *force,
                          tensor vir_force,
                          t_mdatoms *mdatoms,
                          gmx_enerdata_t *enerd, t_fcdata *fcd,
@@ -1015,6 +1005,9 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
         wallcycle_stop(wcycle, ewcNB_XF_BUF_OPS);
     }
 
+    /* Temporary solution until all routines take PaddedRVecVector */
+    rvec *f = as_rvec_array(force->data());
+
     /* Moved from further below for the purpose of calling the PME GPU early */
     wallcycle_start(wcycle, ewcFORCE);
     if (bDoForces)
@@ -1025,7 +1018,7 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
         {
             if (flags & GMX_FORCE_VIRIAL)
             {
-                fr->f_novirsum = fr->f_novirsum_alloc;
+                fr->f_novirsum = fr->forceBufferNoVirialSummation;
             }
             else
             {
@@ -1033,7 +1026,7 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
                  * a separate array for forces that do not contribute
                  * to the pressure.
                  */
-                fr->f_novirsum = f;
+                fr->f_novirsum = force;
             }
         }
 
@@ -1041,14 +1034,9 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
         {
             if (flags & GMX_FORCE_VIRIAL)
             {
-                if (fr->bDomDec)
-                {
-                    clear_rvecs_omp(fr->f_novirsum_n, fr->f_novirsum);
-                }
-                else
-                {
-                    clear_rvecs_omp(homenr, fr->f_novirsum+start);
-                }
+                /* TODO: remove this - 1 when padding is properly implemented */
+                clear_rvecs_omp(fr->f_novirsum->size() - 1,
+                                as_rvec_array(fr->f_novirsum->data()));
             }
         }
         /* Clear the short- and long-range forces */
@@ -1058,6 +1046,7 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
     }
     /* Copypaste end */
     wallcycle_stop(wcycle, ewcFORCE);
+    
 
     do_pme_gpu_launch(fr, inputrec, cr,
                       wcycle, mdatoms,
@@ -1478,7 +1467,8 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
         {
             /* Compute forces due to electric field */
             calc_f_el(MASTER(cr) ? field : NULL,
-                      start, homenr, mdatoms->chargeA, fr->f_novirsum,
+                      start, homenr, mdatoms->chargeA,
+                      as_rvec_array(fr->f_novirsum->data()),
                       inputrec->ex, inputrec->et, t);
         }
 
@@ -1555,7 +1545,7 @@ void do_force_cutsGROUP(FILE *fplog, t_commrec *cr,
                         gmx_localtop_t *top,
                         gmx_groups_t *groups,
                         matrix box, rvec x[], history_t *hist,
-                        rvec f[],
+                        PaddedRVecVector *force,
                         tensor vir_force,
                         t_mdatoms *mdatoms,
                         gmx_enerdata_t *enerd, t_fcdata *fcd,
@@ -1758,6 +1748,9 @@ void do_force_cutsGROUP(FILE *fplog, t_commrec *cr,
         wallcycle_stop(wcycle, ewcROT);
     }
 
+    /* Temporary solution until all routines take PaddedRVecVector */
+    rvec *f = as_rvec_array(force->data());
+
     /* Start the force cycle counter.
      * This counter is stopped after do_force_lowlevel.
      * No parallel communication should occur while this counter is running,
@@ -1773,15 +1766,10 @@ void do_force_cutsGROUP(FILE *fplog, t_commrec *cr,
         {
             if (flags & GMX_FORCE_VIRIAL)
             {
-                fr->f_novirsum = fr->f_novirsum_alloc;
-                if (fr->bDomDec)
-                {
-                    clear_rvecs(fr->f_novirsum_n, fr->f_novirsum);
-                }
-                else
-                {
-                    clear_rvecs(homenr, fr->f_novirsum+start);
-                }
+                fr->f_novirsum = fr->forceBufferNoVirialSummation;
+                /* TODO: remove this - 1 when padding is properly implemented */
+                clear_rvecs(fr->f_novirsum->size() - 1,
+                            as_rvec_array(fr->f_novirsum->data()));
             }
             else
             {
@@ -1789,7 +1777,7 @@ void do_force_cutsGROUP(FILE *fplog, t_commrec *cr,
                  * a separate array for forces that do not contribute
                  * to the pressure.
                  */
-                fr->f_novirsum = f;
+                fr->f_novirsum = force;
             }
         }
 
@@ -1842,7 +1830,8 @@ void do_force_cutsGROUP(FILE *fplog, t_commrec *cr,
         {
             /* Compute forces due to electric field */
             calc_f_el(MASTER(cr) ? field : NULL,
-                      start, homenr, mdatoms->chargeA, fr->f_novirsum,
+                      start, homenr, mdatoms->chargeA,
+                      as_rvec_array(fr->f_novirsum->data()),
                       inputrec->ex, inputrec->et, t);
         }
 
@@ -1861,7 +1850,7 @@ void do_force_cutsGROUP(FILE *fplog, t_commrec *cr,
             if (EEL_FULL(fr->eeltype) && cr->dd->n_intercg_excl &&
                 (flags & GMX_FORCE_VIRIAL))
             {
-                dd_move_f(cr->dd, fr->f_novirsum, NULL);
+                dd_move_f(cr->dd, as_rvec_array(fr->f_novirsum->data()), NULL);
             }
             wallcycle_stop(wcycle, ewcMOVEF);
         }
@@ -1958,7 +1947,6 @@ void do_force(FILE *fplog, t_commrec *cr,
     GMX_ASSERT(force->size() >= static_cast<unsigned int>(fr->natoms_force + 1), "We might need 1 element extra for SIMD");
 
     rvec *x = as_rvec_array(coordinates->data());
-    rvec *f = as_rvec_array(force->data());
 
     switch (inputrec->cutoff_scheme)
     {
@@ -1968,7 +1956,7 @@ void do_force(FILE *fplog, t_commrec *cr,
                                 top,
                                 groups,
                                 box, x, hist,
-                                f, vir_force,
+                                force, vir_force,
                                 mdatoms,
                                 enerd, fcd,
                                 lambda->data(), graph,
@@ -1984,7 +1972,7 @@ void do_force(FILE *fplog, t_commrec *cr,
                                top,
                                groups,
                                box, x, hist,
-                               f, vir_force,
+                               force, vir_force,
                                mdatoms,
                                enerd, fcd,
                                lambda->data(), graph,
