@@ -65,6 +65,14 @@ class parallel_3dfft_gpu_t;
 #define PME_USE_TEXOBJ 1
 #endif
 
+#define PME_GPU_PAGELOCKING_HACK 1
+/* Enables temporary hack for PME GPU to realloc with 4096 alignment
+ * and pagelock the important host pointers (forces, charges, coordinates...)
+ * so that the CUDA copies are non-blocking.
+ * TODO: this should be done with an AlignedAllocator instead.
+ */
+
+
 /* TODO: move all the kernel blocksizes here, as they are all over the place */
 
 

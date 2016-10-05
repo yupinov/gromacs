@@ -156,6 +156,7 @@ void pme_gpu_copy_input_forces(const pme_gpu_t *pmeGPU, const float *h_forces)
     GMX_ASSERT(h_forces, "NULL host forces pointer in PME GPU");
     const size_t forcesSize = DIM * pmeGPU->kernelParams.get()->atoms.nAtoms * sizeof(float);
     GMX_ASSERT(forcesSize > 0, "Bad number of atoms in PME GPU");
+    pme_gpu_make_sure_memory_is_pinned((void **)&h_forces, forcesSize);
     cu_copy_H2D_async(pmeGPU->kernelParams.get()->atoms.d_forces, const_cast<float *>(h_forces), forcesSize, pmeGPU->archSpecific->pmeStream);
 }
 
@@ -164,6 +165,7 @@ void pme_gpu_copy_output_forces(const pme_gpu_t *pmeGPU, float *h_forces)
     GMX_ASSERT(h_forces, "NULL host forces pointer in PME GPU");
     const size_t forcesSize   = DIM * pmeGPU->kernelParams.get()->atoms.nAtoms * sizeof(float);
     GMX_ASSERT(forcesSize > 0, "Bad number of atoms in PME GPU");
+    pme_gpu_make_sure_memory_is_pinned((void **)&h_forces, forcesSize);
     cu_copy_D2H_async(h_forces, pmeGPU->kernelParams.get()->atoms.d_forces, forcesSize, pmeGPU->archSpecific->pmeStream);
     cudaError_t stat = cudaEventRecord(pmeGPU->archSpecific->syncForcesD2H, pmeGPU->archSpecific->pmeStream);
     CU_RET_ERR(stat, "PME gather forces synchronization failure");
@@ -197,6 +199,7 @@ void pme_gpu_copy_input_coordinates(const pme_gpu_t *pmeGPU, const rvec *h_coord
 {
     GMX_ASSERT(h_coordinates, "Bad host-side coordinate buffer in PME GPU");
     GMX_RELEASE_ASSERT(sizeof(real) == sizeof(float), "Only single precision supported");
+    pme_gpu_make_sure_memory_is_pinned((void **)&h_coordinates, pmeGPU->kernelParams.get()->atoms.nAtoms * sizeof(rvec));
     cu_copy_H2D_async(pmeGPU->kernelParams.get()->atoms.d_coordinates, const_cast<rvec *>(h_coordinates),
                       pmeGPU->kernelParams.get()->atoms.nAtoms * sizeof(rvec), pmeGPU->archSpecific->pmeStream);
 }
@@ -214,6 +217,7 @@ void pme_gpu_realloc_and_copy_input_coefficients(const pme_gpu_t *pmeGPU, const 
     cu_realloc_buffered((void **)&pmeGPU->kernelParams.get()->atoms.d_coefficients, NULL, sizeof(float),
                         &pmeGPU->archSpecific->coefficientsSize, &pmeGPU->archSpecific->coefficientsSizeAlloc,
                         newCoefficientsSize, pmeGPU->archSpecific->pmeStream, true);
+    pme_gpu_make_sure_memory_is_pinned((void **)&h_coefficients, pmeGPU->kernelParams.get()->atoms.nAtoms * sizeof(float));
     cu_copy_H2D_async(pmeGPU->kernelParams.get()->atoms.d_coefficients, const_cast<float *>(h_coefficients),
                       pmeGPU->kernelParams.get()->atoms.nAtoms * sizeof(float), pmeGPU->archSpecific->pmeStream);
 #if PME_GPU_USE_PADDING
