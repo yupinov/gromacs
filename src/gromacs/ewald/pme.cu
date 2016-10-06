@@ -65,6 +65,14 @@
 #include "pme.cuh"
 #include "pme-3dfft.cuh"
 
+
+#define PME_GPU_PAGELOCKING_HACK 1
+/* Enables temporary hack for PME GPU to realloc with page size alignment
+ * and pagelock the important host pointers (forces, charges, coordinates...)
+ * so that the CUDA copies are non-blocking.
+ * TODO: this should be removed when the AlignedAllocator learns how to page-lock.
+ */
+
 void pme_gpu_synchronize(const pme_gpu_t *pmeGPU)
 {
     cudaError_t stat = cudaStreamSynchronize(pmeGPU->archSpecific->pmeStream);
