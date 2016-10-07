@@ -481,17 +481,39 @@ void pme_gpu_destroy_sync_events(const pme_gpu_t *pmeGPU)
 #if PME_GPU_PAGELOCKING_HACK
 #include <set>
 static std::set<void *> pageLockedPointers;
+
+static inline bool isAligned(const void *ptr, size_t bytes)
+{
+    return (uintptr_t)ptr % bytes == 0;
+}
+
 #endif
 
 void pme_gpu_make_sure_memory_is_pinned(void **h_ptr, size_t bytes)
 {
 #if PME_GPU_PAGELOCKING_HACK
+#ifdef _SC_PAGESIZE
+    std::size_t pageSize = (size_t)(sysconf(_SC_PAGESIZE));
+#else
+    std::size_t pageSize = 4096; // a wild guess
+#endif
+
     if (!pageLockedPointers.count(*h_ptr))
     {
         cudaError_t stat = cudaHostRegister(*h_ptr, bytes, cudaHostRegisterDefault);
         if (stat == cudaErrorHostMemoryAlreadyRegistered)
         {
             cudaGetLastError(); // suppress "Already mapped" message
+        }
+        else if (stat != cudaSuccess && !isAligned(*h_ptr, pageSize))
+        {
+            cudaGetLastError(); // suppress previous errors
+            // realloc
+            void *h_newPtr = NULL;
+            pmalloc(&h_newPtr, bytes);
+            memcpy(h_newPtr, *h_ptr, bytes);
+            sfree_aligned(*h_ptr);
+            *h_ptr = h_newPtr;
         }
         else
         {
