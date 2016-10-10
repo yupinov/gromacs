@@ -52,6 +52,10 @@
 /* The rest */
 #include "pme.h"
 
+#include <assert.h>
+#include <unistd.h>
+
+#include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/pmalloc_cuda.h"
 #include "gromacs/utility/gmxassert.h"
@@ -500,20 +504,11 @@ void pme_gpu_make_sure_memory_is_pinned(void **h_ptr, size_t bytes)
 
     if (!pageLockedPointers.count(*h_ptr))
     {
+        GMX_RELEASE_ASSERT( isAligned(*h_ptr, pageSize), "CPU pointer passed to pme_gpu_make_sure_memory_is_pinned not page-aligned!");
         cudaError_t stat = cudaHostRegister(*h_ptr, bytes, cudaHostRegisterDefault);
         if (stat == cudaErrorHostMemoryAlreadyRegistered)
         {
             cudaGetLastError(); // suppress "Already mapped" message
-        }
-        else if (stat != cudaSuccess && !isAligned(*h_ptr, pageSize))
-        {
-            cudaGetLastError(); // suppress previous errors
-            // realloc
-            void *h_newPtr = NULL;
-            pmalloc(&h_newPtr, bytes);
-            memcpy(h_newPtr, *h_ptr, bytes);
-            sfree_aligned(*h_ptr);
-            *h_ptr = h_newPtr;
         }
         else
         {
