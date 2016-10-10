@@ -50,28 +50,28 @@
 struct pme_gpu_t;
 
 /*! \brief \internal A 3D FFT class for performing R2C/C2R transforms */
-class gmx_parallel_3dfft_gpu_t
+class parallel_3dfft_gpu_t
 {
-    ivec          _nDataReal;
-    ivec          _sizeReal;
-    ivec          _sizeComplex;
+    ivec          nDataReal_;
+    ivec          sizeReal_;
+    ivec          sizeComplex_;
 
-    cufftHandle   _planR2C;
-    cufftHandle   _planC2R;
-    cufftReal    *_realGrid;
-    cufftComplex *_complexGrid;
+    cufftHandle   planR2C_;
+    cufftHandle   planC2R_;
+    cufftReal    *realGrid_;
+    cufftComplex *complexGrid_;
 
     /* unused */
-    ivec          _localOffset;
+    ivec          localOffset_;
     public:
         /*! \brief
          * Constructs CUDA FFT plans for performing 3D FFT on a PME grid.
          *
          * \param[in] pmeGPU                  The PME GPU structure.
          */
-        gmx_parallel_3dfft_gpu_t(const pme_gpu_t *pmeGPU);
+        parallel_3dfft_gpu_t(const pme_gpu_t *pmeGPU);
         /*! \brief Destroys CUDA FFT plans. */
-        ~gmx_parallel_3dfft_gpu_t();
+        ~parallel_3dfft_gpu_t();
         /*! \brief
          * Returns the grid dimensions of the local real-space grid.
          *

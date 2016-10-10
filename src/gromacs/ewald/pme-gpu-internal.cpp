@@ -48,7 +48,6 @@
 
 #include "config.h"
 
-#include <cassert>
 #include <cstdlib>
 #include <cstring>
 
@@ -59,6 +58,7 @@
 #include "gromacs/math/invertmatrix.h"
 #include "gromacs/math/units.h"
 #include "gromacs/utility/fatalerror.h"
+#include "gromacs/utility/gmxassert.h"
 
 #include "pme-internal.h"
 
@@ -72,7 +72,7 @@ void pme_gpu_set_io_ranges(pme_gpu_t *pmeGPU, rvec *coordinates, rvec *forces)
 
 void pme_gpu_get_energy_virial(const pme_gpu_t *pmeGPU, real *energy, matrix virial)
 {
-    assert(energy);
+    GMX_ASSERT(energy, "Bad (NULL) energy output in PME GPU");
     size_t j = 0;
     virial[XX][XX] = 0.25 * pmeGPU->io.h_virialAndEnergy[j++];
     virial[YY][YY] = 0.25 * pmeGPU->io.h_virialAndEnergy[j++];
@@ -88,7 +88,7 @@ void pme_gpu_start_step(pme_gpu_t *pmeGPU, const matrix box)
     pme_gpu_copy_coordinates(pmeGPU);
 
     const size_t   boxMemorySize        = sizeof(matrix);
-    const gmx_bool haveToUpdateUnitCell = memcmp(pmeGPU->previousBox, box, boxMemorySize);
+    const bool     haveToUpdateUnitCell = memcmp(pmeGPU->previousBox, box, boxMemorySize);
     /* There could be a pressure coupling check here, but this is more straightforward.
      * This is an exact comparison of float values though.
      */
@@ -97,10 +97,10 @@ void pme_gpu_start_step(pme_gpu_t *pmeGPU, const matrix box)
         memcpy(pmeGPU->previousBox, box, boxMemorySize);
 
         pmeGPU->kernelParams.step.boxVolume = box[XX][XX] * box[YY][YY] * box[ZZ][ZZ];
-        assert(pmeGPU->kernelParams.step.boxVolume != 0.0f);
+        GMX_ASSERT(pmeGPU->kernelParams.step.boxVolume != 0.0f, "Zero volume of the unit cell");
 
 #if GMX_DOUBLE
-        assert("PME is single-precision only on GPU. You shouldn't be seeing this message!");
+        GMX_RELEASE_ASSERT(FALSE, "PME is single-precision only on GPU. You shouldn't be seeing this message!");
 #else
         matrix recipBox;
         gmx::invertBoxMatrix(box, recipBox);
@@ -130,7 +130,7 @@ void pme_gpu_reinit_step(const pme_gpu_t *pmeGPU)
     pme_gpu_clear_energy_virial(pmeGPU);
 }
 
-void pme_gpu_finish_step(const pme_gpu_t *pmeGPU, const gmx_bool bCalcF, const gmx_bool bCalcEnerVir)
+void pme_gpu_finish_step(const pme_gpu_t *pmeGPU, const bool bCalcF, const bool bCalcEnerVir)
 {
     /* Needed for copy back as well as timing events */
     pme_gpu_synchronize(pmeGPU);
@@ -259,10 +259,10 @@ void pme_gpu_fetch_shared_data(const gmx_pme_t *pme)
  *
  * \param[in]  pme          The PME structure.
  * \param[out] error        The error message if the input is not supported on GPU.
- * \returns                 TRUE if this PME input is possible to run on GPU, FALSE otherwise.
+ * \returns                 True if this PME input is possible to run on GPU, false otherwise.
  */
-gmx_bool pme_gpu_check_restrictions(const gmx_pme_t *pme,
-                                    std::string     &error)
+bool pme_gpu_check_restrictions(const gmx_pme_t *pme,
+                                std::string     &error)
 {
     if (pme->nnodes != 1)
     {
@@ -296,18 +296,18 @@ gmx_bool pme_gpu_check_restrictions(const gmx_pme_t *pme,
 
 void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_opt_t *gpu_opt)
 {
-    if (!gmx_pme_gpu_enabled(pme))
+    if (!pme_gpu_enabled(pme))
     {
         return;
     }
 
     pme_gpu_t     *pmeGPU    = pme->gpu;
-    const gmx_bool firstInit = !pmeGPU;
+    const bool     firstInit = !pmeGPU;
     if (firstInit) /* One-time initialization */
     {
         std::string error;
-        pme->bGPU = pme_gpu_check_restrictions(pme, error);
-        if (!pme->bGPU)
+        pme->useGPU = pme_gpu_check_restrictions(pme, error);
+        if (!pme->useGPU)
         {
             gmx_fatal(FARGS, error.c_str());
         }
@@ -317,15 +317,15 @@ void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_o
         pmeGPU->common = std::shared_ptr<pme_shared_t>(new pme_shared_t());
 
         /* Some permanent settings are set here */
-        pmeGPU->settings.bGPUSingle = (pme->nnodes == 1);
+        pmeGPU->settings.useSingleGPU = (pme->nnodes == 1);
         /* A convenience variable. */
-        pmeGPU->settings.bGPUFFT = !pme_gpu_uses_dd(pmeGPU) && !getenv("GMX_PME_GPU_FFTW");
+        pmeGPU->settings.performGPUFFT = !pme_gpu_uses_dd(pmeGPU) && !getenv("GMX_PME_GPU_FFTW");
         /* GPU FFT will only used for a single rank. */
-        pmeGPU->settings.bGPUSolve = TRUE;
+        pmeGPU->settings.performGPUSolve = true;
         /* pmeGPU->settings.bGPUFFT - CPU solve with the CPU FFTW is definitely broken at the moment - 20160511 */
-        pmeGPU->settings.bGPUGather = TRUE;
+        pmeGPU->settings.performGPUGather = true;
         /* CPU gather has got to be broken as well due to different theta/dtheta layout. */
-        pmeGPU->settings.bNeedToUpdateAtoms = TRUE;
+        pmeGPU->settings.needToUpdateAtoms = true;
         /* For the delayed atom data init hack */
 
         pme_gpu_init_specific(pmeGPU, hwinfo, gpu_opt);
@@ -338,9 +338,9 @@ void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_o
 
     if (firstInit)
     {
-        assert(pmeGPU->common->epsilon_r != 0.0f);
+        GMX_ASSERT(pmeGPU->common->epsilon_r != 0.0f, "PME GPU: bad electrostatic coefficient");
         pmeGPU->kernelParams.constants.elFactor = ONE_4PI_EPS0 / pmeGPU->common->epsilon_r;
-        // assert(pmeGPU->common->ngrids == 1);
+        // GMX_ASSERT(pmeGPU->common->ngrids == 1, "Only a single PME grid supported on GPU");
         // this assert will fail now because PME CPU is stupid and has 2 grids minimum
     }
 
@@ -380,7 +380,7 @@ void pme_gpu_reinit_atoms(pme_gpu_t *pmeGPU, const int nAtoms, real *coefficient
     const int      alignment = 8; // FIXME: this is particlesPerBlock
     pmeGPU->nAtomsPadded = ((nAtoms + alignment - 1) / alignment) * alignment;
     int            nAtomsAlloc   = PME_GPU_USE_PADDING ? pmeGPU->nAtomsPadded : nAtoms;
-    const gmx_bool haveToRealloc = (pmeGPU->nAtomsAlloc < nAtomsAlloc); /* This check might be redundant, but is logical */
+    const bool     haveToRealloc = (pmeGPU->nAtomsAlloc < nAtomsAlloc); /* This check might be redundant, but is logical */
     pmeGPU->nAtomsAlloc = nAtomsAlloc;
 
     pmeGPU->io.h_coefficients = reinterpret_cast<float *>(coefficients);

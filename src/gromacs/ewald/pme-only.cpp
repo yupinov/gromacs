@@ -127,7 +127,7 @@ static void gmx_pmeonly_switch(int *npmedata, struct gmx_pme_t ***pmedata,
              * This should not cause actual GPU reallocations, at least (the allocated buffers are never shrunk).
              * So, just some grid size updates in the GPU kernel parameters.
              */
-            if (gmx_pme_gpu_enabled(pme))
+            if (pme_gpu_enabled(pme))
             {
                 gmx_pme_reinit(&((*pmedata)[ind]), cr, pme, ir, grid_size, ewaldcoeff_q, ewaldcoeff_lj);
             }
@@ -191,7 +191,7 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
         do
         {
             /* Domain decomposition */
-            gmx_bool atomSetChanged = FALSE;
+            bool atomSetChanged = FALSE;
             ret = gmx_pme_recv_coeffs_coords(pme_pp,
                                              &natoms,
                                              &chargeA, &chargeB,
@@ -249,11 +249,11 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
 
         const int pme_flags = GMX_PME_DO_ALL_F | (bEnerVir ? GMX_PME_CALC_ENER_VIR : 0);
 
-        if (gmx_pme_gpu_enabled(pme))
+        if (pme_gpu_enabled(pme))
         {
             pme_gpu_launch(pme, natoms, x_pp, f_pp, chargeA, box, wcycle, pme_flags);
             pme_gpu_launch_gather(pme, wcycle, TRUE);
-            gmx_pme_gpu_get_results(pme, wcycle, vir_q, &energy_q, pme_flags);
+            pme_gpu_get_results(pme, wcycle, vir_q, &energy_q, pme_flags);
         }
         else
         {

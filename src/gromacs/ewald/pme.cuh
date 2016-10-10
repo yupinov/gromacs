@@ -51,7 +51,7 @@
 
 
 class pme_gpu_timing;
-class gmx_parallel_3dfft_gpu_t;
+class parallel_3dfft_gpu_t;
 
 /* Some CUDA-specific defines for PME behaviour follow. */
 
@@ -153,16 +153,16 @@ struct pme_gpu_cuda_t
     cudaEvent_t syncSolveGridD2H;
 
     /* Permanent settings set on initialization */
-    /*! \brief A boolean which tells whether the complex and real grids for cuFFT are different or same. Currenty TRUE. */
-    gmx_bool bOutOfPlaceFFT;
+    /*! \brief A boolean which tells whether the complex and real grids for cuFFT are different or same. Currenty true. */
+    bool performOutOfPlaceFFT;
     /*! \brief A boolean which tells if the CUDA timing events are enabled.
-     * TRUE by default, disabled by setting the environment variable GMX_DISABLE_CUDA_TIMING.
+     * true by default, disabled by setting the environment variable GMX_DISABLE_CUDA_TIMING.
      */
-    gmx_bool bTiming;
+    bool useTiming;
 
-    //gmx_bool bUseTextureObjects;  /* If FALSE, then use references [unused] */
+    //bool bUseTextureObjects;  /* If FALSE, then use references [unused] */
 
-    std::vector<std::unique_ptr<gmx_parallel_3dfft_gpu_t > > pfft_setup_gpu;
+    std::vector<std::unique_ptr<parallel_3dfft_gpu_t > >     pfft_setup_gpu;
 
     std::vector<std::unique_ptr<pme_gpu_timing> >            timingEvents;
 

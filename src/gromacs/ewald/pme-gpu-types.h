@@ -214,19 +214,19 @@ struct pme_gpu_kernel_params_t
 struct pme_gpu_settings_t
 {
     /* Permanent settings set on initialization */
-    /*! \brief A boolean which tells if the solving is performed on GPU. Currently always TRUE */
-    gmx_bool bGPUSolve;
-    /*! \brief A boolean which tells if the gathering is performed on GPU. Currently always TRUE */
-    gmx_bool bGPUGather;
-    /*! \brief A boolean which tells if the FFT is performed on GPU. Currently TRUE for a single MPI rank. */
-    gmx_bool bGPUFFT;
+    /*! \brief A boolean which tells if the solving is performed on GPU. Currently always true */
+    bool performGPUSolve;
+    /*! \brief A boolean which tells if the gathering is performed on GPU. Currently always true */
+    bool performGPUGather;
+    /*! \brief A boolean which tells if the FFT is performed on GPU. Currently true for a single MPI rank. */
+    bool performGPUFFT;
     /*! \brief A convenience boolean which tells if there is only one PME GPU process. */
-    gmx_bool bGPUSingle;
+    bool useSingleGPU;
     /*! \brief A boolean which tells the PME GP to call pme_gpu_reinit_atoms() at the beginning of the run.
-     * Set to TRUE initially, then to FALSE after the first MD step.
+     * Set to true initially, then to false after the first MD step.
      * The pme_reinit_atoms() after the DD gets called directly in gmx_pmeonly.
      */
-    gmx_bool bNeedToUpdateAtoms;
+    bool needToUpdateAtoms;
 };
 
 /*! \internal \brief
@@ -329,7 +329,7 @@ struct pme_gpu_t
     pme_gpu_kernel_params_t kernelParams;
 
     /*! \brief The pointer to mostly GPU-framework specific host-side data, such as CUDA streams and events. */
-    std::shared_ptr<pme_gpu_specific_t> archSpecific; /* TODO: make it an unique_ptr - how to make a deleter? */
+    std::shared_ptr<pme_gpu_specific_t> archSpecific; /* TODO: make it an unique_ptr */
 };
 
 #endif // PMEGPUTYPES_H

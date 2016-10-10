@@ -250,8 +250,8 @@ typedef struct gmx_pme_t {
     int            nthread;     /* The number of threads doing PME on our rank */
 
     gmx_bool       bPPnode;     /* Node also does particle-particle forces */
-    gmx_bool       doCoulomb;   /* Apply PME to electrostatics */
-    gmx_bool       doLJ;        /* Apply PME to Lennard-Jones r^-6 interactions */
+    bool           doCoulomb;   /* Apply PME to electrostatics */
+    bool           doLJ;        /* Apply PME to Lennard-Jones r^-6 interactions */
     gmx_bool       bFEP;        /* Compute Free energy contribution */
     gmx_bool       bFEP_q;
     gmx_bool       bFEP_lj;
@@ -262,8 +262,8 @@ typedef struct gmx_pme_t {
     real           ewaldcoeff_lj; /* Ewald splitting coefficient for r^-6 */
     real           epsilon_r;
 
-    gmx_bool       bGPU;                    /* Are we using the GPU acceleration for PME purposes?
-                                             * A permanent variable, should be read using gmx_pme_gpu_enabled.
+    bool           useGPU;                  /* Are we using the GPU acceleration for PME purposes?
+                                             * A permanent variable, should be read using pme_gpu_enabled.
                                              */
 
     pme_gpu_t     *gpu;                     /* A pointer to the GPU data.
@@ -391,7 +391,7 @@ int gmx_pme_recv_coeffs_coords(struct gmx_pme_pp *pme_pp,
                                ivec grid_size,
                                real *ewaldcoeff_q,
                                real *ewaldcoeff_lj,
-                               gmx_bool *atomSetChanged);
+                               bool *atomSetChanged);
 
 /*! \brief Send the PME mesh force, virial and energy to the PP-only nodes */
 void gmx_pme_send_force_vir_ener(struct gmx_pme_pp *pme_pp,

@@ -53,80 +53,80 @@
 
 pme_gpu_timing::pme_gpu_timing()
 {
-    _initialized = FALSE;
+    initialized_ = FALSE;
     reset();
 }
 
 pme_gpu_timing::~pme_gpu_timing()
 {
-    if (_initialized)
+    if (initialized_)
     {
         cudaError_t stat;
-        stat = cudaEventDestroy(_eventStart);
+        stat = cudaEventDestroy(eventStart_);
         CU_RET_ERR(stat, "PME timing cudaEventDestroy fail");
-        stat = cudaEventDestroy(_eventStop);
+        stat = cudaEventDestroy(eventStop_);
         CU_RET_ERR(stat, "PME timing cudaEventDestroy fail");
-        _initialized = FALSE;
+        initialized_ = FALSE;
     }
 }
 
 void pme_gpu_timing::enable()
 {
-    if (!_initialized)
+    if (!initialized_)
     {
         cudaError_t stat;
-        stat = cudaEventCreate(&_eventStart, cudaEventDefault);
+        stat = cudaEventCreate(&eventStart_, cudaEventDefault);
         CU_RET_ERR(stat, "PME timing cudaEventCreate fail");
-        stat = cudaEventCreate(&_eventStop, cudaEventDefault);
+        stat = cudaEventCreate(&eventStop_, cudaEventDefault);
         CU_RET_ERR(stat, "PME timing cudaEventCreate fail");
-        _initialized = TRUE;
+        initialized_ = TRUE;
     }
 }
 
-void pme_gpu_timing::start_recording(cudaStream_t s)
+void pme_gpu_timing::startRecording(cudaStream_t s)
 {
-    if (_initialized)
+    if (initialized_)
     {
-        cudaError_t stat = cudaEventRecord(_eventStart, s);
+        cudaError_t stat = cudaEventRecord(eventStart_, s);
         CU_RET_ERR(stat, "PME timing cudaEventRecord fail");
     }
 }
 
-void pme_gpu_timing::stop_recording(cudaStream_t s)
+void pme_gpu_timing::stopRecording(cudaStream_t s)
 {
-    if (_initialized)
+    if (initialized_)
     {
-        cudaError_t stat = cudaEventRecord(_eventStop, s);
+        cudaError_t stat = cudaEventRecord(eventStop_, s);
         CU_RET_ERR(stat, "PME timing cudaEventRecord fail");
-        _callCount++;
+        callCount_++;
     }
 }
 
 void pme_gpu_timing::reset()
 {
-    _totalMilliseconds = 0.0;
-    _callCount         = 0;
+    totalMilliseconds_ = 0.0;
+    callCount_         = 0;
 }
 
 void pme_gpu_timing::update()
 {
-    if (_initialized && (_callCount > 0)) /* Only the touched events needed */
+    if (initialized_ && (callCount_ > 0)) /* Only the touched events needed */
     {
         float        milliseconds = 0.0;
-        cudaError_t  stat         = cudaEventElapsedTime(&milliseconds, _eventStart, _eventStop);
+        cudaError_t  stat         = cudaEventElapsedTime(&milliseconds, eventStart_, eventStop_);
         CU_RET_ERR(stat, "PME timing cudaEventElapsedTime fail");
-        _totalMilliseconds += milliseconds;
+        totalMilliseconds_ += milliseconds;
     }
 }
 
-float pme_gpu_timing::get_total_time_milliseconds()
+float pme_gpu_timing::getTotalTimeMilliseconds()
 {
-    return _totalMilliseconds;
+    return totalMilliseconds_;
 }
 
-unsigned int pme_gpu_timing::get_call_count()
+unsigned int pme_gpu_timing::getCallCount()
 {
-    return _callCount;
+    return callCount_;
 }
 
 /* The general PME GPU timing functions */
@@ -137,9 +137,9 @@ unsigned int pme_gpu_timing::get_call_count()
  * \param[in] pme            The PME data structure.
  * \returns                  TRUE if timings are enabled, FALSE otherwise.
  */
-gmx_inline gmx_bool pme_gpu_timings_enabled(const pme_gpu_t *pmeGPU)
+gmx_inline bool pme_gpu_timings_enabled(const pme_gpu_t *pmeGPU)
 {
-    return pmeGPU->archSpecific->bTiming;
+    return pmeGPU->archSpecific->useTiming;
 }
 
 void pme_gpu_start_timing(const pme_gpu_t *pmeGPU, size_t PMEStageId)
@@ -147,7 +147,7 @@ void pme_gpu_start_timing(const pme_gpu_t *pmeGPU, size_t PMEStageId)
     if (pme_gpu_timings_enabled(pmeGPU))
     {
         GMX_ASSERT(PMEStageId < pmeGPU->archSpecific->timingEvents.size(), "Wrong PME GPU timing event index");
-        pmeGPU->archSpecific->timingEvents[PMEStageId]->start_recording(pmeGPU->archSpecific->pmeStream);
+        pmeGPU->archSpecific->timingEvents[PMEStageId]->startRecording(pmeGPU->archSpecific->pmeStream);
     }
 }
 
@@ -156,7 +156,7 @@ void pme_gpu_stop_timing(const pme_gpu_t *pmeGPU, size_t PMEStageId)
     if (pme_gpu_timings_enabled(pmeGPU))
     {
         GMX_ASSERT(PMEStageId < pmeGPU->archSpecific->timingEvents.size(), "Wrong PME GPU timing event index");
-        pmeGPU->archSpecific->timingEvents[PMEStageId]->stop_recording(pmeGPU->archSpecific->pmeStream);
+        pmeGPU->archSpecific->timingEvents[PMEStageId]->stopRecording(pmeGPU->archSpecific->pmeStream);
     }
 }
 
@@ -174,8 +174,8 @@ void pme_gpu_get_timings(const pme_gpu_t *pmeGPU, gmx_wallclock_gpu_t **timings)
         }
         for (size_t i = 0; i < pmeGPU->archSpecific->timingEvents.size(); i++)
         {
-            (*timings)->pme.timing[i].t = pmeGPU->archSpecific->timingEvents[i]->get_total_time_milliseconds();
-            (*timings)->pme.timing[i].c = pmeGPU->archSpecific->timingEvents[i]->get_call_count();
+            (*timings)->pme.timing[i].t = pmeGPU->archSpecific->timingEvents[i]->getTotalTimeMilliseconds();
+            (*timings)->pme.timing[i].c = pmeGPU->archSpecific->timingEvents[i]->getCallCount();
         }
     }
 }

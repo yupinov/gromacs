@@ -419,9 +419,9 @@ CUDA_FUNC_QUALIFIER void pme_gpu_gather(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)
  * \param[in] pmeGPU         The PME GPU structure.
  * \returns                  TRUE if PME runs on multiple GPUs, FALSE otherwise.
  */
-gmx_inline gmx_bool pme_gpu_uses_dd(const pme_gpu_t *pmeGPU)
+gmx_inline bool pme_gpu_uses_dd(const pme_gpu_t *pmeGPU)
 {
-    return !pmeGPU->settings.bGPUSingle;
+    return !pmeGPU->settings.useSingleGPU;
 }
 
 /*! \libinternal \brief
@@ -430,9 +430,9 @@ gmx_inline gmx_bool pme_gpu_uses_dd(const pme_gpu_t *pmeGPU)
  * \param[in] pmeGPU         The PME GPU structure.
  * \returns                  TRUE if the gathering is performed on GPU, FALSE otherwise.
  */
-gmx_inline gmx_bool pme_gpu_performs_gather(const pme_gpu_t *pmeGPU)
+gmx_inline bool pme_gpu_performs_gather(const pme_gpu_t *pmeGPU)
 {
-    return pmeGPU->settings.bGPUGather;
+    return pmeGPU->settings.performGPUGather;
 }
 
 /*! \libinternal \brief
@@ -441,9 +441,9 @@ gmx_inline gmx_bool pme_gpu_performs_gather(const pme_gpu_t *pmeGPU)
  * \param[in] pmeGPU         The PME GPU structure.
  * \returns                  TRUE if FFT is performed on GPU, FALSE otherwise.
  */
-gmx_inline gmx_bool pme_gpu_performs_FFT(const pme_gpu_t *pmeGPU)
+gmx_inline bool pme_gpu_performs_FFT(const pme_gpu_t *pmeGPU)
 {
-    return pmeGPU->settings.bGPUFFT;
+    return pmeGPU->settings.performGPUFFT;
 }
 
 /*! \libinternal \brief
@@ -452,9 +452,9 @@ gmx_inline gmx_bool pme_gpu_performs_FFT(const pme_gpu_t *pmeGPU)
  * \param[in] pmeGPU         The PME GPU structure.
  * \returns                  TRUE if (un-)wrapping is performed on GPU, FALSE otherwise.
  */
-gmx_inline gmx_bool pme_gpu_performs_wrapping(const pme_gpu_t *pmeGPU)
+gmx_inline bool pme_gpu_performs_wrapping(const pme_gpu_t *pmeGPU)
 {
-    return pmeGPU->settings.bGPUSingle;
+    return pmeGPU->settings.useSingleGPU;
 }
 
 /*! \libinternal \brief
@@ -463,9 +463,9 @@ gmx_inline gmx_bool pme_gpu_performs_wrapping(const pme_gpu_t *pmeGPU)
  * \param[in] pmeGPU         The PME GPU structure.
  * \returns                  TRUE if solving is performed on GPU, FALSE otherwise.
  */
-gmx_inline gmx_bool pme_gpu_performs_solve(const pme_gpu_t *pmeGPU)
+gmx_inline bool pme_gpu_performs_solve(const pme_gpu_t *pmeGPU)
 {
-    return pmeGPU->settings.bGPUSolve;
+    return pmeGPU->settings.performGPUSolve;
 }
 
 /* A block of C++ functions that live in pme-gpu-internal.cpp */
@@ -510,8 +510,8 @@ void pme_gpu_start_step(pme_gpu_t *pmeGPU, const matrix box);
  * \param[in] bCalcEnerVir   The left-over flag from the CPU code which tells the function to copy the energy/virial to the CPU side. Should be passed to the launch call instead.
  */
 void pme_gpu_finish_step(const pme_gpu_t *pmeGPU,
-                         const gmx_bool   bCalcForces,
-                         const gmx_bool   bCalcEnerVir);
+                         const bool       bCalcForces,
+                         const bool       bCalcEnerVir);
 
 /*! \libinternal \brief
  * (Re-)initializes the PME GPU data at the beginning of the run or on DLB.
