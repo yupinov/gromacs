@@ -2641,9 +2641,9 @@ void finish_run(FILE *fplog, const gmx::MDLogger &mdlog, t_commrec *cr,
     if (SIMMASTER(cr))
     {
         struct gmx_wallclock_gpu_t* gputimes = use_GPU(nbv) ? nbnxn_gpu_get_timings(nbv->gpu_nbv) : NULL;
-        if (gmx_pme_gpu_enabled(pme))
+        if (pme_gpu_enabled(pme))
         {
-            gmx_pme_gpu_get_timings(pme, &gputimes);
+            pme_gpu_get_timings(pme, &gputimes);
         }
         // TODO: free gputimes
 

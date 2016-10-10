@@ -56,16 +56,16 @@ struct pme_gpu_t;
  * Finds out if PME is set to run on GPU. Not to be called on per-step basis.
  *
  * \param[in] pme  The PME structure.
- * \returns        TRUE if PME runs on GPU, FALSE otherwise.
+ * \returns        True if PME runs on GPU, false otherwise.
  */
-gmx_bool gmx_pme_gpu_enabled(const gmx_pme_t *pme);
+bool pme_gpu_enabled(const gmx_pme_t *pme);
 
 /*! \brief
  * Resets the PME GPU timings. To be called at the reset step.
  *
  * \param[in] pme            The PME structure.
  */
-void gmx_pme_gpu_reset_timings(const gmx_pme_t *pme);
+void pme_gpu_reset_timings(const gmx_pme_t *pme);
 
 /*! \brief
  * Copies the PME GPU timings to the gmx_wallclock_gpu_t structure (for log output). To be called at the run end.
@@ -73,8 +73,8 @@ void gmx_pme_gpu_reset_timings(const gmx_pme_t *pme);
  * \param[in] pme               The PME structure.
  * \param[in] timings           The gmx_wallclock_gpu_t structure.
  */
-void gmx_pme_gpu_get_timings(const gmx_pme_t      *pme,
-                             gmx_wallclock_gpu_t **timings);
+void pme_gpu_get_timings(const gmx_pme_t      *pme,
+                         gmx_wallclock_gpu_t **timings);
 
 /* The main PME GPU functions */
 
@@ -130,10 +130,10 @@ void pme_gpu_launch_gather(const gmx_pme_t      *pme,
  *                            but likely will not as the force copy has already been scheduled before.
  *                            TODO: rethink the flag handling.
  */
-void gmx_pme_gpu_get_results(const gmx_pme_t *pme,
-                             gmx_wallcycle_t  wcycle,
-                             matrix           vir_q,
-                             real            *energy_q,
-                             int              flags);
+void pme_gpu_get_results(const gmx_pme_t *pme,
+                         gmx_wallcycle_t  wcycle,
+                         matrix           vir_q,
+                         real            *energy_q,
+                         int              flags);
 
 #endif // PMEGPU_H

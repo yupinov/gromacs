@@ -175,12 +175,12 @@ static void reset_all_counters(FILE *fplog, const gmx::MDLogger &mdlog, t_commre
         nbnxn_gpu_reset_timings(nbv);
     }
 
-    if (gmx_pme_gpu_enabled(pme))
+    if (pme_gpu_enabled(pme))
     {
-        gmx_pme_gpu_reset_timings(pme);
+        pme_gpu_reset_timings(pme);
     }
 
-    if (use_GPU(nbv) || gmx_pme_gpu_enabled(pme))
+    if (use_GPU(nbv) || pme_gpu_enabled(pme))
     {
         resetGpuProfiler();
     }

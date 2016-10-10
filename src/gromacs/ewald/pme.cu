@@ -54,8 +54,6 @@
 /* The rest */
 #include "pme.h"
 
-#include <assert.h>
-
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/pmalloc_cuda.h"
@@ -138,7 +136,7 @@ void pme_gpu_free_bspline_values(const pme_gpu_t *pmeGPU)
 void pme_gpu_realloc_forces(const pme_gpu_t *pmeGPU)
 {
     const size_t newForcesSize = pmeGPU->nAtomsAlloc * DIM;
-    assert(newForcesSize > 0);
+    GMX_ASSERT(newForcesSize > 0, "Bad number of atoms in PME GPU");
     cu_realloc_buffered((void **)&pmeGPU->kernelParams.atoms.forces, NULL, sizeof(float),
                         &pmeGPU->archSpecific->forcesSize, &pmeGPU->archSpecific->forcesSizeAlloc, newForcesSize, pmeGPU->archSpecific->pmeStream, true);
 }
@@ -152,7 +150,7 @@ void pme_gpu_copy_input_forces(const pme_gpu_t *pmeGPU)
 {
     GMX_ASSERT(pmeGPU->io.h_forces, "NULL host forces pointer in PME GPU");
     const size_t forcesSize = DIM * pmeGPU->kernelParams.atoms.nAtoms * sizeof(float);
-    assert(forcesSize > 0);
+    GMX_ASSERT(forcesSize > 0, "Bad number of atoms in PME GPU");
     cu_copy_H2D_async(pmeGPU->kernelParams.atoms.forces, pmeGPU->io.h_forces, forcesSize, pmeGPU->archSpecific->pmeStream);
 }
 
@@ -171,7 +169,7 @@ void pme_gpu_sync_output_forces(const pme_gpu_t *pmeGPU)
 void pme_gpu_realloc_coordinates(const pme_gpu_t *pmeGPU)
 {
     const size_t newCoordinatesSize = pmeGPU->nAtomsAlloc * DIM;
-    assert(newCoordinatesSize > 0);
+    GMX_ASSERT(newCoordinatesSize > 0, "Bad number of atoms in PME GPU");
     cu_realloc_buffered((void **)&pmeGPU->kernelParams.atoms.coordinates, NULL, sizeof(float),
                         &pmeGPU->archSpecific->coordinatesSize, &pmeGPU->archSpecific->coordinatesSizeAlloc, newCoordinatesSize, pmeGPU->archSpecific->pmeStream, true);
 #if PME_GPU_USE_PADDING
@@ -187,7 +185,7 @@ void pme_gpu_realloc_coordinates(const pme_gpu_t *pmeGPU)
 
 void pme_gpu_copy_coordinates(const pme_gpu_t *pmeGPU)
 {
-    assert(pmeGPU->io.h_coordinates);
+    GMX_ASSERT(pmeGPU->io.h_coordinates, "Bad host-side coordinate buffer in PME GPU");
     cu_copy_H2D_async(pmeGPU->kernelParams.atoms.coordinates, pmeGPU->io.h_coordinates,
                       pmeGPU->kernelParams.atoms.nAtoms * DIM * sizeof(float), pmeGPU->archSpecific->pmeStream);
 }
@@ -199,9 +197,9 @@ void pme_gpu_free_coordinates(const pme_gpu_t *pmeGPU)
 
 void pme_gpu_realloc_and_copy_coefficients(const pme_gpu_t *pmeGPU)
 {
-    assert(pmeGPU->io.h_coefficients);
+    GMX_ASSERT(pmeGPU->io.h_coefficients, "Bad host-side charge buffer in PME GPU");
     const size_t newCoefficientsSize = pmeGPU->nAtomsAlloc;
-    assert(newCoefficientsSize > 0);
+    GMX_ASSERT(newCoefficientsSize > 0, "Bad number of atoms in PME GPU");
     cu_realloc_buffered((void **)&pmeGPU->kernelParams.atoms.coefficients, NULL, sizeof(float),
                         &pmeGPU->archSpecific->coefficientsSize, &pmeGPU->archSpecific->coefficientsSizeAlloc, newCoefficientsSize, pmeGPU->archSpecific->pmeStream, true);
     cu_copy_H2D_async(pmeGPU->kernelParams.atoms.coefficients, pmeGPU->io.h_coefficients, pmeGPU->kernelParams.atoms.nAtoms * sizeof(float), pmeGPU->archSpecific->pmeStream);
@@ -227,7 +225,7 @@ void pme_gpu_realloc_spline_data(const pme_gpu_t *pmeGPU)
     const int    alignment         = PME_SPREADGATHER_PARTICLES_PER_WARP;
     const size_t nAtomsPadded      = ((pmeGPU->nAtomsAlloc + alignment - 1) / alignment) * alignment;
     const size_t newSplineDataSize = DIM * order * nAtomsPadded;
-    assert(newSplineDataSize > 0);
+    GMX_ASSERT(newSplineDataSize > 0, "Bad number of atoms in PME GPU");
     /* Two arrays of the same size */
     int currentSizeTemp      = pmeGPU->archSpecific->splineDataSize;
     int currentSizeTempAlloc = pmeGPU->archSpecific->splineDataSizeAlloc;
@@ -247,7 +245,7 @@ void pme_gpu_free_spline_data(const pme_gpu_t *pmeGPU)
 void pme_gpu_realloc_grid_indices(const pme_gpu_t *pmeGPU)
 {
     const size_t newIndicesSize = DIM * pmeGPU->nAtomsAlloc;
-    assert(newIndicesSize > 0);
+    GMX_ASSERT(newIndicesSize > 0, "Bad number of atoms in PME GPU");
     cu_realloc_buffered((void **)&pmeGPU->kernelParams.atoms.gridlineIndices, NULL, sizeof(int),
                         &pmeGPU->archSpecific->gridlineIndicesSize, &pmeGPU->archSpecific->gridlineIndicesSizeAlloc, newIndicesSize, pmeGPU->archSpecific->pmeStream, true);
 }
@@ -265,7 +263,7 @@ void pme_gpu_realloc_grids(pme_gpu_t *pmeGPU)
         pmeGPU->kernelParams.grid.localGridSizePadded[YY] *
         pmeGPU->kernelParams.grid.localGridSizePadded[ZZ];
 
-    if (pmeGPU->archSpecific->bOutOfPlaceFFT)
+    if (pmeGPU->archSpecific->performOutOfPlaceFFT)
     {
         /* Allocate a separate complex grid */
         int tempGridSize      = pmeGPU->archSpecific->gridSize;
@@ -275,7 +273,7 @@ void pme_gpu_realloc_grids(pme_gpu_t *pmeGPU)
     }
     cu_realloc_buffered((void **)&pmeGPU->kernelParams.grid.realGrid, NULL, sizeof(float),
                         &pmeGPU->archSpecific->gridSize, &pmeGPU->archSpecific->gridSizeAlloc, newGridSize, pmeGPU->archSpecific->pmeStream, true);
-    if (!pmeGPU->archSpecific->bOutOfPlaceFFT)
+    if (!pmeGPU->archSpecific->performOutOfPlaceFFT)
     {
         /* Using the same grid */
         pmeGPU->kernelParams.grid.fourierGrid = pmeGPU->kernelParams.grid.realGrid;
@@ -284,7 +282,7 @@ void pme_gpu_realloc_grids(pme_gpu_t *pmeGPU)
 
 void pme_gpu_free_grids(const pme_gpu_t *pmeGPU)
 {
-    if (pmeGPU->archSpecific->bOutOfPlaceFFT)
+    if (pmeGPU->archSpecific->performOutOfPlaceFFT)
     {
         /* Free a separate complex grid of the same size */
         cu_free_buffered(pmeGPU->kernelParams.grid.fourierGrid);
@@ -366,7 +364,7 @@ void pme_gpu_sync_energy_virial(const pme_gpu_t *pmeGPU)
 void pme_gpu_sync_grid(const pme_gpu_t *pmeGPU, const gmx_fft_direction dir)
 {
     /* FIXME: this function does not actually seem to be used when it should be, with CPU FFT? */
-    gmx_bool syncGPUGrid = ((dir == GMX_FFT_REAL_TO_COMPLEX) ? TRUE : pme_gpu_performs_solve(pmeGPU));
+    bool syncGPUGrid = ((dir == GMX_FFT_REAL_TO_COMPLEX) ? true : pme_gpu_performs_solve(pmeGPU));
     if (syncGPUGrid)
     {
         cudaEvent_t syncEvent = (dir == GMX_FFT_REAL_TO_COMPLEX) ? pmeGPU->archSpecific->syncSpreadGridD2H : pmeGPU->archSpecific->syncSolveGridD2H;
@@ -380,9 +378,9 @@ void pme_gpu_init_specific(pme_gpu_t *pmeGPU, const gmx_hw_info_t *hwinfo, const
     /* FIXME: fix the GPU ID selection as well as initialization */
     int       gpuIndex = 0;
     char      gpu_err_str[STRLEN];
-    assert(hwinfo);
-    assert(hwinfo->gpu_info.gpu_dev);
-    assert(gpu_opt->dev_use);
+    GMX_ASSERT(hwinfo, "No hardware information");
+    GMX_ASSERT(hwinfo->gpu_info.gpu_dev, "No GPU information");
+    GMX_ASSERT(gpu_opt->dev_use, "No GPU information");
     /* Use GPU #0 for now since the code for GPU init has to be reworked anyway.
      * And don't forget to resurrect the external GMX_PME_GPU_ID env. variable.
      */
@@ -396,14 +394,14 @@ void pme_gpu_init_specific(pme_gpu_t *pmeGPU, const gmx_hw_info_t *hwinfo, const
     /* Allocate the GPU-specific structure itself */
     pmeGPU->archSpecific = std::shared_ptr<pme_gpu_specific_t>(new pme_gpu_specific_t());
 
-    pmeGPU->archSpecific->bOutOfPlaceFFT = TRUE;
+    pmeGPU->archSpecific->performOutOfPlaceFFT = true;
     /* This should give better performance, according to the cuFFT documentation.
      * The performance seems to be the same though.
      * Perhaps the limiting factor is using paddings/overlaps in the grid, which is also frowned upon.
      * PME could also try to pick up nice grid sizes (with factors of 2, 3, 5, 7).
      */
 
-    pmeGPU->archSpecific->bTiming = (getenv("GMX_DISABLE_CUDA_TIMING") == NULL);
+    pmeGPU->archSpecific->useTiming = (getenv("GMX_DISABLE_CUDA_TIMING") == NULL);
     /* This should also check for NB GPU being launched, and NB should check for PME GPU! */
 
     //pmeGPU->archSpecific->bUseTextureObjects = (pmeGPU->deviceInfo->prop.major >= 3);
@@ -467,7 +465,7 @@ void pme_gpu_reinit_3dfft(const pme_gpu_t *pmeGPU)
         pmeGPU->archSpecific->pfft_setup_gpu.resize(0); // FIXME: reallocations
         for (int i = 0; i < pmeGPU->common->ngrids; i++)
         {
-            pmeGPU->archSpecific->pfft_setup_gpu.push_back(std::unique_ptr<gmx_parallel_3dfft_gpu_t>(new gmx_parallel_3dfft_gpu_t(pmeGPU)));
+            pmeGPU->archSpecific->pfft_setup_gpu.push_back(std::unique_ptr<parallel_3dfft_gpu_t>(new parallel_3dfft_gpu_t(pmeGPU)));
         }
     }
 }

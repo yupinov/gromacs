@@ -42,30 +42,29 @@
 
 #include "gmxpre.h"
 
-#include <cassert>
-
 #include "gromacs/ewald/pme.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
+#include "gromacs/utility/gmxassert.h"
 
 #include "pme-gpu-internal.h"
 #include "pme-grid.h"
 #include "pme-solve.h"
 
-gmx_bool gmx_pme_gpu_enabled(const gmx_pme_t *pme)
+bool pme_gpu_enabled(const gmx_pme_t *pme)
 {
     /* Something to think about: should this function be called from all the CUDA_FUNC_QUALIFIER functions?
      * In other words, should we plan for dynamic toggling of the PME GPU?
      */
-    return (pme != NULL) && pme->bGPU;
+    return (pme != NULL) && pme->useGPU;
 }
 
-void gmx_pme_gpu_reset_timings(const gmx_pme_t *pme)
+void pme_gpu_reset_timings(const gmx_pme_t *pme)
 {
     pme_gpu_reset_timings(pme->gpu);
 }
 
-void gmx_pme_gpu_get_timings(const gmx_pme_t *pme,  gmx_wallclock_gpu_t **timings)
+void pme_gpu_get_timings(const gmx_pme_t *pme, gmx_wallclock_gpu_t **timings)
 {
     pme_gpu_get_timings(pme->gpu, timings);
 }
@@ -78,12 +77,12 @@ void gmx_pme_gpu_get_timings(const gmx_pme_t *pme,  gmx_wallclock_gpu_t **timing
  * \param[in] dir            The FFT direction enum.
  * \param[in] wcycle         The wallclock counter.
  */
-void gmx_parallel_3dfft_execute_gpu_wrapper(gmx_pme_t              *pme,
-                                            const int               grid_index,
-                                            enum gmx_fft_direction  dir,
-                                            gmx_wallcycle_t         wcycle)
+void parallel_3dfft_execute_gpu_wrapper(gmx_pme_t              *pme,
+                                        const int               grid_index,
+                                        enum gmx_fft_direction  dir,
+                                        gmx_wallcycle_t         wcycle)
 {
-    assert(grid_index == 0);
+    GMX_ASSERT(grid_index == 0, "Only a single grid supported");
     if (pme_gpu_performs_FFT(pme->gpu))
     {
         wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_FFT);
@@ -116,7 +115,7 @@ void pme_gpu_launch(gmx_pme_t      *pme,
                     gmx_wallcycle_t wcycle,
                     int             flags)
 {
-    GMX_ASSERT(gmx_pme_gpu_enabled(pme), "This is a GPU run of PME.");
+    GMX_ASSERT(pme_gpu_enabled(pme), "This is a GPU run of PME.");
 
     wallcycle_start(wcycle, ewcLAUNCH_GPU_PME);
 
@@ -126,23 +125,23 @@ void pme_gpu_launch(gmx_pme_t      *pme,
     real                *grid        = NULL;
     real                *fftgrid;
     t_complex           *cfftgrid;
-    gmx_bool             bFirst;
-    const gmx_bool       bCalcEnerVir            = flags & GMX_PME_CALC_ENER_VIR;
-    const gmx_bool       bBackFFT                = flags & (GMX_PME_CALC_F | GMX_PME_CALC_POT);
+    bool                 bFirst;
+    const bool           bCalcEnerVir            = flags & GMX_PME_CALC_ENER_VIR;
+    const bool           bBackFFT                = flags & (GMX_PME_CALC_F | GMX_PME_CALC_POT);
 
-    assert(pme->nnodes > 0);
-    assert(pme->nnodes == 1 || pme->ndecompdim > 0);
+    GMX_ASSERT(pme->nnodes > 0, "");
+    GMX_ASSERT(pme->nnodes == 1 || pme->ndecompdim > 0, "");
 
-    bFirst = TRUE;
+    bFirst = true;
 
     wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_INIT);
-    if (pme->gpu->settings.bNeedToUpdateAtoms)
+    if (pme->gpu->settings.needToUpdateAtoms)
     {
         /* This only does a one-time atom data init at the first MD step.
          * Later, pme_gpu_reinit_atoms is called when needed after gmx_pme_recv_coeffs_coords.
          */
         pme_gpu_reinit_atoms(pmeGPU, nAtoms, charges);
-        pme->gpu->settings.bNeedToUpdateAtoms = FALSE;
+        pme->gpu->settings.needToUpdateAtoms = FALSE;
     }
     pme_gpu_set_io_ranges(pmeGPU, x, f);              /* Should this be called every step, or on DD/DLB, or on bCalcEnerVir change? */
     pme_gpu_start_step(pmeGPU, box);                  /* This copies the coordinates, and updates the unit cell box (if it has changed) */
@@ -193,8 +192,8 @@ void pme_gpu_launch(gmx_pme_t      *pme,
         if (flags & GMX_PME_SOLVE)
         {
             /* do 3d-fft */
-            gmx_parallel_3dfft_execute_gpu_wrapper(pme, grid_index, GMX_FFT_REAL_TO_COMPLEX,
-                                                   wcycle);
+            parallel_3dfft_execute_gpu_wrapper(pme, grid_index, GMX_FFT_REAL_TO_COMPLEX,
+                                               wcycle);
 
             /* solve in k-space for our local cells */
             if (pme_gpu_performs_solve(pmeGPU))
@@ -218,7 +217,7 @@ void pme_gpu_launch(gmx_pme_t      *pme,
         if (bBackFFT)
         {
             /* do 3d-invfft */
-            gmx_parallel_3dfft_execute_gpu_wrapper(pme, grid_index, GMX_FFT_COMPLEX_TO_REAL, wcycle);
+            parallel_3dfft_execute_gpu_wrapper(pme, grid_index, GMX_FFT_COMPLEX_TO_REAL, wcycle);
 
             if (!pme_gpu_performs_FFT(pmeGPU) || !pme_gpu_performs_gather(pmeGPU))
             {
@@ -259,16 +258,16 @@ void pme_gpu_launch_gather(const gmx_pme_t                 *pme,
     wallcycle_stop(wcycle, ewcLAUNCH_GPU_PME);
 }
 
-void gmx_pme_gpu_get_results(const gmx_pme_t *pme,
-                             gmx_wallcycle_t  wcycle,
-                             matrix           vir_q,
-                             real            *energy_q,
-                             int              flags)
+void pme_gpu_get_results(const gmx_pme_t *pme,
+                         gmx_wallcycle_t  wcycle,
+                         matrix           vir_q,
+                         real            *energy_q,
+                         int              flags)
 {
-    GMX_ASSERT(pme->bGPU, "gmx_pme_gpu_get_results should not be called on the CPU PME run.");
+    GMX_ASSERT(pme->useGPU, "pme_gpu_get_results should not be called on the CPU PME run.");
 
-    const gmx_bool       bCalcEnerVir            = flags & GMX_PME_CALC_ENER_VIR;
-    const gmx_bool       bCalcF                  = flags & GMX_PME_CALC_F;
+    const bool       bCalcEnerVir            = flags & GMX_PME_CALC_ENER_VIR;
+    const bool       bCalcF                  = flags & GMX_PME_CALC_F;
 
     // FIXME
     wallcycle_stop(wcycle, ewcFORCE);

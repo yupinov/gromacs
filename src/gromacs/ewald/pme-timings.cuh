@@ -57,10 +57,10 @@ struct pme_gpu_t;
  */
 class pme_gpu_timing
 {
-    gmx_bool      _initialized;            /* Starts at FALSE, set to TRUE once */
-    cudaEvent_t   _eventStart, _eventStop; /* The internal timing events */
-    unsigned int  _callCount;              /* Stars at 0, increased by stop_recording */
-    float         _totalMilliseconds;      /* Starts at 0.0, increased by update */
+    bool          initialized_;            /* Starts at FALSE, set to TRUE once */
+    cudaEvent_t   eventStart_, eventStop_; /* The internal timing events */
+    unsigned int  callCount_;              /* Stars at 0, increased by stop_recording */
+    float         totalMilliseconds_;      /* Starts at 0.0, increased by update */
 
     public:
         pme_gpu_timing();
@@ -71,13 +71,13 @@ class pme_gpu_timing
          *
          * \param[in] s   The CUDA stream where the event being measured takes place.
          */
-        void start_recording(cudaStream_t s);
+        void startRecording(cudaStream_t s);
         /*! \brief
          * To be called after the kernel/transfer launch.
          *
          * \param[in] s   The CUDA stream where the event being measured took place.
          */
-        void stop_recording(cudaStream_t s);
+        void stopRecording(cudaStream_t s);
         /*! \brief To be called after stop_recording and the CUDA stream of the event has been synchronised. */
         void update();
         /*! \brief Enables the timing event once. */
@@ -85,9 +85,9 @@ class pme_gpu_timing
         /*! \brief Resets the timing event total time/call count. */
         void reset();
         /*! \brief Gets total time recorded. */
-        float get_total_time_milliseconds();
+        float getTotalTimeMilliseconds();
         /*! \brief Gets total call count recorded. */
-        unsigned int get_call_count();
+        unsigned int getCallCount();
 };
 
 /*! \libinternal \brief

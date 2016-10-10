@@ -183,7 +183,7 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
                         /* We don't calculate f, but we do want the potential */
                         pme_flags |= GMX_PME_CALC_POT;
                     }
-                    if (gmx_pme_gpu_enabled(fr->pmedata))
+                    if (pme_gpu_enabled(fr->pmedata))
                     {
                         pme_gpu_launch(fr->pmedata,
                                        md->homenr - fr->n_tpi,
@@ -558,7 +558,7 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                                                    fr->vir_el_recip);
             }
 
-            if (gmx_pme_gpu_enabled(fr->pmedata))
+            if (pme_gpu_enabled(fr->pmedata))
             {
                 pme_gpu_launch_gather(fr->pmedata, wcycle, false);
             }
@@ -588,7 +588,7 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                         pme_flags |= GMX_PME_CALC_POT;
                     }
 
-                    if (!gmx_pme_gpu_enabled(fr->pmedata))
+                    if (!pme_gpu_enabled(fr->pmedata))
                     {
                         wallcycle_start(wcycle, ewcPMEMESH);
                         status = gmx_pme_do(fr->pmedata,
@@ -613,11 +613,11 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                     }
                     else
                     {
-                        gmx_pme_gpu_get_results(fr->pmedata,
-                                                wcycle,
-                                                fr->vir_el_recip,
-                                                &Vlr_q,
-                                                pme_flags);
+                        pme_gpu_get_results(fr->pmedata,
+                                            wcycle,
+                                            fr->vir_el_recip,
+                                            &Vlr_q,
+                                            pme_flags);
                     }
                     /* We should try to do as little computation after
                      * this as possible, because parallel PME synchronizes
