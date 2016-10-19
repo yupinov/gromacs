@@ -560,7 +560,9 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
 
             if (pme_gpu_enabled(fr->pmedata))
             {
+                wallcycle_stop(wcycle, ewcFORCE);
                 pme_gpu_launch_gather(fr->pmedata, wcycle, false);
+                wallcycle_start_nocount(wcycle, ewcFORCE);
             }
 
             enerd->dvdl_lin[efptCOUL] += dvdl_long_range_correction_q;
