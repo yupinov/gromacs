@@ -149,6 +149,14 @@ TEST(Matrix3x3UpperTest, UpholdsTheConstraintOnConstruction)
     EXPECT_DEATH(v.emplace_back(x), "The matrix constraint was violated");
 }
 
+TEST(Matrix3x3UpperTest, UpholdsTheConstraintOnAssignment)
+{
+    std::vector<Matrix3x3Upper> v;
+    matrix                      x = {{1, 0, 0}, {0, 5, 0}, {0, 0.0, 9}};
+    v.emplace_back(x);
+    EXPECT_DEATH(v[0].setValue(YY, XX, 7), "The matrix constraint was violated");
+}
+
 //! Test Matrix3x3 function for testing type conversion. Could be a lazy copy_mat() replacement.
 void testMatrixCopy(const Matrix3x3 &src, Matrix3x3 &dst)
 {
@@ -202,6 +210,14 @@ TEST(Matrix3x3LowerTest, UpholdsTheConstraintOnConstruction)
     std::vector<Matrix3x3Lower> v;
     matrix                      x = {{0, 0, 3}, {0, 5, 0}, {7, 0.0, 9}};
     EXPECT_DEATH(v.emplace_back(x), "The matrix constraint was violated");
+}
+
+TEST(Matrix3x3LowerTest, UpholdsTheConstraintOnAssignment)
+{
+    std::vector<Matrix3x3Lower> v;
+    matrix                      x = {{0, 0, 0}, {0, 5, 0}, {7, 0.0, 9}};
+    v.emplace_back(x);
+    EXPECT_DEATH(v[0].setValue(XX, YY, 7), "The matrix constraint was violated");
 }
 
 TEST(Matrix3x3LowerTest, ConvertsImplicitlyToMatrix3x3)

@@ -47,37 +47,40 @@ namespace gmx
 //! Types of matrix constraints
 enum class MatrixConstraint
 {
-    None,
     UpperTriangle,
     LowerTriangle
 };
 
 //! Forward BasicMatrix3x3 class declaration for convenience
-template <typename ValueType, MatrixConstraint ConstraintType> class BasicMatrix3x3;
+template <typename ValueType> class BasicMatrix3x3;
+//! Forward ConstrainedMatrix3x3 class declaration for convenience
+template <typename ValueType, MatrixConstraint ConstraintType> class ConstrainedMatrix3x3;
 //! Shorthand for C++ `matrix`-equivalent type.
-typedef BasicMatrix3x3<real, MatrixConstraint::None> Matrix3x3;
+typedef BasicMatrix3x3<real> Matrix3x3;
 //! Shorthand for lower triangular 3x3 matrix type.
-typedef BasicMatrix3x3<real, MatrixConstraint::LowerTriangle> Matrix3x3Lower;
+typedef ConstrainedMatrix3x3<real, MatrixConstraint::LowerTriangle> Matrix3x3Lower;
 //! Shorthand for upper triangular 3x3 matrix type.
-typedef BasicMatrix3x3<real, MatrixConstraint::UpperTriangle> Matrix3x3Upper;
+typedef ConstrainedMatrix3x3<real, MatrixConstraint::UpperTriangle> Matrix3x3Upper;
 
 
 /*! \brief
  * C++ class for 3x3 matrices.
  *
  * \tparam ValueType       Value type
- * \tparam ConstraintType  Matrix constraint type
  *
  * This class provides a C++ version of matrix,
  * that can be put into STL containers etc. It is more or less
  * a drop-in replacement for `matrix` and friends:
  * it can be used in most contexts that accept the equivalent C type.
- * Provided constraint is enforced internally, using asserts on discrepancy.
+ *
  * Modifying individual values directly is not allowed; please use setValue() instead.
+ * The reasons for that is that the descendant class ConstrainedMatrix3x3
+ * would be trickier to implement if the direct modification
+ * through the row array pointer would be allowed.
  *
  * \inpublicapi
  */
-template <typename ValueType, MatrixConstraint ConstraintType>
+template <typename ValueType>
 class BasicMatrix3x3
 {
     public:
@@ -87,10 +90,8 @@ class BasicMatrix3x3
         typedef RawArray RawMatrix[DIM];
 
         //! Constructs default (uninitialized) matrix.
-        BasicMatrix3x3() {}
-        /*! \brief Constructs a matrix from given values.
-         * Asserts if the constraint is violated.
-         */
+        BasicMatrix3x3() = default;
+        //! Constructs a matrix from given values.
         BasicMatrix3x3(ValueType xx, ValueType xy, ValueType xz,
                        ValueType yx, ValueType yy, ValueType yz,
                        ValueType zx, ValueType zy, ValueType zz)
@@ -104,11 +105,8 @@ class BasicMatrix3x3
             matrix_[ZZ][XX] = zx;
             matrix_[ZZ][YY] = zy;
             matrix_[ZZ][ZZ] = zz;
-            Validate();
         }
-        /*! \brief Constructs a matrix from C-style 2D array.
-         * Asserts if the constraint is violated.
-         */
+        //! Constructs a matrix from C-style 2D array.
         BasicMatrix3x3(const RawMatrix matrix)
         {
             for (int i = 0; i < DIM; i++)
@@ -118,13 +116,11 @@ class BasicMatrix3x3
                     matrix_[i][j] = matrix[i][j];
                 }
             }
-            Validate();
         }
 
         /*! \brief Indexing operator to make the class work as the raw 2D array.
          * This is only good for reading the const values.
-         * For altering individual values there is an explicit setValue() function,
-         * as we want data to be validated.
+         * For altering individual values there is an explicit setValue() function.
          */
         const ValueType *operator[](int i) const { return matrix_[i]; }
         /*! \brief
@@ -136,44 +132,101 @@ class BasicMatrix3x3
             GMX_RELEASE_ASSERT(row < DIM, "Wrong row index");
             GMX_RELEASE_ASSERT(col < DIM, "Wrong column index");
             matrix_[row][col] = value;
-            Validate();
         }
 
         //! Makes BasicMatrix3x3 usable in contexts where a raw C 2D array is expected.
         operator RawArray *() { return matrix_; }
         //! Makes BasicMatrix3x3 usable in contexts where a raw C 2D array is expected.
         operator const RawArray *() const { return matrix_; }
-        //! Makes all matrices able to implicitly convert to unconstrained.
+
+    protected:
+        //! Storage
+        RawMatrix matrix_;
+};
+
+/*! \brief
+ * C++ class for constrained 3x3 matrices - e.g. triangular.
+ *
+ * \tparam ValueType       Value type
+ * \tparam ConstraintType  Matrix constraint type
+ *
+ * This class inherits from BasicMatrix3x3.
+ * Same idea applies: it can be used in most contexts that accept the matrix C type.
+ * Unlike BasicMatrix3x3, it also upholds the provided constraint type,
+ * calling the internal Validate() function on any assignment.
+ * ConstrainedMatrix3x3 should also cast transparently into BasicMatrix3x3 of the same ValueType.
+ *
+ * Modifying individual values directly with an indexing operator
+ * is not allowed; please use setValue() instead.
+ *
+ * \inpublicapi
+ */
+template <typename ValueType, MatrixConstraint ConstraintType>
+class ConstrainedMatrix3x3 : public BasicMatrix3x3<ValueType>
+{
+    public:
+        //! 1D raw array as a return type for operator[]
+        typedef ValueType RawArray[DIM];
+        //! Underlying raw C 2D array (same as matrix in vectypes.h).
+        typedef RawArray RawMatrix[DIM];
+
+        //! Constructs default (uninitialized) matrix.
+        ConstrainedMatrix3x3() = default;
+
+        /*! \brief Constructs a matrix from given values.
+         * Asserts if the constraint is violated.
+         */
+        ConstrainedMatrix3x3(ValueType xx, ValueType xy, ValueType xz,
+                             ValueType yx, ValueType yy, ValueType yz,
+                             ValueType zx, ValueType zy, ValueType zz)
+            : BasicMatrix3x3<ValueType>(xx, xy, xz, yx, yy, yz, zx, zy, zz)
+        {
+            Validate();
+        }
+        /*! \brief Constructs a matrix from C-style 2D array.
+         * Asserts if the constraint is violated.
+         */
+        ConstrainedMatrix3x3(const RawMatrix matrix) : BasicMatrix3x3<ValueType>(matrix)
+        {
+            Validate();
+        }
+
+        /*! \brief
+         * Changes the individual value.
+         * Asserts if the constraint is violated.
+         * Explicit replacement of the indexing operator for writing.
+         */
+        void setValue(size_t row, size_t col, const ValueType &value)
+        {
+            BasicMatrix3x3<ValueType>::setValue(row, col, value);
+            Validate();
+        }
+
+        //! Makes constrained matrix able to implicitly convert to unconstrained.
         operator Matrix3x3 &() const
         {
-            return (Matrix3x3 &)matrix_;
+            return (Matrix3x3 &)this->matrix_;
         }
 
     private:
-        //! Storage
-        RawMatrix matrix_;
         /*! \brief Upholds the contraint. Should be called from any assignment.
          * Asserts if the constraint is violated.
          */
         void Validate()
         {
-            bool correct;
+            bool correct = true;
 #ifdef __INTEL_COMPILER
 #pragma warning( push )
 #pragma warning( disable : 280 ) // "selector expression is constant"
 #endif
             switch (ConstraintType)
             {
-                case MatrixConstraint::None:
-                    correct = true;
-                    break;
-
                 case MatrixConstraint::UpperTriangle:
-                    correct = (matrix_[YY][XX] == 0) && (matrix_[ZZ][XX] == 0) && (matrix_[ZZ][YY] == 0);
+                    correct = (this->matrix_[YY][XX] == 0) && (this->matrix_[ZZ][XX] == 0) && (this->matrix_[ZZ][YY] == 0);
                     break;
 
                 case MatrixConstraint::LowerTriangle:
-                    correct = (matrix_[XX][YY] == 0) && (matrix_[XX][ZZ] == 0) && (matrix_[YY][ZZ] == 0);
+                    correct = (this->matrix_[XX][YY] == 0) && (this->matrix_[XX][ZZ] == 0) && (this->matrix_[YY][ZZ] == 0);
                     break;
 
                 default:
