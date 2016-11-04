@@ -2049,7 +2049,10 @@ int gmx_grompp(int argc, char *argv[])
 
     if (ir->ePBC == epbcXY && ir->nwall != 2)
     {
-        clear_rvec(state.box[ZZ]);
+        for (size_t i = 0; i < DIM; i++)
+        {
+            state.box.setValue(ZZ, i, 0.0);
+        }
     }
 
     if (ir->cutoff_scheme != ecutsVERLET && ir->rlist > 0)

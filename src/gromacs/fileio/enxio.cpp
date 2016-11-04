@@ -1194,8 +1194,7 @@ void get_enx_state(const char *fn, real t, const gmx_groups_t *groups, t_inputre
         clear_mat(state->boxv);
         for (i = 0; i < npcoupl; i++)
         {
-            state->boxv[ind0[i]][ind1[i]] =
-                find_energy(boxvel_nm[i], nre, enm, fr);
+            state->boxv.setValue(ind0[i], ind1[i], find_energy(boxvel_nm[i], nre, enm, fr));
         }
         fprintf(stderr, "\nREAD %d BOX VELOCITIES FROM %s\n\n", npcoupl, fn);
     }

@@ -1626,7 +1626,7 @@ void update_pcouple_after_coordinates(FILE             *fplog,
                 {
                     for (int m = 0; m <= i; m++)
                     {
-                        state->box[i][m] += dtpc*state->boxv[i][m];
+                        state->box.setValue(i, m, state->box[i][m] + dtpc*state->boxv[i][m]);
                     }
                 }
                 preserve_box_shape(inputrec, state->box_rel, state->box);
