@@ -1313,6 +1313,7 @@ static void do_inputrec(t_fileio *fio, t_inputrec *ir, gmx_bool bRead,
     gmx_fio_do_real(fio, ir->shake_tol);
     if (file_version < 54)
     {
+        // cppcheck-suppress redundantPointerOp
         gmx_fio_do_real(fio, *fudgeQQ);
     }
 
@@ -1625,22 +1626,7 @@ static void do_inputrec(t_fileio *fio, t_inputrec *ir, gmx_bool bRead,
         ir->wall_ewald_zfac  = 3;
     }
     /* Cosine stuff for electric fields */
-    for (j = 0; (j < DIM); j++)
-    {
-        gmx_fio_do_int(fio, ir->ex[j].n);
-        gmx_fio_do_int(fio, ir->et[j].n);
-        if (bRead)
-        {
-            snew(ir->ex[j].a,  ir->ex[j].n);
-            snew(ir->ex[j].phi, ir->ex[j].n);
-            snew(ir->et[j].a,  ir->et[j].n);
-            snew(ir->et[j].phi, ir->et[j].n);
-        }
-        gmx_fio_ndo_real(fio, ir->ex[j].a,  ir->ex[j].n);
-        gmx_fio_ndo_real(fio, ir->ex[j].phi, ir->ex[j].n);
-        gmx_fio_ndo_real(fio, ir->et[j].a,  ir->et[j].n);
-        gmx_fio_ndo_real(fio, ir->et[j].phi, ir->et[j].n);
-    }
+    ir->efield->doTpxIO(fio, bRead);
 
     /* Swap ions */
     if (file_version >= tpxv_ComputationalElectrophysiology)
@@ -3183,7 +3169,7 @@ static int do_tpx(t_fileio *fio, gmx_bool bRead,
         else
         {
             do_mtop(fio, &dum_top, bRead, fileVersion);
-            done_mtop(&dum_top, TRUE);
+            done_mtop(&dum_top);
         }
     }
     do_test(fio, tpx.bX, x);
@@ -3372,7 +3358,7 @@ int read_tpx_top(const char *fn,
 
     ePBC = read_tpx(fn, ir, box, natoms, x, v, &mtop);
 
-    *top = gmx_mtop_t_to_t_topology(&mtop);
+    *top = gmx_mtop_t_to_t_topology(&mtop, true);
 
     return ePBC;
 }

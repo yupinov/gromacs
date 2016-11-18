@@ -45,15 +45,19 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "gromacs/utility/classhelpers.h"
+#include "gromacs/utility/keyvaluetree.h"
 #include "gromacs/utility/variant.h"
 
 namespace gmx
 {
 
-class KeyValueTreeObject;
+class IKeyValueTreeErrorHandler;
 class KeyValueTreeObjectBuilder;
+
+enum class StringCompareType;
 
 class KeyValueTreeTransformRuleBuilder;
 
@@ -71,6 +75,36 @@ class IKeyValueTreeTransformRules
         ~IKeyValueTreeTransformRules();
 };
 
+class IKeyValueTreeBackMapping
+{
+    public:
+        virtual ~IKeyValueTreeBackMapping();
+
+        virtual KeyValueTreePath
+        originalPath(const KeyValueTreePath &path) const = 0;
+};
+
+class KeyValueTreeTransformResult
+{
+    public:
+        KeyValueTreeObject object() { return std::move(object_); }
+        const IKeyValueTreeBackMapping &backMapping() const { return *mapping_; }
+
+    private:
+        typedef std::unique_ptr<IKeyValueTreeBackMapping> MappingPointer;
+
+        KeyValueTreeTransformResult(KeyValueTreeObject &&object,
+                                    MappingPointer     &&mapping)
+            : object_(std::move(object)), mapping_(std::move(mapping))
+        {
+        }
+
+        KeyValueTreeObject                         object_;
+        std::unique_ptr<IKeyValueTreeBackMapping>  mapping_;
+
+        friend class internal::KeyValueTreeTransformerImpl;
+};
+
 class KeyValueTreeTransformer
 {
     public:
@@ -79,7 +113,11 @@ class KeyValueTreeTransformer
 
         IKeyValueTreeTransformRules *rules();
 
-        KeyValueTreeObject transform(const KeyValueTreeObject &tree) const;
+        std::vector<KeyValueTreePath> mappedPaths() const;
+
+        KeyValueTreeTransformResult
+        transform(const KeyValueTreeObject  &tree,
+                  IKeyValueTreeErrorHandler *errorHandler) const;
 
     private:
         PrivateImplPointer<internal::KeyValueTreeTransformerImpl> impl_;
@@ -171,10 +209,16 @@ class KeyValueTreeTransformRuleBuilder
             setFromPath(path);
             return AfterFrom<FromType>(this);
         }
+        void keyMatchType(const std::string &path, StringCompareType keyMatchType)
+        {
+            setFromPath(path);
+            setKeyMatchType(keyMatchType);
+        }
 
     private:
         void setFromPath(const std::string &path);
         void setToPath(const std::string &path);
+        void setKeyMatchType(StringCompareType keyMatchType);
         void addTransformToVariant(std::function<Variant(const Variant &)> transform);
         void addTransformToObject(std::function<void(KeyValueTreeObjectBuilder *, const Variant &)> transform);
 

@@ -157,12 +157,12 @@ PositionCalculationTest::~PositionCalculationTest()
 
 void PositionCalculationTest::generateCoordinates()
 {
-    t_topology *top   = topManager_.topology();
+    t_atoms    &atoms = topManager_.atoms();
     t_trxframe *frame = topManager_.frame();
-    for (int i = 0; i < top->atoms.nr; ++i)
+    for (int i = 0; i < atoms.nr; ++i)
     {
         frame->x[i][XX] = i;
-        frame->x[i][YY] = top->atoms.atom[i].resind;
+        frame->x[i][YY] = atoms.atom[i].resind;
         frame->x[i][ZZ] = 0.0;
         if (frame->bV)
         {
@@ -243,7 +243,10 @@ void PositionCalculationTest::testSingleStatic(
         flags |= POS_FORCES;
     }
     gmx_ana_poscalc_t *pc = createCalculation(type, flags);
-    EXPECT_EQ(bExpectTop, gmx_ana_poscalc_requires_top(pc));
+    const bool         requiresTopology
+        = gmx_ana_poscalc_required_topology_info(pc)
+            != gmx::PositionCalculationCollection::RequiredTopologyInfo::None;
+    EXPECT_EQ(bExpectTop, requiresTopology);
     setMaximumGroup(pc, atoms);
     gmx_ana_pos_t *p = initPositions(pc, NULL);
     checkInitialized();
@@ -268,7 +271,10 @@ void PositionCalculationTest::testSingleDynamic(
         const gmx::ConstArrayRef<int> &index)
 {
     gmx_ana_poscalc_t *pc = createCalculation(type, flags | POS_DYNAMIC);
-    EXPECT_EQ(bExpectTop, gmx_ana_poscalc_requires_top(pc));
+    const bool         requiresTopology
+        = gmx_ana_poscalc_required_topology_info(pc)
+            != gmx::PositionCalculationCollection::RequiredTopologyInfo::None;
+    EXPECT_EQ(bExpectTop, requiresTopology);
     setMaximumGroup(pc, initAtoms);
     gmx_ana_pos_t *p = initPositions(pc, NULL);
     checkInitialized();
@@ -295,7 +301,10 @@ void PositionCalculationTest::setTopologyIfRequired()
     std::vector<gmx_ana_poscalc_t *>::const_iterator pci;
     for (pci = pcList_.begin(); pci != pcList_.end(); ++pci)
     {
-        if (gmx_ana_poscalc_requires_top(*pci))
+        const bool         requiresTopology
+            = gmx_ana_poscalc_required_topology_info(*pci)
+                != gmx::PositionCalculationCollection::RequiredTopologyInfo::None;
+        if (requiresTopology)
         {
             bTopSet_ = true;
             pcc_.setTopology(topManager_.topology());

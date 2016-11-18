@@ -41,12 +41,15 @@
 
 #include <gtest/gtest.h>
 
+#include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/keyvaluetree.h"
 #include "gromacs/utility/keyvaluetreebuilder.h"
 #include "gromacs/utility/strconvert.h"
+#include "gromacs/utility/stringcompare.h"
 #include "gromacs/utility/stringutil.h"
 
 #include "testutils/refdata.h"
+#include "testutils/testasserts.h"
 
 namespace
 {
@@ -57,12 +60,52 @@ class TreeValueTransformTest : public ::testing::Test
         void testTransform(const gmx::KeyValueTreeObject      &input,
                            const gmx::KeyValueTreeTransformer &transform)
         {
-            gmx::KeyValueTreeObject         result = transform.transform(input);
+            gmx::KeyValueTreeTransformResult  result = transform.transform(input, nullptr);
+            gmx::KeyValueTreeObject           object = result.object();
 
-            gmx::test::TestReferenceData    data;
-            gmx::test::TestReferenceChecker checker(data.rootChecker());
+            gmx::test::TestReferenceData      data;
+            gmx::test::TestReferenceChecker   checker(data.rootChecker());
             checker.checkKeyValueTreeObject(input, "Input");
-            checker.checkKeyValueTreeObject(result, "Tree");
+            auto mappedPaths = transform.mappedPaths();
+            checker.checkSequence(mappedPaths.begin(), mappedPaths.end(), "MappedPaths",
+                                  &TreeValueTransformTest::checkMappedPath);
+            checker.checkKeyValueTreeObject(object, "Tree");
+            checkBackMapping(&checker, object, result.backMapping());
+        }
+
+    private:
+        static void checkMappedPath(gmx::test::TestReferenceChecker *checker,
+                                    const gmx::KeyValueTreePath     &path)
+        {
+            checker->checkString(path.toString(), nullptr);
+        }
+        void checkBackMapping(gmx::test::TestReferenceChecker     *checker,
+                              const gmx::KeyValueTreeObject       &object,
+                              const gmx::IKeyValueTreeBackMapping &mapping)
+        {
+            auto compound(checker->checkCompound("BackMapping", "Mapping"));
+            checkBackMappingImpl(&compound, object, mapping, gmx::KeyValueTreePath());
+        }
+
+        void checkBackMappingImpl(gmx::test::TestReferenceChecker     *checker,
+                                  const gmx::KeyValueTreeObject       &object,
+                                  const gmx::IKeyValueTreeBackMapping &mapping,
+                                  const gmx::KeyValueTreePath         &prefix)
+        {
+            for (const auto &prop : object.properties())
+            {
+                gmx::KeyValueTreePath path = prefix;
+                path.append(prop.key());
+                if (prop.value().isObject())
+                {
+                    checkBackMappingImpl(checker, prop.value().asObject(), mapping, path);
+                }
+                else
+                {
+                    gmx::KeyValueTreePath orgPath = mapping.originalPath(path);
+                    checker->checkString(orgPath.toString(), path.toString().c_str());
+                }
+            }
         }
 };
 
@@ -78,6 +121,24 @@ TEST_F(TreeValueTransformTest, SimpleTransforms)
         .from<std::string>("/a").to<int>("/i").transformWith(&gmx::fromStdString<int>);
     transform.rules()->addRule()
         .from<std::string>("/b").to<int>("/j").transformWith(&gmx::fromStdString<int>);
+
+    testTransform(input, transform);
+}
+
+TEST_F(TreeValueTransformTest, SimpleTransformsCaseAndDashInsensitive)
+{
+    gmx::KeyValueTreeBuilder     builder;
+    builder.rootObject().addValue<std::string>("a-x", "1");
+    builder.rootObject().addValue<std::string>("by", "2");
+    gmx::KeyValueTreeObject      input = builder.build();
+
+    gmx::KeyValueTreeTransformer transform;
+    transform.rules()->addRule()
+        .keyMatchType("/", gmx::StringCompareType::CaseAndDashInsensitive);
+    transform.rules()->addRule()
+        .from<std::string>("/Ax").to<int>("/i").transformWith(&gmx::fromStdString<int>);
+    transform.rules()->addRule()
+        .from<std::string>("/B-Y").to<int>("/j").transformWith(&gmx::fromStdString<int>);
 
     testTransform(input, transform);
 }
@@ -138,6 +199,23 @@ TEST_F(TreeValueTransformTest, ObjectFromMultipleStrings)
             });
 
     testTransform(input, transform);
+}
+
+/********************************************************************
+ * Tests for errors
+ */
+
+TEST(TreeValueTransformErrorTest, ConversionError)
+{
+    gmx::KeyValueTreeBuilder     builder;
+    builder.rootObject().addValue<std::string>("a", "foo");
+    gmx::KeyValueTreeObject      input = builder.build();
+
+    gmx::KeyValueTreeTransformer transform;
+    transform.rules()->addRule()
+        .from<std::string>("/a").to<int>("/i").transformWith(&gmx::fromStdString<int>);
+
+    EXPECT_THROW_GMX(transform.transform(input, nullptr), gmx::InvalidInputError);
 }
 
 } // namespace

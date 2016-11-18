@@ -46,6 +46,7 @@
 namespace gmx
 {
 
+class IKeyValueTreeErrorHandler;
 class KeyValueTreeObject;
 class Options;
 
@@ -60,8 +61,27 @@ class Options;
  *
  * \ingroup module_options
  */
-void assignOptionsFromKeyValueTree(Options                  *options,
-                                   const KeyValueTreeObject &tree);
+void assignOptionsFromKeyValueTree(Options                   *options,
+                                   const KeyValueTreeObject  &tree,
+                                   IKeyValueTreeErrorHandler *errorHandler);
+/*! \libinternal \brief
+ * Adjusts a KeyValueTreeObject to the structure of given Options.
+ *
+ * Assumes that all values in the input KeyValueTreeObject are valid values for
+ * the options.  The output has all the values in the input, but in the order
+ * they are in the options.  Values are also converted to the native type for
+ * the underlying option (e.g., strings are parsed to integers if the option
+ * accepts those).  For any option that does not have a corresponding value in
+ * the input, the output has it with a default value (if one exists for the
+ * option).
+ *
+ * Does not currently work for option sections in an array.
+ *
+ * \ingroup module_options
+ */
+KeyValueTreeObject
+adjustKeyValueTreeFromOptions(const KeyValueTreeObject &tree,
+                              const Options            &options);
 
 //! \endcond
 

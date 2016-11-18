@@ -154,6 +154,7 @@ double do_tpi(FILE *fplog, t_commrec *cr, const gmx::MDLogger gmx_unused &mdlog,
               t_inputrec *inputrec,
               gmx_mtop_t *top_global, t_fcdata *fcd,
               t_state *state_global,
+              energyhistory_t gmx_unused *energyHistory,
               t_mdatoms *mdatoms,
               t_nrnb *nrnb, gmx_wallcycle_t wcycle,
               gmx_edsam_t gmx_unused ed,
@@ -662,7 +663,7 @@ double do_tpi(FILE *fplog, t_commrec *cr, const gmx::MDLogger gmx_unused &mdlog,
                      state_global->box, &state_global->x, &state_global->hist,
                      &f, force_vir, mdatoms, enerd, fcd,
                      &state_global->lambda,
-                     NULL, fr, NULL, mu_tot, t, NULL, NULL, FALSE,
+                     NULL, fr, NULL, mu_tot, t, NULL, FALSE,
                      GMX_FORCE_NONBONDED | GMX_FORCE_ENERGY |
                      (bNS ? GMX_FORCE_DYNAMICBOX | GMX_FORCE_NS : 0) |
                      (bStateChanged ? GMX_FORCE_STATECHANGED : 0));

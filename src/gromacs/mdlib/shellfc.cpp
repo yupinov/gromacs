@@ -64,6 +64,7 @@
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/pbcutil/mshift.h"
 #include "gromacs/pbcutil/pbc.h"
+#include "gromacs/topology/mtop_lookup.h"
 #include "gromacs/topology/mtop_util.h"
 #include "gromacs/utility/arraysize.h"
 #include "gromacs/utility/cstringutil.h"
@@ -150,13 +151,6 @@ static void predict_shells(FILE *fplog, rvec x[], rvec v[], real dt,
     int                   i, m, s1, n1, n2, n3;
     real                  dt_1, fudge, tm, m1, m2, m3;
     rvec                 *ptr;
-    gmx_mtop_atomlookup_t alook = NULL;
-    t_atom               *atom;
-
-    if (mass == NULL)
-    {
-        alook = gmx_mtop_atomlookup_init(mtop);
-    }
 
     /* We introduce a fudge factor for performance reasons: with this choice
      * the initial force on the shells is about a factor of two lower than
@@ -179,6 +173,7 @@ static void predict_shells(FILE *fplog, rvec x[], rvec v[], real dt,
         dt_1 = fudge*dt;
     }
 
+    int molb = 0;
     for (i = 0; (i < ns); i++)
     {
         s1 = s[i].shell;
@@ -206,10 +201,8 @@ static void predict_shells(FILE *fplog, rvec x[], rvec v[], real dt,
                 else
                 {
                     /* Not the correct masses with FE, but it is just a prediction... */
-                    gmx_mtop_atomnr_to_atom(alook, n1, &atom);
-                    m1 = atom->m;
-                    gmx_mtop_atomnr_to_atom(alook, n2, &atom);
-                    m2 = atom->m;
+                    m1 = mtopGetAtomMass(mtop, n1, &molb);
+                    m2 = mtopGetAtomMass(mtop, n2, &molb);
                 }
                 tm = dt_1/(m1+m2);
                 for (m = 0; (m < DIM); m++)
@@ -230,12 +223,9 @@ static void predict_shells(FILE *fplog, rvec x[], rvec v[], real dt,
                 else
                 {
                     /* Not the correct masses with FE, but it is just a prediction... */
-                    gmx_mtop_atomnr_to_atom(alook, n1, &atom);
-                    m1 = atom->m;
-                    gmx_mtop_atomnr_to_atom(alook, n2, &atom);
-                    m2 = atom->m;
-                    gmx_mtop_atomnr_to_atom(alook, n3, &atom);
-                    m3 = atom->m;
+                    m1 = mtopGetAtomMass(mtop, n1, &molb);
+                    m2 = mtopGetAtomMass(mtop, n2, &molb);
+                    m3 = mtopGetAtomMass(mtop, n3, &molb);
                 }
                 tm = dt_1/(m1+m2+m3);
                 for (m = 0; (m < DIM); m++)
@@ -246,11 +236,6 @@ static void predict_shells(FILE *fplog, rvec x[], rvec v[], real dt,
             default:
                 gmx_fatal(FARGS, "Shell %d has %d nuclei!", i, s[i].nnucl);
         }
-    }
-
-    if (mass == NULL)
-    {
-        gmx_mtop_atomlookup_destroy(alook);
     }
 }
 
@@ -274,7 +259,7 @@ static std::array<int, eptNR> countPtypes(FILE       *fplog,
 
     gmx_mtop_atomloop_block_t  aloopb = gmx_mtop_atomloop_block_init(mtop);
     int                        nmol;
-    t_atom                    *atom;
+    const t_atom              *atom;
     while (gmx_mtop_atomloop_block_next(aloopb, &atom, &nmol))
     {
         switch (atom->ptype)
@@ -313,7 +298,7 @@ gmx_shellfc_t *init_shell_flexcon(FILE *fplog,
     gmx_shellfc_t            *shfc;
     t_shell                  *shell;
     int                      *shell_index = NULL, *at2cg;
-    t_atom                   *atom;
+    const t_atom             *atom;
 
     int                       ns, nshell, nsi;
     int                       i, j, type, mb, a_offset, cg, mol, ftype, nra;
@@ -1000,8 +985,7 @@ void relax_shell_flexcon(FILE *fplog, t_commrec *cr, gmx_bool bVerbose,
                          t_forcerec *fr,
                          gmx_bool bBornRadii,
                          double t, rvec mu_tot,
-                         gmx_vsite_t *vsite,
-                         FILE *fp_field)
+                         gmx_vsite_t *vsite)
 {
     int        nshell;
     t_shell   *shell;
@@ -1128,7 +1112,7 @@ void relax_shell_flexcon(FILE *fplog, t_commrec *cr, gmx_bool bVerbose,
              state->box, &state->x, &state->hist,
              force[Min], force_vir, md, enerd, fcd,
              &state->lambda, graph,
-             fr, vsite, mu_tot, t, fp_field, NULL, bBornRadii,
+             fr, vsite, mu_tot, t, NULL, bBornRadii,
              (bDoNS ? GMX_FORCE_NS : 0) | force_flags);
 
     sf_dir = 0;
@@ -1230,7 +1214,7 @@ void relax_shell_flexcon(FILE *fplog, t_commrec *cr, gmx_bool bVerbose,
                  top, groups, state->box, pos[Try], &state->hist,
                  force[Try], force_vir,
                  md, enerd, fcd, &state->lambda, graph,
-                 fr, vsite, mu_tot, t, fp_field, NULL, bBornRadii,
+                 fr, vsite, mu_tot, t, NULL, bBornRadii,
                  force_flags);
 
         if (gmx_debug_at)

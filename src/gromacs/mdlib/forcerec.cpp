@@ -1504,16 +1504,8 @@ void forcerec_set_ranges(t_forcerec *fr,
 
     if (fr->bF_NoVirSum)
     {
-        fr->f_novirsum_n = natoms_f_novirsum;
-        if (fr->f_novirsum_n > fr->f_novirsum_nalloc)
-        {
-            fr->f_novirsum_nalloc = over_alloc_dd(fr->f_novirsum_n);
-            srenew(fr->f_novirsum_alloc, fr->f_novirsum_nalloc);
-        }
-    }
-    else
-    {
-        fr->f_novirsum_n = 0;
+        /* TODO: remove this + 1 when padding is properly implemented */
+        fr->forceBufferNoVirialSummation->resize(natoms_f_novirsum + 1);
     }
 }
 
@@ -1553,10 +1545,6 @@ gmx_bool can_use_allvsall(const t_inputrec *ir, gmx_bool bPrintNote, t_commrec *
 
         if (bPrintNote)
         {
-            if (MASTER(cr))
-            {
-                fprintf(stderr, "\n%s\n", note);
-            }
             if (fp != NULL)
             {
                 fprintf(fp, "\n%s\n", note);
@@ -2753,6 +2741,9 @@ void init_forcerec(FILE                *fp,
         fr->bcoultab = FALSE;
     }
 
+    /* This now calculates sum for q and C6 */
+    set_chargesum(fp, fr, mtop);
+
     /* Tables are used for direct ewald sum */
     if (fr->bEwald)
     {
@@ -2774,11 +2765,18 @@ void init_forcerec(FILE                *fp,
 
             if (ir->ewald_geometry == eewg3DC)
             {
+                bool haveNetCharge = (fabs(fr->qsum[0]) > 1e-4 ||
+                                      fabs(fr->qsum[1]) > 1e-4);
                 if (fp)
                 {
-                    fprintf(fp, "Using the Ewald3DC correction for systems with a slab geometry.\n");
+                    fprintf(fp, "Using the Ewald3DC correction for systems with a slab geometry%s.\n",
+                            haveNetCharge ? " and net charge" : "");
                 }
                 please_cite(fp, "In-Chul99a");
+                if (haveNetCharge)
+                {
+                    please_cite(fp, "Ballenegger2009");
+                }
             }
         }
         fr->ewaldcoeff_q = calc_ewaldcoeff_q(ir->rcoulomb, ir->ewald_rtol);
@@ -2821,9 +2819,17 @@ void init_forcerec(FILE                *fp,
 
     fr->bF_NoVirSum = (EEL_FULL(fr->eeltype) || EVDW_PME(fr->vdwtype) ||
                        gmx_mtop_ftype_count(mtop, F_POSRES) > 0 ||
-                       gmx_mtop_ftype_count(mtop, F_FBPOSRES) > 0 ||
-                       inputrecElecField(ir)
-                       );
+                       gmx_mtop_ftype_count(mtop, F_FBPOSRES) > 0);
+
+    /* Initialization call after setting bF_NoVirSum,
+     * since it efield->initForcerec also sets this to true.
+     */
+    ir->efield->initForcerec(fr);
+
+    if (fr->bF_NoVirSum)
+    {
+        fr->forceBufferNoVirialSummation = new PaddedRVecVector;
+    }
 
     if (fr->cutoff_scheme == ecutsGROUP &&
         ncg_mtop(mtop) > fr->cg_nalloc && !DOMAINDECOMP(cr))
@@ -2978,9 +2984,6 @@ void init_forcerec(FILE                *fp,
                    fr->rcoulomb, fr->temp, fr->zsquare, box,
                    &fr->kappa, &fr->k_rf, &fr->c_rf);
     }
-
-    /*This now calculates sum for q and c6*/
-    set_chargesum(fp, fr, mtop);
 
     /* Construct tables for the group scheme. A little unnecessary to
      * make both vdw and coul tables sometimes, but what the

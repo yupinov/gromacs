@@ -53,6 +53,7 @@
 #include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/math/vectypes.h"
+#include "gromacs/mdlib/broadcaststructs.h"
 #include "gromacs/mdlib/groupcoord.h"
 #include "gromacs/mdlib/mdrun.h"
 #include "gromacs/mdlib/sim_util.h"
@@ -61,18 +62,13 @@
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/pbcutil/pbc.h"
-#include "gromacs/topology/mtop_util.h"
+#include "gromacs/topology/mtop_lookup.h"
 #include "gromacs/topology/topology.h"
 #include "gromacs/utility/cstringutil.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
 
-
-/* We use the same defines as in broadcaststructs.cpp here */
-#define  block_bc(cr,   d) gmx_bcast(     sizeof(d),     &(d), (cr))
-#define nblock_bc(cr, nr, d) gmx_bcast((nr)*sizeof((d)[0]), (d), (cr))
-#define   snew_bc(cr, d, nr) { if (!MASTER(cr)) {snew((d), (nr)); }}
 
 /* enum to identify the type of ED: none, normal ED, flooding */
 enum {
@@ -1367,23 +1363,19 @@ static void init_edi(const gmx_mtop_t *mtop, t_edpar *edi)
     int                   i;
     real                  totalmass = 0.0;
     rvec                  com;
-    gmx_mtop_atomlookup_t alook = NULL;
-    t_atom               *atom;
 
     /* NOTE Init_edi is executed on the master process only
      * The initialized data sets are then transmitted to the
      * other nodes in broadcast_ed_data */
 
-    alook = gmx_mtop_atomlookup_init(mtop);
-
     /* evaluate masses (reference structure) */
     snew(edi->sref.m, edi->sref.nr);
+    int molb = 0;
     for (i = 0; i < edi->sref.nr; i++)
     {
         if (edi->fitmas)
         {
-            gmx_mtop_atomnr_to_atom(alook, edi->sref.anrs[i], &atom);
-            edi->sref.m[i] = atom->m;
+            edi->sref.m[i] = mtopGetAtomMass(mtop, edi->sref.anrs[i], &molb);
         }
         else
         {
@@ -1410,11 +1402,10 @@ static void init_edi(const gmx_mtop_t *mtop, t_edpar *edi)
     snew(edi->sav.m, edi->sav.nr );
     for (i = 0; i < edi->sav.nr; i++)
     {
-        gmx_mtop_atomnr_to_atom(alook, edi->sav.anrs[i], &atom);
-        edi->sav.m[i] = atom->m;
+        edi->sav.m[i] = mtopGetAtomMass(mtop, edi->sav.anrs[i], &molb);
         if (edi->pcamas)
         {
-            edi->sav.sqrtm[i] = sqrt(atom->m);
+            edi->sav.sqrtm[i] = sqrt(edi->sav.m[i]);
         }
         else
         {
@@ -1428,11 +1419,9 @@ static void init_edi(const gmx_mtop_t *mtop, t_edpar *edi)
                       "For ED with mass-weighting, all average structure atoms need to have a mass >0.\n"
                       "Either make the covariance analysis non-mass-weighted, or exclude massless\n"
                       "atoms from the average structure by creating a proper index group.\n",
-                      i, edi->sav.anrs[i]+1, atom->m);
+                      i, edi->sav.anrs[i] + 1, edi->sav.m[i]);
         }
     }
-
-    gmx_mtop_atomlookup_destroy(alook);
 
     /* put reference structure in origin */
     get_center(edi->sref.x, edi->sref.m, edi->sref.nr, com);

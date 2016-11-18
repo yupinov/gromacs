@@ -64,6 +64,7 @@
 #include "gromacs/pulling/pull.h"
 #include "gromacs/topology/block.h"
 #include "gromacs/topology/invblock.h"
+#include "gromacs/topology/mtop_lookup.h"
 #include "gromacs/topology/mtop_util.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
@@ -183,7 +184,7 @@ static void write_constr_pdb(const char *fn, const char *title,
     FILE         *out;
     int           dd_ac0 = 0, dd_ac1 = 0, i, ii, resnr;
     gmx_domdec_t *dd;
-    char         *anm, *resnm;
+    const char   *anm, *resnm;
 
     dd = NULL;
     if (DOMAINDECOMP(cr))
@@ -207,6 +208,7 @@ static void write_constr_pdb(const char *fn, const char *title,
 
     fprintf(out, "TITLE     %s\n", title);
     gmx_write_pdb_box(out, -1, box);
+    int molb = 0;
     for (i = start; i < start+homenr; i++)
     {
         if (dd != NULL)
@@ -221,7 +223,7 @@ static void write_constr_pdb(const char *fn, const char *title,
         {
             ii = i;
         }
-        gmx_mtop_atominfo_global(mtop, ii, &anm, &resnr, &resnm);
+        mtopGetAtomAndResidueName(mtop, ii, &molb, &anm, &resnr, &resnm, nullptr);
         gmx_fprintf_pdb_atomline(out, epdbATOM, ii+1, anm, ' ', resnm, ' ', resnr, ' ',
                                  10*x[i][XX], 10*x[i][YY], 10*x[i][ZZ], 1.0, 0.0, "");
     }
@@ -389,7 +391,7 @@ gmx_bool constrain(FILE *fplog, gmx_bool bLog, gmx_bool bEner,
                               invdt, v, vir != NULL, vir_r_m_dr,
                               econq, nrnb,
                               constr->maxwarn, &constr->warncount_lincs);
-        if (!bOK && constr->maxwarn >= 0)
+        if (!bOK && constr->maxwarn < INT_MAX)
         {
             if (fplog != NULL)
             {
@@ -410,7 +412,7 @@ gmx_bool constrain(FILE *fplog, gmx_bool bLog, gmx_bool bEner,
                               idef, ir, x, xprime, nrnb,
                               constr->lagr, lambda, dvdlambda,
                               invdt, v, vir != NULL, vir_r_m_dr,
-                              constr->maxwarn >= 0, econq);
+                              constr->maxwarn < INT_MAX, econq);
                 break;
             case (econqVeloc):
                 bOK = bshakef(fplog, constr->shaked,
@@ -418,14 +420,14 @@ gmx_bool constrain(FILE *fplog, gmx_bool bLog, gmx_bool bEner,
                               idef, ir, x, min_proj, nrnb,
                               constr->lagr, lambda, dvdlambda,
                               invdt, NULL, vir != NULL, vir_r_m_dr,
-                              constr->maxwarn >= 0, econq);
+                              constr->maxwarn < INT_MAX, econq);
                 break;
             default:
                 gmx_fatal(FARGS, "Internal error, SHAKE called for constraining something else than coordinates");
                 break;
         }
 
-        if (!bOK && constr->maxwarn >= 0)
+        if (!bOK && constr->maxwarn < INT_MAX)
         {
             if (fplog != NULL)
             {
@@ -1277,6 +1279,10 @@ gmx_constr_t init_constraints(FILE *fplog,
     {
         constr->maxwarn = 0;
         sscanf(env, "%8d", &constr->maxwarn);
+        if (constr->maxwarn < 0)
+        {
+            constr->maxwarn = INT_MAX;
+        }
         if (fplog)
         {
             fprintf(fplog,
@@ -1289,10 +1295,6 @@ gmx_constr_t init_constraints(FILE *fplog,
                     "Setting the maximum number of constraint warnings to %d\n",
                     constr->maxwarn);
         }
-    }
-    if (constr->maxwarn < 0 && fplog)
-    {
-        fprintf(fplog, "maxwarn < 0, will not stop on constraint errors\n");
     }
     constr->warncount_lincs  = 0;
     constr->warncount_settle = 0;

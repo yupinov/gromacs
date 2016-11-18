@@ -66,6 +66,7 @@ namespace gmx
 class AbstractOptionStorage;
 template <typename T> class OptionStorageTemplate;
 class OptionManagerContainer;
+class Variant;
 
 namespace internal
 {
@@ -485,17 +486,38 @@ class OptionInfo
         std::string type() const;
         //! Returns the description of the option.
         std::string formatDescription() const;
-        /*! \brief
-         * Returns the default value if set for the option as a string.
-         *
-         * \see OptionTemplate::defaultValueIfSet()
-         */
-        std::string formatDefaultValueIfSet() const;
 
-        //! Returns the number of values given for the option.
-        int valueCount() const;
-        //! Returns the i'th value of the option as a string.
-        std::string formatValue(int i) const;
+        /*! \brief
+         * Returns the default value(s) of the option.
+         *
+         * The returned values should all be of the same type, but returning
+         * each as a separate variant is currently simpler.
+         *
+         * Currently, this can only be called before option values have been
+         * assigned.
+         */
+        std::vector<Variant> defaultValues() const;
+        /*! \brief
+         * Returns the default value(s) of the option as strings.
+         *
+         * If there is no default value, but defaultValueIfSet() is set, that
+         * is returned instead.
+         *
+         * Currently, this can only be called before option values have been
+         * assigned.
+         */
+        std::vector<std::string> defaultValuesAsStrings() const;
+        /*! \brief
+         * Converts given values to native representation for this option.
+         *
+         * For example, strings are parsed to the type that is actually used to
+         * store the options.
+         *
+         * The return value only depends on the option type, not on the current
+         * value of the option, and the current value in the option is not
+         * changed.
+         */
+        std::vector<Variant> normalizeValues(const std::vector<Variant> &values) const;
 
     protected:
         /*! \cond libapi */

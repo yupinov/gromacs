@@ -187,7 +187,7 @@ void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
                     {
                         pme_gpu_launch(fr->pmedata,
                                        md->homenr - fr->n_tpi,
-                                       x, fr->f_novirsum,
+                                       x, as_rvec_array(fr->f_novirsum->data()),
                                        md->chargeA,
                                        bSB ? boxs : box,
                                        wcycle,
@@ -531,7 +531,8 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                                            excl, x, bSB ? boxs : box, mu_tot,
                                            ir->ewald_geometry,
                                            ir->epsilon_surface,
-                                           fr->f_novirsum, *vir_q, *vir_lj,
+                                           as_rvec_array(fr->f_novirsum->data()),
+                                           *vir_q, *vir_lj,
                                            Vcorrt_q, Vcorrt_lj,
                                            lambda[efptCOUL], lambda[efptVDW],
                                            dvdlt_q, dvdlt_lj);
@@ -589,13 +590,12 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                         /* We don't calculate f, but we do want the potential */
                         pme_flags |= GMX_PME_CALC_POT;
                     }
-
                     if (!pme_gpu_enabled(fr->pmedata))
                     {
                         wallcycle_start(wcycle, ewcPMEMESH);
                         status = gmx_pme_do(fr->pmedata,
                                             0, md->homenr - fr->n_tpi,
-                                            x, fr->f_novirsum,
+                                            x, as_rvec_array(fr->f_novirsum->data()),
                                             md->chargeA, md->chargeB,
                                             md->sqrt_c6A, md->sqrt_c6B,
                                             md->sigmaA, md->sigmaB,
@@ -649,7 +649,7 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
 
         if (!EEL_PME(fr->eeltype) && EEL_PME_EWALD(fr->eeltype))
         {
-            Vlr_q = do_ewald(ir, x, fr->f_novirsum,
+            Vlr_q = do_ewald(ir, x, as_rvec_array(fr->f_novirsum->data()),
                              md->chargeA, md->chargeB,
                              box_size, cr, md->homenr,
                              fr->vir_el_recip, fr->ewaldcoeff_q,

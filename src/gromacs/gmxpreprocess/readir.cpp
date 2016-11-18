@@ -58,6 +58,8 @@
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/pull-params.h"
+#include "gromacs/options/options.h"
+#include "gromacs/options/treesupport.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/topology/block.h"
 #include "gromacs/topology/ifunc.h"
@@ -66,8 +68,15 @@
 #include "gromacs/topology/symtab.h"
 #include "gromacs/topology/topology.h"
 #include "gromacs/utility/cstringutil.h"
+#include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
+#include "gromacs/utility/gmxassert.h"
+#include "gromacs/utility/ikeyvaluetreeerror.h"
+#include "gromacs/utility/keyvaluetree.h"
+#include "gromacs/utility/keyvaluetreetransform.h"
 #include "gromacs/utility/smalloc.h"
+#include "gromacs/utility/stringcompare.h"
+#include "gromacs/utility/stringutil.h"
 
 #define MAXPTR 254
 #define NOGID  255
@@ -96,8 +105,6 @@ typedef struct t_inputrec_strings
     char   QMmethod[STRLEN], QMbasis[STRLEN], QMcharge[STRLEN], QMmult[STRLEN],
            bSH[STRLEN], CASorbitals[STRLEN], CASelectrons[STRLEN], SAon[STRLEN],
            SAoff[STRLEN], SAsteps[STRLEN], bTS[STRLEN], bOPT[STRLEN];
-    char efield_x[STRLEN], efield_xt[STRLEN], efield_y[STRLEN],
-         efield_yt[STRLEN], efield_z[STRLEN], efield_zt[STRLEN];
 
 } gmx_inputrec_strings;
 
@@ -1759,6 +1766,50 @@ static gmx_bool couple_lambda_has_vdw_on(int couple_lambda_value)
             couple_lambda_value == ecouplamVDWQ);
 }
 
+namespace
+{
+
+class MdpErrorHandler : public gmx::IKeyValueTreeErrorHandler
+{
+    public:
+        explicit MdpErrorHandler(warninp_t wi)
+            : wi_(wi), mapping_(nullptr)
+        {
+        }
+
+        void setBackMapping(const gmx::IKeyValueTreeBackMapping &mapping)
+        {
+            mapping_ = &mapping;
+        }
+
+        virtual bool onError(gmx::UserInputError *ex, const gmx::KeyValueTreePath &context)
+        {
+            ex->prependContext(gmx::formatString("Error in mdp option \"%s\":",
+                                                 getOptionName(context).c_str()));
+            std::string message = gmx::formatExceptionMessageToString(*ex);
+            warning_error(wi_, message.c_str());
+            return true;
+        }
+
+    private:
+        std::string getOptionName(const gmx::KeyValueTreePath &context)
+        {
+            if (mapping_ != nullptr)
+            {
+                gmx::KeyValueTreePath path = mapping_->originalPath(context);
+                GMX_ASSERT(path.size() == 1, "Inconsistent mapping back to mdp options");
+                return path[0];
+            }
+            GMX_ASSERT(context.size() == 1, "Inconsistent context for mdp option parsing");
+            return context[0];
+        }
+
+        warninp_t                            wi_;
+        const gmx::IKeyValueTreeBackMapping *mapping_;
+};
+
+} // namespace
+
 void get_ir(const char *mdparin, const char *mdparout,
             t_inputrec *ir, t_gromppopts *opts,
             warninp_t wi)
@@ -2187,18 +2238,26 @@ void get_ir(const char *mdparin, const char *mdparout,
     }
 
     /* Electric fields */
-    CCTYPE("Electric fields");
-    CTYPE ("Format is number of terms (int) and for all terms an amplitude (real)");
-    CTYPE ("and a phase angle (real)");
-    STYPE ("E-x",     is->efield_x,   NULL);
-    CTYPE ("Time dependent (pulsed) electric field. Format is omega, time for pulse");
-    CTYPE ("peak, and sigma (width) for pulse. Sigma = 0 removes pulse, leaving");
-    CTYPE ("the field to be a cosine function.");
-    STYPE ("E-xt",    is->efield_xt,  NULL);
-    STYPE ("E-y",     is->efield_y,   NULL);
-    STYPE ("E-yt",    is->efield_yt,  NULL);
-    STYPE ("E-z",     is->efield_z,   NULL);
-    STYPE ("E-zt",    is->efield_zt,  NULL);
+    {
+        gmx::KeyValueTreeObject      convertedValues = flatKeyValueTreeFromInpFile(ninp, inp);
+        gmx::KeyValueTreeTransformer transform;
+        transform.rules()->addRule()
+            .keyMatchType("/", gmx::StringCompareType::CaseAndDashInsensitive);
+        ir->efield->initMdpTransform(transform.rules());
+        for (const auto &path : transform.mappedPaths())
+        {
+            GMX_ASSERT(path.size() == 1, "Inconsistent mapping back to mdp options");
+            mark_einp_set(ninp, inp, path[0].c_str());
+        }
+        gmx::Options                 options;
+        ir->efield->initMdpOptions(&options);
+        MdpErrorHandler              errorHandler(wi);
+        auto                         result
+            = transform.transform(convertedValues, &errorHandler);
+        errorHandler.setBackMapping(result.backMapping());
+        gmx::assignOptionsFromKeyValueTree(&options, result.object(),
+                                           &errorHandler);
+    }
 
     /* Ion/water position swapping ("computational electrophysiology") */
     CCTYPE("Ion/water position swapping for computational electrophysiology setups");
@@ -2748,7 +2807,6 @@ static void calc_nrdf(gmx_mtop_t *mtop, t_inputrec *ir, char **gnames)
     double                 *nrdf_tc, *nrdf_vcm, nrdf_uc, *nrdf_vcm_sub;
     ivec                   *dof_vcm;
     gmx_mtop_atomloop_all_t aloop;
-    t_atom                 *atom;
     int                     mb, mol, ftype, as;
     gmx_molblock_t         *molb;
     gmx_moltype_t          *molt;
@@ -2789,6 +2847,7 @@ static void calc_nrdf(gmx_mtop_t *mtop, t_inputrec *ir, char **gnames)
 
     snew(nrdf2, natoms);
     aloop = gmx_mtop_atomloop_all_init(mtop);
+    const t_atom *atom;
     while (gmx_mtop_atomloop_all_next(aloop, &i, &atom))
     {
         nrdf2[i] = 0;
@@ -3021,54 +3080,6 @@ static void calc_nrdf(gmx_mtop_t *mtop, t_inputrec *ir, char **gnames)
     sfree(dof_vcm);
     sfree(na_vcm);
     sfree(nrdf_vcm_sub);
-}
-
-static void decode_cos(char *s, t_cosines *cosine)
-{
-    char              *t;
-    char               format[STRLEN], f1[STRLEN];
-    double             a, phi;
-    int                i;
-
-    t = gmx_strdup(s);
-    trim(t);
-
-    cosine->n   = 0;
-    cosine->a   = NULL;
-    cosine->phi = NULL;
-    if (strlen(t))
-    {
-        if (sscanf(t, "%d", &(cosine->n)) != 1)
-        {
-            gmx_fatal(FARGS, "Cannot parse cosine multiplicity from string '%s'", t);
-        }
-        if (cosine->n <= 0)
-        {
-            cosine->n = 0;
-        }
-        else
-        {
-            snew(cosine->a, cosine->n);
-            snew(cosine->phi, cosine->n);
-
-            sprintf(format, "%%*d");
-            for (i = 0; (i < cosine->n); i++)
-            {
-                double  gmx_unused canary;
-
-                strcpy(f1, format);
-                strcat(f1, "%lf%lf%lf");
-                if (sscanf(t, f1, &a, &phi, &canary) != 2)
-                {
-                    gmx_fatal(FARGS, "Invalid input for electric field shift: '%s'", t);
-                }
-                cosine->a[i]   = a;
-                cosine->phi[i] = phi;
-                strcat(format, "%*lf%*lf");
-            }
-        }
-    }
-    sfree(t);
 }
 
 static gmx_bool do_egp_flag(t_inputrec *ir, gmx_groups_t *groups,
@@ -3446,7 +3457,7 @@ void do_index(const char* mdparin, const char *ndx,
                 nSA_time = str_nelem(is->anneal_time, MAXPTR, ptr1);
                 if (nSA_time != k)
                 {
-                    gmx_fatal(FARGS, "Found %d annealing-time values, wanter %d\n", nSA_time, k);
+                    gmx_fatal(FARGS, "Found %d annealing-time values, wanted %d\n", nSA_time, k);
                 }
                 nSA_temp = str_nelem(is->anneal_temp, MAXPTR, ptr2);
                 if (nSA_temp != k)
@@ -3789,13 +3800,6 @@ void do_index(const char* mdparin, const char *ndx,
         gmx_fatal(FARGS, "Can only have energy group pair tables in combination with user tables for VdW and/or Coulomb");
     }
 
-    decode_cos(is->efield_x, &(ir->ex[XX]));
-    decode_cos(is->efield_xt, &(ir->et[XX]));
-    decode_cos(is->efield_y, &(ir->ex[YY]));
-    decode_cos(is->efield_yt, &(ir->et[YY]));
-    decode_cos(is->efield_z, &(ir->ex[ZZ]));
-    decode_cos(is->efield_zt, &(ir->et[ZZ]));
-
     for (i = 0; (i < grps->nr); i++)
     {
         sfree(gnames[i]);
@@ -4075,7 +4079,6 @@ void triple_check(const char *mdparin, t_inputrec *ir, gmx_mtop_t *sys,
     rvec                      acc;
     gmx_mtop_atomloop_block_t aloopb;
     gmx_mtop_atomloop_all_t   aloop;
-    t_atom                   *atom;
     ivec                      AbsRef;
     char                      warn_buf[STRLEN];
 
@@ -4172,6 +4175,7 @@ void triple_check(const char *mdparin, t_inputrec *ir, gmx_mtop_t *sys,
 
     bCharge = FALSE;
     aloopb  = gmx_mtop_atomloop_block_init(sys);
+    const t_atom *atom;
     while (gmx_mtop_atomloop_block_next(aloopb, &atom, &nmol))
     {
         if (atom->q != 0 || atom->qB != 0)
@@ -4240,6 +4244,7 @@ void triple_check(const char *mdparin, t_inputrec *ir, gmx_mtop_t *sys,
         clear_rvec(acc);
         snew(mgrp, sys->groups.grps[egcACC].nr);
         aloop = gmx_mtop_atomloop_all_init(sys);
+        const t_atom *atom;
         while (gmx_mtop_atomloop_all_next(aloop, &i, &atom))
         {
             mgrp[ggrpnr(&sys->groups, egcACC, i)] += atom->m;

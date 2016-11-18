@@ -87,13 +87,29 @@ void update_tcouple(gmx_int64_t       step,
                     t_mdatoms        *md
                     );
 
-void update_pcouple(FILE             *fplog,
-                    gmx_int64_t       step,
-                    t_inputrec       *inputrec,
-                    t_state          *state,
-                    matrix            pcoupl_mu,
-                    matrix            M,
-                    gmx_bool          bInitStep);
+/* Update Parrinello-Rahman, to be called before the coordinate update */
+void update_pcouple_before_coordinates(FILE             *fplog,
+                                       gmx_int64_t       step,
+                                       const t_inputrec *inputrec,
+                                       t_state          *state,
+                                       matrix            parrinellorahmanMu,
+                                       matrix            M,
+                                       gmx_bool          bInitStep);
+
+/* Update the box, to be called after the coordinate update.
+ * For Berendsen P-coupling, also calculates the scaling factor
+ * and scales the coordinates.
+ * When the deform option is used, scales coordinates and box here.
+ */
+void update_pcouple_after_coordinates(FILE             *fplog,
+                                      gmx_int64_t       step,
+                                      const t_inputrec *inputrec,
+                                      const t_mdatoms  *md,
+                                      const matrix      pressure,
+                                      const matrix      parrinellorahmanMu,
+                                      t_state          *state,
+                                      t_nrnb           *nrnb,
+                                      gmx_update_t     *upd);
 
 void update_coords(FILE              *fplog,
                    gmx_int64_t        step,
@@ -132,16 +148,6 @@ void update_constraints(FILE              *fplog,
                         gmx_bool           bFirstHalf,
                         gmx_bool           bCalcVir);
 
-/* Return TRUE if OK, FALSE in case of Shake Error */
-
-void update_box(FILE             *fplog,
-                gmx_int64_t       step,
-                t_inputrec       *inputrec, /* input record and box stuff	*/
-                t_mdatoms        *md,
-                t_state          *state,
-                matrix            pcoupl_mu,
-                t_nrnb           *nrnb,
-                gmx_update_t     *upd);
 /* Return TRUE if OK, FALSE in case of Shake Error */
 
 void calc_ke_part(t_state *state, t_grpopts *opts, t_mdatoms *md,
@@ -189,7 +195,7 @@ void trotter_update(t_inputrec *ir, gmx_int64_t step, gmx_ekindata_t *ekind,
 
 int **init_npt_vars(t_inputrec *ir, t_state *state, t_extmass *Mass, gmx_bool bTrotter);
 
-real NPT_energy(t_inputrec *ir, t_state *state, t_extmass *MassQ);
+real NPT_energy(const t_inputrec *ir, const t_state *state, const t_extmass *MassQ);
 /* computes all the pressure/tempertature control energy terms to get a conserved energy */
 
 void NBaroT_trotter(t_grpopts *opts, real dt,
@@ -199,9 +205,6 @@ void vrescale_tcoupl(t_inputrec *ir, gmx_int64_t step,
                      gmx_ekindata_t *ekind, real dt,
                      double therm_integral[]);
 /* Compute temperature scaling. For V-rescale it is done in update. */
-
-real vrescale_energy(t_grpopts *opts, double therm_integral[]);
-/* Returns the V-rescale contribution to the conserved energy */
 
 void rescale_velocities(gmx_ekindata_t *ekind, t_mdatoms *mdatoms,
                         int start, int end, rvec v[]);
@@ -220,20 +223,21 @@ real calc_pres(int ePBC, int nwall, matrix box, tensor ekin, tensor vir,
  */
 
 void parrinellorahman_pcoupl(FILE *fplog, gmx_int64_t step,
-                             t_inputrec *ir, real dt, tensor pres,
+                             const t_inputrec *ir, real dt, const tensor pres,
                              tensor box, tensor box_rel, tensor boxv,
                              tensor M, matrix mu,
                              gmx_bool bFirstStep);
 
 void berendsen_pcoupl(FILE *fplog, gmx_int64_t step,
-                      t_inputrec *ir, real dt, tensor pres, matrix box,
+                      const t_inputrec *ir, real dt,
+                      const tensor pres, const matrix box,
                       matrix mu);
 
 
-void berendsen_pscale(t_inputrec *ir, matrix mu,
+void berendsen_pscale(const t_inputrec *ir, const matrix mu,
                       matrix box, matrix box_rel,
                       int start, int nr_atoms,
-                      rvec x[], unsigned short cFREEZE[],
+                      rvec x[], const unsigned short cFREEZE[],
                       t_nrnb *nrnb);
 
 void correct_ekin(FILE *log, int start, int end, rvec v[],

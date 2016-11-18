@@ -229,6 +229,7 @@ double gmx::do_md(FILE *fplog, t_commrec *cr, const gmx::MDLogger &mdlog,
                   gmx_mtop_t *top_global,
                   t_fcdata *fcd,
                   t_state *state_global,
+                  energyhistory_t *energyHistory,
                   t_mdatoms *mdatoms,
                   t_nrnb *nrnb, gmx_wallcycle_t wcycle,
                   gmx_edsam_t ed, t_forcerec *fr,
@@ -257,7 +258,7 @@ double gmx::do_md(FILE *fplog, t_commrec *cr, const gmx::MDLogger &mdlog,
     t_trxstatus      *status;
     rvec              mu_tot;
     t_vcm            *vcm;
-    matrix            pcoupl_mu, M;
+    matrix            parrinellorahmanMu, M;
     t_trxframe        rerun_fr;
     gmx_repl_ex_t     repl_ex = NULL;
     int               nchkpt  = 1;
@@ -474,19 +475,19 @@ double gmx::do_md(FILE *fplog, t_commrec *cr, const gmx::MDLogger &mdlog,
             /* Update mdebin with energy history if appending to output files */
             if (Flags & MD_APPENDFILES)
             {
-                restore_energyhistory_from_state(mdebin, state_global->enerhist);
+                restore_energyhistory_from_state(mdebin, energyHistory);
             }
             else
             {
                 /* We might have read an energy history from checkpoint,
                  * free the allocated memory and reset the counts.
                  */
-                done_energyhistory(state_global->enerhist);
-                init_energyhistory(state_global->enerhist);
+                done_energyhistory(energyHistory);
+                init_energyhistory(energyHistory);
             }
         }
         /* Set the initial energy history in state by updating once */
-        update_energyhistory(state_global->enerhist, mdebin);
+        update_energyhistory(energyHistory, mdebin);
     }
 
     /* Initialize constraints */
@@ -515,16 +516,24 @@ double gmx::do_md(FILE *fplog, t_commrec *cr, const gmx::MDLogger &mdlog,
 
     if (!ir->bContinuation && !bRerunMD)
     {
-        if (mdatoms->cFREEZE && (state->flags & (1<<estV)))
+        if (state->flags & (1 << estV))
         {
-            /* Set the velocities of frozen particles to zero */
+            /* Set the velocities of vsites, shells and frozen atoms to zero */
             for (i = 0; i < mdatoms->homenr; i++)
             {
-                for (m = 0; m < DIM; m++)
+                if (mdatoms->ptype[i] == eptVSite ||
+                    mdatoms->ptype[i] == eptShell)
                 {
-                    if (ir->opts.nFreeze[mdatoms->cFREEZE[i]][m])
+                    clear_rvec(state->v[i]);
+                }
+                else if (mdatoms->cFREEZE)
+                {
+                    for (m = 0; m < DIM; m++)
                     {
-                        state->v[i][m] = 0;
+                        if (ir->opts.nFreeze[mdatoms->cFREEZE[i]][m])
+                        {
+                            state->v[i][m] = 0;
+                        }
                     }
                 }
             }
@@ -1077,7 +1086,7 @@ double gmx::do_md(FILE *fplog, t_commrec *cr, const gmx::MDLogger &mdlog,
                                 state, &f, force_vir, mdatoms,
                                 nrnb, wcycle, graph, groups,
                                 shellfc, fr, bBornRadii, t, mu_tot,
-                                vsite, mdoutf_get_fp_field(outf));
+                                vsite);
         }
         else
         {
@@ -1090,7 +1099,7 @@ double gmx::do_md(FILE *fplog, t_commrec *cr, const gmx::MDLogger &mdlog,
                      state->box, &state->x, &state->hist,
                      &f, force_vir, mdatoms, enerd, fcd,
                      &state->lambda, graph,
-                     fr, vsite, mu_tot, t, mdoutf_get_fp_field(outf), ed, bBornRadii,
+                     fr, vsite, mu_tot, t, ed, bBornRadii,
                      (bNS ? GMX_FORCE_NS : 0) | force_flags);
         }
 
@@ -1225,7 +1234,7 @@ double gmx::do_md(FILE *fplog, t_commrec *cr, const gmx::MDLogger &mdlog,
         /* compute the conserved quantity */
         if (EI_VV(ir->eI))
         {
-            saved_conserved_quantity = compute_conserved_from_auxiliary(ir, state, &MassQ);
+            saved_conserved_quantity = NPT_energy(ir, state, &MassQ);
             if (ir->eI == eiVV)
             {
                 last_ekin = enerd->term[F_EKIN];
@@ -1260,7 +1269,8 @@ double gmx::do_md(FILE *fplog, t_commrec *cr, const gmx::MDLogger &mdlog,
          * the update.
          */
         do_md_trajectory_writing(fplog, cr, nfile, fnm, step, step_rel, t,
-                                 ir, state, state_global, top_global, fr,
+                                 ir, state, state_global, energyHistory,
+                                 top_global, fr,
                                  outf, mdebin, ekind, &f,
                                  &nchkpt,
                                  bCPT, bRerunMD, bLastStep, (Flags & MD_CONFOUT),
@@ -1389,7 +1399,9 @@ double gmx::do_md(FILE *fplog, t_commrec *cr, const gmx::MDLogger &mdlog,
             else
             {
                 update_tcouple(step, ir, state, ekind, &MassQ, mdatoms);
-                update_pcouple(fplog, step, ir, state, pcoupl_mu, M, bInitStep);
+                update_pcouple_before_coordinates(fplog, step, ir, state,
+                                                  parrinellorahmanMu, M,
+                                                  bInitStep);
             }
 
             if (EI_VV(ir->eI))
@@ -1557,8 +1569,10 @@ double gmx::do_md(FILE *fplog, t_commrec *cr, const gmx::MDLogger &mdlog,
                Currently done every step so that dhdl is correct in the .edr */
             sum_dhdl(enerd, &state->lambda, ir->fepvals);
         }
-        update_box(fplog, step, ir, mdatoms, state,
-                   pcoupl_mu, nrnb, upd);
+
+        update_pcouple_after_coordinates(fplog, step, ir, mdatoms,
+                                         pres, parrinellorahmanMu,
+                                         state, nrnb, upd);
 
         /* ################# END UPDATE STEP 2 ################# */
         /* #### We now have r(t+dt) and v(t+dt/2)  ############# */
@@ -1587,7 +1601,7 @@ double gmx::do_md(FILE *fplog, t_commrec *cr, const gmx::MDLogger &mdlog,
         }
         else
         {
-            enerd->term[F_ECONSERVED] = enerd->term[F_ETOT] + compute_conserved_from_auxiliary(ir, state, &MassQ);
+            enerd->term[F_ECONSERVED] = enerd->term[F_ETOT] + NPT_energy(ir, state, &MassQ);
         }
         /* #########  END PREPARING EDR OUTPUT  ###########  */
 
@@ -1661,7 +1675,7 @@ double gmx::do_md(FILE *fplog, t_commrec *cr, const gmx::MDLogger &mdlog,
             bNeedRepartition = do_swapcoords(cr, step, t, ir, wcycle,
                                              bRerunMD ? rerun_fr.x   : as_rvec_array(state->x.data()),
                                              bRerunMD ? rerun_fr.box : state->box,
-                                             top_global, MASTER(cr) && bVerbose, bRerunMD);
+                                             MASTER(cr) && bVerbose, bRerunMD);
 
             if (bNeedRepartition && DOMAINDECOMP(cr))
             {
@@ -1812,7 +1826,7 @@ double gmx::do_md(FILE *fplog, t_commrec *cr, const gmx::MDLogger &mdlog,
         }
     }
 
-    done_mdoutf(outf);
+    done_mdoutf(outf, ir);
 
     if (bPMETune)
     {

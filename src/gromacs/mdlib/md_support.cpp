@@ -146,27 +146,6 @@ int multisim_min(const gmx_multisim_t *ms, int nmin, int n)
     return nmin;
 }
 
-real compute_conserved_from_auxiliary(t_inputrec *ir, t_state *state, t_extmass *MassQ)
-{
-    real quantity = 0;
-    switch (ir->etc)
-    {
-        case etcNO:
-            break;
-        case etcBERENDSEN:
-            break;
-        case etcNOSEHOOVER:
-            quantity = NPT_energy(ir, state, MassQ);
-            break;
-        case etcVRESCALE:
-            quantity = vrescale_energy(&(ir->opts), state->therm_integral.data());
-            break;
-        default:
-            break;
-    }
-    return quantity;
-}
-
 /* TODO Specialize this routine into init-time and loop-time versions?
    e.g. bReadEkin is only true when restoring from checkpoint */
 void compute_globals(FILE *fplog, gmx_global_stat *gstat, t_commrec *cr, t_inputrec *ir,
@@ -617,23 +596,17 @@ void set_state_entries(t_state *state, const t_inputrec *ir)
         if ((ir->epc == epcPARRINELLORAHMAN) || (ir->epc == epcMTTK))
         {
             state->flags |= (1<<estBOXV);
+            state->flags |= (1<<estPRES_PREV);
         }
-        if (ir->epc != epcNO)
+        if (inputrecNptTrotter(ir) || (inputrecNphTrotter(ir)))
         {
-            if (inputrecNptTrotter(ir) || (inputrecNphTrotter(ir)))
-            {
-                state->nnhpres = 1;
-                state->flags  |= (1<<estNHPRES_XI);
-                state->flags  |= (1<<estNHPRES_VXI);
-                state->flags  |= (1<<estSVIR_PREV);
-                state->flags  |= (1<<estFVIR_PREV);
-                state->flags  |= (1<<estVETA);
-                state->flags  |= (1<<estVOL0);
-            }
-            else
-            {
-                state->flags |= (1<<estPRES_PREV);
-            }
+            state->nnhpres = 1;
+            state->flags  |= (1<<estNHPRES_XI);
+            state->flags  |= (1<<estNHPRES_VXI);
+            state->flags  |= (1<<estSVIR_PREV);
+            state->flags  |= (1<<estFVIR_PREV);
+            state->flags  |= (1<<estVETA);
+            state->flags  |= (1<<estVOL0);
         }
     }
 
@@ -650,8 +623,7 @@ void set_state_entries(t_state *state, const t_inputrec *ir)
 
     init_gtc_state(state, state->ngtc, state->nnhpres, ir->opts.nhchainlength); /* allocate the space for nose-hoover chains */
     init_ekinstate(&state->ekinstate, ir);
-    snew(state->enerhist, 1);
-    init_energyhistory(state->enerhist);
+
     if (ir->bExpanded)
     {
         snew(state->dfhist, 1);

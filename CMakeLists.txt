@@ -85,14 +85,8 @@ set(build_types_with_explicit_flags RELEASE DEBUG RELWITHDEBINFO RELWITHASSERT M
 
 set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS ON)
 
-# Set a default valgrind suppression file.
-# This unfortunately needs to duplicate information from CTest to work as
-# expected...
-set(MEMORYCHECK_SUPPRESSIONS_FILE
-    "${CMAKE_SOURCE_DIR}/cmake/legacy_and_external.supp"
-    CACHE FILEPATH
-    "File that contains suppressions for the memory checker")
-include(CTest)
+include(gmxCTestUtilities)
+gmx_ctest_init()
 
 include(gmxCPackUtilities)
 gmx_cpack_init()
@@ -454,11 +448,6 @@ include(gmxManageSharedLibraries)
 # Find external packages                                               #
 ########################################################################
 
-# TNG wants zlib if it is available. And static libxml2 might have a dependency
-find_package(ZLIB QUIET)
-include(gmxTestZLib)
-gmx_test_zlib(HAVE_ZLIB)
-
 # Unconditionally find the package, as it is also required for unit
 # tests. This exports LIBXML2_FOUND, which we should not use because
 # it does not tell us that linking will succeed. Instead, we test that
@@ -553,7 +542,6 @@ if (TMPI_ATOMICS_DISABLED)
    add_definitions(-DTMPI_ATOMICS_DISABLED)
 endif()
 
-# Note this relies on zlib detection having already run
 include(gmxManageTNG)
 
 include(gmxManageLmfit)

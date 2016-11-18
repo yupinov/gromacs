@@ -37,6 +37,8 @@
 /* This file is completely threadsafe - keep it that way! */
 #include "gmxpre.h"
 
+#include "broadcaststructs.h"
+
 #include <string.h>
 
 #include "gromacs/gmxlib/network.h"
@@ -52,39 +54,6 @@
 #include "gromacs/topology/topology.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/smalloc.h"
-
-#define   block_bc(cr,   d) gmx_bcast(     sizeof(d),     &(d), (cr))
-#define  nblock_bc(cr, nr, d) { gmx_bcast((nr)*sizeof((d)[0]), (d), (cr)); }
-#define    snew_bc(cr, d, nr) { if (!MASTER(cr)) {snew((d), (nr)); }}
-
-#if !GMX_DOUBLE
-static void nblock_abc(const t_commrec *cr, int numElements, real **v)
-{
-    if (!MASTER(cr))
-    {
-        snew(*v, numElements);
-    }
-    nblock_bc(cr, numElements, *v);
-}
-#endif
-
-static void nblock_abc(const t_commrec *cr, int numElements, double **v)
-{
-    if (!MASTER(cr))
-    {
-        snew(*v, numElements);
-    }
-    nblock_bc(cr, numElements, *v);
-}
-
-static void nblock_abc(const t_commrec *cr, int numElements, std::vector<double> *v)
-{
-    if (!MASTER(cr))
-    {
-        v->resize(numElements);
-    }
-    gmx_bcast(numElements*sizeof(double), v->data(), cr);
-}
 
 static void bc_cstring(const t_commrec *cr, char **s)
 {
@@ -511,18 +480,6 @@ static void bc_grpopts(const t_commrec *cr, t_grpopts *g)
     }
 }
 
-static void bc_cosines(const t_commrec *cr, t_cosines *cs)
-{
-    block_bc(cr, cs->n);
-    snew_bc(cr, cs->a, cs->n);
-    snew_bc(cr, cs->phi, cs->n);
-    if (cs->n > 0)
-    {
-        nblock_bc(cr, cs->n, cs->a);
-        nblock_bc(cr, cs->n, cs->phi);
-    }
-}
-
 static void bc_pull_group(const t_commrec *cr, t_pull_group *pgrp)
 {
     block_bc(cr, *pgrp);
@@ -705,9 +662,13 @@ static void bc_swapions(const t_commrec *cr, t_swapcoords *swap)
 
 static void bc_inputrec(const t_commrec *cr, t_inputrec *inputrec)
 {
-    int      i;
-
+    /* The statement below is dangerous. It overwrites all structures in inputrec.
+     * If something is added to inputrec, like efield it will need to be
+     * treated here.
+     */
+    gmx::IInputRecExtension *eptr = inputrec->efield;
     block_bc(cr, *inputrec);
+    inputrec->efield = eptr;
 
     bc_grpopts(cr, &(inputrec->opts));
 
@@ -745,11 +706,7 @@ static void bc_inputrec(const t_commrec *cr, t_inputrec *inputrec)
         snew_bc(cr, inputrec->imd, 1);
         bc_imd(cr, inputrec->imd);
     }
-    for (i = 0; (i < DIM); i++)
-    {
-        bc_cosines(cr, &(inputrec->ex[i]));
-        bc_cosines(cr, &(inputrec->et[i]));
-    }
+    inputrec->efield->broadCast(cr);
     if (inputrec->eSwapCoords != eswapNO)
     {
         snew_bc(cr, inputrec->swap, 1);
@@ -774,16 +731,12 @@ static void bc_moltype(const t_commrec *cr, t_symtab *symtab,
 
 static void bc_molblock(const t_commrec *cr, gmx_molblock_t *molb)
 {
-    block_bc(cr, molb->type);
-    block_bc(cr, molb->nmol);
-    block_bc(cr, molb->natoms_mol);
-    block_bc(cr, molb->nposres_xA);
+    block_bc(cr, *molb);
     if (molb->nposres_xA > 0)
     {
         snew_bc(cr, molb->posres_xA, molb->nposres_xA);
         nblock_bc(cr, molb->nposres_xA*DIM, molb->posres_xA[0]);
     }
-    block_bc(cr, molb->nposres_xB);
     if (molb->nposres_xB > 0)
     {
         snew_bc(cr, molb->posres_xB, molb->nposres_xB);
