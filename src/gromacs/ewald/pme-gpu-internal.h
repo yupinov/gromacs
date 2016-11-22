@@ -64,9 +64,10 @@ struct gmx_wallclock_gpu_t;                    // only used in pme_gpu_get_timin
  * 0: The atom data GPU buffers are sized precisely according to the number of atoms.
  *    The atom index checks in the spread/gather code potentially hinder the performance.
  * 1: The atom data GPU buffers are padded with zeroes so that the number of atoms
- *    potentially fitting is divisible by particlesPerBlock (currently always 8).
+ *    potentially fitting is divisible by PME_SPREADGATHER_ATOMS_PER_BLOCK (currently always 8).
  *    The atom index checks are not performed. There should be a performance win, but how big is it, remains to be seen.
  *    Additional cudaMemsetAsync calls are done occasionally (only charges/coordinates; spline data is always recalculated now).
+ * \todo Estimate performance differences, consider turning into a boolean.
  */
 #define PME_GPU_USE_PADDING 1
 
@@ -74,6 +75,7 @@ struct gmx_wallclock_gpu_t;                    // only used in pme_gpu_get_timin
  * 0: Atoms with zero charges are processed by PME. Could introduce some overhead.
  * 1: Atoms with zero charges are not processed by PME. Adds branching to the spread/gather.
  *    Could be good for performance in specific systems with lots of neutral atoms.
+ * \todo Estimate performance differences, consider turning into a boolean.
  */
 #define PME_GPU_SKIP_ZEROES 0
 
@@ -86,6 +88,15 @@ struct gmx_wallclock_gpu_t;                    // only used in pme_gpu_get_timin
 #define PME_GPU_VIRIAL_AND_ENERGY_COUNT 7
 
 /* A block of CUDA-only functions that live in pme.cu */
+
+/*! \libinternal \brief
+ * Returns the number of atoms per execution block in the atom data layout.
+ * Depends on CUDA-specific block sizes, needed for the atom data padding.
+ *
+ * \param[in] pmeGPU            The PME GPU structure.
+ * \returns   Number of atoms in a single GPU atom data chunk.
+ */
+CUDA_FUNC_QUALIFIER int pme_gpu_get_atom_data_alignment(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU)) CUDA_FUNC_TERM_WITH_RETURN(1)
 
 /*! \libinternal \brief
  * Synchronizes the current step, waiting for the GPU kernels/transfers to finish.
@@ -146,16 +157,26 @@ CUDA_FUNC_QUALIFIER void pme_gpu_realloc_forces(const pme_gpu_t *CUDA_FUNC_ARGUM
 CUDA_FUNC_QUALIFIER void pme_gpu_free_forces(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU)) CUDA_FUNC_TERM
 
 /*! \libinternal \brief
- * Copies the forces from the CPU buffer (pme->gpu->io.h_forces) to the GPU
- * (to reduce them with the PME GPU gathered forces).
- * To be called after the bonded calculations.
+ * Copies the forces from the CPU buffer to the GPU (to reduce them with the PME GPU gathered forces).
+ * To be called e.g. after the bonded calculations.
  *
  * \param[in] pmeGPU             The PME GPU structure.
+ * \param[in] h_forces           The input forces rvec buffer.
  */
-CUDA_FUNC_QUALIFIER void pme_gpu_copy_input_forces(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_copy_input_forces(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU),
+                                                   const float     *CUDA_FUNC_ARGUMENT(h_forces)) CUDA_FUNC_TERM
 
 /*! \libinternal \brief
- * Waits for the PME GPU output forces copy to the CPU buffer (pme->gpu->io.h_forces) to finish.
+ * Copies the forces from the GPU to the CPU buffer. To be called after the gathering stage.
+ *
+ * \param[in] pmeGPU             The PME GPU structure.
+ * \param[out] h_forces          The output forces rvec buffer.
+ */
+CUDA_FUNC_QUALIFIER void pme_gpu_copy_output_forces(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU),
+                                                    float           *CUDA_FUNC_ARGUMENT(h_forces)) CUDA_FUNC_TERM
+
+/*! \libinternal \brief
+ * Waits for the PME GPU output forces copying to the CPU buffer to finish.
  *
  * \param[in] pmeGPU            The PME GPU structure.
  */
@@ -171,13 +192,15 @@ CUDA_FUNC_QUALIFIER void pme_gpu_sync_output_forces(const pme_gpu_t *CUDA_FUNC_A
 CUDA_FUNC_QUALIFIER void pme_gpu_realloc_coordinates(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU)) CUDA_FUNC_TERM
 
 /*! \libinternal \brief
- * Copies the input coordinates from the CPU buffer (pme->gpu->io.h_coordinates) onto the GPU.
+ * Copies the input coordinates from the CPU buffer onto the GPU.
  *
  * \param[in] pmeGPU            The PME GPU structure.
+ * \param[in] h_coordinates     Input coordinates (XYZ rvec array).
  *
  * Needs to be called every MD step. The coordinates are then used in the spline calculation.
  */
-CUDA_FUNC_QUALIFIER void pme_gpu_copy_coordinates(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_copy_input_coordinates(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU),
+                                                        const rvec      *CUDA_FUNC_ARGUMENT(h_coordinates)) CUDA_FUNC_TERM
 
 /*! \libinternal \brief
  * Frees the coordinates on the GPU.
@@ -187,15 +210,17 @@ CUDA_FUNC_QUALIFIER void pme_gpu_copy_coordinates(const pme_gpu_t *CUDA_FUNC_ARG
 CUDA_FUNC_QUALIFIER void pme_gpu_free_coordinates(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU)) CUDA_FUNC_TERM
 
 /*! \libinternal \brief
- * Reallocates the buffer on the GPU and copies the charges/coefficients from the CPU buffer (pmeGPU->io.h_coefficients).
+ * Reallocates the buffer on the GPU and copies the charges/coefficients from the CPU buffer.
  * Clears the padded part if needed.
  *
  * \param[in] pmeGPU            The PME GPU structure.
+ * \param[in] h_coefficients    The input atom charges/coefficients.
  *
  * Does not need to be done every MD step, only whenever the local charges change.
  * (So, in the beginning of the run, or on DD step).
  */
-CUDA_FUNC_QUALIFIER void pme_gpu_realloc_and_copy_coefficients(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_realloc_and_copy_input_coefficients(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU),
+                                                                     const float     *CUDA_FUNC_ARGUMENT(h_coefficients)) CUDA_FUNC_TERM
 
 /*! \libinternal \brief
  * Frees the charges/coefficients on the GPU.
@@ -273,7 +298,7 @@ CUDA_FUNC_QUALIFIER void pme_gpu_free_fract_shifts(const pme_gpu_t *CUDA_FUNC_AR
  *
  * \param[in] pmeGPU  The PME GPU structure.
  */
-CUDA_FUNC_QUALIFIER void pme_gpu_sync_energy_virial(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU)) CUDA_FUNC_TERM
+CUDA_FUNC_QUALIFIER void pme_gpu_sync_output_energy_virial(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU)) CUDA_FUNC_TERM
 
 /*! \libinternal \brief
  * Waits for the PME GPU grid copying to the host-side buffer to finish.
@@ -395,8 +420,13 @@ CUDA_FUNC_QUALIFIER void pme_gpu_solve(
         const gmx_bool CUDA_FUNC_ARGUMENT(bEnerVir)) CUDA_FUNC_TERM
 
 // A GPU counterpart to the gather_f_bsplines
+//* \param[in] forces         The pointer to the host-side array of particle forces.
+//*                           It will be used for output, but can also be used for input,
+//*                           if bClearForces is passed as false to the pme_gpu_launch_gather.
+
 CUDA_FUNC_QUALIFIER void pme_gpu_gather(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
-                                        const gmx_bool   CUDA_FUNC_ARGUMENT(bOverwriteForces)) CUDA_FUNC_TERM
+                                        const gmx_bool   CUDA_FUNC_ARGUMENT(bOverwriteForces),
+                                        float           *CUDA_FUNC_ARGUMENT(h_forces)) CUDA_FUNC_TERM
 
 
 
@@ -410,7 +440,7 @@ CUDA_FUNC_QUALIFIER void pme_gpu_gather(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme)
  */
 gmx_inline bool pme_gpu_uses_dd(const pme_gpu_t *pmeGPU)
 {
-    return !pmeGPU->settings.useSingleGPU;
+    return !pmeGPU->settings.useDecomposition;
 }
 
 /*! \libinternal \brief
@@ -443,7 +473,7 @@ gmx_inline bool pme_gpu_performs_FFT(const pme_gpu_t *pmeGPU)
  */
 gmx_inline bool pme_gpu_performs_wrapping(const pme_gpu_t *pmeGPU)
 {
-    return pmeGPU->settings.useSingleGPU;
+    return pmeGPU->settings.useDecomposition;
 }
 
 /*! \libinternal \brief
@@ -458,18 +488,6 @@ gmx_inline bool pme_gpu_performs_solve(const pme_gpu_t *pmeGPU)
 }
 
 /* A block of C++ functions that live in pme-gpu-internal.cpp */
-
-/*! \libinternal \brief
- * Sets the host-side I/O buffers in the PME GPU.
- * Does nothing if PME on GPU is disabled.
- *
- * \param[in] pmeGPU         The PME GPU structure.
- * \param[in] coordinates    The pointer to the host-side array of particle coordinates in rvec format.
- * \param[in] forces         The pointer to the host-side array of particle forces.
- *                           It will be used for output, but can also be used for input,
- *                           if bClearForces is passed as false to the pme_gpu_launch_gather.
- */
-void pme_gpu_set_io_ranges(pme_gpu_t *pmeGPU, rvec *coordinates, rvec *forces);
 
 /*! \libinternal \brief
  * Returns the output virial and energy of the PME solving.
@@ -488,8 +506,9 @@ void pme_gpu_get_energy_virial(const pme_gpu_t *pmeGPU, real *energy, matrix vir
  * \param[in] pmeGPU         The PME GPU structure.
  * \param[in] box            The unit cell box which does not necessarily change every step (only with pressure coupling enabled).
  *                           Currently it is simply compared with the previous one to determine if it needs to be updated.
+ * \param[in] h_coordinates  Input coordinates (XYZ rvec array).
  */
-void pme_gpu_start_step(pme_gpu_t *pmeGPU, const matrix box);
+void pme_gpu_start_step(pme_gpu_t *pmeGPU, const matrix box, const rvec *h_coordinates);
 
 /*! \libinternal \brief
  * Finishes the PME GPU step, waiting for the output forces and/or energy/virial to be copied to the host.
@@ -532,6 +551,21 @@ void pme_gpu_destroy(pme_gpu_t *pmeGPU);
  */
 void pme_gpu_reinit_atoms(pme_gpu_t        *pmeGPU,
                           const int         nAtoms,
-                          real             *coefficients);
+                          const real       *coefficients);
+
+/*! \brief
+ * Finds out if PME is set to run on GPU. Not to be called on per-step basis.
+ * TODO: remove this entirely with introduction of task/hardware scheduler.
+ *
+ * \param[in] pme  The PME structure.
+ * \returns        True if PME runs on GPU currently, false otherwise.
+ */
+inline bool pme_gpu_active(const gmx_pme_t *pme)
+{
+    /* Something to think about: should this function be called from all the CUDA_FUNC_QUALIFIER functions?
+     * In other words, should we plan for dynamic toggling of the PME GPU?
+     */
+    return (pme != NULL) && pme->useGPU;
+}
 
 #endif // PMEGPUINTERNAL_H

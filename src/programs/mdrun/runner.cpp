@@ -836,6 +836,9 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
         }
     }
 
+    // This is a temporary boolean which represents a decision from a task scheduler.
+    const bool pmeUseGpu = strncmp(pme_opt, "cpu", 3);
+
     /* Check and update the hardware options for internal consistency */
     check_and_update_hw_opt_1(hw_opt, cr, npme);
 
@@ -1323,7 +1326,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
                                   (Flags & MD_REPRODUCIBLE),
                                   ewaldcoeff_q, ewaldcoeff_lj,
                                   nthreads_pme,
-                                  strncmp(pme_opt, "cpu", 3), NULL, hwinfo, &hw_opt->gpu_opt);
+                                  pmeUseGpu, NULL, hwinfo, &hw_opt->gpu_opt);
             if (status != 0)
             {
                 gmx_fatal(FARGS, "Error %d initializing PME", status);
@@ -1406,7 +1409,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
         GMX_RELEASE_ASSERT(pmedata, "pmedata was NULL while cr->duty was not DUTY_PP");
         /* do PME only */
         walltime_accounting = walltime_accounting_init(gmx_omp_nthreads_get(emntPME));
-        gmx_pmeonly(*pmedata, cr, nrnb, wcycle, walltime_accounting, ewaldcoeff_q, ewaldcoeff_lj, inputrec);
+        gmx_pmeonly(*pmedata, cr, nrnb, wcycle, walltime_accounting, ewaldcoeff_q, ewaldcoeff_lj, inputrec, pmeUseGpu);
     }
 
     wallcycle_stop(wcycle, ewcRUN);

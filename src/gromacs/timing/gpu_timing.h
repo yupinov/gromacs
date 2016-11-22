@@ -75,7 +75,9 @@ enum
 /*! \internal \brief GPU timings for PME. */
 struct gmx_wallclock_gpu_pme_t
 {
-    /* A separate PME structure to avoid refactoring the NB code for gmx_wallclock_gpu_t later */
+    /* A separate PME structure to avoid refactoring the NB code for gmx_wallclock_gpu_t later
+     * FIXME: devise a better GPU timing data structuring.
+     */
     /*! \brief Array of PME GPU timing data. */
     gmx_nbnxn_kernel_timing_data_t timing[gtPME_EVENT_COUNT];
 };

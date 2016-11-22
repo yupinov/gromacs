@@ -108,7 +108,7 @@ int gmx_pme_destroy(struct gmx_pme_t **pmedata);
  *
  * The meaning of \p flags is defined above, and determines which
  * parts of the calculation are performed.
- * Does nothing if pme_gpu_enabled(pme) returns TRUE.
+ * Does nothing if pme_gpu_active(pme) returns true.
  *
  * \return 0 indicates all well, non zero is an error code.
  */
@@ -133,7 +133,7 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
                 gmx_wallcycle_t wcycle,
                 gmx_walltime_accounting_t walltime_accounting,
                 real ewaldcoeff_q, real ewaldcoeff_lj,
-                t_inputrec *ir);
+                t_inputrec *ir, const bool pmeUseGpu);
 
 /*! \brief Calculate the PME grid energy V for n charges.
  *
@@ -174,9 +174,10 @@ void gmx_pme_receive_f(struct t_commrec *cr,
                        float *pme_cycles);
 
 /*! \brief
- * This function should manage the local atoms data update after the DD (charges, coordinates, etc.).
- * Currently it only manages the PME on GPU, as the PME CPU call gmx_pme_do() gets passed the input pointers each step.
- * It also isn't but should be called during the initial setup, before the first MD step.
+ * This function updates the local atom data on GPU after DD (charges, coordinates, etc.).
+ * TODO: it should update the PME CPU atom data as well
+ * (currently PME CPU call gmx_pme_do() gets passed the input pointers each step).
+ * TODO: it should be called during the initial simulation setup, before the first MD step.
  *
  * \param[in] pme            The PME structure.
  * \param[in] nAtoms         The number of particles.

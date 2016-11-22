@@ -42,6 +42,8 @@
 
 #include "gmxpre.h"
 
+#include "config.h"
+
 #include "gromacs/ewald/pme.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
@@ -51,22 +53,25 @@
 #include "pme-grid.h"
 #include "pme-solve.h"
 
-bool pme_gpu_enabled(const gmx_pme_t *pme)
+bool pme_gpu_task_enabled(const gmx_pme_t *pme)
 {
-    /* Something to think about: should this function be called from all the CUDA_FUNC_QUALIFIER functions?
-     * In other words, should we plan for dynamic toggling of the PME GPU?
-     */
-    return (pme != NULL) && pme->useGPU;
+    return pme && pme->useGPU;
 }
 
 void pme_gpu_reset_timings(const gmx_pme_t *pme)
 {
-    pme_gpu_reset_timings(pme->gpu);
+    if (pme_gpu_active(pme))
+    {
+        pme_gpu_reset_timings(pme->gpu);
+    }
 }
 
 void pme_gpu_get_timings(const gmx_pme_t *pme, gmx_wallclock_gpu_t **timings)
 {
-    pme_gpu_get_timings(pme->gpu, timings);
+    if (pme_gpu_active(pme))
+    {
+        pme_gpu_get_timings(pme->gpu, timings);
+    }
 }
 
 /*! \brief \internal
@@ -82,7 +87,7 @@ void parallel_3dfft_execute_gpu_wrapper(gmx_pme_t              *pme,
                                         enum gmx_fft_direction  dir,
                                         gmx_wallcycle_t         wcycle)
 {
-    GMX_ASSERT(grid_index == 0, "Only a single grid supported");
+    GMX_ASSERT(grid_index == 0, "Only single grid supported");
     if (pme_gpu_performs_FFT(pme->gpu))
     {
         wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_FFT);
@@ -106,16 +111,15 @@ void parallel_3dfft_execute_gpu_wrapper(gmx_pme_t              *pme,
  */
 // TODO: add gmx_ prefix
 
-void pme_gpu_launch(gmx_pme_t      *pme,
-                    int             nAtoms,
-                    rvec            x[],
-                    rvec            f[],
-                    real            charges[],
-                    matrix          box,
-                    gmx_wallcycle_t wcycle,
-                    int             flags)
+void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
+                                          int                   nAtoms,
+                                          const rvec           *x,
+                                          const real           *charges,
+                                          const matrix          box,
+                                          gmx_wallcycle_t       wcycle,
+                                          int                   flags)
 {
-    GMX_ASSERT(pme_gpu_enabled(pme), "This is a GPU run of PME.");
+    GMX_ASSERT(pme_gpu_active(pme), "This is a GPU run of PME.");
 
     wallcycle_start(wcycle, ewcLAUNCH_GPU_PME);
 
@@ -143,8 +147,7 @@ void pme_gpu_launch(gmx_pme_t      *pme,
         pme_gpu_reinit_atoms(pmeGPU, nAtoms, charges);
         pme->gpu->settings.needToUpdateAtoms = FALSE;
     }
-    pme_gpu_set_io_ranges(pmeGPU, x, f);              /* Should this be called every step, or on DD/DLB, or on bCalcEnerVir change? */
-    pme_gpu_start_step(pmeGPU, box);                  /* This copies the coordinates, and updates the unit cell box (if it has changed) */
+    pme_gpu_start_step(pmeGPU, box, x);                  /* This copies the coordinates, and updates the unit cell box (if it has changed) */
     wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_INIT);
 
     const unsigned int grid_index = 0;
@@ -244,6 +247,7 @@ void pme_gpu_launch(gmx_pme_t      *pme,
 
 void pme_gpu_launch_gather(const gmx_pme_t                 *pme,
                            gmx_wallcycle_t gmx_unused       wcycle,
+                           rvec                            *forces,
                            gmx_bool                         bClearForces)
 {
     if (!pme_gpu_performs_gather(pme->gpu))
@@ -253,7 +257,7 @@ void pme_gpu_launch_gather(const gmx_pme_t                 *pme,
 
     wallcycle_start_nocount(wcycle, ewcLAUNCH_GPU_PME);
     wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_GATHER);
-    pme_gpu_gather(pme, bClearForces);
+    pme_gpu_gather(pme, bClearForces, reinterpret_cast<float *>(forces));
     wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_GATHER);
     wallcycle_stop(wcycle, ewcLAUNCH_GPU_PME);
 }

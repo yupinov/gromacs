@@ -46,7 +46,6 @@
 #include <memory>
 
 #include "gromacs/ewald/pme-gpu.h"   //?
-#include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/utility/gmxassert.h"
 
@@ -55,39 +54,38 @@
 #include "pme-internal.h"
 #include "pme-timings.cuh"
 
-#define THREADS_PER_BLOCK (4 * warp_size)
-
 template<const gmx_bool bEnerVir,
          // should the energy/virial be computed
          const gmx_bool YZXOrdering
          // false - GPU solve works in a XYZ ordering (after a single-rank cuFFT)
          // true - GPU solve works in a YZX ordering, like the CPU one (after FFTW)
          >
+__launch_bounds__(PME_SOLVE_THREADS_PER_BLOCK, PME_MIN_BLOCKS_PER_MP)
 __global__ void pme_solve_kernel
     (const int localCountMajor, const int localCountMiddle, const int localCountMinor,
     const int localOffsetMinor, const int localOffsetMajor, const int localOffsetMiddle,
     const int localSizeMinor, /*const int localSizeMajor,*/ const int localSizeMiddle,
-    const struct pme_gpu_kernel_params_t kernelParams
+    const struct pme_gpu_cuda_kernel_params_t kernelParams
     )
 {
     /* Global memory pointers */
-    const float * __restrict__ splineValueMajorGlobal    = kernelParams.grid.splineValuesArray + kernelParams.grid.splineValuesOffset[YZXOrdering ? YY : XX];
-    const float * __restrict__ splineValueMiddleGlobal   = kernelParams.grid.splineValuesArray + kernelParams.grid.splineValuesOffset[YZXOrdering ? ZZ : YY];
-    const float * __restrict__ splineValueMinorGlobal    = kernelParams.grid.splineValuesArray + kernelParams.grid.splineValuesOffset[YZXOrdering ? XX : ZZ];
-    float * __restrict__       virialAndEnergyGlobal     = kernelParams.constants.virialAndEnergy;
+    const float * __restrict__ splineValueMajorGlobal    = kernelParams.grid.d_splineModuli + kernelParams.grid.splineValuesOffset[YZXOrdering ? YY : XX];
+    const float * __restrict__ splineValueMiddleGlobal   = kernelParams.grid.d_splineModuli + kernelParams.grid.splineValuesOffset[YZXOrdering ? ZZ : YY];
+    const float * __restrict__ splineValueMinorGlobal    = kernelParams.grid.d_splineModuli + kernelParams.grid.splineValuesOffset[YZXOrdering ? XX : ZZ];
+    float * __restrict__       virialAndEnergyGlobal     = kernelParams.constants.d_virialAndEnergy;
 
 
     // this is a PME solve kernel
     // each thread works on one cell of the Fourier space complex 3D grid (float2 * __restrict__ grid)
-    // each block handles THREADS_PER_BLOCK cells - depending on the grid contiguous dimension size,
+    // each block handles PME_SOLVE_THREADS_PER_BLOCK cells - depending on the grid contiguous dimension size,
     // that can range from a part of a single gridline to several complete gridlines
     // the minor dimension index is (YZXOrdering ? XX : ZZ)
     const int threadLocalId = (threadIdx.y * blockDim.x) + threadIdx.x;
     //const int blockSize = (blockDim.x * blockDim.y * blockDim.z); // == cellsPerBlock
-    const int blockSize = THREADS_PER_BLOCK;
+    const int blockSize = PME_SOLVE_THREADS_PER_BLOCK;
     //const int threadId = blockId * blockSize + threadLocalId;
 
-    float2 * __restrict__  globalGrid = (float2 *)kernelParams.grid.fourierGrid;
+    float2 * __restrict__  globalGrid = (float2 *)kernelParams.grid.d_fourierGrid;
 
     const int              nMajor  = kernelParams.grid.localGridSize[YZXOrdering ? ZZ : YY];
     const int              nMiddle = kernelParams.grid.localGridSize[YZXOrdering ? ZZ : YY];
@@ -308,6 +306,7 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
     //printf("ordering %d\n", YZXOrdering);
 
     cudaStream_t s = pmeGPU->archSpecific->pmeStream;
+    const pme_gpu_cuda_kernel_params_t *kernelParamsPtr = pmeGPU->kernelParams.get();
 
     ivec         local_ndata, local_offset, local_size, complex_order;
     /* Dimensions should be identical for A/B grid, so we just use A here */
@@ -327,21 +326,21 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
 
     const int   gridSize = local_size[XX] * local_size[YY] * local_size[ZZ] * sizeof(float2);
 
-    float2     *grid_d = (float2 *)pmeGPU->kernelParams.grid.fourierGrid;
+    float2     *grid_d = (float2 *)kernelParamsPtr->grid.d_fourierGrid;
     if (!pme_gpu_performs_FFT(pmeGPU))
     {
         cu_copy_H2D_async(grid_d, grid, gridSize, s);
     }
 
-    // Z-dimension is too small in CUDA limitations (64 on CC30?), so instead of major-middle-minor sizing we do minor-middle-major
-    const int maxBlockSize      = THREADS_PER_BLOCK;
+    const int maxBlockSize      = bEnerVir ? PME_SOLVE_ENERVIR_THREADS_PER_BLOCK : PME_SOLVE_THREADS_PER_BLOCK;
     const int gridLineSize      = local_size[minorDim];
     const int gridLinesPerBlock = max(maxBlockSize / gridLineSize, 1);
     const int blocksPerGridLine = (gridLineSize + maxBlockSize - 1) / maxBlockSize; // rounded up
+    // Z-dimension is too small in CUDA limitations (64 on CC30?), so instead of major-middle-minor sizing we do minor-middle-major
     dim3 threads((maxBlockSize + gridLinesPerBlock - 1) / gridLinesPerBlock, gridLinesPerBlock);
     const int blockSize = threads.x * threads.y * threads.z;
     GMX_RELEASE_ASSERT(blockSize >= maxBlockSize, "Wrong PME GPU solve launch parameters");
-    // we want to have spare threads to zero all the shared memory which we use in CC2.0 shared mem reduction
+    // we want to be able to zero all the shared memory which we use in CC2.0 shared mem reduction
 
     dim3 blocks(blocksPerGridLine,
                 (local_ndata[middleDim] + gridLinesPerBlock - 1) / gridLinesPerBlock, // rounded up middle dimension block number
@@ -357,7 +356,7 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
             (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim],
              local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
              local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-             pmeGPU->kernelParams);
+             *kernelParamsPtr);
         }
         else
         {
@@ -365,7 +364,7 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
             (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
              local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
              local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-             pmeGPU->kernelParams);
+             *kernelParamsPtr);
         }
     }
     else
@@ -376,7 +375,7 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
             (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim],
              local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
              local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-             pmeGPU->kernelParams);
+             *kernelParamsPtr);
         }
         else
         {
@@ -384,7 +383,7 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
             (local_ndata[majorDim], local_ndata[middleDim], local_ndata[minorDim ],
              local_offset[minorDim], local_offset[majorDim], local_offset[middleDim],
              local_size[minorDim], /*local_size[majorDim],*/ local_size[middleDim],
-             pmeGPU->kernelParams);
+             *kernelParamsPtr);
         }
     }
     CU_LAUNCH_ERR("pme_solve_kernel");
@@ -393,7 +392,7 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
 
     if (bEnerVir)
     {
-        cu_copy_D2H_async(pmeGPU->io.h_virialAndEnergy, pmeGPU->kernelParams.constants.virialAndEnergy,
+        cu_copy_D2H_async(pmeGPU->staging.h_virialAndEnergy, kernelParamsPtr->constants.d_virialAndEnergy,
                           PME_GPU_VIRIAL_AND_ENERGY_COUNT * sizeof(float), s);
         cudaError_t stat = cudaEventRecord(pmeGPU->archSpecific->syncEnerVirD2H, s);
         CU_RET_ERR(stat, "PME solve energy/virial sync fail");

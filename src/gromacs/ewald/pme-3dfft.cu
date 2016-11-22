@@ -51,10 +51,11 @@
 
 parallel_3dfft_gpu_t::parallel_3dfft_gpu_t(const pme_gpu_t *pmeGPU)
 {
+    const pme_gpu_cuda_kernel_params_t *kernelParamsPtr = pmeGPU->kernelParams.get();
     for (int i = 0; i < DIM; i++)
     {
-        nDataReal_[i]   = pmeGPU->kernelParams.grid.localGridSize[i];
-        sizeComplex_[i] = sizeReal_[i] = pmeGPU->kernelParams.grid.localGridSizePadded[i];
+        nDataReal_[i]   = kernelParamsPtr->grid.localGridSize[i];
+        sizeComplex_[i] = sizeReal_[i] = kernelParamsPtr->grid.localGridSizePadded[i];
     }
     if (!pmeGPU->archSpecific->performOutOfPlaceFFT)
     {
@@ -69,9 +70,9 @@ parallel_3dfft_gpu_t::parallel_3dfft_gpu_t(const pme_gpu_t *pmeGPU)
 
     memset(localOffset_, 0, sizeof(localOffset_)); //!
 
-    realGrid_ = (cufftReal *)pmeGPU->kernelParams.grid.realGrid;
+    realGrid_ = (cufftReal *)kernelParamsPtr->grid.d_realGrid;
     GMX_ASSERT(realGrid_, "Bad (null) input grid");
-    complexGrid_ = (cufftComplex *)pmeGPU->kernelParams.grid.fourierGrid;
+    complexGrid_ = (cufftComplex *)kernelParamsPtr->grid.d_fourierGrid;
 
     /* Commented code for a simple 3D grid with no padding */
     /*

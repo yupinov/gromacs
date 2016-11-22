@@ -155,6 +155,8 @@ static void checkNumberOfBondedInteractions(FILE *fplog, t_commrec *cr, int tota
     }
 }
 
+#include "gromacs/ewald/pme-gpu-internal.h" //for pmeUseGpu
+
 static void reset_all_counters(FILE *fplog, const gmx::MDLogger &mdlog, t_commrec *cr,
                                gmx_int64_t step,
                                gmx_int64_t *step_rel, t_inputrec *ir,
@@ -175,12 +177,12 @@ static void reset_all_counters(FILE *fplog, const gmx::MDLogger &mdlog, t_commre
         nbnxn_gpu_reset_timings(nbv);
     }
 
-    if (pme_gpu_enabled(pme))
+    if (pme_gpu_task_enabled(pme))
     {
         pme_gpu_reset_timings(pme);
     }
 
-    if (use_GPU(nbv) || pme_gpu_enabled(pme))
+    if (use_GPU(nbv) || pme_gpu_task_enabled(pme))
     {
         resetGpuProfiler();
     }

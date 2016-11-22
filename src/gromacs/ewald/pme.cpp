@@ -864,7 +864,7 @@ int gmx_pme_reinit(struct gmx_pme_t **pmedata,
 
     ret = gmx_pme_init(pmedata, cr, pme_src->nnodes_major, pme_src->nnodes_minor,
                        &irc, homenr, pme_src->bFEP_q, pme_src->bFEP_lj, FALSE, ewaldcoeff_q, ewaldcoeff_lj,
-                       pme_src->nthread, pme_gpu_enabled(pme_src), pme_src->gpu);
+                       pme_src->nthread, pme_gpu_active(pme_src), pme_src->gpu);
 
     if (ret == 0)
     {
@@ -889,7 +889,7 @@ void gmx_pme_calc_energy(struct gmx_pme_t *pme, int n, rvec *x, real *q, real *V
     {
         gmx_incons("gmx_pme_calc_energy with free energy");
     }
-    if (pme_gpu_enabled(pme))
+    if (pme_gpu_active(pme))
     {
         gmx_incons("gmx_pme_calc_energy not implemented on GPU");
     }
@@ -1692,7 +1692,7 @@ int gmx_pme_destroy(struct gmx_pme_t **pmedata)
     sfree(pme->sum_qgrid_tmp);
     sfree(pme->sum_qgrid_dd_tmp);
 
-    if (pme_gpu_enabled(pme))
+    if (pme_gpu_active(pme))
     {
         pme_gpu_destroy(pme->gpu);
     }
@@ -1705,7 +1705,7 @@ int gmx_pme_destroy(struct gmx_pme_t **pmedata)
 
 void gmx_pme_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, real *coefficients)
 {
-    if (pme_gpu_enabled(pme))
+    if (pme_gpu_active(pme))
     {
         pme_gpu_reinit_atoms(pme->gpu, nAtoms, coefficients);
     }

@@ -127,78 +127,6 @@ static void reduce_thread_energies(tensor vir_q, tensor vir_lj,
     }
 }
 
-void do_pme_gpu_launch(t_forcerec *fr,      t_inputrec *ir,
-                       t_commrec  *cr,
-                       gmx_wallcycle_t wcycle,
-                       t_mdatoms  *md,
-                       rvec       x[],
-                       matrix     box,
-                       int        flags)
-{
-    //yupinov why do we need this?
-    int         i;
-    gmx_bool    bSB;
-    int         pme_flags;
-    matrix      boxs;
-    rvec        box_size;
-    t_pbc       pbc;
-
-    set_pbc(&pbc, fr->ePBC, box);
-
-    /* Reset box */
-    for (i = 0; (i < DIM); i++)
-    {
-        box_size[i] = box[i][i];
-    }
-
-    /* The code below was copypasted from do_force_lowlevel and cleared of LJ code, etc. */
-    if (EEL_FULL(fr->eeltype) || EVDW_PME(fr->vdwtype))
-    {
-        bSB = (ir->nwall == 2);
-        if (bSB)
-        {
-            copy_mat(box, boxs);
-            svmul(ir->wall_ewald_zfac, boxs[ZZ], boxs[ZZ]);
-            box_size[ZZ] *= ir->wall_ewald_zfac;
-        }
-
-        if (EEL_PME_EWALD(fr->eeltype) || EVDW_PME(fr->vdwtype))
-        {
-            if ((EEL_PME(fr->eeltype) || EVDW_PME(fr->vdwtype)) && (cr->duty & DUTY_PME))
-            {
-                assert(fr->n_tpi >= 0);
-                if (fr->n_tpi == 0 || (flags & GMX_FORCE_STATECHANGED))
-                {
-                    pme_flags = GMX_PME_SPREAD | GMX_PME_SOLVE;
-                    if (flags & GMX_FORCE_FORCES)
-                    {
-                        pme_flags |= GMX_PME_CALC_F;
-                    }
-                    if (flags & GMX_FORCE_VIRIAL)
-                    {
-                        pme_flags |= GMX_PME_CALC_ENER_VIR;
-                    }
-                    if (fr->n_tpi > 0)
-                    {
-                        /* We don't calculate f, but we do want the potential */
-                        pme_flags |= GMX_PME_CALC_POT;
-                    }
-                    if (pme_gpu_enabled(fr->pmedata))
-                    {
-                        pme_gpu_launch(fr->pmedata,
-                                       md->homenr - fr->n_tpi,
-                                       x, as_rvec_array(fr->f_novirsum->data()),
-                                       md->chargeA,
-                                       bSB ? boxs : box,
-                                       wcycle,
-                                       pme_flags);
-                    }
-                }
-            }
-        }
-    }
-}
-
 void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                        t_idef     *idef,    t_commrec  *cr,
                        t_nrnb     *nrnb,    gmx_wallcycle_t gmx_unused wcycle,
@@ -217,7 +145,8 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                        t_blocka   *excl,
                        rvec       mu_tot[],
                        int        flags,
-                       float      *cycles_pme)
+                       float      *cycles_pme,
+                       bool pmeUseGpu)
 {
     int         i, j;
     int         donb_flags;
@@ -559,10 +488,10 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                                                    fr->vir_el_recip);
             }
 
-            if (pme_gpu_enabled(fr->pmedata))
+            if (pmeUseGpu)
             {
                 wallcycle_stop(wcycle, ewcFORCE);
-                pme_gpu_launch_gather(fr->pmedata, wcycle, false);
+                pme_gpu_launch_gather(fr->pmedata, wcycle, as_rvec_array(fr->f_novirsum->data()), false);
                 wallcycle_start_nocount(wcycle, ewcFORCE);
             }
 
@@ -590,7 +519,7 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                         /* We don't calculate f, but we do want the potential */
                         pme_flags |= GMX_PME_CALC_POT;
                     }
-                    if (!pme_gpu_enabled(fr->pmedata))
+                    if (!pmeUseGpu)
                     {
                         wallcycle_start(wcycle, ewcPMEMESH);
                         status = gmx_pme_do(fr->pmedata,

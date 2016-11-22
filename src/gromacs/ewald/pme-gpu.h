@@ -45,20 +45,23 @@
 #ifndef PMEGPU_H
 #define PMEGPU_H
 
-#include "gromacs/fft/fft.h"           // for the enum gmx_fft_direction
-#include "gromacs/timing/wallcycle.h"  // FIXME: for the gmx_wallcycle_t
+#include "gromacs/fft/fft.h"
+#include "gromacs/timing/wallcycle.h"
 
 struct gmx_pme_t;
 struct gmx_wallclock_gpu_t;
 struct pme_gpu_t;
 
 /*! \brief
- * Finds out if PME is set to run on GPU. Not to be called on per-step basis.
+ * Tells if PME is enabled to run on GPU (not necessarily active at the moment).
+ * For now, this decision is stored in the PME structure itself.
+ * FIXME: this is an information that should be managed by the task scheduler.
+ * As soon as such functionality appears, this function should be removed from this module.
  *
- * \param[in] pme  The PME structure.
- * \returns        True if PME runs on GPU, false otherwise.
+ * \param[in]  pme            The PME data structure.
+ * \returns true if PME can run on GPU, false otherwise.
  */
-bool pme_gpu_enabled(const gmx_pme_t *pme);
+bool pme_gpu_task_enabled(const gmx_pme_t *pme);
 
 /*! \brief
  * Resets the PME GPU timings. To be called at the reset step.
@@ -86,7 +89,6 @@ void pme_gpu_get_timings(const gmx_pme_t      *pme,
  * \param[in]  nAtoms         The number of local atoms.
  *                            Only needed for the first MD step (late initialization).
  * \param[in]  x              The array of local atoms' coordinates.
- * \param[out] f              The array of local atoms' resulting forces. Unless we do a reduction???
  * \param[in]  charges        The array of local atoms' charges.
  *                            Only needed for the first MD step (late initialization).
  * \param[in]  box            The unit cell box.
@@ -94,20 +96,20 @@ void pme_gpu_get_timings(const gmx_pme_t      *pme,
  * \param[in]  flags          The combination of flags to affect the PME computation.
  *                            TODO: document, rethink the flag handling.
  */
-void pme_gpu_launch(gmx_pme_t         *pme,
-                    int                nAtoms,
-                    rvec              *x,
-                    rvec              *f,
-                    real              *charges,
-                    matrix             box,
-                    gmx_wallcycle_t    wcycle,
-                    int                flags);
+void pme_gpu_launch_everything_but_gather(gmx_pme_t               *pme,
+                                          int                      nAtoms,
+                                          const rvec              *x,
+                                          const  real             *charges,
+                                          const matrix             box,
+                                          gmx_wallcycle_t          wcycle,
+                                          int                      flags);
 
 /*! \brief \internal
  * Launches the PME GPU gathering and its force manipulations. TODO: rethink the whole separate gathering launch.
  *
  * \param[in]  pme            The PME data structure.
  * \param[in]  wcycle         The wallclock counter.
+ * \param[in,out] forces              The array of local atoms' resulting forces. Unless we do a reduction???
  * \param[in]  bClearForces   The boolean which tells whether the gathering kernel overwrites
  *                            the host array with the output PME forces (TRUE),
  *                            or copies its contents to the GPU and reduces the PME forces into that
@@ -115,6 +117,7 @@ void pme_gpu_launch(gmx_pme_t         *pme,
  */
 void pme_gpu_launch_gather(const gmx_pme_t      *pme,
                            gmx_wallcycle_t       wcycle,
+                           rvec                 *forces,
                            gmx_bool              bClearForces);
 
 /*! \libinternal \brief

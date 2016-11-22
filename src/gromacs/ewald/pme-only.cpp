@@ -109,7 +109,8 @@ static void gmx_pmeonly_switch(int *npmedata, struct gmx_pme_t ***pmedata,
                                ivec grid_size,
                                real ewaldcoeff_q, real ewaldcoeff_lj,
                                t_commrec *cr, t_inputrec *ir,
-                               struct gmx_pme_t **pme_ret)
+                               struct gmx_pme_t **pme_ret,
+                               const bool pmeUseGpu)
 {
     int               ind;
     struct gmx_pme_t *pme = NULL;
@@ -127,7 +128,7 @@ static void gmx_pmeonly_switch(int *npmedata, struct gmx_pme_t ***pmedata,
              * This should not cause actual GPU reallocations, at least (the allocated buffers are never shrunk).
              * So, just some grid size updates in the GPU kernel parameters.
              */
-            if (pme_gpu_enabled(pme))
+            if (pmeUseGpu)
             {
                 gmx_pme_reinit(&((*pmedata)[ind]), cr, pme, ir, grid_size, ewaldcoeff_q, ewaldcoeff_lj);
             }
@@ -152,7 +153,7 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
                 gmx_wallcycle_t wcycle,
                 gmx_walltime_accounting_t walltime_accounting,
                 real ewaldcoeff_q, real ewaldcoeff_lj,
-                t_inputrec *ir)
+                t_inputrec *ir, const bool pmeUseGpu)
 {
     int                npmedata;
     struct gmx_pme_t **pmedata;
@@ -210,7 +211,7 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
             if (ret == pmerecvqxSWITCHGRID)
             {
                 /* Switch the PME grid to grid_switch */
-                gmx_pmeonly_switch(&npmedata, &pmedata, grid_switch, ewaldcoeff_q, ewaldcoeff_lj, cr, ir, &pme);
+                gmx_pmeonly_switch(&npmedata, &pmedata, grid_switch, ewaldcoeff_q, ewaldcoeff_lj, cr, ir, &pme, pmeUseGpu);
             }
 
             if (atomSetChanged)
@@ -249,10 +250,10 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
 
         const int pme_flags = GMX_PME_DO_ALL_F | (bEnerVir ? GMX_PME_CALC_ENER_VIR : 0);
 
-        if (pme_gpu_enabled(pme))
+        if (pmeUseGpu)
         {
-            pme_gpu_launch(pme, natoms, x_pp, f_pp, chargeA, box, wcycle, pme_flags);
-            pme_gpu_launch_gather(pme, wcycle, TRUE);
+            pme_gpu_launch_everything_but_gather(pme, natoms, x_pp, chargeA, box, wcycle, pme_flags);
+            pme_gpu_launch_gather(pme, wcycle, f_pp, TRUE);
             pme_gpu_get_results(pme, wcycle, vir_q, &energy_q, pme_flags);
         }
         else

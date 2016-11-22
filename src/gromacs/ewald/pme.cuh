@@ -44,11 +44,12 @@
 #ifndef PME_CUDA_H
 #define PME_CUDA_H
 
-#include <cassert>            // for the asserts within inline functions
+#include <cassert>                               // for asserts within inline functions
 
-#include "pme-gpu-internal.h" // for the general PME GPU behaviour defines
-#include "pme-timings.cuh"    // FIXME: for the pme_gpu_timing unique_ptr vector
+#include "gromacs/gpu_utils/cuda_arch_utils.cuh" //for warp_size
 
+#include "pme-gpu-internal.h"                    // for the general PME GPU behaviour defines
+#include "pme-timings.cuh"                       // FIXME: for the pme_gpu_timing unique_ptr vector
 
 class pme_gpu_timing;
 class parallel_3dfft_gpu_t;
@@ -95,14 +96,36 @@ class parallel_3dfft_gpu_t;
 /* FIXME: This could be used in the code as well, but actually isn't now, only in the outdated separate spline/spread kernels */
 #define PME_SPLINE_ORDER_STRIDE DIM
 
-/* The spread/gather constant; 2 particles per warp for order of 4, depends on the templated order parameter */
-#define PME_SPREADGATHER_PARTICLES_PER_WARP (warp_size / order / order)
-
-/* FIXME: this is the shared memory size constant;
- * it depends on particlesPerBlock is another templated parameter = (BLOCK_SIZE / warp_size) * PME_SPREADGATHER_PARTICLES_PER_WARP.
- * There is a redundancy going on here.
+/*! \brief
+ * The number of GPU threads used for computing spread/gather contributions of a single atom as function of the PME order.
+ * The assumption is currently that any thread processes only a single atom's contributions.
+ * Another assumption is spread and gather using same layout/scheduling, having common launch bounds, etc.
  */
-#define PME_SPREADGATHER_BLOCK_DATA_SIZE (particlesPerBlock * DIM)
+#define PME_THREADS_PER_ATOM (order * order)
+
+/* The launch bounds of the PME CUDA kernels (blocksizes and minimal numbers of SMs).
+ * Blocksizes are used in the host code as well (for launching kernels).
+ * Spread and gather are using the same memory layout/logic.
+ * TODO: tune and specialize them for different CUDA architectures.
+ */
+//! Spread/gather block size
+constexpr int PME_SPREADGATHER_THREADS_PER_BLOCK = (4 * warp_size);
+//! Solve block size
+constexpr int PME_SOLVE_THREADS_PER_BLOCK = (4 * warp_size);
+//! Solve with reduction
+constexpr int PME_SOLVE_ENERVIR_THREADS_PER_BLOCK = (4 * warp_size);
+
+//! Common processor bound. Might be split in the future as well.
+constexpr int PME_MIN_BLOCKS_PER_MP = 16;
+
+// A couple of derived defines
+
+//! The spread/gather integer constant; 2 particles per warp for order of 4, depends on the templated order parameter
+#define PME_SPREADGATHER_ATOMS_PER_WARP (warp_size / PME_THREADS_PER_ATOM)
+
+//! Used for indexing the shared/global atom data in kernels, as well as for scheduling
+#define PME_SPREADGATHER_ATOMS_PER_BLOCK (PME_SPREADGATHER_THREADS_PER_BLOCK / PME_THREADS_PER_ATOM)
+
 
 /*! \brief \internal
  * An inline CUDA function for checking the global atom data indices against the atom data array sizes.
@@ -134,9 +157,9 @@ int __device__ __forceinline__ pme_gpu_check_atom_charge(const float coefficient
 }
 
 /*! \brief \internal
- * The main PME CUDA-specific data structure, included in the PME GPU structure by the archSpecific pointer.
+ * The main PME CUDA-specific host data structure, included in the PME GPU structure by the archSpecific pointer.
  */
-struct pme_gpu_cuda_t
+struct pme_gpu_cuda_host_t
 {
     /*! \brief The CUDA stream where everything related to the PME happens. */
     cudaStream_t pmeStream;
@@ -155,7 +178,9 @@ struct pme_gpu_cuda_t
     /*! \brief A boolean which tells whether the complex and real grids for cuFFT are different or same. Currenty true. */
     bool performOutOfPlaceFFT;
     /*! \brief A boolean which tells if the CUDA timing events are enabled.
-     * true by default, disabled by setting the environment variable GMX_DISABLE_CUDA_TIMING.
+     * True by default, disabled by setting the environment variable GMX_DISABLE_CUDA_TIMING.
+     * FIXME: this should also be disabled if any other GPU task is running,
+     * as CUDA events on multiple streams are untrustworthy.
      */
     bool useTiming;
 
@@ -204,6 +229,21 @@ struct pme_gpu_cuda_t
     int gridSize;
     /*! \brief Both the kernelParams.grid.realGrid (and possibly kernelParams.grid.fourierGrid) float element count (reserved) */
     int gridSizeAlloc;
+};
+
+
+/*! \brief \internal
+ * A single structure encompassing all the PME data used in CUDA kernels.
+ * This inherits from pme_gpu_kernel_params_base_t and adds a couple cudaTextureObject_t handles,
+ * which we would like to avoid in plain C++.
+ */
+struct pme_gpu_cuda_kernel_params_t : pme_gpu_kernel_params_base_t
+{
+    /* These are CUDA texture objects, related to the grid size. */
+    /*! \brief CUDA texture object for accessing grid.d_fractShiftsTable */
+    cudaTextureObject_t fractShiftsTableTexture;
+    /*! \brief CUDA texture object for accessing grid.d_gridlineIndicesTable */
+    cudaTextureObject_t gridlineIndicesTableTexture;
 };
 
 void pme_gpu_make_fract_shifts_textures(pme_gpu_t *pmeGPU);

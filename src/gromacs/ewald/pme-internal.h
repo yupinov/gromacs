@@ -231,7 +231,7 @@ struct pme_spline_work;
 struct pme_solve_work_t;
 
 /*! \brief Master PME data structure */
-typedef struct gmx_pme_t {
+struct gmx_pme_t {
     int           ndecompdim; /* The number of decomposition dimensions */
     int           nodeid;     /* Our nodeid in mpi->mpi_comm */
     int           nodeid_major;
@@ -263,7 +263,9 @@ typedef struct gmx_pme_t {
     real           epsilon_r;
 
     bool           useGPU;                  /* Are we using the GPU acceleration for PME purposes?
-                                             * A permanent variable, should be read using pme_gpu_enabled.
+                                             * A permanent variable, should be read using pme_gpu_enabled inside the module.
+                                             * FIXME: this is the information that should be owned by the task scheduler,
+                                             * and ideally not be duplicated here.
                                              */
 
     pme_gpu_t     *gpu;                     /* A pointer to the GPU data.
@@ -335,7 +337,7 @@ typedef struct gmx_pme_t {
     /* Work data for sum_qgrid */
     real *   sum_qgrid_tmp;
     real *   sum_qgrid_dd_tmp;
-} t_gmx_pme_t;
+};
 
 //! @endcond
 
@@ -372,11 +374,33 @@ enum {
 
 /*! \brief Called by PME-only ranks to receive coefficients and coordinates
  *
- * The return value is used to control further processing, with meanings:
- * pmerecvqxX:             all parameters set, chargeA and chargeB can be NULL
- * pmerecvqxFINISH:        no parameters set
- * pmerecvqxSWITCHGRID:    only grid_size and *ewaldcoeff are set
- * pmerecvqxRESETCOUNTERS: *step is set
+ * \param[in,out] pme_pp    PME-PP communication structure.
+ * \param[out] natoms       Number of received atoms.
+ * \param[out] chargeA      State A charges, if received.
+ * \param[out] chargeB      State B charges, if received.
+ * \param[out] sqrt_c6A     State A coefficients, if received.
+ * \param[out] sqrt_c6B     State B coefficients, if received.
+ * \param[out] sigmaA     State A coefficients, if received.
+ * \param[out] sigmaB     State B coefficients, if received.
+ * \param[out] box        System box, if received.
+ * \param[out] x        Atoms' coordinates, if received.
+ * \param[out] f        Atoms' PME forces, if received.
+ * \param[out] maxshift_x        Maximum shift in X direction, if received.
+ * \param[out] maxshift_y        Maximum shift in Y direction, if received.
+ * \param[out] lambda_q         Free-energy lambda for electrostatics, if received.
+ * \param[out] lambda_lj         Free-energy lambda for Lennard-Jones, if received.
+ * \param[out] bEnerVir          Set to true if this is an energy/virial calculation step, otherwise set to false.
+ * \param[out] step              MD integration step number.
+ * \param[out] grid_size         PME grid size, if received.
+ * \param[out] ewaldcoeff_q         Ewald cut-off parameter for electrostatics, if received.
+ * \param[out] ewaldcoeff_lj         Ewald cut-off parameter for Lennard-Jones, if received.
+ * \param[out] atomSetChanged    Set to true only if the local domain atom data (charges/coefficients)
+ *                               has been received (after DD) and should be reinitialized. Otherwise not changed.
+ *
+ * \retval pmerecvqxX             All parameters were set, chargeA and chargeB can be NULL.
+ * \retval pmerecvqxFINISH        No parameters were set.
+ * \retval pmerecvqxSWITCHGRID    Only grid_size and *ewaldcoeff were set.
+ * \retval pmerecvqxRESETCOUNTERS *step was set.
  */
 int gmx_pme_recv_coeffs_coords(struct gmx_pme_pp *pme_pp,
                                int *natoms,

@@ -51,7 +51,7 @@ struct pme_gpu_t;
  * \brief
  * This is a GPU timing class, based on CUDA events.
  *
- * Note that the data reported by CUDA events is not really reliable with multiple CUDA streams (e.g. PME and NB).
+ * Note that the data reported by CUDA events is not correct with multiple CUDA streams (e.g. PME and NB).
  *
  * \ingroup module_ewald
  */
@@ -60,7 +60,7 @@ class pme_gpu_timing
     bool          initialized_;            /* Starts at FALSE, set to TRUE once */
     cudaEvent_t   eventStart_, eventStop_; /* The internal timing events */
     unsigned int  callCount_;              /* Stars at 0, increased by stop_recording */
-    float         totalMilliseconds_;      /* Starts at 0.0, increased by update */
+    double        totalMilliseconds_;      /* Starts at 0.0, increased by update */
 
     public:
         pme_gpu_timing();

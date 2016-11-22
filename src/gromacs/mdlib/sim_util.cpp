@@ -733,6 +733,8 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
     gmx_cycles_t        cycleCountBeforeLocalWorkCompletes = 0;
     nonbonded_verlet_t *nbv;
 
+    const bool          pmeUseGpu = pme_gpu_task_enabled(fr->pmedata);
+
     cycles_force    = 0;
     cycles_wait_gpu = 0;
     nbv             = fr->nbv;
@@ -976,10 +978,68 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
     /* Copypaste end */
     wallcycle_stop(wcycle, ewcFORCE);
 
-    do_pme_gpu_launch(fr, inputrec, cr,
-                      wcycle, mdatoms,
-                      x, box,
-                      flags);
+    /* Copypaste for launching PME GPU */
+    gmx_bool    bSB;
+    int         pme_flags;
+    matrix      boxs;
+    rvec        box_size;
+    t_pbc       pbc;
+
+    set_pbc(&pbc, fr->ePBC, box);
+
+    /* Reset box */
+    for (i = 0; (i < DIM); i++)
+    {
+        box_size[i] = box[i][i];
+    }
+
+    /* The code below was copypasted from do_force_lowlevel and cleared of LJ code, etc. */
+    if (EEL_FULL(fr->eeltype) || EVDW_PME(fr->vdwtype))
+    {
+        bSB = (inputrec->nwall == 2);
+        if (bSB)
+        {
+            copy_mat(box, boxs);
+            svmul(inputrec->wall_ewald_zfac, boxs[ZZ], boxs[ZZ]);
+            box_size[ZZ] *= inputrec->wall_ewald_zfac;
+        }
+
+        if (EEL_PME_EWALD(fr->eeltype) || EVDW_PME(fr->vdwtype))
+        {
+            if ((EEL_PME(fr->eeltype) || EVDW_PME(fr->vdwtype)) && (cr->duty & DUTY_PME))
+            {
+                assert(fr->n_tpi >= 0);
+                if (fr->n_tpi == 0 || (flags & GMX_FORCE_STATECHANGED))
+                {
+                    pme_flags = GMX_PME_SPREAD | GMX_PME_SOLVE;
+                    if (flags & GMX_FORCE_FORCES)
+                    {
+                        pme_flags |= GMX_PME_CALC_F;
+                    }
+                    if (flags & GMX_FORCE_VIRIAL)
+                    {
+                        pme_flags |= GMX_PME_CALC_ENER_VIR;
+                    }
+                    if (fr->n_tpi > 0)
+                    {
+                        /* We don't calculate f, but we do want the potential */
+                        pme_flags |= GMX_PME_CALC_POT;
+                    }
+                    if (pmeUseGpu)
+                    {
+                        pme_gpu_launch_everything_but_gather(fr->pmedata,
+                                                             mdatoms->homenr - fr->n_tpi,
+                                                             x,
+                                                             mdatoms->chargeA,
+                                                             bSB ? boxs : box,
+                                                             wcycle,
+                                                             pme_flags);
+                    }
+                }
+            }
+        }
+    }
+    /* Copypaste end */
 
     if (bUseGPU)
     {
@@ -1234,7 +1294,7 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
                       x, hist, f, enerd, fcd, top, fr->born,
                       bBornRadii, box,
                       inputrec->fepvals, lambda, graph, &(top->excls), fr->mu_tot,
-                      flags, &cycles_pme);
+                      flags, &cycles_pme, pmeUseGpu);
 
     cycles_force += wallcycle_stop(wcycle, ewcFORCE);
 
@@ -1715,6 +1775,7 @@ void do_force_cutsGROUP(FILE *fplog, t_commrec *cr,
         update_QMMMrec(cr, fr, x, mdatoms, box, top);
     }
 
+    const bool pmeUseGpu = pme_gpu_task_enabled(fr->pmedata);
     /* Compute the bonded and non-bonded energies and optionally forces */
     do_force_lowlevel(fr, inputrec, &(top->idef),
                       cr, nrnb, wcycle, mdatoms,
@@ -1723,7 +1784,7 @@ void do_force_cutsGROUP(FILE *fplog, t_commrec *cr,
                       inputrec->fepvals, lambda,
                       graph, &(top->excls), fr->mu_tot,
                       flags,
-                      &cycles_pme);
+                      &cycles_pme, pmeUseGpu);
 
     cycles_force = wallcycle_stop(wcycle, ewcFORCE);
 
@@ -2542,11 +2603,8 @@ void finish_run(FILE *fplog, const gmx::MDLogger &mdlog, t_commrec *cr,
 
     if (SIMMASTER(cr))
     {
-        struct gmx_wallclock_gpu_t* gputimes = use_GPU(nbv) ? nbnxn_gpu_get_timings(nbv->gpu_nbv) : NULL;
-        if (pme_gpu_enabled(pme))
-        {
-            pme_gpu_get_timings(pme, &gputimes);
-        }
+        struct gmx_wallclock_gpu_t *gputimes = use_GPU(nbv) ? nbnxn_gpu_get_timings(nbv->gpu_nbv) : NULL;
+        pme_gpu_get_timings(pme, &gputimes);
         // TODO: free gputimes
 
         wallcycle_print(fplog, mdlog, cr->nnodes, cr->npmenodes, nthreads_pp, nthreads_pme,

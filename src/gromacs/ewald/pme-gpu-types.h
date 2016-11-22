@@ -53,20 +53,32 @@
 #include "gromacs/utility/basedefinitions.h"
 
 struct gmx_hw_info;
+struct gmx_device_info_t;
 
 #if GMX_GPU == GMX_GPU_CUDA
-struct pme_gpu_cuda_t;
-/*! \brief A typedef for including the GPU framework-specific data by pointer */
-typedef pme_gpu_cuda_t pme_gpu_specific_t;
+
+struct pme_gpu_cuda_host_t;
+/*! \brief A typedef for including the GPU framework-specific host data by pointer */
+typedef pme_gpu_cuda_host_t pme_gpu_specific_host_t;
+
+struct pme_gpu_cuda_kernel_params_t;
+/*! \brief A typedef for including the GPU framework-specific kernel arguments data by pointer */
+typedef pme_gpu_cuda_kernel_params_t pme_gpu_kernel_params_t;
+
 #else
+
 /*! \brief A dummy typedef */
-typedef int pme_gpu_specific_t;
+typedef int pme_gpu_specific_host_t;
+/*! \brief A dummy typedef */
+typedef int pme_gpu_kernel_params_t;
+
 #endif
 
 /* What follows is all the PME GPU function arguments,
  * sorted into several device-side structures depending on the update rate.
  * This is almost entirely GPU agnostic (float3 replaced by float[3], etc.).
- * The only exception are 2 cudaTextureObject_t disguised as unsigned long long.
+ * The GPU-framework specifics (e.g. cudaTextureObject_t handles) are described
+ * in the larger structure pme_gpu_cuda_kernel_params_t in the pme.cuh.
  */
 
 /*! \internal \brief
@@ -79,7 +91,7 @@ struct pme_gpu_const_params_t
     float elFactor;
     /*! \brief Virial and energy GPU array. Size is PME_GPU_ENERGY_AND_VIRIAL_COUNT (7) floats.
      * The element order is virxx, viryy, virzz, virxy, virxz, viryz, energy. */
-    float *virialAndEnergy;
+    float *d_virialAndEnergy;
 };
 
 /*! \internal \brief
@@ -98,9 +110,9 @@ struct pme_gpu_grid_params_t
 
     /* Grid pointers */
     /*! \brief Real space grid. */
-    float  *realGrid;
+    float *d_realGrid;
     /*! \brief Complex grid - used in FFT/solve. If inplace cuFFT is used, then it is the same pointer as realGrid. */
-    float  *fourierGrid;
+    float *d_fourierGrid;
 
     /*! \brief Count of the overlap zones */
 #define PME_GPU_OVERLAP_ZONES_COUNT 7  /* can go away with a better rewrite of wrap/unwrap */
@@ -115,26 +127,17 @@ struct pme_gpu_grid_params_t
     /*! \brief Grid spline values as in pme->bsp_mod
      * (laid out sequentially (XXX....XYYY......YZZZ.....Z))
      */
-    float              *splineValuesArray;
-    /*! \brief Offsets for X/Y/Z components of splineValuesArray */
+    float              *d_splineModuli;
+    /*! \brief Offsets for X/Y/Z components of d_splineModuli */
     int                 splineValuesOffset[DIM];
 
-    /*! \brief Fractional shifts as in pme->fshx/fshy/fshz, laid out sequentially (XXX....XYYY......YZZZ.....Z) */
-    float               *fshArray;
-    /*! \brief Fractional shifts gridline indices
+    /*! \brief Fractional shifts lookup table as in pme->fshx/fshy/fshz, laid out sequentially (XXX....XYYY......YZZZ.....Z) */
+    float               *d_fractShiftsTable;
+    /*! \brief Gridline indices lookup table
      * (modulo lookup table as in pme->nnx/nny/nnz, laid out sequentially (XXX....XYYY......YZZZ.....Z)) */
-    int                *nnArray;
-    /*! \brief Offsets for X/Y/Z components of fshArray and nnArray */
-    int                 fshOffset[DIM];
-
-    /* These are CUDA-specific kernel parameters.
-     * Their actual type is cudaTextureObject_t (which is typedef'd as unsigned long long by CUDA itself).
-     * Please don't use them outside of CUDA code.
-     */
-    /*! \brief Fractional shifts - a CUDA texture object for accessing fshArray. */
-    unsigned long long fshTexture;
-    /*! \brief Fractional shifts gridline indices - a CUDA texture object for accessing nnArray */
-    unsigned long long nnTexture;
+    int                *d_gridlineIndicesTable;
+    /*! \brief Offsets for X/Y/Z components of d_fractShiftsTable and d_gridlineIndicesTable */
+    int                 tablesOffsets[DIM];
 };
 
 /*! \internal \brief
@@ -149,28 +152,28 @@ struct pme_gpu_atom_params_t
      * The coordinates themselves change and need to be copied to the GPU every MD step,
      * but reallocation happens only on DD.
      */
-    float *coordinates;
+    float *d_coordinates;
     /*! \brief Pointer to the global GPU memory with input atom charges.
      * The charges only need to be reallocated and copied to the GPU on DD step.
      */
-    float  *coefficients;
+    float  *d_coefficients;
     /*! \brief Pointer to the global GPU memory with input/output rvec atom forces.
      * The forces change and need to be copied from (and possibly to) the GPU every MD step,
      * but reallocation happens only on DD.
      */
-    float  *forces;
+    float  *d_forces;
     /*! \brief Pointer to the global GPU memory with ivec atom gridline indices.
      * Computed on GPU in the spline calculation part.
      */
-    int *gridlineIndices;
+    int *d_gridlineIndices;
 
     /* B-spline parameters are computed entirely on GPU every MD step, not copied.
      * Unless we want to try something like GPU spread + CPU gather?
      */
     /*! \brief Pointer to the global GPU memory with B-spline values */
-    float  *theta;
+    float  *d_theta;
     /*! \brief Pointer to the global GPU memory with B-spline derivative values */
-    float  *dtheta;
+    float  *d_dtheta;
 };
 
 /*! \internal \brief
@@ -192,9 +195,13 @@ struct pme_gpu_step_params_t
 };
 
 /*! \internal \brief
- * A single structure encompassing all the PME data used in GPU kernels on device.
+ * A single structure encompassing almost all the PME data used in GPU kernels on device.
+ * This is inherited by the GPU framework-specific structure
+ * (pme_gpu_cuda_kernel_params_t in pme.cuh).
+ * This way, most code preparing the kernel parameters can be GPU-agnostic by casting
+ * the kernel parameter data pointer to pme_gpu_kernel_params_base_t.
  */
-struct pme_gpu_kernel_params_t
+struct pme_gpu_kernel_params_base_t
 {
     /*! \brief Constant data that is set once. */
     pme_gpu_const_params_t constants;
@@ -221,8 +228,8 @@ struct pme_gpu_settings_t
     /*! \brief A boolean which tells if the FFT is performed on GPU. Currently true for a single MPI rank. */
     bool performGPUFFT;
     /*! \brief A convenience boolean which tells if there is only one PME GPU process. */
-    bool useSingleGPU;
-    /*! \brief A boolean which tells the PME GP to call pme_gpu_reinit_atoms() at the beginning of the run.
+    bool useDecomposition;
+    /*! \brief A boolean which tells the PME GPU to call pme_gpu_reinit_atoms() at the beginning of the run.
      * Set to true initially, then to false after the first MD step.
      * The pme_reinit_atoms() after the DD gets called directly in gmx_pmeonly.
      */
@@ -230,24 +237,17 @@ struct pme_gpu_settings_t
 };
 
 /*! \internal \brief
- * The PME GPU host-side I/O buffers structure, included in the main PME GPU structure by value.
- * Intermediate internal host buffers live here as well.
- * And what will happen with the introduction of the external device-side I/O pointers?
+ * The PME GPU intermediate buffers structure, included in the main PME GPU structure by value.
+ * Buffers are managed by the PME GPU.
  */
-struct pme_gpu_io_t
+struct pme_gpu_staging_t
 {
-    /*! \brief Input coordinates (XYZ rvec) */
-    float  *h_coordinates;
-    /*! \brief Input charges */
-    float  *h_coefficients;
-    /*! \brief Output forces (and possibly the input if pme_kernel_gather does the reduction) */
-    float  *h_forces;      /* rvec/float3 */
-    /*! \brief Virial and energy intermediate host-side buffer, managed and pinned by PME GPU entirely. Size is PME_GPU_VIRIAL_AND_ENERGY_COUNT. */
+    /*! \brief Virial and energy intermediate host-side buffer. Size is PME_GPU_VIRIAL_AND_ENERGY_COUNT. */
     float  *h_virialAndEnergy;
-    /*! \brief B-spline values intermediate host-side buffers, managed and pinned by PME GPU entirely. Sizes are the grid sizes. */
-    float  *h_splineValues[DIM];
+    /*! \brief B-spline values intermediate host-side buffers. Sizes are the grid sizes. */
+    float  *h_splineModuli[DIM];
     /*! \brief Sizes of the corresponding h_splineValues arrays in bytes */
-    size_t  splineValuesSizes[DIM];
+    size_t  splineModuliSizes[DIM];
 };
 
 /*! \internal \brief
@@ -268,15 +268,13 @@ struct pme_shared_t
     /*! \brief Padded grid dimensions - pmegrid_nx, pmegrid_ny, pmegrid_nz
      * TODO: find out if these are really needed for the CPU FFT compatibility.
      */
-    int  pmegrid_n[DIM];
+    int               pmegrid_n[DIM];
     /*! \brief PME interpolation order */
-    int  pme_order;
+    int               pme_order;
     /*! \brief Ewald splitting coefficient for Coulomb */
-    real ewaldcoeff_q;
+    real              ewaldcoeff_q;
     /*! \brief Electrostatics parameter */
-    real epsilon_r;
-    /* The PME coefficient spreading grid sizes/strides, includes pme_order-1 */
-    //int        pmegrid_nx, pmegrid_ny, pmegrid_nz;
+    real              epsilon_r;
     /*! \brief Gridline indices - nnx, nny, nnz */
     std::vector<int>  nn[DIM];
     /*! \brief Fractional shifts - fshx, fshy, fshz */
@@ -299,19 +297,20 @@ struct pme_gpu_t
     /*! \brief The host-side buffers.
      * The device-side buffers are buried in kernelParams, but that will have to change.
      */
-    pme_gpu_io_t io;
+    pme_gpu_staging_t staging;
 
     /*! \brief The unit cell box from the previous step.
      * Only used to know if the kernelParams.step needs to be updated.
-     * Does not really fit anywhere else, does it?
+     * \todo Figure out if this can go away with the once-per-step constant memory update.
      */
     matrix previousBox;
-    /*! \brief Number of local atoms, padded to be divisible by particlesPerBlock.
+    /*! \brief Number of local atoms, padded to be divisible by PME_SPREADGATHER_ATOMS_PER_BLOCK.
      * Used for kernel scheduling.
      * kernelParams.atoms.nAtoms is the actual atom count to be used for data copying.
      */
     int nAtomsPadded;
-    /*! \brief Number of local atoms, padded to be divisible by particlesPerBlock if (PME_GPU_USE_PADDING == 1).
+    /*! \brief Number of local atoms, padded to be divisible by PME_SPREADGATHER_ATOMS_PER_BLOCK
+     * if (PME_GPU_USE_PADDING == 1).
      * Used only as a basic size for almost all the atom data allocations
      * (spline parameter data is also aligned by PME_SPREADGATHER_PARTICLES_PER_WARP).
      * This should be the same as (PME_GPU_USE_PADDING ? nAtomsPadded : kernelParams.atoms.nAtoms).
@@ -320,16 +319,16 @@ struct pme_gpu_t
     int nAtomsAlloc;
 
     /*! \brief A pointer to the device used during the execution. */
-    struct gmx_device_info_t *deviceInfo;
+    gmx_device_info_t *deviceInfo;
 
     /*! \brief A single structure encompassing all the PME data used on GPU.
      * This should be the only parameter to all the PME GPU kernels (FIXME: pme_solve_kernel).
      * Can probably be copied to the constant GPU memory once per MD step (or even less often) instead of being a parameter.
      */
-    pme_gpu_kernel_params_t kernelParams;
+    std::shared_ptr<pme_gpu_kernel_params_t> kernelParams;
 
-    /*! \brief The pointer to mostly GPU-framework specific host-side data, such as CUDA streams and events. */
-    std::shared_ptr<pme_gpu_specific_t> archSpecific; /* TODO: make it an unique_ptr */
+    /*! \brief The pointer to GPU-framework specific host-side data, such as CUDA streams and events. */
+    std::shared_ptr<pme_gpu_specific_host_t> archSpecific; /* FIXME: make it an unique_ptr */
 };
 
 #endif // PMEGPUTYPES_H

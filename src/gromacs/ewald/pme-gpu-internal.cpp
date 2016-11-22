@@ -62,31 +62,27 @@
 
 #include "pme-internal.h"
 
-void pme_gpu_set_io_ranges(pme_gpu_t *pmeGPU, rvec *coordinates, rvec *forces)
-{
-    pmeGPU->io.h_forces      = reinterpret_cast<float *>(forces);
-    pmeGPU->io.h_coordinates = reinterpret_cast<float *>(coordinates);
-}
-
 void pme_gpu_get_energy_virial(const pme_gpu_t *pmeGPU, real *energy, matrix virial)
 {
     GMX_ASSERT(energy, "Bad (NULL) energy output in PME GPU");
     size_t j = 0;
-    virial[XX][XX] = 0.25 * pmeGPU->io.h_virialAndEnergy[j++];
-    virial[YY][YY] = 0.25 * pmeGPU->io.h_virialAndEnergy[j++];
-    virial[ZZ][ZZ] = 0.25 * pmeGPU->io.h_virialAndEnergy[j++];
-    virial[XX][YY] = virial[YY][XX] = 0.25 * pmeGPU->io.h_virialAndEnergy[j++];
-    virial[XX][ZZ] = virial[ZZ][XX] = 0.25 * pmeGPU->io.h_virialAndEnergy[j++];
-    virial[YY][ZZ] = virial[ZZ][YY] = 0.25 * pmeGPU->io.h_virialAndEnergy[j++];
-    *energy        = 0.5 * pmeGPU->io.h_virialAndEnergy[j++];
+    virial[XX][XX] = 0.25 * pmeGPU->staging.h_virialAndEnergy[j++];
+    virial[YY][YY] = 0.25 * pmeGPU->staging.h_virialAndEnergy[j++];
+    virial[ZZ][ZZ] = 0.25 * pmeGPU->staging.h_virialAndEnergy[j++];
+    virial[XX][YY] = virial[YY][XX] = 0.25 * pmeGPU->staging.h_virialAndEnergy[j++];
+    virial[XX][ZZ] = virial[ZZ][XX] = 0.25 * pmeGPU->staging.h_virialAndEnergy[j++];
+    virial[YY][ZZ] = virial[ZZ][YY] = 0.25 * pmeGPU->staging.h_virialAndEnergy[j++];
+    *energy        = 0.5 * pmeGPU->staging.h_virialAndEnergy[j++];
 }
 
-void pme_gpu_start_step(pme_gpu_t *pmeGPU, const matrix box)
+void pme_gpu_start_step(pme_gpu_t *pmeGPU, const matrix box, const rvec *h_coordinates)
 {
-    pme_gpu_copy_coordinates(pmeGPU);
+    pme_gpu_copy_input_coordinates(pmeGPU, h_coordinates);
 
-    const size_t   boxMemorySize        = sizeof(matrix);
-    const bool     haveToUpdateUnitCell = memcmp(pmeGPU->previousBox, box, boxMemorySize);
+    pme_gpu_kernel_params_base_t *kernelParamsPtr = (pme_gpu_kernel_params_base_t *)pmeGPU->kernelParams.get();
+
+    const size_t                  boxMemorySize        = sizeof(matrix);
+    const bool                    haveToUpdateUnitCell = memcmp(pmeGPU->previousBox, box, boxMemorySize);
     /* There could be a pressure coupling check here, but this is more straightforward.
      * This is an exact comparison of float values though.
      */
@@ -94,8 +90,8 @@ void pme_gpu_start_step(pme_gpu_t *pmeGPU, const matrix box)
     {
         memcpy(pmeGPU->previousBox, box, boxMemorySize);
 
-        pmeGPU->kernelParams.step.boxVolume = box[XX][XX] * box[YY][YY] * box[ZZ][ZZ];
-        GMX_ASSERT(pmeGPU->kernelParams.step.boxVolume != 0.0f, "Zero volume of the unit cell");
+        kernelParamsPtr->step.boxVolume = box[XX][XX] * box[YY][YY] * box[ZZ][ZZ];
+        GMX_ASSERT(kernelParamsPtr->step.boxVolume != 0.0f, "Zero volume of the unit cell");
 
 #if GMX_DOUBLE
         GMX_RELEASE_ASSERT(FALSE, "PME is single-precision only on GPU. You shouldn't be seeing this message!");
@@ -112,7 +108,7 @@ void pme_gpu_start_step(pme_gpu_t *pmeGPU, const matrix box)
             {             0.0, recipBox[YY][YY], recipBox[ZZ][YY]},
             {             0.0,              0.0, recipBox[ZZ][ZZ]}
         };
-        memcpy(pmeGPU->kernelParams.step.recipBox, newRecipBox, boxMemorySize);
+        memcpy(kernelParamsPtr->step.recipBox, newRecipBox, boxMemorySize);
 #endif
     }
 }
@@ -139,7 +135,7 @@ void pme_gpu_finish_step(const pme_gpu_t *pmeGPU, const bool bCalcF, const bool 
     }
     if (bCalcEnerVir)
     {
-        pme_gpu_sync_energy_virial(pmeGPU);
+        pme_gpu_sync_output_energy_virial(pmeGPU);
     }
     pme_gpu_update_timings(pmeGPU);
     pme_gpu_reinit_step(pmeGPU);
@@ -152,10 +148,12 @@ void pme_gpu_finish_step(const pme_gpu_t *pmeGPU, const bool bCalcF, const bool 
  */
 void pme_gpu_copy_wrap_zones(const pme_gpu_t *pmeGPU)
 {
-    const int nx      = pmeGPU->kernelParams.grid.localGridSize[XX];
-    const int ny      = pmeGPU->kernelParams.grid.localGridSize[YY];
-    const int nz      = pmeGPU->kernelParams.grid.localGridSize[ZZ];
-    const int overlap = pmeGPU->common->pme_order - 1;
+    pme_gpu_kernel_params_base_t *kernelParamsPtr = (pme_gpu_kernel_params_base_t *)pmeGPU->kernelParams.get();
+
+    const int                     nx      = kernelParamsPtr->grid.localGridSize[XX];
+    const int                     ny      = kernelParamsPtr->grid.localGridSize[YY];
+    const int                     nz      = kernelParamsPtr->grid.localGridSize[ZZ];
+    const int                     overlap = pmeGPU->common->pme_order - 1;
 
     /* Cell counts in the 7 overlapped grid parts */
     const int zoneSizes_h[PME_GPU_OVERLAP_ZONES_COUNT][DIM] =
@@ -185,8 +183,8 @@ void pme_gpu_copy_wrap_zones(const pme_gpu_t *pmeGPU)
     {
         cellsAccumCount_h[i] = cellsAccumCount_h[i] + cellsAccumCount_h[i - 1];
     }
-    memcpy((void *)pmeGPU->kernelParams.grid.overlapSizes, zoneSizesYZ_h, sizeof(zoneSizesYZ_h));
-    memcpy((void *)pmeGPU->kernelParams.grid.overlapCellCounts, cellsAccumCount_h, sizeof(cellsAccumCount_h));
+    memcpy((void *)kernelParamsPtr->grid.overlapSizes, zoneSizesYZ_h, sizeof(zoneSizesYZ_h));
+    memcpy((void *)kernelParamsPtr->grid.overlapCellCounts, cellsAccumCount_h, sizeof(cellsAccumCount_h));
 }
 
 /*! \brief \libinternal
@@ -196,14 +194,15 @@ void pme_gpu_copy_wrap_zones(const pme_gpu_t *pmeGPU)
  */
 void pme_gpu_reinit_grids(pme_gpu_t *pmeGPU)
 {
-    pmeGPU->kernelParams.grid.ewaldFactor = (M_PI * M_PI) / (pmeGPU->common->ewaldcoeff_q * pmeGPU->common->ewaldcoeff_q);
+    pme_gpu_kernel_params_base_t *kernelParamsPtr = (pme_gpu_kernel_params_base_t *)pmeGPU->kernelParams.get();
+    kernelParamsPtr->grid.ewaldFactor = (M_PI * M_PI) / (pmeGPU->common->ewaldcoeff_q * pmeGPU->common->ewaldcoeff_q);
 
     /* The grid size variants */
     for (int i = 0; i < DIM; i++)
     {
-        pmeGPU->kernelParams.grid.localGridSize[i]       = pmeGPU->common->nk[i];
-        pmeGPU->kernelParams.grid.localGridSizeFP[i]     = (float)pmeGPU->kernelParams.grid.localGridSize[i];
-        pmeGPU->kernelParams.grid.localGridSizePadded[i] = pmeGPU->common->pmegrid_n[i];
+        kernelParamsPtr->grid.localGridSize[i]       = pmeGPU->common->nk[i];
+        kernelParamsPtr->grid.localGridSizeFP[i]     = (float)kernelParamsPtr->grid.localGridSize[i];
+        kernelParamsPtr->grid.localGridSizePadded[i] = pmeGPU->common->pmegrid_n[i];
     }
 
     pme_gpu_copy_wrap_zones(pmeGPU);
@@ -294,7 +293,7 @@ bool pme_gpu_check_restrictions(const gmx_pme_t *pme,
 
 void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_opt_t *gpu_opt)
 {
-    if (!pme_gpu_enabled(pme))
+    if (!pme_gpu_active(pme))
     {
         return;
     }
@@ -315,12 +314,12 @@ void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_o
         pmeGPU->common = std::shared_ptr<pme_shared_t>(new pme_shared_t());
 
         /* Some permanent settings are set here */
-        pmeGPU->settings.useSingleGPU = (pme->nnodes == 1);
+        pmeGPU->settings.useDecomposition = (pme->nnodes == 1);
         /* A convenience variable. */
         pmeGPU->settings.performGPUFFT = !pme_gpu_uses_dd(pmeGPU) && !getenv("GMX_PME_GPU_FFTW");
         /* GPU FFT will only used for a single rank. */
         pmeGPU->settings.performGPUSolve = true;
-        /* pmeGPU->settings.bGPUFFT - CPU solve with the CPU FFTW is definitely broken at the moment - 20160511 */
+        /* pmeGPU->settings.performGPUFFT - CPU solve with the CPU FFTW is definitely broken at the moment - 20160511 */
         pmeGPU->settings.performGPUGather = true;
         /* CPU gather has got to be broken as well due to different theta/dtheta layout. */
         pmeGPU->settings.needToUpdateAtoms = true;
@@ -337,7 +336,9 @@ void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_o
     if (firstInit)
     {
         GMX_ASSERT(pmeGPU->common->epsilon_r != 0.0f, "PME GPU: bad electrostatic coefficient");
-        pmeGPU->kernelParams.constants.elFactor = ONE_4PI_EPS0 / pmeGPU->common->epsilon_r;
+
+        pme_gpu_kernel_params_base_t *kernelParamsPtr = (pme_gpu_kernel_params_base_t *)pmeGPU->kernelParams.get();
+        kernelParamsPtr->constants.elFactor = ONE_4PI_EPS0 / pmeGPU->common->epsilon_r;
         // GMX_ASSERT(pmeGPU->common->ngrids == 1, "Only a single PME grid supported on GPU");
         // this assert will fail now because PME CPU is stupid and has 2 grids minimum
     }
@@ -372,17 +373,18 @@ void pme_gpu_destroy(pme_gpu_t *pmeGPU)
     delete pmeGPU;
 }
 
-void pme_gpu_reinit_atoms(pme_gpu_t *pmeGPU, const int nAtoms, real *coefficients)
+void pme_gpu_reinit_atoms(pme_gpu_t *pmeGPU, const int nAtoms, const real *coefficients)
 {
-    pmeGPU->kernelParams.atoms.nAtoms = nAtoms;
-    const int      alignment = 8; // FIXME: this is particlesPerBlock
+    pme_gpu_kernel_params_base_t *kernelParamsPtr = (pme_gpu_kernel_params_base_t *)pmeGPU->kernelParams.get();
+    kernelParamsPtr->atoms.nAtoms = nAtoms;
+    const int                     alignment = pme_gpu_get_atom_data_alignment(pmeGPU);
     pmeGPU->nAtomsPadded = ((nAtoms + alignment - 1) / alignment) * alignment;
-    int            nAtomsAlloc   = PME_GPU_USE_PADDING ? pmeGPU->nAtomsPadded : nAtoms;
-    const bool     haveToRealloc = (pmeGPU->nAtomsAlloc < nAtomsAlloc); /* This check might be redundant, but is logical */
+    int                           nAtomsAlloc   = PME_GPU_USE_PADDING ? pmeGPU->nAtomsPadded : nAtoms;
+    const bool                    haveToRealloc = (pmeGPU->nAtomsAlloc < nAtomsAlloc); /* This check might be redundant, but is logical */
     pmeGPU->nAtomsAlloc = nAtomsAlloc;
 
-    pmeGPU->io.h_coefficients = reinterpret_cast<float *>(coefficients);
-    pme_gpu_realloc_and_copy_coefficients(pmeGPU); /* Could also be checked for haveToRealloc, but the copy always needs to be performed */
+    pme_gpu_realloc_and_copy_input_coefficients(pmeGPU, coefficients);
+    /* Could also be checked for haveToRealloc, but the copy always needs to be performed */
 
     if (haveToRealloc)
     {
