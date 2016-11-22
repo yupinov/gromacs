@@ -398,7 +398,9 @@ CUDA_FUNC_QUALIFIER void pme_gpu_get_timings(const pme_gpu_t      *CUDA_FUNC_ARG
 
 /* Separate PME GPU stages, living in ther own *.cu files */
 
-#include "pme-internal.h"
+struct pme_atomcomm_t;
+struct pmegrid_t;
+
 //#include "gromacs/math/gmxcomplex.h"
 // A GPU counterpart to the spread_on_grid
 CUDA_FUNC_QUALIFIER void pme_gpu_spread(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
@@ -425,10 +427,8 @@ CUDA_FUNC_QUALIFIER void pme_gpu_solve(
 //*                           if bClearForces is passed as false to the pme_gpu_launch_gather.
 
 CUDA_FUNC_QUALIFIER void pme_gpu_gather(const gmx_pme_t *CUDA_FUNC_ARGUMENT(pme),
-                                        const gmx_bool   CUDA_FUNC_ARGUMENT(bOverwriteForces),
+                                        bool             CUDA_FUNC_ARGUMENT(bOverwriteForces),
                                         float           *CUDA_FUNC_ARGUMENT(h_forces)) CUDA_FUNC_TERM
-
-
 
 /* The inlined convenience PME GPU status getters */
 
@@ -552,20 +552,5 @@ void pme_gpu_destroy(pme_gpu_t *pmeGPU);
 void pme_gpu_reinit_atoms(pme_gpu_t        *pmeGPU,
                           const int         nAtoms,
                           const real       *coefficients);
-
-/*! \brief
- * Finds out if PME is set to run on GPU. Not to be called on per-step basis.
- * TODO: remove this entirely with introduction of task/hardware scheduler.
- *
- * \param[in] pme  The PME structure.
- * \returns        True if PME runs on GPU currently, false otherwise.
- */
-inline bool pme_gpu_active(const gmx_pme_t *pme)
-{
-    /* Something to think about: should this function be called from all the CUDA_FUNC_QUALIFIER functions?
-     * In other words, should we plan for dynamic toggling of the PME GPU?
-     */
-    return (pme != NULL) && pme->useGPU;
-}
 
 #endif // PMEGPUINTERNAL_H

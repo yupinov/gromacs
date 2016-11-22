@@ -45,6 +45,7 @@
 
 #include <cassert>
 
+#include "gromacs/ewald/pme-grid.h"
 #include "gromacs/ewald/pme.h"
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/utility/fatalerror.h"
@@ -137,9 +138,9 @@ __device__ __forceinline__ void calculate_splines(const float3 * __restrict__   
                     t           = /*x.x * kernelParams.step.recipbox[dimIndex][XX] + x.y * kernelParams.step.recipbox[dimIndex][YY] + */ x.z * kernelParams.step.recipBox[dimIndex][ZZ];
                     break;
             }
-
-            /* Fractional coordinates along box vectors, adding 2.0 to make 100% sure we are positive for triclinic boxes */
-            t    = (t + 2.0f) * n; //TODO: repalce with the constant from pme-grid.h
+            const float shift = c_pmeMaxUnitcellShift;
+            /* Fractional coordinates along box vectors, adding a positive shift to ensure t is positive for triclinic boxes */
+            t    = (t + shift) * n;
             tInt = (int)t;
             sm_fractCoords[sharedMemoryIndex] = t - tInt;
             tableIndex                       += tInt;
@@ -603,11 +604,10 @@ __global__ void pme_wrap_kernel(const pme_gpu_cuda_kernel_params_t kernelParams)
 void pme_gpu_make_fract_shifts_textures(pme_gpu_t *pmeGPU)
 {
 #if PME_USE_TEXTURES
-    const int                     nx        = pmeGPU->common->nk[XX];
-    const int                     ny        = pmeGPU->common->nk[YY];
-    const int                     nz        = pmeGPU->common->nk[ZZ];
-    const int                     cellCount = 5;
-    /* This is the number of neighbor cells that is also hardcoded in make_gridindex5_to_localindex and should be the same */
+    const int                     nx                  = pmeGPU->common->nk[XX];
+    const int                     ny                  = pmeGPU->common->nk[YY];
+    const int                     nz                  = pmeGPU->common->nk[ZZ];
+    const int                     cellCount           = c_pmeNeighborUnitcellCount;
     const int                     newFractShiftsSize  = cellCount * (nx + ny + nz);
 
     pme_gpu_cuda_kernel_params_t *kernelParamsPtr = pmeGPU->kernelParams.get();

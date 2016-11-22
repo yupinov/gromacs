@@ -52,6 +52,7 @@
 #include "gromacs/utility/logger.h"
 
 /* The rest */
+#include "pme-grid.h"
 #include "pme.h"
 
 #include "gromacs/gpu_utils/cudautils.cuh"
@@ -194,11 +195,12 @@ void pme_gpu_realloc_coordinates(const pme_gpu_t *pmeGPU)
 #endif
 }
 
-void pme_gpu_copy_input_coordinates(const pme_gpu_t *pmeGPU, const rvec *h_coordinates) //real vs float?
+void pme_gpu_copy_input_coordinates(const pme_gpu_t *pmeGPU, const rvec *h_coordinates)
 {
     GMX_ASSERT(h_coordinates, "Bad host-side coordinate buffer in PME GPU");
+    GMX_RELEASE_ASSERT(sizeof(real) == sizeof(float), "Only single precision supported");
     cu_copy_H2D_async(pmeGPU->kernelParams.get()->atoms.d_coordinates, const_cast<rvec *>(h_coordinates),
-                      pmeGPU->kernelParams.get()->atoms.nAtoms * DIM * sizeof(float), pmeGPU->archSpecific->pmeStream);
+                      pmeGPU->kernelParams.get()->atoms.nAtoms * sizeof(rvec), pmeGPU->archSpecific->pmeStream);
 }
 
 void pme_gpu_free_coordinates(const pme_gpu_t *pmeGPU)
@@ -321,12 +323,9 @@ void pme_gpu_realloc_and_copy_fract_shifts(pme_gpu_t *pmeGPU)
     const int                     ny = kernelParamsPtr->grid.localGridSize[YY];
     const int                     nz = kernelParamsPtr->grid.localGridSize[ZZ];
 
-    const int                     cellCount = 5;
-    /* This is the number of neighbor cells that is also hardcoded in make_gridindex5_to_localindex and should be the same
-     * TODO: eliminate stray fives! and don't forget the 2.0 shift in the spread as well!
-     */
+    const int                     cellCount = c_pmeNeighborUnitcellCount;
 
-    const int fshOffset[DIM] = {0, cellCount * nx, cellCount * (nx + ny)};
+    const int                     fshOffset[DIM] = {0, cellCount * nx, cellCount * (nx + ny)};
     memcpy(kernelParamsPtr->grid.tablesOffsets, &fshOffset, sizeof(fshOffset));
 
     const int    newFractShiftsSize  = cellCount * (nx + ny + nz);
@@ -427,20 +426,13 @@ void pme_gpu_init_specific(pme_gpu_t *pmeGPU, const gmx_hw_info_t *hwinfo, const
 
     /* Creating a PME CUDA stream */
     cudaError_t stat;
-#if GMX_CUDA_VERSION >= 5050
-    int         highest_priority;
-    int         lowest_priority;
+    int         highest_priority, lowest_priority;
     stat = cudaDeviceGetStreamPriorityRange(&lowest_priority, &highest_priority);
     CU_RET_ERR(stat, "PME cudaDeviceGetStreamPriorityRange failed");
     stat = cudaStreamCreateWithPriority(&pmeGPU->archSpecific->pmeStream,
                                         cudaStreamDefault, //cudaStreamNonBlocking,
                                         highest_priority);
-
     CU_RET_ERR(stat, "cudaStreamCreateWithPriority on the PME stream failed");
-#else
-    stat = cudaStreamCreate(&pmeGPU->archSpecific->pmeStream);
-    CU_RET_ERR(stat, "PME cudaStreamCreate error");
-#endif
 }
 
 void pme_gpu_destroy_specific(const pme_gpu_t *pmeGPU)

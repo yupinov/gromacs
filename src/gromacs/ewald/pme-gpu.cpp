@@ -120,6 +120,7 @@ void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
                                           int                   flags)
 {
     GMX_ASSERT(pme_gpu_active(pme), "This is a GPU run of PME.");
+    GMX_RELEASE_ASSERT(sizeof(real) == sizeof(float), "Only the single precision is supported");
 
     wallcycle_start(wcycle, ewcLAUNCH_GPU_PME);
 
@@ -248,7 +249,7 @@ void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
 void pme_gpu_launch_gather(const gmx_pme_t                 *pme,
                            gmx_wallcycle_t gmx_unused       wcycle,
                            rvec                            *forces,
-                           gmx_bool                         bClearForces)
+                           bool                             bClearForces)
 {
     if (!pme_gpu_performs_gather(pme->gpu))
     {
@@ -257,6 +258,7 @@ void pme_gpu_launch_gather(const gmx_pme_t                 *pme,
 
     wallcycle_start_nocount(wcycle, ewcLAUNCH_GPU_PME);
     wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_GATHER);
+    GMX_RELEASE_ASSERT(sizeof(real) == sizeof(float), "Only single precision supported");
     pme_gpu_gather(pme, bClearForces, reinterpret_cast<float *>(forces));
     wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_GATHER);
     wallcycle_stop(wcycle, ewcLAUNCH_GPU_PME);

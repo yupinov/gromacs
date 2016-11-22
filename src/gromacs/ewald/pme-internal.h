@@ -165,7 +165,7 @@ typedef struct {
 } splinedata_t;
 
 /*! \brief Data structure for coordinating transfer between PP and PME ranks*/
-typedef struct {
+struct pme_atomcomm_t{
     int      dimind;        /* The index of the dimension, 0=x, 1=y */
     int      nslab;
     int      nodeid;
@@ -201,20 +201,20 @@ typedef struct {
     int            *thread_idx; /* Which thread should spread which coefficient */
     thread_plist_t *thread_plist;
     splinedata_t   *spline;
-} pme_atomcomm_t;
+};
 
 /*! \brief Data structure for a single PME grid */
-typedef struct {
+struct pmegrid_t{
     ivec  ci;     /* The spatial location of this grid         */
     ivec  n;      /* The used size of *grid, including order-1 */
     ivec  offset; /* The grid offset from the full node grid   */
     int   order;  /* PME spreading order                       */
     ivec  s;      /* The allocated size of *grid, s >= n       */
     real *grid;   /* The grid local thread, size n             */
-} pmegrid_t;
+};
 
 /*! \brief Data structures for PME grids */
-typedef struct {
+struct pmegrids_t{
     pmegrid_t  grid;         /* The full node grid (non thread-local)            */
     int        nthread;      /* The number of threads operating on this grid     */
     ivec       nc;           /* The local spatial decomposition over the threads */
@@ -222,7 +222,7 @@ typedef struct {
     real      *grid_all;     /* Allocated array for the grids in *grid_th        */
     int      **g2t;          /* The grid to thread index                         */
     ivec       nthread_comm; /* The number of threads to communicate with        */
-} pmegrids_t;
+};
 
 /*! \brief Data structure for spline-interpolation working buffers */
 struct pme_spline_work;
@@ -340,6 +340,18 @@ struct gmx_pme_t {
 };
 
 //! @endcond
+
+/*! \brief
+ * Finds out if PME is currently running on GPU.
+ * TODO: remove this entirely with introduction of task/hardware scheduler.
+ *
+ * \param[in] pme  The PME structure.
+ * \returns        True if PME runs on GPU currently, false otherwise.
+ */
+inline bool pme_gpu_active(const gmx_pme_t *pme)
+{
+    return (pme != NULL) && pme->useGPU;
+}
 
 /*! \brief Check restrictions on pme_order and the PME grid nkx,nky,nkz.
  *

@@ -389,7 +389,7 @@ __global__ void pme_unwrap_kernel(const pme_gpu_cuda_kernel_params_t kernelParam
 }
 
 void pme_gpu_gather(const gmx_pme_t *pme,
-                    const gmx_bool   bOverwriteForces,
+                    bool             bOverwriteForces,
                     float           *h_forces) //separate in and out?
 {
     /* Copying the input CPU forces for reduction */

@@ -118,7 +118,7 @@ void pme_gpu_launch_everything_but_gather(gmx_pme_t               *pme,
 void pme_gpu_launch_gather(const gmx_pme_t      *pme,
                            gmx_wallcycle_t       wcycle,
                            rvec                 *forces,
-                           gmx_bool              bClearForces);
+                           bool                  bClearForces);
 
 /*! \libinternal \brief
  * Gets the output forces and virial/energy if corresponding flags are (were?) passed in.

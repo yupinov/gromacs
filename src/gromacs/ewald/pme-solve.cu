@@ -340,7 +340,7 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
     dim3 threads((maxBlockSize + gridLinesPerBlock - 1) / gridLinesPerBlock, gridLinesPerBlock);
     const int blockSize = threads.x * threads.y * threads.z;
     GMX_RELEASE_ASSERT(blockSize >= maxBlockSize, "Wrong PME GPU solve launch parameters");
-    // we want to be able to zero all the shared memory which we use in CC2.0 shared mem reduction
+    // we want to be able to zero all the shared memory which we use in shared mem reduction
 
     dim3 blocks(blocksPerGridLine,
                 (local_ndata[middleDim] + gridLinesPerBlock - 1) / gridLinesPerBlock, // rounded up middle dimension block number
