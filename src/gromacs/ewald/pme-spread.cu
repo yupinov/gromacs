@@ -659,7 +659,7 @@ void pme_gpu_make_fract_shifts_textures(pme_gpu_t *pmeGPU)
     }
 #endif
 #else
-    GMX_UNUSED_VALUE(pme);
+    GMX_UNUSED_VALUE(pmeGPU);
 #endif
 }
 

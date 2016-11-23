@@ -54,13 +54,15 @@
 #include "pme-internal.h"
 #include "pme-timings.cuh"
 
+
 template<const gmx_bool bEnerVir,
          // should the energy/virial be computed
          const gmx_bool YZXOrdering
          // false - GPU solve works in a XYZ ordering (after a single-rank cuFFT)
          // true - GPU solve works in a YZX ordering, like the CPU one (after FFTW)
          >
-__launch_bounds__(PME_SOLVE_THREADS_PER_BLOCK, PME_MIN_BLOCKS_PER_MP)
+//__launch_bounds__(PME_SOLVE_THREADS_PER_BLOCK, PME_MIN_BLOCKS_PER_MP)
+// TODO: figure out when this produces "invalid launch argument"
 __global__ void pme_solve_kernel
     (const int localCountMajor, const int localCountMiddle, const int localCountMinor,
     const int localOffsetMinor, const int localOffsetMajor, const int localOffsetMiddle,
