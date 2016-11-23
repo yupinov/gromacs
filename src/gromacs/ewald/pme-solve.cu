@@ -87,7 +87,7 @@ __global__ void pme_solve_kernel
 
     float2 * __restrict__  globalGrid = (float2 *)kernelParams.grid.d_fourierGrid;
 
-    const int              nMajor  = kernelParams.grid.localGridSize[YZXOrdering ? ZZ : YY];
+    const int              nMajor  = kernelParams.grid.localGridSize[YZXOrdering ? YY : XX];
     const int              nMiddle = kernelParams.grid.localGridSize[YZXOrdering ? ZZ : YY];
     const int              nMinor  = kernelParams.grid.localGridSize[YZXOrdering ? XX : ZZ]; //yupinov fix all pme->nkx and such
 
