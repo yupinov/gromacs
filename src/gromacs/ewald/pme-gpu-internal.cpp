@@ -53,7 +53,6 @@
 
 #include <string>
 
-#include "pme-grid.h"
 #include "gromacs/ewald/pme-gpu.h"
 #include "gromacs/gpu_utils/gpu_utils.h"
 #include "gromacs/math/invertmatrix.h"
@@ -61,6 +60,7 @@
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/gmxassert.h"
 
+#include "pme-grid.h"
 #include "pme-internal.h"
 
 /*! \internal \brief

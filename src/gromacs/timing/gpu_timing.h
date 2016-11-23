@@ -43,12 +43,14 @@
 #ifndef GMX_TIMING_GPU_TIMING_H
 #define GMX_TIMING_GPU_TIMING_H
 
+#include <memory>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/*! \internal \brief Nonbonded kernel time and call count. */
-struct gmx_nbnxn_kernel_timing_data_t
+/*! \internal \brief GPU kernel time and call count. */
+struct gmx_kernel_timing_data_t
 {
     double  t; /**< Accumulated lapsed time */
     int     c; /**< Number of calls corresponding to the elapsed time */
@@ -79,27 +81,33 @@ struct gmx_wallclock_gpu_pme_t
      * FIXME: devise a better GPU timing data structuring.
      */
     /*! \brief Array of PME GPU timing data. */
-    gmx_nbnxn_kernel_timing_data_t timing[gtPME_EVENT_COUNT];
+    gmx_kernel_timing_data_t timing[gtPME_EVENT_COUNT];
 };
 
-/*! \internal \brief GPU timings for kernels and H2d/D2H transfers. */
-struct gmx_wallclock_gpu_t
+/*! \internal \brief GPU NB timings for kernels and H2d/D2H transfers. */
+struct gmx_wallclock_gpu_nbnxn_t
 {
-    struct gmx_nbnxn_kernel_timing_data_t ktime[2][2]; /**< table containing the timings of the four
-                                                          versions of the nonbonded kernels: force-only,
-                                                          force+energy, force+pruning, and force+energy+pruning */
-    double                         nb_h2d_t;           /**< host to device transfer time in nb calculation  */
-    double                         nb_d2h_t;           /**< device to host transfer time in nb calculation */
-    int                            nb_c;               /**< total call count of the nonbonded gpu operations */
-    double                         pl_h2d_t;           /**< pair search step host to device transfer time */
-    int                            pl_h2d_c;           /**< pair search step  host to device transfer call count */
-
-    /*! \brief PME GPU timings. */
-    struct gmx_wallclock_gpu_pme_t pme;
+    gmx_kernel_timing_data_t ktime[2][2];    /**< table containing the timings of the four
+                                                             versions of the nonbonded kernels: force-only,
+                                                             force+energy, force+pruning, and force+energy+pruning */
+    double                         nb_h2d_t; /**< host to device transfer time in nb calculation  */
+    double                         nb_d2h_t; /**< device to host transfer time in nb calculation */
+    int                            nb_c;     /**< total call count of the nonbonded gpu operations */
+    double                         pl_h2d_t; /**< pair search step host to device transfer time */
+    int                            pl_h2d_c; /**< pair search step  host to device transfer call count */
 };
 
 #ifdef __cplusplus
 }
 #endif
+
+/*! \internal \brief Overall GPU timings structure. */
+struct gmx_wallclock_gpu_t
+{
+    /*! \brief NB timings. */
+    std::unique_ptr<gmx_wallclock_gpu_nbnxn_t> nbnxn;
+    /*! \brief PME timings. */
+    std::unique_ptr<gmx_wallclock_gpu_pme_t>   pme;
+};
 
 #endif

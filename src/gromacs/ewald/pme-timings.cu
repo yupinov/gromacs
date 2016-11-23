@@ -160,22 +160,15 @@ void pme_gpu_stop_timing(const pme_gpu_t *pmeGPU, size_t PMEStageId)
     }
 }
 
-void pme_gpu_get_timings(const pme_gpu_t *pmeGPU, gmx_wallclock_gpu_t **timings)
+void pme_gpu_get_timings(const pme_gpu_t *pmeGPU, gmx_wallclock_gpu_pme_t *timings)
 {
     if (pme_gpu_timings_enabled(pmeGPU))
     {
         GMX_RELEASE_ASSERT(timings, "Null GPU timing pointer");
-        if (!*timings)
-        {
-            // alloc for PME-only run
-            snew(*timings, 1);
-            /* FIXME: this is not freed, should be shared */
-            // init_timings(*timings);
-        }
         for (size_t i = 0; i < pmeGPU->archSpecific->timingEvents.size(); i++)
         {
-            (*timings)->pme.timing[i].t = pmeGPU->archSpecific->timingEvents[i]->getTotalTimeMilliseconds();
-            (*timings)->pme.timing[i].c = pmeGPU->archSpecific->timingEvents[i]->getCallCount();
+            timings->timing[i].t = pmeGPU->archSpecific->timingEvents[i]->getTotalTimeMilliseconds();
+            timings->timing[i].c = pmeGPU->archSpecific->timingEvents[i]->getCallCount();
         }
     }
 }

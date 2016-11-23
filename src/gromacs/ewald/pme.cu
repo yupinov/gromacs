@@ -42,8 +42,6 @@
 
 #include "gmxpre.h"
 
-#include "config.h"
-
 /* GPU initialization includes */
 #include "gromacs/gpu_utils/gpu_utils.h"
 #include "gromacs/hardware/gpu_hw_info.h"
@@ -52,7 +50,6 @@
 #include "gromacs/utility/logger.h"
 
 /* The rest */
-#include "pme-grid.h"
 #include "pme.h"
 
 #include "gromacs/gpu_utils/cudautils.cuh"
@@ -62,6 +59,7 @@
 
 #include "pme.cuh"
 #include "pme-3dfft.cuh"
+#include "pme-grid.h"
 
 int pme_gpu_get_atom_data_alignment(const pme_gpu_t *pmeGPU)
 {

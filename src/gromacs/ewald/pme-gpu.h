@@ -49,7 +49,7 @@
 #include "gromacs/timing/wallcycle.h"
 
 struct gmx_pme_t;
-struct gmx_wallclock_gpu_t;
+struct gmx_wallclock_gpu_pme_t;
 struct pme_gpu_t;
 
 /*! \brief
@@ -76,8 +76,8 @@ void pme_gpu_reset_timings(const gmx_pme_t *pme);
  * \param[in] pme               The PME structure.
  * \param[in] timings           The gmx_wallclock_gpu_t structure.
  */
-void pme_gpu_get_timings(const gmx_pme_t      *pme,
-                         gmx_wallclock_gpu_t **timings);
+void pme_gpu_get_timings(const gmx_pme_t         *pme,
+                         gmx_wallclock_gpu_pme_t *timings);
 
 /* The main PME GPU functions */
 

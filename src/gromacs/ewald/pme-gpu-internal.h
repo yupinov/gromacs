@@ -54,7 +54,7 @@
 struct gmx_hw_info_t;
 struct gmx_gpu_opt_t;
 struct gmx_pme_t;                              // only used in pme_gpu_reinit
-struct gmx_wallclock_gpu_t;                    // only used in pme_gpu_get_timings
+struct gmx_wallclock_gpu_pme_t;
 
 /* Some general defines for PME GPU behaviour follow.
  * Some of the might be possible to turn into booleans.
@@ -391,10 +391,10 @@ CUDA_FUNC_QUALIFIER void pme_gpu_reset_timings(const pme_gpu_t *CUDA_FUNC_ARGUME
  * Copies the PME GPU timings to the gmx_wallclock_gpu_t structure (for log output). To be called at the run end.
  *
  * \param[in] pmeGPU         The PME GPU structure.
- * \param[in] timings        The gmx_wallclock_gpu_t structure.
+ * \param[in] timings        The gmx_wallclock_gpu_pme_t structure.
  */
 CUDA_FUNC_QUALIFIER void pme_gpu_get_timings(const pme_gpu_t      *CUDA_FUNC_ARGUMENT(pmeGPU),
-                                             gmx_wallclock_gpu_t **CUDA_FUNC_ARGUMENT(timings)) CUDA_FUNC_TERM
+                                             gmx_wallclock_gpu_pme_t *CUDA_FUNC_ARGUMENT(timings)) CUDA_FUNC_TERM
 
 /* Separate PME GPU stages, living in ther own *.cu files */
 

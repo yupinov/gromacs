@@ -155,8 +155,6 @@ static void checkNumberOfBondedInteractions(FILE *fplog, t_commrec *cr, int tota
     }
 }
 
-#include "gromacs/ewald/pme-gpu-internal.h" //for pmeUseGpu
-
 static void reset_all_counters(FILE *fplog, const gmx::MDLogger &mdlog, t_commrec *cr,
                                gmx_int64_t step,
                                gmx_int64_t *step_rel, t_inputrec *ir,

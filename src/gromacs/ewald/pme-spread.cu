@@ -45,12 +45,12 @@
 
 #include <cassert>
 
-#include "gromacs/ewald/pme-grid.h"
 #include "gromacs/ewald/pme.h"
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/utility/fatalerror.h"
 
 #include "pme.cuh"
+#include "pme-grid.h"
 #include "pme-internal.h"
 #include "pme-timings.cuh"
 

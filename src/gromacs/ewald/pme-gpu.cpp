@@ -66,7 +66,7 @@ void pme_gpu_reset_timings(const gmx_pme_t *pme)
     }
 }
 
-void pme_gpu_get_timings(const gmx_pme_t *pme, gmx_wallclock_gpu_t **timings)
+void pme_gpu_get_timings(const gmx_pme_t *pme, gmx_wallclock_gpu_pme_t *timings)
 {
     if (pme_gpu_active(pme))
     {
