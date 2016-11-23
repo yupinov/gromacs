@@ -390,9 +390,9 @@ void pme_gpu_init_specific(pme_gpu_t *pmeGPU, const gmx_hw_info_t *hwinfo, const
     /* FIXME: fix the GPU ID selection as well as initialization */
     int       gpuIndex = 0;
     char      gpu_err_str[STRLEN];
-    GMX_ASSERT(hwinfo, "No hardware information");
-    GMX_ASSERT(hwinfo->gpu_info.gpu_dev, "No GPU information");
-    GMX_ASSERT(gpu_opt->dev_use, "No GPU information");
+    GMX_RELEASE_ASSERT(hwinfo, "No hardware information");
+    GMX_RELEASE_ASSERT(hwinfo->gpu_info.gpu_dev, "No GPU information");
+    GMX_RELEASE_ASSERT(gpu_opt->dev_use, "No GPU information");
     /* Use GPU #0 for now since the code for GPU init has to be reworked anyway.
      * And don't forget to resurrect the external GMX_PME_GPU_ID env. variable.
      */

@@ -269,7 +269,6 @@ int gmx_mdrun(int argc, char *argv[])
     gmx_bool          bDDBondCheck  = TRUE;
     gmx_bool          bDDBondComm   = TRUE;
     gmx_bool          bTunePME      = TRUE;
-    gmx_bool          bPMEGPU       = FALSE;
     gmx_bool          bVerbose      = FALSE;
     gmx_bool          bRerunVSite   = FALSE;
     gmx_bool          bConfout      = TRUE;
@@ -376,8 +375,6 @@ int gmx_mdrun(int argc, char *argv[])
           "Set nstlist when using a Verlet buffer tolerance (0 is guess)" },
         { "-tunepme", FALSE, etBOOL, {&bTunePME},
           "Optimize PME load between PP/PME ranks or GPU/CPU" },
-        { "-pmegpu", FALSE, etBOOL, {&bPMEGPU},
-          "HIDDENUse GPU for PME (deprecated parameter; use -pme)" },
         { "-pme",      FALSE, etENUM, {&pme_opt},
           "Perform PME calculations on" },
         { "-v",       FALSE, etBOOL, {&bVerbose},
@@ -515,11 +512,6 @@ int gmx_mdrun(int argc, char *argv[])
     }
 
     handleRestart(cr, bTryToAppendFiles, NFILE, fnm, &bDoAppendFiles, &bStartFromCpt);
-
-    if (bPMEGPU)
-    {
-        pme_opt[0] = pme_opt[3];
-    }
 
     Flags = opt2bSet("-rerun", NFILE, fnm) ? MD_RERUN : 0;
     Flags = Flags | (bDDBondCheck  ? MD_DDBONDCHECK  : 0);
