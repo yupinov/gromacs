@@ -46,12 +46,16 @@
 #include "energyreader.h"
 #include "moduletest.h"
 
+namespace gmx
+{
+namespace test
+{
 namespace
 {
 
 //! A basic PME GPU test
 class PMEGPUTest :
-    public gmx::test::MdrunTestFixture,
+    public test::MdrunTestFixture,
     public ::testing::WithParamInterface<const char *>
 {
 
@@ -60,17 +64,17 @@ class PMEGPUTest :
 /* Ensure 2 mdruns with CPU and GPU PME produce same reciprocal and conserved energies. */
 TEST_F(PMEGPUTest, ReproducesEnergies)
 {
-    int         nsteps     = 20;
-    std::string theMdpFile = gmx::formatString("coulombtype     = PME\n"
-                                               "nstcalcenergy   = 1\n"
-                                               "nstenergy       = 1\n"
-                                               "pme-order       = 4\n"
-                                               "tcoupl          = v-rescale\n"
-                                               "tau_t           = 0.1\n"
-                                               "ref_t           = 300\n"
-                                               "tc_grps         = system\n"
-                                               "nsteps          = %d\n",
-                                               nsteps);
+    int         nsteps     = 600;
+    std::string theMdpFile = formatString("coulombtype     = PME\n"
+                                          "nstcalcenergy   = 1\n"
+                                          "nstenergy       = 1\n"
+                                          "pme-order       = 4\n"
+                                          "tcoupl          = v-rescale\n"
+                                          "tau_t           = 0.1\n"
+                                          "ref_t           = 300\n"
+                                          "tc_grps         = system\n"
+                                          "nsteps          = %d\n",
+                                          nsteps);
 
     runner_.useStringAsMdpFile(theMdpFile);
 
@@ -78,7 +82,7 @@ TEST_F(PMEGPUTest, ReproducesEnergies)
     runner_.useTopGroAndNdxFromDatabase(inputFile.c_str());
 
     /* For spc2 Coulomb reciprocal energy is ~7.5, conserved is ~1.3 => abs. tolerance of 3e-4 is OK for both */
-    const gmx::test::FloatingPointTolerance tolerance = gmx::test::relativeToleranceAsFloatingPoint(3.0, 1e-4);
+    const FloatingPointTolerance tolerance = relativeToleranceAsFloatingPoint(1.0, 1e-2);
 
     EXPECT_EQ(0, runner_.callGrompp());
 
@@ -86,19 +90,19 @@ TEST_F(PMEGPUTest, ReproducesEnergies)
     PMEModes.push_back("cpu");
     PMEModes.push_back("gpu");
 
-    std::map<std::string, gmx::test::EnergyFrameReaderPtr> energyReadersByMode;
+    std::map<std::string, EnergyFrameReaderPtr> energyReadersByMode;
 
     for (auto &it : PMEModes)
     {
         runner_.edrFileName_ = fileManager_.getTemporaryFilePath(inputFile + "_" + it + ".edr");
 
-        ::gmx::test::CommandLine PMECommandLine;
+        CommandLine PMECommandLine;
         // PMECommandLine.addOption("-ntmpi", 1); /* already declared? */
         PMECommandLine.addOption("-pme", it);
 
         ASSERT_EQ(0, runner_.callMdrun(PMECommandLine));
 
-        energyReadersByMode[it] = gmx::test::openEnergyFileToReadFields(runner_.edrFileName_, {{"Coul. recip."}, {"Conserved En."}});
+        energyReadersByMode[it] = openEnergyFileToReadFields(runner_.edrFileName_, {{"Coul. recip."}, {"Conserved En."}});
     }
 
     for (int i = 0; i <= nsteps; i++)
@@ -108,9 +112,9 @@ TEST_F(PMEGPUTest, ReproducesEnergies)
             energyReadersByMode[it]->readNextFrame();
         }
 
-        gmx::test::compareFrames(std::make_pair(energyReadersByMode[PMEModes[0]]->frame(),
-                                                energyReadersByMode[PMEModes[1]]->frame()),
-                                 tolerance);
+        compareFrames(std::make_pair(energyReadersByMode[PMEModes[0]]->frame(),
+                                     energyReadersByMode[PMEModes[1]]->frame()),
+                      tolerance);
     }
 }
 
@@ -118,4 +122,6 @@ TEST_F(PMEGPUTest, ReproducesEnergies)
 #pragma warning( disable : 177 )
 #endif
 
-} // namespace
+}
+}
+}

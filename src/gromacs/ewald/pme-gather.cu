@@ -162,13 +162,16 @@ __device__ __forceinline__ void reduce_particle_forces(float3         fSumArray[
 /*! \brief
  *
  * A CUDA kernel: gathers the forces from the grid in the last PME GPU stage.
+ * The grid is assumed to be wrapped in Z dimension.
  *
  * Template parameters:
  * \tparam[in] order                The PME order (must be 4).
- * \tparam[in] atomsPerBlock    The number of particles processed by a single block;
+ * \tparam[in] atomsPerBlock        The number of particles processed by a single block;
  *                                  currently this is (warp_size / order^2) * (number of warps in a block) = (32 / 16) * 4 = 8.
  * \tparam[in] bOverwriteForces     TRUE: the forces are written to the output buffer;
  *                                  FALSE: the forces are added non-atomically to the output buffer (e.g. to the bonded forces).
+ * \tparam[in] wrapX                Tells if the grid is wrapped in the X dimension.
+ * \tparam[in] wrapY                Tells if the grid is wrapped in the Y dimension.
  *
  * Normal parameters:
  * \param[in] kernelParams          All the PME GPU data.
@@ -176,7 +179,9 @@ __device__ __forceinline__ void reduce_particle_forces(float3         fSumArray[
  */
 template <
     const int order,
-    const gmx_bool bOverwriteForces
+    const gmx_bool bOverwriteForces,
+    const bool wrapX,
+    const bool wrapY
     >
 __launch_bounds__(PME_SPREADGATHER_THREADS_PER_BLOCK, PME_MIN_BLOCKS_PER_MP)
 __global__ void pme_gather_kernel(const pme_gpu_cuda_kernel_params_t    kernelParams)
@@ -192,7 +197,7 @@ __global__ void pme_gather_kernel(const pme_gpu_cuda_kernel_params_t    kernelPa
 
     const int atomsPerBlock = PME_SPREADGATHER_ATOMS_PER_BLOCK;
     /* These are the atom indices - for the shared and global memory */
-    const int localIndexGather  = threadIdx.z;
+    const int localIndex        = threadIdx.z;
     const int globalIndexGather = blockIdx.x * blockDim.z + threadIdx.z;
 
     const int particleDataSize = PME_THREADS_PER_ATOM; /* Number of data components and threads for a single particle */
@@ -244,25 +249,38 @@ __global__ void pme_gather_kernel(const pme_gpu_cuda_kernel_params_t    kernelPa
     //yupinov stage coefficient into a shared/local mem?
     if (chargeCheck & globalCheck)
     {
-        const int    pny = kernelParams.grid.localGridSizePadded[YY];
-        const int    pnz = kernelParams.grid.localGridSizePadded[ZZ];
+        const int            nx        = kernelParams.grid.localGridSize[XX];
+        const int            ny        = kernelParams.grid.localGridSize[YY];
+        const int            nz        = kernelParams.grid.localGridSize[ZZ];
+        const int            pny       = kernelParams.grid.localGridSizePadded[YY];
+        const int            pnz       = kernelParams.grid.localGridSizePadded[ZZ];
 
-        const int    particleWarpIndex = localIndexGather % PME_SPREADGATHER_ATOMS_PER_WARP;
-        const int    warpIndex         = localIndexGather / PME_SPREADGATHER_ATOMS_PER_WARP;
+        const int            particleWarpIndex = localIndex % PME_SPREADGATHER_ATOMS_PER_WARP;
+        const int            warpIndex         = localIndex / PME_SPREADGATHER_ATOMS_PER_WARP;
 
-        const int    thetaOffsetBase = PME_SPLINE_THETA_STRIDE * order * warpIndex * DIM * PME_SPREADGATHER_ATOMS_PER_WARP + particleWarpIndex;
-        const int    orderStride     = PME_SPLINE_THETA_STRIDE * DIM * PME_SPREADGATHER_ATOMS_PER_WARP; // PME_SPLINE_ORDER_STRIDE
-        const int    dimStride       = PME_SPLINE_THETA_STRIDE * PME_SPREADGATHER_ATOMS_PER_WARP;
+        const int            thetaOffsetBase = PME_SPLINE_THETA_STRIDE * order * warpIndex * DIM * PME_SPREADGATHER_ATOMS_PER_WARP + particleWarpIndex;
+        const int            orderStride     = PME_SPLINE_THETA_STRIDE * DIM * PME_SPREADGATHER_ATOMS_PER_WARP; // PME_SPLINE_ORDER_STRIDE
+        const int            dimStride       = PME_SPLINE_THETA_STRIDE * PME_SPREADGATHER_ATOMS_PER_WARP;
 
-        const int    thetaOffsetY = thetaOffsetBase + ithy * orderStride + YY * dimStride;
-        const float2 tdy          = sm_splineParams[thetaOffsetY];
-        const int    thetaOffsetZ = thetaOffsetBase + ithz * orderStride + ZZ * dimStride;
-        const float2 tdz          = sm_splineParams[thetaOffsetZ];
-        const int    indexBaseYZ  = ((sm_gridlineIndices[localIndexGather * DIM + XX] + 0) * pny + (sm_gridlineIndices[localIndexGather * DIM + YY] + ithy)) * pnz + (sm_gridlineIndices[localIndexGather * DIM + ZZ] + ithz);
+        const int            thetaOffsetY = thetaOffsetBase + ithy * orderStride + YY * dimStride;
+        const float2         tdy          = sm_splineParams[thetaOffsetY];
+        const int            thetaOffsetZ = thetaOffsetBase + ithz * orderStride + ZZ * dimStride;
+        const float2         tdz          = sm_splineParams[thetaOffsetZ];
+
+        const int            ixBase         = sm_gridlineIndices[localIndex * DIM + XX];
+        const int            iy             = sm_gridlineIndices[localIndex * DIM + YY] + ithy;
+        const int            iyWrapped      = (wrapY & (iy >= ny)) ? (iy - ny) : iy;
+        const int            iz             = sm_gridlineIndices[localIndex * DIM + ZZ] + ithz;
+        const int            izWrapped      = (iz >= nz) ? (iz - nz) : iz;
+        const int            constOffset    = iyWrapped * pnz + izWrapped;
+
 #pragma unroll
         for (int ithx = 0; (ithx < order); ithx++)
         {
-            const float   gridValue    = gm_grid[indexBaseYZ + ithx * pny * pnz];
+            const int     ix           = ixBase + ithx;
+            const int     ixWrapped    = (wrapX & (ix >= nx)) ? (ix - nx) : ix;
+            const int     globalIndex  = ixWrapped * pny * pnz + constOffset;
+            const float   gridValue    = gm_grid[globalIndex];
             assert(!isnan(gridValue));
             const int     thetaOffsetX = thetaOffsetBase + ithx * orderStride + XX * dimStride;
             const float2  tdx          = sm_splineParams[thetaOffsetX];
@@ -278,7 +296,7 @@ __global__ void pme_gather_kernel(const pme_gpu_cuda_kernel_params_t    kernelPa
     // Reduction of contributions
     __shared__ float3 sm_forces[atomsPerBlock];
     reduce_particle_forces<order, particleDataSize, blockSize>(sm_forces,
-                                                               localIndexGather, splineIndex, lineIndex,
+                                                               localIndex, splineIndex, lineIndex,
                                                                kernelParams.grid.localGridSizeFP,
                                                                fx, fy, fz);
     __syncthreads();
@@ -318,76 +336,6 @@ __global__ void pme_gather_kernel(const pme_gpu_cuda_kernel_params_t    kernelPa
     }
 }
 
-// a quick dirty copy of pme_wrap_kernel
-template <
-    const int order
-    >
-__global__ void pme_unwrap_kernel(const pme_gpu_cuda_kernel_params_t kernelParams)
-{
-    /* Global memory pointer */
-    float * __restrict__  gridGlobal = kernelParams.grid.d_realGrid;
-
-    int                   blockId = blockIdx.x
-        + blockIdx.y * gridDim.x
-        + gridDim.x * gridDim.y * blockIdx.z;
-    int threadId = blockId * (blockDim.x * blockDim.y * blockDim.z)
-        + (threadIdx.z * (blockDim.x * blockDim.y))
-        + (threadIdx.y * blockDim.x)
-        + threadIdx.x;
-
-    const int nx      = kernelParams.grid.localGridSize[XX];
-    const int ny      = kernelParams.grid.localGridSize[YY];
-    const int nz      = kernelParams.grid.localGridSize[ZZ];
-    const int pny     = kernelParams.grid.localGridSizePadded[YY];
-    const int pnz     = kernelParams.grid.localGridSizePadded[ZZ];
-
-
-    // should use ldg.128
-
-    if (threadId < kernelParams.grid.overlapCellCounts[PME_GPU_OVERLAP_ZONES_COUNT - 1])
-    {
-        int zoneIndex = -1;
-        do
-        {
-            zoneIndex++;
-        }
-        while (threadId >= kernelParams.grid.overlapCellCounts[zoneIndex]);
-        const int2 zoneSizeYZ = ((const __restrict__ int2 *)kernelParams.grid.overlapSizes)[zoneIndex];
-        // this is the overlapped cells's index relative to the current zone
-        const int  cellIndex = (zoneIndex > 0) ? (threadId - kernelParams.grid.overlapCellCounts[zoneIndex - 1]) : threadId;
-
-        // replace integer division/modular arithmetics - a big performance hit
-        // try int_fastdiv?
-        const int ixy = cellIndex / zoneSizeYZ.y;
-        // expensive integer divisions everywhere => should rewrite wrap/unwrap kernels
-        const int iz          = cellIndex - zoneSizeYZ.y * ixy;
-        const int ix          = ixy / zoneSizeYZ.x;
-        const int iy          = ixy - zoneSizeYZ.x * ix;
-        const int sourceIndex = (ix * pny + iy) * pnz + iz;
-
-        int       targetOffset = 0;
-
-        // stage those bits in constant memory as well
-        const int overlapZ = ((zoneIndex == 0) || (zoneIndex == 3) || (zoneIndex == 4) || (zoneIndex == 6)) ? 1 : 0;
-        const int overlapY = ((zoneIndex == 1) || (zoneIndex == 3) || (zoneIndex == 5) || (zoneIndex == 6)) ? 1 : 0;
-        const int overlapX = ((zoneIndex == 2) || (zoneIndex > 3)) ? 1 : 0;
-        if (overlapZ)
-        {
-            targetOffset = nz;
-        }
-        if (overlapY)
-        {
-            targetOffset += ny * pnz;
-        }
-        if (overlapX)
-        {
-            targetOffset += nx * pny * pnz;
-        }
-        const int targetIndex = sourceIndex + targetOffset;
-        gridGlobal[targetIndex] = gridGlobal[sourceIndex];
-    }
-}
-
 void pme_gpu_gather(const gmx_pme_t *pme,
                     bool             bOverwriteForces,
                     float           *h_forces) //separate in and out?
@@ -414,47 +362,23 @@ void pme_gpu_gather(const gmx_pme_t *pme,
         cu_copy_H2D_async(kernelParamsPtr->grid.d_realGrid, grid, gridSize, s);
     }
 
-    if (pme_gpu_performs_wrapping(pmeGPU))
-    {
-        /* The wrapping kernel */
-        const int    blockSize = 4 * warp_size; //yupinov thsi is everywhere! and architecture-specific
-        const int    overlap   = order - 1;
-
-        const int    nx              = kernelParamsPtr->grid.localGridSize[XX];
-        const int    ny              = kernelParamsPtr->grid.localGridSize[YY];
-        const int    nz              = kernelParamsPtr->grid.localGridSize[ZZ];
-        const int    overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
-        const int    nBlocks         = (overlappedCells + blockSize - 1) / blockSize;
-
-        if (order == 4)
-        {
-            pme_gpu_start_timing(pmeGPU, gtPME_UNWRAP);
-            pme_unwrap_kernel<4> <<< nBlocks, blockSize, 0, s>>> (*kernelParamsPtr);
-            CU_LAUNCH_ERR("pme_unwrap_kernel");
-            pme_gpu_stop_timing(pmeGPU, gtPME_UNWRAP);
-
-        }
-        else
-        {
-            gmx_fatal(FARGS, "PME GPU unwrapping: orders other than 4 not implemented!");
-        }
-    }
-
     /* The gathering kernel */
     const int atomsPerBlock          =  PME_SPREADGATHER_ATOMS_PER_BLOCK;
     dim3 nBlocks(pmeGPU->nAtomsPadded / atomsPerBlock);
     dim3 dimBlock(order, order, atomsPerBlock);
 
+    const bool wrapX = true; //should check DD variables
+    const bool wrapY = true; //should check DD variables
     pme_gpu_start_timing(pmeGPU, gtPME_GATHER);
     if (order == 4)
     {
         if (bOverwriteForces)
         {
-            pme_gather_kernel<4, TRUE> <<< nBlocks, dimBlock, 0, s>>> (*kernelParamsPtr);
+            pme_gather_kernel<4, TRUE, wrapX, wrapY> <<< nBlocks, dimBlock, 0, s>>> (*kernelParamsPtr);
         }
         else
         {
-            pme_gather_kernel<4, FALSE> <<< nBlocks, dimBlock, 0, s>>> (*kernelParamsPtr);
+            pme_gather_kernel<4, FALSE, wrapX, wrapY> <<< nBlocks, dimBlock, 0, s>>> (*kernelParamsPtr);
         }
     }
     else

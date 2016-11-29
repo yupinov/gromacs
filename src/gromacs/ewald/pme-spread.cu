@@ -244,7 +244,7 @@ __device__ __forceinline__ void calculate_splines(const float3 * __restrict__   
 }
 
 template <
-    const int order>
+    const int order, const bool wrapX, const bool wrapY> // z is always wrapped
 __device__ __forceinline__ void spread_charges(const float * __restrict__             sm_coefficient,
                                                const pme_gpu_cuda_kernel_params_t     kernelParams,
                                                const int                              globalIndex,
@@ -255,6 +255,9 @@ __device__ __forceinline__ void spread_charges(const float * __restrict__       
     /* Global memory pointer */
     float * __restrict__ gm_grid = kernelParams.grid.d_realGrid;
 
+    const int            nx         = kernelParams.grid.localGridSize[XX];
+    const int            ny         = kernelParams.grid.localGridSize[YY];
+    const int            nz         = kernelParams.grid.localGridSize[ZZ];
     const int            pny        = kernelParams.grid.localGridSizePadded[YY];
     const int            pnz        = kernelParams.grid.localGridSizePadded[ZZ];
 
@@ -266,11 +269,13 @@ __device__ __forceinline__ void spread_charges(const float * __restrict__       
     if (chargeCheck & globalCheck)
     {
         // spline Y/Z coordinates
-        const int ithy = threadIdx.y;
-        const int ithz = threadIdx.x; //?
-        const int ix   = sm_gridlineIndices[localIndex * DIM + XX] - offx;
-        const int iy   = sm_gridlineIndices[localIndex * DIM + YY] - offy;
-        const int iz   = sm_gridlineIndices[localIndex * DIM + ZZ] - offz;
+        const int ithy      = threadIdx.y;
+        const int ithz      = threadIdx.x; //?
+        const int ixBase    = sm_gridlineIndices[localIndex * DIM + XX] - offx;
+        const int iy        = sm_gridlineIndices[localIndex * DIM + YY] - offy + ithy;
+        const int iyWrapped = (wrapY & (iy >= ny)) ? (iy - ny) : iy;
+        const int iz        = sm_gridlineIndices[localIndex * DIM + ZZ] - offz + ithz;
+        const int izWrapped = (iz >= nz) ? (iz - nz) : iz;
 
         // copy
         const int    particleWarpIndex = localIndex % PME_SPREADGATHER_ATOMS_PER_WARP; // index of particle w.r.t. the warp (so, 0 or 1)
@@ -283,16 +288,18 @@ __device__ __forceinline__ void spread_charges(const float * __restrict__       
         const float  thy         = sm_theta[thetaOffsetBase + ithy * orderStride + YY * dimStride];
         const float  constVal    = thz * thy * sm_coefficient[localIndex];
         assert(!isnan(constVal));
-        const int    constOffset    = (iy + ithy) * pnz + (iz + ithz);
+        const int    constOffset    = iyWrapped * pnz + izWrapped;
         const float *sm_thx         = sm_theta + (thetaOffsetBase + XX * dimStride);
 
 #pragma unroll
         for (int ithx = 0; (ithx < order); ithx++)
         {
-            const int index_x = (ix + ithx) * pny * pnz;
+            const int ix          = ixBase + ithx;
+            const int ixWrapped   = (wrapX & (ix >= nx)) ? (ix - nx) : ix;
+            const int globalIndex = ixWrapped * pny * pnz + constOffset;
             assert(!isnan(sm_thx[ithx * orderStride]));
-            assert(!isnan(gm_grid[index_x + constOffset]));
-            atomicAdd(gm_grid + index_x + constOffset, sm_thx[ithx * orderStride] * constVal);
+            assert(!isnan(gm_grid[globalIndex]));
+            atomicAdd(gm_grid + globalIndex, sm_thx[ithx * orderStride] * constVal);
         }
     }
 }
@@ -341,7 +348,9 @@ __device__ __forceinline__ void stage_coordinates(const int                     
 template <
     const int order,
     const gmx_bool bCalcSplines,     // first part
-    const gmx_bool bSpread           // second part
+    const gmx_bool bSpread,          // second part
+    const bool wrapX,
+    const bool wrapY
     >
 __launch_bounds__(PME_SPREADGATHER_THREADS_PER_BLOCK, PME_MIN_BLOCKS_PER_MP)
 __global__ void pme_spline_and_spread_kernel(const pme_gpu_cuda_kernel_params_t kernelParams)
@@ -412,8 +421,8 @@ __global__ void pme_spline_and_spread_kernel(const pme_gpu_cuda_kernel_params_t 
     {
         const int localSpreadIndex  = threadIdx.z;
         const int globalSpreadIndex = globalParticleIndexBase + localSpreadIndex;
-        spread_charges<order>(sm_coefficients, kernelParams, globalSpreadIndex, localSpreadIndex,
-                              sm_gridlineIndices, sm_theta);
+        spread_charges<order, wrapX, wrapY>(sm_coefficients, kernelParams, globalSpreadIndex, localSpreadIndex,
+                                            sm_gridlineIndices, sm_theta);
     }
 }
 
@@ -463,7 +472,7 @@ __global__ void pme_spline_kernel(const pme_gpu_cuda_kernel_params_t kernelParam
 
 
 template
-<const int order>
+<const int order, const bool wrapX, const bool wrapY>
 __launch_bounds__(PME_SPREADGATHER_THREADS_PER_BLOCK, PME_MIN_BLOCKS_PER_MP)
 __global__ void pme_spread_kernel(const pme_gpu_cuda_kernel_params_t kernelParams)
 {
@@ -512,93 +521,8 @@ __global__ void pme_spread_kernel(const pme_gpu_cuda_kernel_params_t kernelParam
     __syncthreads();
 
     // SPREAD
-    spread_charges<order>(sm_coefficients, kernelParams, globalIndex, localIndex,
-                          sm_gridlineIndices, sm_theta);
-}
-
-template <
-    const int order
-    >
-__global__ void pme_wrap_kernel(const pme_gpu_cuda_kernel_params_t kernelParams)
-{
-    const int blockId = blockIdx.x
-        + blockIdx.y * gridDim.x
-        + gridDim.x * gridDim.y * blockIdx.z;
-    const int threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
-        + (threadIdx.y * blockDim.x)
-        + threadIdx.x;
-    const int            threadId = blockId * (blockDim.x * blockDim.y * blockDim.z) + threadLocalId;
-
-    float * __restrict__ gridGlobal = kernelParams.grid.d_realGrid;
-
-    const int            nx  = kernelParams.grid.localGridSize[XX];
-    const int            ny  = kernelParams.grid.localGridSize[YY];
-    const int            nz  = kernelParams.grid.localGridSize[ZZ];
-    const int            pny = kernelParams.grid.localGridSizePadded[YY];
-    const int            pnz = kernelParams.grid.localGridSizePadded[ZZ];
-
-    // should use ldg.128
-
-    if (threadId < kernelParams.grid.overlapCellCounts[PME_GPU_OVERLAP_ZONES_COUNT - 1])
-    {
-        int zoneIndex = -1;
-        do
-        {
-            zoneIndex++;
-        }
-        while (threadId >= kernelParams.grid.overlapCellCounts[zoneIndex]);
-        const int2 zoneSizeYZ = ((const __restrict__ int2 *)kernelParams.grid.overlapSizes)[zoneIndex];
-        // this is the overlapped cells's index relative to the current zone
-        const int  cellIndex = (zoneIndex > 0) ? (threadId - kernelParams.grid.overlapCellCounts[zoneIndex - 1]) : threadId;
-
-        // replace integer division/modular arithmetics - a big performance hit
-        // try int_fastdiv?
-        const int ixy         = cellIndex / zoneSizeYZ.y; //yupinov check expensive integer divisions everywhere!
-        const int iz          = cellIndex - zoneSizeYZ.y * ixy;
-        const int ix          = ixy / zoneSizeYZ.x;
-        const int iy          = ixy - zoneSizeYZ.x * ix;
-        const int targetIndex = (ix * pny + iy) * pnz + iz;
-
-        int       sourceOffset = 0;
-
-        // stage those bits in constant memory as well
-        const int overlapZ = ((zoneIndex == 0) || (zoneIndex == 3) || (zoneIndex == 4) || (zoneIndex == 6)) ? 1 : 0;
-        const int overlapY = ((zoneIndex == 1) || (zoneIndex == 3) || (zoneIndex == 5) || (zoneIndex == 6)) ? 1 : 0;
-        const int overlapX = ((zoneIndex == 2) || (zoneIndex > 3)) ? 1 : 0;
-        if (overlapZ)
-        {
-            sourceOffset = nz;
-        }
-        if (overlapY)
-        {
-            sourceOffset += ny * pnz;
-        }
-        if (overlapX)
-        {
-            sourceOffset += nx * pny * pnz;
-        }
-        const int sourceIndex = targetIndex + sourceOffset;
-
-        /* // condition for atomic seems a bit excessive - test on different hardware?
-           const int targetOverlapX = (ix < overlap) ? 1 : 0;
-           const int targetOverlapY = (iy < overlap) ? 1 : 0;
-           const int targetOverlapZ = (iz < overlap) ? 1 : 0;
-           const int useAtomic = ((targetOverlapX + targetOverlapY + targetOverlapZ) > 1) ? 1 : 0;
-         */
-        assert(!isnan(gridGlobal[targetIndex]));
-        assert(!isnan(gridGlobal[sourceIndex]));
-
-        const int useAtomic = 1;
-        if (useAtomic)
-        {
-            atomicAdd(gridGlobal + targetIndex, gridGlobal[sourceIndex]);
-        }
-        else
-        {
-            gridGlobal[targetIndex] += gridGlobal[sourceIndex];
-        }
-
-    }
+    spread_charges<order, wrapX, wrapY>(sm_coefficients, kernelParams, globalIndex, localIndex,
+                                        sm_gridlineIndices, sm_theta);
 }
 
 void pme_gpu_make_fract_shifts_textures(pme_gpu_t *pmeGPU)
@@ -687,14 +611,10 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
 
     //int nx = pmegrid->s[XX], ny = pmegrid->s[YY], nz = pmegrid->s[ZZ];
     const int order   = pmeGPU->common->pme_order;
-    const int overlap = order - 1;
 
     const int pnx = pmegrid->n[XX];
     const int pny = pmegrid->n[YY];
     const int pnz = pmegrid->n[ZZ];
-    const int nx  = pme->nkx;
-    const int ny  = pme->nky;
-    const int nz  = pme->nkz;
 
     const int gridSize = pnx * pny * pnz * sizeof(float);
 
@@ -707,6 +627,8 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
     dim3 nBlocksSpline((kernelParamsPtr->atoms.nAtoms + splineParticlesPerBlock - 1) / splineParticlesPerBlock); //???
     dim3 dimBlockSpread(order, order, atomsPerBlock);                                                            // used for spline_and_spread / separate spread
     dim3 dimBlockSpline(splineParticlesPerBlock, DIM);                                                           // used for separate spline only
+    const bool wrapX = true;                                                                                     //should check DD variables
+    const bool wrapY = true;                                                                                     //should check DD variables
     switch (order)
     {
         case 4:
@@ -722,7 +644,7 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                 if (bSpread)
                 {
                     pme_gpu_start_timing(pmeGPU, gtPME_SPREAD);
-                    pme_spread_kernel<4> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (*kernelParamsPtr);
+                    pme_spread_kernel<4, wrapX, wrapY> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (*kernelParamsPtr);
                     CU_LAUNCH_ERR("pme_spread_kernel");
                     pme_gpu_stop_timing(pmeGPU, gtPME_SPREAD);
                 }
@@ -734,7 +656,7 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                 {
                     if (bSpread)
                     {
-                        pme_spline_and_spread_kernel<4, TRUE, TRUE> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (*kernelParamsPtr);
+                        pme_spline_and_spread_kernel<4, TRUE, TRUE, wrapX, wrapY> <<< nBlocksSpread, dimBlockSpread, 0, s>>> (*kernelParamsPtr);
                     }
                     else
                     {
@@ -747,18 +669,6 @@ void pme_gpu_spread(const gmx_pme_t *pme, pme_atomcomm_t gmx_unused *atc,
                 }
                 CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
                 pme_gpu_stop_timing(pmeGPU, gtPME_SPLINEANDSPREAD);
-            }
-            if (bSpread && pme_gpu_performs_wrapping(pmeGPU))
-            {
-                /* Wrapping the resulting grid on a GPU as a separate small kernel */
-                const int blockSize       = 4 * warp_size; //yupinov this is everywhere! and architecture-specific
-                const int overlappedCells = (nx + overlap) * (ny + overlap) * (nz + overlap) - nx * ny * nz;
-                const int nBlocks         = (overlappedCells + blockSize - 1) / blockSize;
-
-                pme_gpu_start_timing(pmeGPU, gtPME_WRAP);
-                pme_wrap_kernel<4> <<< nBlocks, blockSize, 0, s>>> (*kernelParamsPtr);
-                CU_LAUNCH_ERR("pme_wrap_kernel");
-                pme_gpu_stop_timing(pmeGPU, gtPME_WRAP);
             }
             break;
 

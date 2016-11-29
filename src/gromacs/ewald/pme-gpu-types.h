@@ -114,13 +114,6 @@ struct pme_gpu_grid_params_t
     /*! \brief Complex grid - used in FFT/solve. If inplace cuFFT is used, then it is the same pointer as realGrid. */
     float *d_fourierGrid;
 
-    /*! \brief Count of the overlap zones */
-#define PME_GPU_OVERLAP_ZONES_COUNT 7  /* can go away with a better rewrite of wrap/unwrap */
-    /*! \brief The Y and Z sizes of the overlap zones */
-    int  overlapSizes[2 * PME_GPU_OVERLAP_ZONES_COUNT];
-    /*! \brief The total cell counts of the overlap zones */
-    int  overlapCellCounts[PME_GPU_OVERLAP_ZONES_COUNT];
-
     /*! \brief Ewald solving factor = (M_PI / pme->ewaldcoeff_q)^2 */
     float ewaldFactor;
 
