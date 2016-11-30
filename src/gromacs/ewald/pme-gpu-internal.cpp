@@ -156,52 +156,6 @@ void pme_gpu_finish_step(const pme_gpu_t *pmeGPU, const bool bCalcF, const bool 
 }
 
 /*! \brief \libinternal
- * Copies the grid sizes for overlapping (used in the PME wrap/unwrap).
- *
- * \param[in] pmeGPU             The PME GPU structure.
- */
-void pme_gpu_copy_wrap_zones(const pme_gpu_t *pmeGPU)
-{
-    pme_gpu_kernel_params_base_t *kernelParamsPtr = pme_gpu_get_kernel_params_base_ptr(pmeGPU);
-
-    const int                     nx      = kernelParamsPtr->grid.localGridSize[XX];
-    const int                     ny      = kernelParamsPtr->grid.localGridSize[YY];
-    const int                     nz      = kernelParamsPtr->grid.localGridSize[ZZ];
-    const int                     overlap = pmeGPU->common->pme_order - 1;
-
-    /* Cell counts in the 7 overlapped grid parts */
-    const int zoneSizes_h[PME_GPU_OVERLAP_ZONES_COUNT][DIM] =
-    {
-        {     nx,        ny,   overlap},
-        {     nx,   overlap,        nz},
-        {overlap,        ny,        nz},
-        {     nx,   overlap,   overlap},
-        {overlap,        ny,   overlap},
-        {overlap,   overlap,        nz},
-        {overlap,   overlap,   overlap}
-    };
-    /* The X is never used on the GPU, actually */
-    int zoneSizesYZ_h[PME_GPU_OVERLAP_ZONES_COUNT * 2];
-    for (size_t i = 0; i < PME_GPU_OVERLAP_ZONES_COUNT; i++)
-    {
-        zoneSizesYZ_h[2 * i    ] = zoneSizes_h[i][YY];
-        zoneSizesYZ_h[2 * i + 1] = zoneSizes_h[i][ZZ];
-    }
-    int cellsAccumCount_h[PME_GPU_OVERLAP_ZONES_COUNT];
-    for (int i = 0; i < PME_GPU_OVERLAP_ZONES_COUNT; i++)
-    {
-        cellsAccumCount_h[i] = zoneSizes_h[i][XX] * zoneSizes_h[i][YY] * zoneSizes_h[i][ZZ];
-    }
-    /* Accumulation */
-    for (int i = 1; i < PME_GPU_OVERLAP_ZONES_COUNT; i++)
-    {
-        cellsAccumCount_h[i] = cellsAccumCount_h[i] + cellsAccumCount_h[i - 1];
-    }
-    memcpy((void *)kernelParamsPtr->grid.overlapSizes, zoneSizesYZ_h, sizeof(zoneSizesYZ_h));
-    memcpy((void *)kernelParamsPtr->grid.overlapCellCounts, cellsAccumCount_h, sizeof(cellsAccumCount_h));
-}
-
-/*! \brief \libinternal
  * (Re-)initializes all the PME GPU data related to the grid size and cut-off.
  *
  * \param[in] pmeGPU            The PME GPU structure.
@@ -219,7 +173,6 @@ void pme_gpu_reinit_grids(pme_gpu_t *pmeGPU)
         kernelParamsPtr->grid.localGridSizePadded[i] = pmeGPU->common->pmegrid_n[i];
     }
 
-    pme_gpu_copy_wrap_zones(pmeGPU);
     pme_gpu_realloc_and_copy_fract_shifts(pmeGPU);
     pme_gpu_realloc_and_copy_bspline_values(pmeGPU);
     pme_gpu_realloc_grids(pmeGPU);
