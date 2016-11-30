@@ -61,7 +61,7 @@ parallel_3dfft_gpu_t::parallel_3dfft_gpu_t(const pme_gpu_t *pmeGPU)
     {
         GMX_ASSERT(sizeComplex_[ZZ] % 2 == 0, "Odd inplace cuFFT minor dimension");
     }
-    sizeComplex_[ZZ] /= 2;
+    sizeComplex_[ZZ] = sizeComplex_[ZZ] / 2 + 1;
 
     GMX_ASSERT(!pme_gpu_uses_dd(pmeGPU), "FFT decomposition not implemented");
 

@@ -170,7 +170,7 @@ void pme_gpu_reinit_grids(pme_gpu_t *pmeGPU)
     {
         kernelParamsPtr->grid.localGridSize[i]       = pmeGPU->common->nk[i];
         kernelParamsPtr->grid.localGridSizeFP[i]     = (float)kernelParamsPtr->grid.localGridSize[i];
-        kernelParamsPtr->grid.localGridSizePadded[i] = pmeGPU->common->pmegrid_n[i];
+        kernelParamsPtr->grid.localGridSizePadded[i] = kernelParamsPtr->grid.localGridSize[i];
     }
 
     pme_gpu_realloc_and_copy_fract_shifts(pmeGPU);
