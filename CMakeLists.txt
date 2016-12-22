@@ -321,6 +321,15 @@ include(gmxManageOpenMP)
 include(gmxCFlags)
 gmx_c_flags()
 
+# These collect libraries that Gromacs requires for linking:
+#  - Libraries that are required for libgromacs (only)
+set(GMX_EXTRA_LIBRARIES "")
+#  - Libraries that are required for all code in the repository
+set(GMX_COMMON_LIBRARIES "")
+#  - Libraries that all code linked against libgromacs needs
+#    (i.e., something that is exposed in installed headers).
+set(GMX_PUBLIC_LIBRARIES "")
+
 # This variable should be used for additional compiler flags which are not
 # generated in gmxCFlags nor are SIMD or MPI related.
 set(EXTRA_C_FLAGS "")
@@ -475,8 +484,18 @@ if(DEFINED HWLOC_LIBRARIES)
   set(Hwloc_FIND_QUIETLY TRUE)
 endif()
 find_package(Hwloc 1.5)
-if(HWLOC_FOUND)
-    set(GMX_HWLOC_DEFAULT ON)
+if (HWLOC_FOUND)
+    if (HWLOC_LIBRARIES MATCHES ".a$")
+        set(_STATIC_HWLOC TRUE)
+    endif()
+
+    gmx_check_if_changed(HWLOC_FOUND_CHANGED HWLOC_FOUND)
+    if (_STATIC_HWLOC AND HWLOC_FOUND_CHANGED)
+        message(STATUS "Static hwloc library found, will not attempt using it as it could lead to link-time errors. To use the detected library, manually set GMX_HWLOC=ON and you will likely have to pass appropriate linker flags too to satisfy the link-time dependencies of your hwloc library. Try \"pkg-config --libs --static hwloc\" for suggestions on what you will need.")
+        set(GMX_HWLOC_DEFAULT OFF)
+    else()
+        set(GMX_HWLOC_DEFAULT ON)
+    endif()
 else()
     set(GMX_HWLOC_DEFAULT OFF)
 endif()
@@ -702,8 +721,8 @@ if(HAVE_TIME_H AND HAVE_UNISTD_H AND HAVE_CLOCK_GETTIME)
 endif()
 
 # Math and thread libraries must often come after all others when linking...
-if(HAVE_LIBM)
-    list(APPEND GMX_EXTRA_LIBRARIES m)
+if (HAVE_LIBM)
+    list(APPEND GMX_PUBLIC_LIBRARIES m)
 endif()
 
 option(GMX_NACL "Configure for Native Client builds" OFF)
@@ -753,7 +772,7 @@ else()
     message("CMAKE_CXX_FLAGS_RELEASE: ${GMXC_CXXFLAGS_RELEASE}")
     message("CMAKE_CXX_FLAGS_DEBUG: ${GMXC_CXXFLAGS_DEBUG}")
     message("CMAKE_EXE_LINKER_FLAGS: ${FFT_LINKER_FLAGS} ${MPI_LINKER_FLAGS}")
-    message("CMAKE_SHARED_LINKER_FLAGS: ${MPI_LINKER_FLAGS}")
+    message("CMAKE_SHARED_LINKER_FLAGS: ${FFT_LINKER_FLAGS} ${MPI_LINKER_FLAGS}")
 endif()
 
 if(NOT GMX_OPENMP)

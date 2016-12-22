@@ -46,6 +46,7 @@
 #include <memory>
 
 #include "gromacs/ewald/pme-gpu.h"   //?
+#include "gromacs/fft/parallel_3dfft.h"
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/utility/gmxassert.h"
 

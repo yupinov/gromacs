@@ -49,7 +49,7 @@
 #include "gromacs/fileio/gmxfio.h"
 #include "gromacs/fileio/groio.h"
 #include "gromacs/fileio/pdbio.h"
-#include "gromacs/fileio/tngio_for_tools.h"
+#include "gromacs/fileio/tngio.h"
 #include "gromacs/fileio/tpxio.h"
 #include "gromacs/fileio/trrio.h"
 #include "gromacs/fileio/trxio.h"
@@ -861,7 +861,7 @@ int gmx_trjconv(int argc, char *argv[])
     FILE             *out    = NULL;
     t_trxstatus      *trxout = NULL;
     t_trxstatus      *trxin;
-    int               ftp, ftpin = 0, file_nr;
+    int               file_nr;
     t_trxframe        fr, frout;
     int               flags;
     rvec             *xmem  = NULL, *vmem = NULL, *fmem = NULL;
@@ -1015,13 +1015,13 @@ int gmx_trjconv(int argc, char *argv[])
 
         /* Determine output type */
         out_file = opt2fn("-o", NFILE, fnm);
-        ftp      = fn2ftp(out_file);
+        int ftp  = fn2ftp(out_file);
         fprintf(stderr, "Will write %s: %s\n", ftp2ext(ftp), ftp2desc(ftp));
         bNeedPrec = (ftp == efXTC || ftp == efGRO);
+        int ftpin = fn2ftp(in_file);
         if (bVels)
         {
             /* check if velocities are possible in input and output files */
-            ftpin = fn2ftp(in_file);
             bVels = (ftp == efTRR || ftp == efGRO ||
                      ftp == efG96 || ftp == efTNG)
                 && (ftpin == efTRR || ftpin == efGRO ||

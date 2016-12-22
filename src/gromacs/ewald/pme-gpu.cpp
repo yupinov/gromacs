@@ -45,6 +45,7 @@
 #include "config.h"
 
 #include "gromacs/ewald/pme.h"
+#include "gromacs/fft/parallel_3dfft.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/gmxassert.h"

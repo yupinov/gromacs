@@ -1,7 +1,7 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2015,2016, by the GROMACS development team, led by
+# Copyright (c) 2016, by the GROMACS development team, led by
 # Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
 # and including many others, as listed in the AUTHORS file in the
 # top-level source directory and at http://www.gromacs.org.
@@ -32,13 +32,26 @@
 # To help us fund GROMACS development, we humbly ask that you cite
 # the research papers on the package. Check out http://www.gromacs.org.
 
-gmx_add_libgromacs_sources(
-    cpuinfo.cpp
-    detecthardware.cpp
-    hardwareassign.cpp
-    hardwaretopology.cpp
-    )
+import json
 
-if (BUILD_TESTING)
-    add_subdirectory(tests)
-endif()
+extra_options = {
+    'md5sum': Option.string
+}
+
+def do_build(context):
+    info_path = 'cmake/gmxVersionInfo.cmake'
+    cmd = [context.env.cmake_command, '-P', info_path]
+    info_json = context.run_cmd(cmd, use_output=True)
+    values = json.loads(info_json)
+    old_md5sum = values['regressiontest-md5sum']
+    new_md5sum = context.opts.md5sum
+    if new_md5sum != old_md5sum:
+        context.replace_in_file(info_path, r'set\(REGRESSIONTEST_MD5SUM "(\w*)"',
+                lambda x: do_replacement(x, new_md5sum))
+        context.workspace.upload_revision(project=Project.GROMACS, file_glob=info_path)
+
+def do_replacement(match, new_md5sum):
+    result = match.group(0)
+    start = match.start(1) - match.start(0)
+    end = match.end(1) - match.end(0)
+    return result[:start] + new_md5sum + result[end:]

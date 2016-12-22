@@ -1,7 +1,7 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2015,2016, by the GROMACS development team, led by
+# Copyright (c) 2016, by the GROMACS development team, led by
 # Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
 # and including many others, as listed in the AUTHORS file in the
 # top-level source directory and at http://www.gromacs.org.
@@ -32,13 +32,10 @@
 # To help us fund GROMACS development, we humbly ask that you cite
 # the research papers on the package. Check out http://www.gromacs.org.
 
-gmx_add_libgromacs_sources(
-    cpuinfo.cpp
-    detecthardware.cpp
-    hardwareassign.cpp
-    hardwaretopology.cpp
-    )
+import json
 
-if (BUILD_TESTING)
-    add_subdirectory(tests)
-endif()
+def do_build(context):
+    cmd = [context.env.cmake_command, '-P', 'cmake/gmxVersionInfo.cmake']
+    info_json = context.run_cmd(cmd, use_output=True)
+    values = json.loads(info_json)
+    context.set_version_info(values['version'], values['regressiontest-md5sum'])

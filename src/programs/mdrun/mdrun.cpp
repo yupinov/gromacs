@@ -59,7 +59,6 @@
 
 #include "gromacs/commandline/filenm.h"
 #include "gromacs/commandline/pargs.h"
-#include "gromacs/fileio/readinp.h"
 #include "gromacs/gmxlib/network.h"
 #include "gromacs/mdlib/main.h"
 #include "gromacs/mdlib/mdrun.h"
@@ -157,7 +156,8 @@ int gmx_mdrun(int argc, char *argv[])
         "The option [TT]-pforce[tt] is useful when you suspect a simulation",
         "crashes due to too large forces. With this option coordinates and",
         "forces of atoms with a force larger than a certain value will",
-        "be printed to stderr.",
+        "be printed to stderr. It will also terminate the run when non-finite",
+        "forces are present.",
         "[PAR]",
         "Checkpoints containing the complete state of the system are written",
         "at regular intervals (option [TT]-cpt[tt]) to the file [TT]-cpo[tt],",

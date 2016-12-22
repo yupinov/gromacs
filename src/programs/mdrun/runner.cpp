@@ -66,6 +66,7 @@
 #include "gromacs/gpu_utils/gpu_utils.h"
 #include "gromacs/hardware/cpuinfo.h"
 #include "gromacs/hardware/detecthardware.h"
+#include "gromacs/hardware/hardwareassign.h"
 #include "gromacs/listed-forces/disre.h"
 #include "gromacs/listed-forces/orires.h"
 #include "gromacs/math/calculate-ewald-splitting-coefficient.h"
@@ -1008,7 +1009,6 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
     }
 
     energyhistory_t energyHistory;
-    init_energyhistory(&energyHistory);
 
     if (Flags & MD_STARTFROMCPT)
     {
@@ -1143,8 +1143,8 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
     if (bUseGPU)
     {
         /* Select GPU id's to use */
-        gmx_select_gpu_ids(mdlog, cr, &hwinfo->gpu_info, bForceUseGPU,
-                           &hw_opt->gpu_opt);
+        gmx_select_rank_gpu_ids(mdlog, cr, &hwinfo->gpu_info, bForceUseGPU,
+                                &hw_opt->gpu_opt);
     }
     else
     {
@@ -1437,8 +1437,6 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
     {
         free_membed(membed);
     }
-
-    done_energyhistory(&energyHistory);
 
     gmx_hardware_info_free(hwinfo);
 

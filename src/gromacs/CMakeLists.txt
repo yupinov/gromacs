@@ -146,7 +146,7 @@ gmx_install_headers(
 set(GENERATED_VERSION_FILE utility/baseversion-gen.c)
 gmx_configure_version_file(
     utility/baseversion-gen.c.cmakein ${GENERATED_VERSION_FILE}
-    REMOTE_HASH SOURCE_FILE)
+    REMOTE_HASH)
 list(APPEND LIBGROMACS_SOURCES ${GENERATED_VERSION_FILE})
 
 if (GMX_USE_CUDA)
@@ -168,26 +168,22 @@ check_cxx_compiler_flag(-Wno-unused-parameter HAS_NO_UNUSED_PARAMETER)
 if (HAS_NO_UNUSED_PARAMETER)
     set(_scanner_cpp_compiler_flags "${_scanner_cpp_compiler_flags} -Wno-unused-parameter")
 endif()
-check_cxx_compiler_flag(-Wno-deprecated-register HAS_NO_DEPRECATED_REGISTER)
-if (HAS_NO_DEPRECATED_REGISTER)
-    set(_scanner_cpp_compiler_flags "${_scanner_cpp_compiler_flags} -Wno-deprecated-register")
-else()
-    check_cxx_compiler_flag(-Wno-deprecated HAS_NO_DEPRECATED)
-    if (HAS_NO_DEPRECATED)
-        set(_scanner_cpp_compiler_flags "${_scanner_cpp_compiler_flags} -Wno-deprecated")
-    endif()
-endif()
 set_source_files_properties(selection/scanner.cpp PROPERTIES COMPILE_FLAGS "${_scanner_cpp_compiler_flags}")
 
 gmx_setup_tng_for_libgromacs()
 
-target_link_libraries(libgromacs PRIVATE
+target_link_libraries(libgromacs
+                      PRIVATE
                       ${EXTRAE_LIBRARIES}
                       ${GMX_EXTRA_LIBRARIES}
+                      ${GMX_COMMON_LIBRARIES}
                       ${FFT_LIBRARIES} ${LINEAR_ALGEBRA_LIBRARIES}
                       ${LMFIT_LIBRARIES_TO_LINK}
                       ${THREAD_LIB} ${GMX_SHARED_LINKER_FLAGS} ${OPENCL_LIBRARIES}
-                      ${GMX_STDLIB_LIBRARIES})
+                      ${GMX_STDLIB_LIBRARIES}
+                      PUBLIC
+                      ${GMX_PUBLIC_LIBRARIES}
+                      )
 set_target_properties(libgromacs PROPERTIES
                       OUTPUT_NAME "gromacs${GMX_LIBS_SUFFIX}"
                       SOVERSION ${LIBRARY_SOVERSION_MAJOR}
