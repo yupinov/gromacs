@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2014,2015,2016, by the GROMACS development team, led by
+ * Copyright (c) 2012,2014,2015,2016,2017, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -38,74 +38,12 @@
 #include "config.h"
 
 #include <stdio.h>
+
+#include "cudaerrorhandlers.cuh"
+
 #if HAVE_NVML
 #include <nvml.h>
 #endif /* HAVE_NVML */
-
-#include "gromacs/utility/fatalerror.h"
-
-/* TODO error checking needs to be rewritten. We have 2 types of error checks needed
-   based on where they occur in the code:
-   - non performance-critical: these errors are unsafe to be ignored and must be
-     _always_ checked for, e.g. initializations
-   - performance critical: handling errors might hurt performance so care need to be taken
-     when/if we should check for them at all, e.g. in cu_upload_X. However, we should be
-     able to turn the check for these errors on!
-
-   Probably we'll need two sets of the macros below...
-
- */
-#define CHECK_CUDA_ERRORS
-
-#ifdef CHECK_CUDA_ERRORS
-
-/*! Check for CUDA error on the return status of a CUDA RT API call. */
-#define CU_RET_ERR(status, msg) \
-    do { \
-        if (status != cudaSuccess) \
-        { \
-            gmx_fatal(FARGS, "%s: %s\n", msg, cudaGetErrorString(status)); \
-        } \
-    } while (0)
-
-/*! Check for any previously occurred uncaught CUDA error. */
-#define CU_CHECK_PREV_ERR() \
-    do { \
-        cudaError_t _CU_CHECK_PREV_ERR_status = cudaGetLastError(); \
-        if (_CU_CHECK_PREV_ERR_status != cudaSuccess) { \
-            gmx_warning("Just caught a previously occurred CUDA error (%s), will try to continue.", cudaGetErrorString(_CU_CHECK_PREV_ERR_status)); \
-        } \
-    } while (0)
-
-/*! Check for any previously occurred uncaught CUDA error
-   -- aimed at use after kernel calls. */
-#define CU_LAUNCH_ERR(msg) \
-    do { \
-        cudaError_t _CU_LAUNCH_ERR_status = cudaGetLastError(); \
-        if (_CU_LAUNCH_ERR_status != cudaSuccess) { \
-            gmx_fatal(FARGS, "Error while launching kernel %s: %s\n", msg, cudaGetErrorString(_CU_LAUNCH_ERR_status)); \
-        } \
-    } while (0)
-
-/*! Synchronize with GPU and check for any previously occurred uncaught CUDA error
-   -- aimed at use after kernel calls. */
-#define CU_LAUNCH_ERR_SYNC(msg) \
-    do { \
-        cudaError_t _CU_SYNC_LAUNCH_ERR_status = cudaThreadSynchronize(); \
-        if (_CU_SYNC_LAUNCH_ERR_status != cudaSuccess) { \
-            gmx_fatal(FARGS, "Error while launching kernel %s: %s\n", msg, cudaGetErrorString(_CU_SYNC_LAUNCH_ERR_status)); \
-        } \
-    } while (0)
-
-#else /* CHECK_CUDA_ERRORS */
-
-#define CU_RET_ERR(status, msg) do { } while (0)
-#define CU_CHECK_PREV_ERR()     do { } while (0)
-#define CU_LAUNCH_ERR(msg)      do { } while (0)
-#define CU_LAUNCH_ERR_SYNC(msg) do { } while (0)
-#define HANDLE_NVML_RET_ERR(status, msg) do { } while (0)
-
-#endif /* CHECK_CUDA_ERRORS */
 
 /*! \brief CUDA device information.
  *
