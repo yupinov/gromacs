@@ -55,9 +55,71 @@
    Probably we'll need two sets of the macros below...
 
  */
-#define CHECK_CUDA_ERRORS
 
-#ifdef CHECK_CUDA_ERRORS
+#include "gromacs/utility/exceptions.h"
+#include "gromacs/utility/stringutil.h"
+
+// this parameter telsl if the CUDA errors have to be checked in debug build
+const bool CHECK_CUDA_ERRORS = true;
+// this parameter tells if the CUDA errors have to be checked in release build
+#ifdef NDEBUG
+#define DEBUG_STUPID false
+#else
+#define DEBUG_STUPID true
+#endif
+
+// NDEBUG means release (empty asserts)
+
+#define CudaException InternalError
+
+namespace gmx
+{
+namespace CUDA
+{
+
+// this checks teh error in all builds - should only be for important stuff
+void inline handleErrorRelease(cudaError_t status, const char *msg)
+{
+    if (CHECK_CUDA_ERRORS && (status != cudaSuccess))
+    {
+        GMX_THROW(CudaException(formatString("%s: %s", msg, cudaGetErrorString(status))));
+    }
+}
+
+// this checks errors in non-release build only
+void inline handleError(cudaError_t status, const char *msg)
+{
+    if (CHECK_CUDA_ERRORS && DEBUG_STUPID && (status != cudaSuccess))
+    {
+        GMX_THROW(CudaException(formatString("%s: %s", msg, cudaGetErrorString(status))));
+    }
+}
+
+void inline handlePreviousError()
+{
+    cudaError_t status = cudaGetLastError();
+    if (status != cudaSuccess)
+    {
+        gmx_warning("Just caught a previously occurred CUDA error (%s), will try to continue.", cudaGetErrorString(status)); //TODO what is this
+    }
+}
+
+void inline handleKernelLaunch() //DEBUG - RELEASE
+{
+    cudaError_t status = cudaGetLastError();
+    if (status != cudaSuccess)
+    {
+        GMX_THROW(CudaException(formatString("Error while launching kernel %s: %s", cudaGetErrorString(status)); //TODO what is this
+    }
+}
+
+}
+}
+
+
+#ifdef CHECK_CUDA_ERRORS2
+
+
 
 /*! Check for CUDA error on the return status of a CUDA RT API call. */
 #define CU_RET_ERR(status, msg) \
@@ -97,15 +159,17 @@
         } \
     } while (0)
 
-#else /* CHECK_CUDA_ERRORS */
-
 #define CU_RET_ERR(status, msg) do { } while (0)
-#define CU_CHECK_PREV_ERR()     do { } while (0)
+#endif /* CHECK_CUDA_ERRORS2 */
+
+/* Compatibility defines */
+#define CU_RET_ERR(status, msg) gmx::CUDA::handleErrorRelease(status, msg)
+// only used from 3 host memory functions
+#define CU_CHECK_PREV_ERR()     gmx::CUDA::handlePreviousError()
 #define CU_LAUNCH_ERR(msg)      do { } while (0)
 #define CU_LAUNCH_ERR_SYNC(msg) do { } while (0)
 #define HANDLE_NVML_RET_ERR(status, msg) do { } while (0)
 
-#endif /* CHECK_CUDA_ERRORS */
 
 /*! \brief CUDA device information.
  *
