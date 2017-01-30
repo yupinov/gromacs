@@ -512,11 +512,11 @@ static int div_round_up(int enumerator, int denominator)
     return (enumerator + denominator - 1)/denominator;
 }
 
-int gmx_pme_init(struct gmx_pme_t **  pmedata,
-                 t_commrec *          cr,
+int gmx_pme_init(struct gmx_pme_t   **pmedata,
+                 t_commrec   *        cr,
                  int                  nnodes_major,
                  int                  nnodes_minor,
-                 const t_inputrec *   ir,
+                 const t_inputrec   * ir,
                  int                  homenr,
                  gmx_bool             bFreeEnergy_q,
                  gmx_bool             bFreeEnergy_lj,
@@ -853,11 +853,11 @@ int gmx_pme_init(struct gmx_pme_t **  pmedata,
         pme_realloc_atomcomm_things(&pme->atc[0]);
     }
 
-    pme_gpu_reinit(pme.get(), hwinfo, gpu_opt);
-
     pme->lb_buf1       = nullptr;
     pme->lb_buf2       = nullptr;
     pme->lb_buf_nalloc = 0;
+
+    pme_gpu_reinit(pme.get(), hwinfo, gpu_opt);
 
     pme_init_all_work(&pme->solve_work, pme->nthread, pme->nkx);
 
@@ -923,10 +923,6 @@ void gmx_pme_calc_energy(struct gmx_pme_t *pme, int n, rvec *x, real *q, real *V
     if (pme->bFEP_q > 1)
     {
         gmx_incons("gmx_pme_calc_energy with free energy");
-    }
-    if (pme_gpu_active(pme))
-    {
-        gmx_incons("gmx_pme_calc_energy not implemented on GPU");
     }
 
     atc            = &pme->atc_energy;
@@ -1752,7 +1748,7 @@ void gmx_pme_destroy(gmx_pme_t *pme)
     sfree(pme);
 }
 
-void gmx_pme_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, real *coefficients)
+void gmx_pme_reinit_atoms(const gmx_pme_t *pme, const int nAtoms, const real *coefficients)
 {
     if (pme_gpu_active(pme))
     {

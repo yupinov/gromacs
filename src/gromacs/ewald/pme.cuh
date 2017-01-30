@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016, by the GROMACS development team, led by
+ * Copyright (c) 2016,2017, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -41,28 +41,26 @@
  * \author Aleksei Iupinov <a.yupinov@gmail.com>
  */
 
-#ifndef PME_CUDA_H
-#define PME_CUDA_H
+#ifndef GMX_EWALD_PME_CUH
+#define GMX_EWALD_PME_CUH
 
 #include <cassert>                               // for asserts within inline functions
 
-#include "gromacs/gpu_utils/cuda_arch_utils.cuh" //for warp_size
+#include "gromacs/gpu_utils/cuda_arch_utils.cuh" // for warp_size
 
 #include "pme-gpu-internal.h"                    // for the general PME GPU behaviour defines
 #include "pme-timings.cuh"                       // FIXME: for the pme_gpu_timing unique_ptr vector
 
 class pme_gpu_timing;
-class parallel_3dfft_gpu_t;
+class GpuParallel3dFft;
 
 /* Some CUDA-specific defines for PME behaviour follow. */
 
 /* Using textures instead of global memory. Only in spread now, but B-spline moduli in solving could also be texturized. */
 #define PME_USE_TEXTURES 1
 #if PME_USE_TEXTURES
-/* Using texture objects as opposed to texture references
- * FIXME: rely entirely on dynamic device info instead, remove more ugly #ifs
- */
-#define PME_USE_TEXOBJ 1
+#define PME_USE_TEXOBJ (GMX_PTX_ARCH >= 300)
+/* Using texture objects as opposed to texture references */
 #endif
 
 /* TODO: move all the kernel blocksizes here, as they are all over the place */
@@ -156,39 +154,51 @@ int __device__ __forceinline__ pme_gpu_check_atom_charge(const float coefficient
     return PME_GPU_SKIP_ZEROES ? (coefficient != 0.0f) : 1;
 }
 
+//! How should the tabulated data be treated on GPU
+enum class GpuTableHandling
+{
+    NoTextures,
+    TextureReferences,
+    TextureObjects
+};
+
 /*! \brief \internal
  * The main PME CUDA-specific host data structure, included in the PME GPU structure by the archSpecific pointer.
  */
-struct pme_gpu_cuda_host_t
+struct pme_gpu_cuda_t
 {
     /*! \brief The CUDA stream where everything related to the PME happens. */
     cudaStream_t pmeStream;
 
-    /* Synchronization events */
-    /*! \brief A synchronization event for the energy/virial being copied to the host after the solving stage. */
+    /* Synchronization events;
+     * TODO: some of them would only be used in tests, but isn't it easier to sync the whole stream?
+     */
+    /*! \brief Triggered after the energy/virial have been copied to the host (after the solving stage). */
     cudaEvent_t syncEnerVirD2H;
-    /*! \brief A synchronization event for the output forces being copied to the host after the gathering stage. */
+    /*! \brief Triggered after the output forces have been copied to the host (after the gathering stage). */
     cudaEvent_t syncForcesD2H;
-    /*! \brief A synchronization event for the grid being copied to the host after the spreading stage (for the host-side FFT). */
+    /*! \brief Triggered after the grid has been copied to the host (after the spreading stage). */
     cudaEvent_t syncSpreadGridD2H;
-    /*! \brief A synchronization event for the grid being copied to the host after the solving stage (for the host-side FFT). */
+    /*! \brief Triggered after the atom spline data has been copied to the host (after the spline computation). */
+    cudaEvent_t syncSplineAtomDataD2H;
+    /*! \brief Triggered after the grid hes been copied to the host (after the solving stage) */
     cudaEvent_t syncSolveGridD2H;
 
-    /* Permanent settings set on initialization */
+    /* Settings which are set at the start of the run */
     /*! \brief A boolean which tells whether the complex and real grids for cuFFT are different or same. Currenty true. */
     bool performOutOfPlaceFFT;
     /*! \brief A boolean which tells if the CUDA timing events are enabled.
      * True by default, disabled by setting the environment variable GMX_DISABLE_CUDA_TIMING.
-     * FIXME: this should also be disabled if any other GPU task is running,
+     * FIXME: this should also be disabled if any other GPU task is running concurrently on the same device,
      * as CUDA events on multiple streams are untrustworthy.
      */
-    bool useTiming;
+    bool                                             useTiming;
 
-    //bool bUseTextureObjects;  /* If FALSE, then use references [unused] */
+    GpuTableHandling                                 tableHandling;
 
-    std::vector<std::unique_ptr<parallel_3dfft_gpu_t > >     pfft_setup_gpu;
+    std::vector<std::unique_ptr<GpuParallel3dFft > > fftSetup;
 
-    std::vector<std::unique_ptr<pme_gpu_timing> >            timingEvents;
+    std::vector<std::unique_ptr<pme_gpu_timing> >    timingEvents;
 
     /* GPU arrays element counts (not the arrays sizes in bytes!).
      * They might be larger than the actual meaningful data sizes.
@@ -246,7 +256,22 @@ struct pme_gpu_cuda_kernel_params_t : pme_gpu_kernel_params_base_t
     cudaTextureObject_t gridlineIndicesTableTexture;
 };
 
-void pme_gpu_make_fract_shifts_textures(pme_gpu_t *pmeGPU);
-void pme_gpu_free_fract_shifts_textures(const pme_gpu_t *pmeGPU);
+/* CUDA texture functions which reside in respective kernel files
+ * (Due to texture references having scope of a translation unit).
+ */
+
+/*! \brief \internal
+ * Creates/binds 2 textures used in the spline parameter computation.
+ *
+ * \param[in, out] pmeGPU         The PME GPU structure.
+ */
+void pme_gpu_make_fract_shifts_textures(pme_gpu_t *pmeGpu);
+
+/*! \brief \internal
+ * Frees/unbinds 2 textures used in the spline parameter computation.
+ *
+ * \param[in] pmeGPU             The PME GPU structure.
+ */
+void pme_gpu_free_fract_shifts_textures(const pme_gpu_t *pmeGpu);
 
 #endif

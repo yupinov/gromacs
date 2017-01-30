@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016, by the GROMACS development team, led by
+ * Copyright (c) 2016,2017, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -39,8 +39,8 @@
  *  \author Aleksei Iupinov <a.yupinov@gmail.com>
  */
 
-#ifndef PME3DFFT_CUH
-#define PME3DFFT_CUH
+#ifndef GMX_EWALD_PME_3DFFT_CUH
+#define GMX_EWALD_PME_3DFFT_CUH
 
 #include <cufft.h>                  // for the cufft types
 
@@ -49,52 +49,27 @@
 
 struct pme_gpu_t;
 
-/*! \brief \internal A 3D FFT class for performing R2C/C2R transforms */
-class parallel_3dfft_gpu_t
+/*! \brief \internal A 3D FFT class for performing R2C/C2R transforms
+ * \todo Make this class actually parallel over multiple GPUs
+ */
+class GpuParallel3dFft
 {
-    ivec          nDataReal_;
-    ivec          sizeReal_;
-    ivec          sizeComplex_;
-
     cufftHandle   planR2C_;
     cufftHandle   planC2R_;
     cufftReal    *realGrid_;
     cufftComplex *complexGrid_;
 
-    /* unused */
-    ivec          localOffset_;
     public:
         /*! \brief
          * Constructs CUDA FFT plans for performing 3D FFT on a PME grid.
          *
          * \param[in] pmeGPU                  The PME GPU structure.
          */
-        parallel_3dfft_gpu_t(const pme_gpu_t *pmeGPU);
+        GpuParallel3dFft(const pme_gpu_t *pmeGPU);
         /*! \brief Destroys CUDA FFT plans. */
-        ~parallel_3dfft_gpu_t();
-        /*! \brief
-         * Returns the grid dimensions of the local real-space grid.
-         *
-         * \param[out]   localNData           The numbers of real elements in the local grid.
-         * \param[out]   localOffset          The offsets of the local grid.
-         * \param[out]   localSize            The numbers of real elements (with padding) in the local grid.
-         */
-        void get_real_limits(ivec localNData, ivec localOffset, ivec localSize);
-        /*! \brief
-         * Returns the grid dimensions of the local complex grid.
-         *
-         * \param[out]   localNData           The numbers of complex elements in the local grid.
-         * \param[out]   localOffset          The offsets of the local grid.
-         * \param[out]   localSize            The numbers of complex elements (with padding) in the local grid.
-         */
-        void get_complex_limits(ivec localNData, ivec localOffset, ivec localSize);
-        /*! \brief
-         * Performs the 3D FFT.
-         *
-         * \param[in] dir                     The transform direction.
-         * \returns                           The cuFFT result code (0 if no error).
-         */
-        cufftResult_t perform_3dfft(gmx_fft_direction dir);
+        ~GpuParallel3dFft();
+        /*! \brief Performs the FFT transform in given direction */
+        void perform3dFft(gmx_fft_direction dir);
 };
 
-#endif // PME3DFFT_CUH
+#endif

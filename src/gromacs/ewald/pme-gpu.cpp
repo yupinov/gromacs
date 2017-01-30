@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016, by the GROMACS development team, led by
+ * Copyright (c) 2016,2017, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -52,6 +52,7 @@
 
 #include "pme-gpu-internal.h"
 #include "pme-grid.h"
+#include "pme-internal.h"
 #include "pme-solve.h"
 
 bool pme_gpu_task_enabled(const gmx_pme_t *pme)
@@ -125,9 +126,8 @@ void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
 
     wallcycle_start(wcycle, ewcLAUNCH_GPU_PME);
 
-    pme_gpu_t           *pmeGPU = pme->gpu;
+    pme_gpu_t           *pmeGpu = pme->gpu;
 
-    pmegrids_t          *pmegrid     = NULL;
     real                *grid        = NULL;
     real                *fftgrid;
     t_complex           *cfftgrid;
@@ -146,16 +146,16 @@ void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
         /* This only does a one-time atom data init at the first MD step.
          * Later, pme_gpu_reinit_atoms is called when needed after gmx_pme_recv_coeffs_coords.
          */
-        pme_gpu_reinit_atoms(pmeGPU, nAtoms, charges);
+        pme_gpu_reinit_atoms(pmeGpu, nAtoms, charges);
         pme->gpu->settings.needToUpdateAtoms = FALSE;
     }
-    pme_gpu_start_step(pmeGPU, box, x);                  /* This copies the coordinates, and updates the unit cell box (if it has changed) */
+    pme_gpu_start_step(pmeGpu, box, x);                  /* This copies the coordinates, and updates the unit cell box (if it has changed) */
     wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_INIT);
 
     const unsigned int grid_index = 0;
 
     /* Unpack structure */
-    pmegrid     = &pme->pmegrid[grid_index];
+    pmegrids_t *pmegrid     = &pme->pmegrid[grid_index];
     fftgrid     = pme->fftgrid[grid_index];
     cfftgrid    = pme->cfftgrid[grid_index];
 
@@ -167,12 +167,12 @@ void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
     {
         /* Spread the coefficients on a grid */
         wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_SPREAD);
-        pme_gpu_spread(pme, &pme->atc[0], grid_index, &pmegrid->grid, bFirst, TRUE);
+        pme_gpu_spread(pmeGpu, grid_index, grid, bFirst, true);
         wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_SPREAD);
 
         //if (!pme->bUseThreads)
         {
-            if (!pme_gpu_performs_wrapping(pmeGPU))
+            if (!pme_gpu_performs_wrapping(pmeGpu))
             {
                 wrap_periodic_pmegrid(pme, grid);
             }
@@ -185,7 +185,7 @@ void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
                 where();
             }
 #endif
-            if (!pme_gpu_performs_FFT(pmeGPU))
+            if (!pme_gpu_performs_FFT(pmeGpu))
             {
                 copy_pmegrid_to_fftgrid(pme, grid, fftgrid, grid_index);
             }
@@ -201,7 +201,7 @@ void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
                                                wcycle);
 
             /* solve in k-space for our local cells */
-            if (pme_gpu_performs_solve(pmeGPU))
+            if (pme_gpu_performs_solve(pmeGpu))
             {
                 wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_SOLVE);
                 pme_gpu_solve(pme, cfftgrid, bCalcEnerVir);
@@ -224,7 +224,7 @@ void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
             /* do 3d-invfft */
             parallel_3dfft_execute_gpu_wrapper(pme, grid_index, GMX_FFT_COMPLEX_TO_REAL, wcycle);
 
-            if (!pme_gpu_performs_FFT(pmeGPU) || !pme_gpu_performs_gather(pmeGPU))
+            if (!pme_gpu_performs_FFT(pmeGpu) || !pme_gpu_performs_gather(pmeGpu))
             {
 #pragma omp parallel for num_threads(pme->nthread) schedule(static)
                 for (int thread = 0; thread < pme->nthread; thread++)
@@ -238,7 +238,7 @@ void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
     if (bBackFFT)
     {
         /* distribute local grid to all nodes */
-        if (!pme_gpu_performs_wrapping(pmeGPU))
+        if (!pme_gpu_performs_wrapping(pmeGpu))
         {
             unwrap_periodic_pmegrid(pme, grid);
         }
@@ -260,7 +260,7 @@ void pme_gpu_launch_gather(const gmx_pme_t                 *pme,
     wallcycle_start_nocount(wcycle, ewcLAUNCH_GPU_PME);
     wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_GATHER);
     GMX_RELEASE_ASSERT(sizeof(real) == sizeof(float), "Only single precision supported");
-    pme_gpu_gather(pme, bClearForces, reinterpret_cast<float *>(forces));
+    pme_gpu_gather(pme->gpu, reinterpret_cast<float *>(forces), bClearForces, nullptr);
     wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_GATHER);
     wallcycle_stop(wcycle, ewcLAUNCH_GPU_PME);
 }

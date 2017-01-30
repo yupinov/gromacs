@@ -35,7 +35,7 @@
 file(GLOB EWALD_SOURCES *.cpp)
 set(LIBGROMACS_SOURCES ${LIBGROMACS_SOURCES} ${EWALD_SOURCES} PARENT_SCOPE)
 if (GMX_USE_CUDA)
-    file(GLOB EWALD_CUDA_SOURCES *.cu *.cuh)
+    file(GLOB EWALD_CUDA_SOURCES *.cu)
     gmx_add_libgromacs_sources(${EWALD_CUDA_SOURCES})
 endif()
 

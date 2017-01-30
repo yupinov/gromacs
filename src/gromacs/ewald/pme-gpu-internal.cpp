@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016, by the GROMACS development team, led by
+ * Copyright (c) 2016,2017, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -53,11 +53,10 @@
 
 #include <string>
 
-#include "gromacs/ewald/pme-gpu.h"
 #include "gromacs/gpu_utils/gpu_utils.h"
 #include "gromacs/math/invertmatrix.h"
 #include "gromacs/math/units.h"
-#include "gromacs/utility/fatalerror.h"
+#include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/gmxassert.h"
 
 #include "pme-grid.h"
@@ -80,13 +79,13 @@ void pme_gpu_get_energy_virial(const pme_gpu_t *pmeGPU, real *energy, matrix vir
 {
     GMX_ASSERT(energy, "Bad (NULL) energy output in PME GPU");
     size_t j = 0;
-    virial[XX][XX] = 0.25 * pmeGPU->staging.h_virialAndEnergy[j++];
-    virial[YY][YY] = 0.25 * pmeGPU->staging.h_virialAndEnergy[j++];
-    virial[ZZ][ZZ] = 0.25 * pmeGPU->staging.h_virialAndEnergy[j++];
-    virial[XX][YY] = virial[YY][XX] = 0.25 * pmeGPU->staging.h_virialAndEnergy[j++];
-    virial[XX][ZZ] = virial[ZZ][XX] = 0.25 * pmeGPU->staging.h_virialAndEnergy[j++];
-    virial[YY][ZZ] = virial[ZZ][YY] = 0.25 * pmeGPU->staging.h_virialAndEnergy[j++];
-    *energy        = 0.5 * pmeGPU->staging.h_virialAndEnergy[j++];
+    virial[XX][XX] = 0.25f * pmeGPU->staging.h_virialAndEnergy[j++];
+    virial[YY][YY] = 0.25f * pmeGPU->staging.h_virialAndEnergy[j++];
+    virial[ZZ][ZZ] = 0.25f * pmeGPU->staging.h_virialAndEnergy[j++];
+    virial[XX][YY] = virial[YY][XX] = 0.25f * pmeGPU->staging.h_virialAndEnergy[j++];
+    virial[XX][ZZ] = virial[ZZ][XX] = 0.25f * pmeGPU->staging.h_virialAndEnergy[j++];
+    virial[YY][ZZ] = virial[ZZ][YY] = 0.25f * pmeGPU->staging.h_virialAndEnergy[j++];
+    *energy        = 0.5f * pmeGPU->staging.h_virialAndEnergy[j++];
 }
 
 void pme_gpu_start_step(pme_gpu_t *pmeGPU, const matrix box, const rvec *h_coordinates)
@@ -108,7 +107,7 @@ void pme_gpu_start_step(pme_gpu_t *pmeGPU, const matrix box, const rvec *h_coord
         GMX_ASSERT(kernelParamsPtr->step.boxVolume != 0.0f, "Zero volume of the unit cell");
 
 #if GMX_DOUBLE
-        GMX_RELEASE_ASSERT(FALSE, "PME is single-precision only on GPU. You shouldn't be seeing this message!");
+        GMX_THROW(gmx::NotImplementedError("PME is implemented for single-precision only on GPU"));
 #else
         matrix recipBox;
         gmx::invertBoxMatrix(box, recipBox);
@@ -168,10 +167,18 @@ void pme_gpu_reinit_grids(pme_gpu_t *pmeGPU)
     /* The grid size variants */
     for (int i = 0; i < DIM; i++)
     {
-        kernelParamsPtr->grid.localGridSize[i]       = pmeGPU->common->nk[i];
-        kernelParamsPtr->grid.localGridSizeFP[i]     = (float)kernelParamsPtr->grid.localGridSize[i];
-        kernelParamsPtr->grid.localGridSizePadded[i] = kernelParamsPtr->grid.localGridSize[i];
+        kernelParamsPtr->grid.realGridSize[i]       = pmeGPU->common->nk[i];
+        kernelParamsPtr->grid.realGridSizeFP[i]     = (float)kernelParamsPtr->grid.realGridSize[i];
+        kernelParamsPtr->grid.realGridSizePadded[i] = pmeGPU->common->pmegrid_n[i];
+
+        kernelParamsPtr->grid.complexGridSize[i]       = kernelParamsPtr->grid.realGridSize[i];
+        kernelParamsPtr->grid.complexGridSizePadded[i] = kernelParamsPtr->grid.realGridSizePadded[i];
     }
+    /* FFT: n real elements correspond to (n / 2 + 1) complex elements in minor dimension */
+    kernelParamsPtr->grid.complexGridSize[ZZ] /= 2;
+    kernelParamsPtr->grid.complexGridSize[ZZ]++;
+    kernelParamsPtr->grid.complexGridSizePadded[ZZ] = kernelParamsPtr->grid.complexGridSize[ZZ];
+    //TODO: should this take the X dimension for CPU FFT?
 
     pme_gpu_realloc_and_copy_fract_shifts(pmeGPU);
     pme_gpu_realloc_and_copy_bspline_values(pmeGPU);
@@ -190,7 +197,7 @@ void pme_gpu_reinit_grids(pme_gpu_t *pmeGPU)
  *
  * \param[in] pme         The PME structure.
  */
-void pme_gpu_fetch_shared_data(const gmx_pme_t *pme)
+void pme_gpu_copy_common_data_from(const gmx_pme_t *pme)
 {
     /* TODO: Consider refactoring the CPU PME code to use the same structure,
      * so that this function becomes 2 lines */
@@ -258,6 +265,111 @@ bool pme_gpu_check_restrictions(const gmx_pme_t *pme,
     return error.empty();
 }
 
+/*! \libinternal \brief
+ * Initializes the PME GPU data at the beginning of the run.
+ *
+ * \param[in] pme     The PME structure.
+ * \param[in] hwinfo  The hardware information structure.
+ * \param[in] gpu_opt The GPU information structure.
+ */
+void pme_gpu_init(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_opt_t *gpu_opt)
+{
+    std::string error;
+    pme->useGPU = pme_gpu_check_restrictions(pme, error);
+    if (!pme->useGPU)
+    {
+        GMX_THROW(gmx::NotImplementedError(error));
+    }
+
+    pme->gpu          = new pme_gpu_t();
+    pme_gpu_t *pmeGPU = pme->gpu;
+    pmeGPU->common = std::shared_ptr<pme_shared_t>(new pme_shared_t());
+
+    /* Some settings are set here at once for the whole run */
+    /* A convenience variable. */
+    pmeGPU->settings.useDecomposition = (pme->nnodes == 1);
+    /* GPU FFT will only get used for a single rank. */
+    pmeGPU->settings.performGPUFFT = !pme_gpu_uses_dd(pmeGPU) && !getenv("GMX_PME_GPU_FFTW");
+    /* FIXME - CPU solve/FFTW after the GPU spread is definitely broken at the moment - 20160511 */
+    pmeGPU->settings.performGPUSolve = true;
+    /* FIXME: CPU gather with GPU spread has got to be broken as well due to different theta/dtheta layout. */
+    pmeGPU->settings.performGPUGather = true;
+    /* This is for the delayed atom data init hack and will get flipped back to false at first step */
+    pmeGPU->settings.needToUpdateAtoms = true;
+
+    pme_gpu_set_testing(pmeGPU, false);
+
+    pme_gpu_init_specific(pmeGPU, hwinfo, gpu_opt);
+    pme_gpu_init_sync_events(pmeGPU);
+    pme_gpu_init_timings(pmeGPU);
+    pme_gpu_alloc_energy_virial(pmeGPU);
+
+    pme_gpu_copy_common_data_from(pme);
+
+    GMX_ASSERT(pmeGPU->common->epsilon_r != 0.0f, "PME GPU: bad electrostatic coefficient");
+
+    pme_gpu_kernel_params_base_t *kernelParamsPtr = pme_gpu_get_kernel_params_base_ptr(pmeGPU);
+    kernelParamsPtr->constants.elFactor = ONE_4PI_EPS0 / pmeGPU->common->epsilon_r;
+}
+
+void pme_gpu_transform_spline_atom_data(const pme_gpu_t *pmeGPU, const pme_atomcomm_t *atc,
+                                        PmeSplineDataType type, int dimIndex, PmeLayoutTransform transform)
+{
+    // The GPU atom spline data is laid out in a different way currently than the CPU one.
+    // This function converts the data from GPU to CPU layout (in the host memory).
+    // It is only intended for testing purposes so far.
+    // Ideally we should use similar layouts on CPU and GPU if we care about mixed modes and their performance
+    // (e.g. spreading on GPU, gathering on CPU).
+    GMX_RELEASE_ASSERT(atc->nthread == 1, "Only the serial PME data layout is supported");
+    const uintmax_t threadIndex  = 0;
+    const auto      atomCount    = pme_gpu_get_kernel_params_base_ptr(pmeGPU)->atoms.nAtoms;
+    const auto      atomsPerWarp = pme_gpu_get_atom_spline_data_alignment(pmeGPU);
+    const auto      pmeOrder     = pmeGPU->common->pme_order;
+
+    real           *cpuSplineBuffer;
+    float          *h_splineBuffer;
+    switch (type)
+    {
+        case PmeSplineDataType::Values:
+            cpuSplineBuffer = atc->spline[threadIndex].theta[dimIndex];
+            h_splineBuffer  = pmeGPU->staging.h_theta;
+            break;
+
+        case PmeSplineDataType::Derivatives:
+            cpuSplineBuffer = atc->spline[threadIndex].dtheta[dimIndex];
+            h_splineBuffer  = pmeGPU->staging.h_dtheta;
+            break;
+
+        default:
+            GMX_THROW(gmx::InternalError("Unknown spline data type"));
+    }
+
+    for (auto atomIndex = 0; atomIndex < atomCount; atomIndex++)
+    {
+        auto atomWarpIndex = atomIndex % atomsPerWarp;
+        auto warpIndex     = atomIndex / atomsPerWarp;
+        for (auto orderIndex = 0; orderIndex < pmeOrder; orderIndex++)
+        {
+            const auto gpuValueIndex = ((pmeOrder * warpIndex + orderIndex) * DIM + dimIndex) * atomsPerWarp + atomWarpIndex;
+            const auto cpuValueIndex = atomIndex * pmeOrder + orderIndex;
+            GMX_ASSERT(cpuValueIndex < atomCount * pmeOrder, "Atom spline data index out of bounds (while transforming GPU data layout for host)");
+            switch (transform)
+            {
+                case PmeLayoutTransform::GpuToHost:
+                    cpuSplineBuffer[cpuValueIndex] = h_splineBuffer[gpuValueIndex];
+                    break;
+
+                case PmeLayoutTransform::HostToGpu:
+                    h_splineBuffer[gpuValueIndex] = cpuSplineBuffer[cpuValueIndex];
+                    break;
+
+                default:
+                    GMX_THROW(gmx::InternalError("Unknown layout transform"));
+            }
+        }
+    }
+}
+
 void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_opt_t *gpu_opt)
 {
     if (!pme_gpu_active(pme))
@@ -265,51 +377,19 @@ void pme_gpu_reinit(gmx_pme_t *pme, const gmx_hw_info_t *hwinfo, const gmx_gpu_o
         return;
     }
 
-    pme_gpu_t     *pmeGPU    = pme->gpu;
-    const bool     firstInit = !pmeGPU;
-    if (firstInit) /* One-time initialization */
+    if (!pme->gpu)
     {
-        std::string error;
-        pme->useGPU = pme_gpu_check_restrictions(pme, error);
-        if (!pme->useGPU)
-        {
-            gmx_fatal(FARGS, error.c_str());
-        }
-
-        pme->gpu       = new pme_gpu_t();
-        pmeGPU         = pme->gpu;
-        pmeGPU->common = std::shared_ptr<pme_shared_t>(new pme_shared_t());
-
-        /* Some permanent settings are set here */
-        pmeGPU->settings.useDecomposition = (pme->nnodes == 1);
-        /* A convenience variable. */
-        pmeGPU->settings.performGPUFFT = !pme_gpu_uses_dd(pmeGPU) && !getenv("GMX_PME_GPU_FFTW");
-        /* GPU FFT will only used for a single rank. */
-        pmeGPU->settings.performGPUSolve = true;
-        /* pmeGPU->settings.performGPUFFT - CPU solve with the CPU FFTW is definitely broken at the moment - 20160511 */
-        pmeGPU->settings.performGPUGather = true;
-        /* CPU gather has got to be broken as well due to different theta/dtheta layout. */
-        pmeGPU->settings.needToUpdateAtoms = true;
-        /* For the delayed atom data init hack */
-
-        pme_gpu_init_specific(pmeGPU, hwinfo, gpu_opt);
-        pme_gpu_init_sync_events(pmeGPU);
-        pme_gpu_init_timings(pmeGPU);
-        pme_gpu_alloc_energy_virial(pmeGPU);
+        /* First-time initialization */
+        pme_gpu_init(pme, hwinfo, gpu_opt);
     }
-    pme_gpu_fetch_shared_data(pme);
-    /* After this call nothing in the GPU code should refer to the gmx_pme_t *pme - until the next pme_gpu_reinit */
-
-    if (firstInit)
+    else
     {
-        GMX_ASSERT(pmeGPU->common->epsilon_r != 0.0f, "PME GPU: bad electrostatic coefficient");
-
-        pme_gpu_kernel_params_base_t *kernelParamsPtr = pme_gpu_get_kernel_params_base_ptr(pmeGPU);
-        kernelParamsPtr->constants.elFactor = ONE_4PI_EPS0 / pmeGPU->common->epsilon_r;
+        /* After this call nothing in the GPU code should refer to the gmx_pme_t *pme itself - until the next pme_gpu_reinit */
+        pme_gpu_copy_common_data_from(pme);
     }
 
-    pme_gpu_reinit_grids(pmeGPU);
-    pme_gpu_reinit_step(pmeGPU);
+    pme_gpu_reinit_grids(pme->gpu);
+    pme_gpu_reinit_step(pme->gpu);
 }
 
 void pme_gpu_destroy(pme_gpu_t *pmeGPU)
@@ -327,8 +407,7 @@ void pme_gpu_destroy(pme_gpu_t *pmeGPU)
     pme_gpu_free_fract_shifts(pmeGPU);
     pme_gpu_free_grids(pmeGPU);
 
-    pme_gpu_destroy_3dfft(pmeGPU); /* FIXME: Why are some things freed and some destroyed?
-                                      No logic in naming */
+    pme_gpu_destroy_3dfft(pmeGPU);
     pme_gpu_destroy_sync_events(pmeGPU);
     pme_gpu_destroy_timings(pmeGPU);
 
@@ -348,9 +427,13 @@ void pme_gpu_reinit_atoms(pme_gpu_t *pmeGPU, const int nAtoms, const real *coeff
     const bool                    haveToRealloc = (pmeGPU->nAtomsAlloc < nAtomsAlloc); /* This check might be redundant, but is logical */
     pmeGPU->nAtomsAlloc = nAtomsAlloc;
 
-    GMX_RELEASE_ASSERT(sizeof(real) == sizeof(float), "Only single precision supported");
+#if GMX_DOUBLE
+    GMX_RELEASE_ASSERT(false, "Only single precision supported");
+    GMX_UNUSED_VALUE(coefficients);
+#else
     pme_gpu_realloc_and_copy_input_coefficients(pmeGPU, reinterpret_cast<const float *>(coefficients));
     /* Could also be checked for haveToRealloc, but the copy always needs to be performed */
+#endif
 
     if (haveToRealloc)
     {

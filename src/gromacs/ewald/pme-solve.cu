@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016, by the GROMACS development team, led by
+ * Copyright (c) 2016,2017, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -45,7 +45,7 @@
 
 #include <memory>
 
-#include "gromacs/ewald/pme-gpu.h"   //?
+//#include "gromacs/ewald/pme.h"   //?
 #include "gromacs/fft/parallel_3dfft.h"
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/utility/gmxassert.h"
@@ -90,13 +90,13 @@ __global__ void pme_solve_kernel
 
     float2 * __restrict__  globalGrid = (float2 *)kernelParams.grid.d_fourierGrid;
 
-    const int              nMajor  = kernelParams.grid.localGridSize[YZXOrdering ? YY : XX];
-    const int              nMiddle = kernelParams.grid.localGridSize[YZXOrdering ? ZZ : YY];
-    const int              nMinor  = kernelParams.grid.localGridSize[YZXOrdering ? XX : ZZ]; //yupinov fix all pme->nkx and such
+    const int              nMajor  = kernelParams.grid.complexGridSize[YZXOrdering ? YY : XX];
+    const int              nMiddle = kernelParams.grid.complexGridSize[YZXOrdering ? ZZ : YY];
+    const int              nMinor  = kernelParams.grid.complexGridSize[YZXOrdering ? XX : ZZ]; //yupinov fix all pme->nkx and such
 
-    int                    maxkMajor  = (nMajor + 1) / 2;                                    //X or Y
-    int                    maxkMiddle = (nMiddle + 1) / 2;                                   //Y OR Z => only check for !YZX
-    int                    maxkMinor  = (nMinor + 1) / 2;                                    //Z or X => only check for YZX
+    int                    maxkMajor  = (nMajor + 1) / 2;                                      //X or Y
+    int                    maxkMiddle = (nMiddle + 1) / 2;                                     //Y OR Z => only check for !YZX
+    int                    maxkMinor  = (nMinor + 1) / 2;                                      //Z or X => only check for YZX
 
     float                  energy = 0.0f;
     float                  virxx  = 0.0f, virxy = 0.0f, virxz = 0.0f, viryy = 0.0f, viryz = 0.0f, virzz = 0.0f;
@@ -316,7 +316,13 @@ void pme_gpu_solve(struct gmx_pme_t *pme, t_complex *grid, gmx_bool bEnerVir)
 
     if (pme_gpu_performs_FFT(pmeGPU))
     {
-        pmeGPU->archSpecific->pfft_setup_gpu[PME_GRID_QA]->get_complex_limits(local_ndata, local_offset, local_size);
+        for (int i = 0; i < DIM; i++)
+        {
+            local_ndata[i]  = pmeGPU->kernelParams->grid.complexGridSize[i];
+            local_size[i]   = pmeGPU->kernelParams->grid.complexGridSizePadded[i];
+            local_offset[i] = 0; //FIXME
+        }
+        //pmeGPU->archSpecific->fftSetup[PME_GRID_QA]->getComplexLimits(local_ndata, local_offset, local_size);
     }
     else
     {

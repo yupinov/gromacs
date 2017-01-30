@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016, by the GROMACS development team, led by
+ * Copyright (c) 2016,2017, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -57,9 +57,9 @@ struct gmx_device_info_t;
 
 #if GMX_GPU == GMX_GPU_CUDA
 
-struct pme_gpu_cuda_host_t;
+struct pme_gpu_cuda_t;
 /*! \brief A typedef for including the GPU framework-specific host data by pointer */
-typedef pme_gpu_cuda_host_t pme_gpu_specific_host_t;
+typedef pme_gpu_cuda_t pme_gpu_specific_t;
 
 struct pme_gpu_cuda_kernel_params_t;
 /*! \brief A typedef for including the GPU framework-specific kernel arguments data by pointer */
@@ -68,7 +68,7 @@ typedef pme_gpu_cuda_kernel_params_t pme_gpu_kernel_params_t;
 #else
 
 /*! \brief A dummy typedef */
-typedef int pme_gpu_specific_host_t;
+typedef int pme_gpu_specific_t;
 /*! \brief A dummy typedef */
 typedef int pme_gpu_kernel_params_t;
 
@@ -76,7 +76,7 @@ typedef int pme_gpu_kernel_params_t;
 
 /* What follows is all the PME GPU function arguments,
  * sorted into several device-side structures depending on the update rate.
- * This is almost entirely GPU agnostic (float3 replaced by float[3], etc.).
+ * This is GPU agnostic (float3 replaced by float[3], etc.).
  * The GPU-framework specifics (e.g. cudaTextureObject_t handles) are described
  * in the larger structure pme_gpu_cuda_kernel_params_t in the pme.cuh.
  */
@@ -95,18 +95,22 @@ struct pme_gpu_const_params_t
 };
 
 /*! \internal \brief
- * A GPU data structure for storing the PME data related to the grid size and cut-off.
- * This only has to be updated every DLB step.
+ * A GPU data structure for storing the PME data related to the grid sizes and cut-off.
+ * This only has to be updated at every DLB step.
  */
 struct pme_gpu_grid_params_t
 {
     /* Grid sizes */
-    /*! \brief Grid data dimensions - integer. */
-    int   localGridSize[DIM];
-    /*! \brief Grid data dimensions - floating point. */
-    float localGridSizeFP[DIM];
-    /*! \brief Grid size dimensions - integer. The padding as compared to localGridSize includes the (order - 1) overlap. */
-    int   localGridSizePadded[DIM]; /* Is major dimension of this ever used in kernels? */
+    /*! \brief Real-space grid data dimensions. */
+    int   realGridSize[DIM];
+    /*! \brief Real-space grid dimensions - floating point. */
+    float realGridSizeFP[DIM];
+    /*! \brief Real-space grid dimensions (padded). The padding as compared to realGridSize includes the (order - 1) overlap. */
+    int   realGridSizePadded[DIM]; /* Is major dimension of this ever used in kernels? */
+    /*! \brief Fourier grid dimensions.*/
+    int   complexGridSize[DIM];
+    /*! \brief Fourier grid dimensions (padded). */
+    int   complexGridSizePadded[DIM];
 
     /* Grid pointers */
     /*! \brief Real space grid. */
@@ -227,6 +231,10 @@ struct pme_gpu_settings_t
      * The pme_reinit_atoms() after the DD gets called directly in gmx_pmeonly.
      */
     bool needToUpdateAtoms;
+    /*! \brief A boolean which tells if any PME GPU stage should copy all of its outputs to the host.
+     * Only intended to be used by the test framework.
+     */
+    bool copyAllOutputs;
 };
 
 /*! \internal \brief
@@ -241,6 +249,13 @@ struct pme_gpu_staging_t
     float  *h_splineModuli[DIM];
     /*! \brief Sizes of the corresponding h_splineValues arrays in bytes */
     size_t  splineModuliSizes[DIM];
+
+    /*! \brief Pointer to the host memory with B-spline values. Only used for host-side gather, or unit tests */
+    float  *h_theta;
+    /*! \brief Pointer to the host memory with B-spline derivative values. Only used for host-side gather, or unit tests */
+    float  *h_dtheta;
+    /*! \brief Pointer to the host memory with ivec atom gridline indices. Only used for host-side gather, or unit tests */
+    int    *h_gridlineIndices;
 };
 
 /*! \internal \brief
@@ -307,7 +322,7 @@ struct pme_gpu_t
      * Used only as a basic size for almost all the atom data allocations
      * (spline parameter data is also aligned by PME_SPREADGATHER_PARTICLES_PER_WARP).
      * This should be the same as (PME_GPU_USE_PADDING ? nAtomsPadded : kernelParams.atoms.nAtoms).
-     * kernelParams.atoms.nAtoms is the actual atom count to be used for data copying.
+     * kernelParams.atoms.nAtoms is the actual atom count to be used for most data copying.
      */
     int nAtomsAlloc;
 
@@ -321,7 +336,7 @@ struct pme_gpu_t
     std::shared_ptr<pme_gpu_kernel_params_t> kernelParams;
 
     /*! \brief The pointer to GPU-framework specific host-side data, such as CUDA streams and events. */
-    std::shared_ptr<pme_gpu_specific_host_t> archSpecific; /* FIXME: make it an unique_ptr */
+    std::shared_ptr<pme_gpu_specific_t> archSpecific; /* FIXME: make it an unique_ptr */
 };
 
 #endif // PMEGPUTYPES_H

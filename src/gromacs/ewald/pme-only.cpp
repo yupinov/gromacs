@@ -109,8 +109,7 @@ static void gmx_pmeonly_switch(int *npmedata, struct gmx_pme_t ***pmedata,
                                ivec grid_size,
                                real ewaldcoeff_q, real ewaldcoeff_lj,
                                t_commrec *cr, t_inputrec *ir,
-                               struct gmx_pme_t **pme_ret,
-                               const bool pmeUseGpu)
+                               struct gmx_pme_t **pme_ret)
 {
     int               ind;
     struct gmx_pme_t *pme = nullptr;
@@ -128,10 +127,7 @@ static void gmx_pmeonly_switch(int *npmedata, struct gmx_pme_t ***pmedata,
              * This should not cause actual GPU reallocations, at least (the allocated buffers are never shrunk).
              * So, just some grid size updates in the GPU kernel parameters.
              */
-            if (pmeUseGpu)
-            {
-                gmx_pme_reinit(&((*pmedata)[ind]), cr, pme, ir, grid_size, ewaldcoeff_q, ewaldcoeff_lj);
-            }
+            gmx_pme_reinit(&((*pmedata)[ind]), cr, pme, ir, grid_size, ewaldcoeff_q, ewaldcoeff_lj);
             *pme_ret = pme;
             return;
         }
@@ -211,7 +207,7 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
             if (ret == pmerecvqxSWITCHGRID)
             {
                 /* Switch the PME grid to grid_switch */
-                gmx_pmeonly_switch(&npmedata, &pmedata, grid_switch, ewaldcoeff_q, ewaldcoeff_lj, cr, ir, &pme, pmeUseGpu);
+                gmx_pmeonly_switch(&npmedata, &pmedata, grid_switch, ewaldcoeff_q, ewaldcoeff_lj, cr, ir, &pme);
             }
 
             if (atomSetChanged)
@@ -253,7 +249,7 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
         if (pmeUseGpu)
         {
             pme_gpu_launch_everything_but_gather(pme, natoms, x_pp, chargeA, box, wcycle, pme_flags);
-            pme_gpu_launch_gather(pme, wcycle, f_pp, TRUE);
+            pme_gpu_launch_gather(pme, wcycle, f_pp, true);
             pme_gpu_get_results(pme, wcycle, vir_q, &energy_q, pme_flags);
         }
         else

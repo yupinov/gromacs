@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2016, by the GROMACS development team, led by
+ * Copyright (c) 2014,2015,2016,2017, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -102,7 +102,7 @@ void nbnxn_gpu_clear_outputs(gmx_nbnxn_gpu_t gmx_unused *nb,
 GPU_FUNC_QUALIFIER
 void nbnxn_gpu_free(gmx_nbnxn_gpu_t gmx_unused *nb) GPU_FUNC_TERM
 
-/** Returns the GPU timings structure or NULL if GPU is not used or timing is off. */
+/** Fills the GPU timings structure if GPU is used and timing is on. */
 GPU_FUNC_QUALIFIER
 void nbnxn_gpu_get_timings(gmx_nbnxn_gpu_t gmx_unused           *nb,
                            gmx_wallclock_gpu_nbnxn_t gmx_unused *timings) GPU_FUNC_TERM

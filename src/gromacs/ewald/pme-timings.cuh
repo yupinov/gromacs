@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016, by the GROMACS development team, led by
+ * Copyright (c) 2016,2017, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -39,8 +39,8 @@
  *  \author Aleksei Iupinov <a.yupinov@gmail.com>
  */
 
-#ifndef PME_TIMINGS_CUH
-#define PME_TIMINGS_CUH
+#ifndef GMX_EWALD_PME_TIMINGS_CUH
+#define GMX_EWALD_PME_TIMINGS_CUH
 
 #include "gromacs/timing/gpu_timing.h"       // for the PME GPU timing events enum
 #include "gromacs/utility/basedefinitions.h"

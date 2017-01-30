@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016, by the GROMACS development team, led by
+ * Copyright (c) 2016,2017, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -64,7 +64,7 @@ class PMEGPUTest :
 /* Ensure 2 mdruns with CPU and GPU PME produce same reciprocal and conserved energies. */
 TEST_F(PMEGPUTest, ReproducesEnergies)
 {
-    int         nsteps     = 600;
+    int         nsteps     = 330;
     std::string theMdpFile = formatString("coulombtype     = PME\n"
                                           "nstcalcenergy   = 1\n"
                                           "nstenergy       = 1\n"
