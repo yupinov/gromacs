@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -99,6 +99,7 @@
 #include "gromacs/timing/wallcycle.h"
 #include "gromacs/timing/wallcyclereporting.h"
 #include "gromacs/timing/walltime_accounting.h"
+#include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/cstringutil.h"
 #include "gromacs/utility/exceptions.h"
@@ -369,7 +370,7 @@ static void post_process_forces(t_commrec *cr,
              * if the constructing atoms aren't local.
              */
             wallcycle_start(wcycle, ewcVSITESPREAD);
-            spread_vsite_f(vsite, x, as_rvec_array(fr->f_novirsum->data()), NULL,
+            spread_vsite_f(vsite, x, as_rvec_array(fr->f_novirsum->data()), nullptr,
                            (flags & GMX_FORCE_VIRIAL), fr->vir_el_recip,
                            nrnb,
                            &top->idef, fr->ePBC, fr->bMolPBC, graph, box, cr);
@@ -667,7 +668,7 @@ static void do_nb_verlet_fep(nbnxn_pairlist_set_t *nbl_lists,
 
 gmx_bool use_GPU(const nonbonded_verlet_t *nbv)
 {
-    return nbv != NULL && nbv->bUseGPU;
+    return nbv != nullptr && nbv->bUseGPU;
 }
 
 static gmx_inline void clear_rvecs_omp(int n, rvec v[])
@@ -867,7 +868,7 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
             nbnxn_put_on_grid(nbv->nbs, fr->ePBC, box,
                               0, vzero, box_diag,
                               0, mdatoms->homenr, -1, fr->cginfo, x,
-                              0, NULL,
+                              0, nullptr,
                               nbv->grp[eintLocal].kernel_type,
                               nbv->grp[eintLocal].nbat);
             wallcycle_sub_stop(wcycle, ewcsNBS_GRID_LOCAL);
@@ -1468,7 +1469,7 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
         if (vsite && !(fr->bF_NoVirSum && !(flags & GMX_FORCE_VIRIAL)))
         {
             wallcycle_start(wcycle, ewcVSITESPREAD);
-            spread_vsite_f(vsite, x, f, fr->fshift, FALSE, NULL, nrnb,
+            spread_vsite_f(vsite, x, f, fr->fshift, FALSE, nullptr, nrnb,
                            &top->idef, fr->ePBC, fr->bMolPBC, graph, box, cr);
             wallcycle_stop(wcycle, ewcVSITESPREAD);
         }
@@ -1837,7 +1838,7 @@ void do_force_cutsGROUP(FILE *fplog, t_commrec *cr,
             if (EEL_FULL(fr->eeltype) && cr->dd->n_intercg_excl &&
                 (flags & GMX_FORCE_VIRIAL))
             {
-                dd_move_f(cr->dd, as_rvec_array(fr->f_novirsum->data()), NULL);
+                dd_move_f(cr->dd, as_rvec_array(fr->f_novirsum->data()), nullptr);
             }
             wallcycle_stop(wcycle, ewcMOVEF);
         }
@@ -1848,7 +1849,7 @@ void do_force_cutsGROUP(FILE *fplog, t_commrec *cr,
         if (vsite && !(fr->bF_NoVirSum && !(flags & GMX_FORCE_VIRIAL)))
         {
             wallcycle_start(wcycle, ewcVSITESPREAD);
-            spread_vsite_f(vsite, x, f, fr->fshift, FALSE, NULL, nrnb,
+            spread_vsite_f(vsite, x, f, fr->fshift, FALSE, nullptr, nrnb,
                            &top->idef, fr->ePBC, fr->bMolPBC, graph, box, cr);
             wallcycle_stop(wcycle, ewcVSITESPREAD);
         }
@@ -1917,7 +1918,7 @@ void do_force(FILE *fplog, t_commrec *cr,
               tensor vir_force,
               t_mdatoms *mdatoms,
               gmx_enerdata_t *enerd, t_fcdata *fcd,
-              std::vector<real> *lambda, t_graph *graph,
+              gmx::ArrayRef<real> lambda, t_graph *graph,
               t_forcerec *fr,
               gmx_vsite_t *vsite, rvec mu_tot,
               double t, gmx_edsam_t ed,
@@ -1946,7 +1947,7 @@ void do_force(FILE *fplog, t_commrec *cr,
                                 force, vir_force,
                                 mdatoms,
                                 enerd, fcd,
-                                lambda->data(), graph,
+                                lambda.data(), graph,
                                 fr, fr->ic,
                                 vsite, mu_tot,
                                 t, ed,
@@ -1962,7 +1963,7 @@ void do_force(FILE *fplog, t_commrec *cr,
                                force, vir_force,
                                mdatoms,
                                enerd, fcd,
-                               lambda->data(), graph,
+                               lambda.data(), graph,
                                fr, vsite, mu_tot,
                                t, ed,
                                bBornRadii,
@@ -2009,22 +2010,22 @@ void do_constrain_first(FILE *fplog, gmx_constr_t constr,
     dvdl_dum = 0;
 
     /* constrain the current position */
-    constrain(NULL, TRUE, FALSE, constr, &(top->idef),
+    constrain(nullptr, TRUE, FALSE, constr, &(top->idef),
               ir, cr, step, 0, 1.0, md,
-              as_rvec_array(state->x.data()), as_rvec_array(state->x.data()), NULL,
+              as_rvec_array(state->x.data()), as_rvec_array(state->x.data()), nullptr,
               fr->bMolPBC, state->box,
               state->lambda[efptBONDED], &dvdl_dum,
-              NULL, NULL, nrnb, econqCoord);
+              nullptr, nullptr, nrnb, econqCoord);
     if (EI_VV(ir->eI))
     {
         /* constrain the inital velocity, and save it */
         /* also may be useful if we need the ekin from the halfstep for velocity verlet */
-        constrain(NULL, TRUE, FALSE, constr, &(top->idef),
+        constrain(nullptr, TRUE, FALSE, constr, &(top->idef),
                   ir, cr, step, 0, 1.0, md,
                   as_rvec_array(state->x.data()), as_rvec_array(state->v.data()), as_rvec_array(state->v.data()),
                   fr->bMolPBC, state->box,
                   state->lambda[efptBONDED], &dvdl_dum,
-                  NULL, NULL, nrnb, econqVeloc);
+                  nullptr, nullptr, nrnb, econqVeloc);
     }
     /* constrain the inital velocities at t-dt/2 */
     if (EI_STATE_VELOCITY(ir->eI) && ir->eI != eiVV)
@@ -2049,12 +2050,12 @@ void do_constrain_first(FILE *fplog, gmx_constr_t constr,
                     gmx_step_str(step, buf));
         }
         dvdl_dum = 0;
-        constrain(NULL, TRUE, FALSE, constr, &(top->idef),
+        constrain(nullptr, TRUE, FALSE, constr, &(top->idef),
                   ir, cr, step, -1, 1.0, md,
-                  as_rvec_array(state->x.data()), savex, NULL,
+                  as_rvec_array(state->x.data()), savex, nullptr,
                   fr->bMolPBC, state->box,
                   state->lambda[efptBONDED], &dvdl_dum,
-                  as_rvec_array(state->v.data()), NULL, nrnb, econqCoord);
+                  as_rvec_array(state->v.data()), nullptr, nrnb, econqCoord);
 
         for (i = start; i < end; i++)
         {
@@ -2485,7 +2486,7 @@ static void low_do_pbc_mtop(FILE *fplog, int ePBC, matrix box,
         else
         {
             /* Pass NULL iso fplog to avoid graph prints for each molecule type */
-            mk_graph_ilist(NULL, mtop->moltype[molb->type].ilist,
+            mk_graph_ilist(nullptr, mtop->moltype[molb->type].ilist,
                            0, molb->natoms_mol, FALSE, FALSE, graph);
 
             for (mol = 0; mol < molb->nmol; mol++)
@@ -2547,7 +2548,7 @@ void finish_run(FILE *fplog, const gmx::MDLogger &mdlog, t_commrec *cr,
                 gmx_pme_t *pme,
                 gmx_bool bWriteStat)
 {
-    t_nrnb *nrnb_tot = NULL;
+    t_nrnb *nrnb_tot = nullptr;
     double  delta_t  = 0;
     double  nbfs     = 0, mflop = 0;
     double  elapsed_time,
@@ -2654,7 +2655,7 @@ void finish_run(FILE *fplog, const gmx::MDLogger &mdlog, t_commrec *cr,
     }
 }
 
-extern void initialize_lambdas(FILE *fplog, t_inputrec *ir, int *fep_state, std::vector<real> *lambda, double *lam0)
+extern void initialize_lambdas(FILE *fplog, t_inputrec *ir, int *fep_state, gmx::ArrayRef<real> lambda, double *lam0)
 {
     /* this function works, but could probably use a logic rewrite to keep all the different
        types of efep straight. */
@@ -2669,25 +2670,23 @@ extern void initialize_lambdas(FILE *fplog, t_inputrec *ir, int *fep_state, std:
                                             if checkpoint is set -- a kludge is in for now
                                             to prevent this.*/
 
-    lambda->resize(efptNR);
-
     for (int i = 0; i < efptNR; i++)
     {
         /* overwrite lambda state with init_lambda for now for backwards compatibility */
         if (fep->init_lambda >= 0) /* if it's -1, it was never initializd */
         {
-            (*lambda)[i] = fep->init_lambda;
+            lambda[i] = fep->init_lambda;
             if (lam0)
             {
-                lam0[i] = (*lambda)[i];
+                lam0[i] = lambda[i];
             }
         }
         else
         {
-            (*lambda)[i] = fep->all_lambda[i][*fep_state];
+            lambda[i] = fep->all_lambda[i][*fep_state];
             if (lam0)
             {
-                lam0[i] = (*lambda)[i];
+                lam0[i] = lambda[i];
             }
         }
     }
@@ -2704,12 +2703,12 @@ extern void initialize_lambdas(FILE *fplog, t_inputrec *ir, int *fep_state, std:
     }
 
     /* Send to the log the information on the current lambdas */
-    if (fplog != NULL)
+    if (fplog != nullptr)
     {
         fprintf(fplog, "Initial vector of lambda components:[ ");
-        for (int i = 0; i < efptNR; i++)
+        for (const auto &l : lambda)
         {
-            fprintf(fplog, "%10.4f ", (*lambda)[i]);
+            fprintf(fplog, "%10.4f ", l);
         }
         fprintf(fplog, "]\n");
     }
@@ -2720,7 +2719,7 @@ extern void initialize_lambdas(FILE *fplog, t_inputrec *ir, int *fep_state, std:
 void init_md(FILE *fplog,
              t_commrec *cr, t_inputrec *ir, const gmx_output_env_t *oenv,
              double *t, double *t0,
-             std::vector<real> *lambda, int *fep_state, double *lam0,
+             gmx::ArrayRef<real> lambda, int *fep_state, double *lam0,
              t_nrnb *nrnb, gmx_mtop_t *mtop,
              gmx_update_t **upd,
              int nfile, const t_filenm fnm[],
@@ -2754,10 +2753,10 @@ void init_md(FILE *fplog,
     }
     if (*bSimAnn)
     {
-        update_annealing_target_temp(ir, ir->init_t, upd ? *upd : NULL);
+        update_annealing_target_temp(ir, ir->init_t, upd ? *upd : nullptr);
     }
 
-    if (vcm != NULL)
+    if (vcm != nullptr)
     {
         *vcm = init_vcm(fplog, &mtop->groups, ir);
     }
@@ -2783,7 +2782,7 @@ void init_md(FILE *fplog,
     {
         *outf = init_mdoutf(fplog, nfile, fnm, Flags, cr, ir, mtop, oenv, wcycle);
 
-        *mdebin = init_mdebin((Flags & MD_APPENDFILES) ? NULL : mdoutf_get_fp_ene(*outf),
+        *mdebin = init_mdebin((Flags & MD_APPENDFILES) ? nullptr : mdoutf_get_fp_ene(*outf),
                               mtop, ir, mdoutf_get_fp_dhdl(*outf));
     }
 

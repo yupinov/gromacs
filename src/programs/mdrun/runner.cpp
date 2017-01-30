@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2011,2012,2013,2014,2015,2016, by the GROMACS development team, led by
+ * Copyright (c) 2011,2012,2013,2014,2015,2016,2017, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -188,7 +188,7 @@ static void mdrunner_start_fn(void *arg)
                                                 copy pointed-to items, of course,
                                                 but those are all const. */
         t_commrec *cr;                       /* we need a local version of this */
-        FILE      *fplog = NULL;
+        FILE      *fplog = nullptr;
         t_filenm  *fnm;
 
         fnm = dup_tfn(mc.nfile, mc.fnm);
@@ -291,7 +291,7 @@ static t_commrec *mdrunner_start_threads(gmx_hw_opt_t *hw_opt,
                        mdrunner_start_fn, (void*)(mda) );
     if (ret != TMPI_SUCCESS)
     {
-        return NULL;
+        return nullptr;
     }
 
     crn = reinitialize_commrec_for_this_thread(cr);
@@ -366,7 +366,7 @@ static void increase_nstlist(FILE *fp, t_commrec *cr,
             return;
         }
 
-        if (fp != NULL && bGPU && ir->nstlist < nstlist_try[0])
+        if (fp != nullptr && bGPU && ir->nstlist < nstlist_try[0])
         {
             fprintf(fp, nstl_gpu, ir->nstlist);
         }
@@ -388,7 +388,7 @@ static void increase_nstlist(FILE *fp, t_commrec *cr,
         {
             fprintf(stderr, "%s\n", nve_err);
         }
-        if (fp != NULL)
+        if (fp != nullptr)
         {
             fprintf(fp, "%s\n", nve_err);
         }
@@ -407,7 +407,7 @@ static void increase_nstlist(FILE *fp, t_commrec *cr,
         {
             fprintf(stderr, "%s\n", vbd_err);
         }
-        if (fp != NULL)
+        if (fp != nullptr)
         {
             fprintf(fp, "%s\n", vbd_err);
         }
@@ -449,7 +449,7 @@ static void increase_nstlist(FILE *fp, t_commrec *cr,
      */
     nstlist_prev = ir->nstlist;
     ir->nstlist  = nbnxnReferenceNstlist;
-    calc_verlet_buffer_size(mtop, det(box), ir, -1, &ls, NULL,
+    calc_verlet_buffer_size(mtop, det(box), ir, -1, &ls, nullptr,
                             &rlistWithReferenceNstlist);
     ir->nstlist  = nstlist_prev;
 
@@ -474,7 +474,7 @@ static void increase_nstlist(FILE *fp, t_commrec *cr,
         }
 
         /* Set the pair-list buffer size in ir */
-        calc_verlet_buffer_size(mtop, det(box), ir, -1, &ls, NULL, &rlist_new);
+        calc_verlet_buffer_size(mtop, det(box), ir, -1, &ls, nullptr, &rlist_new);
 
         /* Does rlist fit in the box? */
         bBox = (gmx::square(rlist_new) < max_cutoff2(ir->ePBC, box));
@@ -486,7 +486,7 @@ static void increase_nstlist(FILE *fp, t_commrec *cr,
             {
                 gmx_incons("Changing nstlist with domain decomposition and unbounded dimensions is not implemented yet");
             }
-            t_state state_tmp {};
+            t_state state_tmp;
             copy_mat(box, state_tmp.box);
             bDD = change_dd_cutoff(cr, &state_tmp, ir, rlist_new);
         }
@@ -525,7 +525,7 @@ static void increase_nstlist(FILE *fp, t_commrec *cr,
     if (!bBox || !bDD)
     {
         gmx_warning(!bBox ? box_err : dd_err);
-        if (fp != NULL)
+        if (fp != nullptr)
         {
             fprintf(fp, "\n%s\n", bBox ? box_err : dd_err);
         }
@@ -540,7 +540,7 @@ static void increase_nstlist(FILE *fp, t_commrec *cr,
         {
             fprintf(stderr, "%s\n\n", buf);
         }
-        if (fp != NULL)
+        if (fp != nullptr)
         {
             fprintf(fp, "%s\n\n", buf);
         }
@@ -573,11 +573,11 @@ static void prepare_verlet_scheme(FILE                           *fplog,
          */
         verletbuf_get_list_setup(TRUE, bUseGPU, &ls);
 
-        calc_verlet_buffer_size(mtop, det(box), ir, -1, &ls, NULL, &rlist_new);
+        calc_verlet_buffer_size(mtop, det(box), ir, -1, &ls, nullptr, &rlist_new);
 
         if (rlist_new != ir->rlist)
         {
-            if (fplog != NULL)
+            if (fplog != nullptr)
             {
                 fprintf(fplog, "\nChanging rlist from %g to %g for non-bonded %dx%d atom kernels\n\n",
                         ir->rlist, rlist_new,
@@ -683,7 +683,7 @@ static integrator_t *my_integrator(unsigned int ei)
 static gmx::LoggerOwner buildLogger(FILE *fplog, const t_commrec *cr)
 {
     gmx::LoggerBuilder builder;
-    if (fplog != NULL)
+    if (fplog != nullptr)
     {
         builder.addTargetFile(gmx::MDLogger::LogLevel::Info, fplog);
     }
@@ -714,24 +714,24 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
     gmx_ddbox_t               ddbox = {0};
     int                       npme_major, npme_minor;
     t_nrnb                   *nrnb;
-    gmx_mtop_t               *mtop          = NULL;
-    t_mdatoms                *mdatoms       = NULL;
-    t_forcerec               *fr            = NULL;
-    t_fcdata                 *fcd           = NULL;
+    gmx_mtop_t               *mtop          = nullptr;
+    t_mdatoms                *mdatoms       = nullptr;
+    t_forcerec               *fr            = nullptr;
+    t_fcdata                 *fcd           = nullptr;
     real                      ewaldcoeff_q  = 0;
     real                      ewaldcoeff_lj = 0;
-    struct gmx_pme_t        **pmedata       = NULL;
-    gmx_vsite_t              *vsite         = NULL;
+    struct gmx_pme_t        **pmedata       = nullptr;
+    gmx_vsite_t              *vsite         = nullptr;
     gmx_constr_t              constr;
     int                       nChargePerturbed = -1, nTypePerturbed = 0, status;
     gmx_wallcycle_t           wcycle;
-    gmx_walltime_accounting_t walltime_accounting = NULL;
+    gmx_walltime_accounting_t walltime_accounting = nullptr;
     int                       rc;
     gmx_int64_t               reset_counters;
-    gmx_edsam_t               ed           = NULL;
+    gmx_edsam_t               ed           = nullptr;
     int                       nthreads_pme = 1;
-    gmx_membed_t *            membed       = NULL;
-    gmx_hw_info_t            *hwinfo       = NULL;
+    gmx_membed_t *            membed       = nullptr;
+    gmx_hw_info_t            *hwinfo       = nullptr;
     /* The master rank decides early on bUseGPU and broadcasts this later */
     gmx_bool                  bUseGPU            = FALSE;
 
@@ -743,7 +743,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
 
     if (Flags & MD_APPENDFILES)
     {
-        fplog = NULL;
+        fplog = nullptr;
     }
 
     bool doMembed = opt2bSet("-membed", nfile, fnm);
@@ -762,7 +762,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
 
     gmx_print_detected_hardware(fplog, cr, mdlog, hwinfo);
 
-    if (fplog != NULL)
+    if (fplog != nullptr)
     {
         /* Print references after all software/hardware printing */
         please_cite(fplog, "Abraham2015");
@@ -774,7 +774,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
         please_cite(fplog, "Berendsen95a");
     }
 
-    std::unique_ptr<t_state> stateInstance = std::unique_ptr<t_state>(new t_state {});
+    std::unique_ptr<t_state> stateInstance = std::unique_ptr<t_state>(new t_state);
     t_state *                state         = stateInstance.get();
 
     if (SIMMASTER(cr))
@@ -786,7 +786,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
         {
             /* Here the master rank decides if all ranks will use GPUs */
             bUseGPU = (hwinfo->gpu_info.n_dev_compatible > 0 ||
-                       getenv("GMX_EMULATE_GPU") != NULL);
+                       getenv("GMX_EMULATE_GPU") != nullptr);
 
             /* TODO add GPU kernels for this and replace this check by:
              * (bUseGPU && (ir->vdwtype == evdwPME &&
@@ -883,7 +883,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
                                         Flags);
             /* the main thread continues here with a new cr. We don't deallocate
                the old cr because other threads may still be reading it. */
-            if (cr == NULL)
+            if (cr == nullptr)
             {
                 gmx_comm("Failed to spawn threads");
             }
@@ -903,7 +903,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
         gmx_bcast_sim(sizeof(bUseGPU), &bUseGPU, cr);
     }
 
-    if (fplog != NULL)
+    if (fplog != nullptr)
     {
         pr_inputrec(fplog, 0, "Input Parameters", inputrec, FALSE);
         fprintf(fplog, "\n");
@@ -1259,7 +1259,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
         }
         else
         {
-            pmedata = NULL;
+            pmedata = nullptr;
         }
     }
     else
@@ -1268,7 +1268,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
 
         /* We don't need the state */
         stateInstance.reset();
-        state         = NULL;
+        state         = nullptr;
 
         ewaldcoeff_q  = calc_ewaldcoeff_q(inputrec->rcoulomb, inputrec->ewald_rtol);
         ewaldcoeff_lj = calc_ewaldcoeff_lj(inputrec->rvdw, inputrec->ewald_rtol_lj);
@@ -1321,12 +1321,16 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
 
         if (cr->duty & DUTY_PME)
         {
-            status = gmx_pme_init(pmedata, cr, npme_major, npme_minor, inputrec,
-                                  mtop ? mtop->natoms : 0, nChargePerturbed, nTypePerturbed,
-                                  (Flags & MD_REPRODUCIBLE),
-                                  ewaldcoeff_q, ewaldcoeff_lj,
-                                  nthreads_pme,
-                                  pmeUseGpu, NULL, hwinfo, &hw_opt->gpu_opt);
+            try
+            {
+                status = gmx_pme_init(pmedata, cr, npme_major, npme_minor, inputrec,
+                                      mtop ? mtop->natoms : 0, nChargePerturbed, nTypePerturbed,
+                                      (Flags & MD_REPRODUCIBLE),
+                                      ewaldcoeff_q, ewaldcoeff_lj,
+                                      nthreads_pme,
+                                      pmeUseGpu, nullptr, hwinfo, &hw_opt->gpu_opt);
+            }
+            GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
             if (status != 0)
             {
                 gmx_fatal(FARGS, "Error %d initializing PME", status);
@@ -1419,19 +1423,19 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
      */
     finish_run(fplog, mdlog, cr,
                inputrec, nrnb, wcycle, walltime_accounting,
-               fr ? fr->nbv : NULL,
-               fr ? fr->pmedata : NULL,
+               fr ? fr->nbv : nullptr,
+               fr ? fr->pmedata : nullptr,
                EI_DYNAMICS(inputrec->eI) && !MULTISIM(cr));
 
     // Free PME data
     if (pmedata)
     {
-        gmx_pme_destroy(pmedata);
-        pmedata = NULL;
+        gmx_pme_destroy(*pmedata); // TODO: pmedata is always a single element list, refactor
+        pmedata = nullptr;
     }
 
     /* Free GPU memory and context */
-    free_gpu_resources(fr, cr, &hwinfo->gpu_info, fr ? fr->gpu_opt : NULL);
+    free_gpu_resources(fr, cr, &hwinfo->gpu_info, fr ? fr->gpu_opt : nullptr);
 
     if (doMembed)
     {

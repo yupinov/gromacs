@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016, by the GROMACS development team, led by
+ * Copyright (c) 2012,2013,2014,2015,2016,2017, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -152,7 +152,7 @@ struct pme_load_balancing_t {
  * read bActive anywhere */
 bool pme_loadbal_is_active(const pme_load_balancing_t *pme_lb)
 {
-    return pme_lb != NULL && pme_lb->bActive;
+    return pme_lb != nullptr && pme_lb->bActive;
 }
 
 void pme_loadbal_init(pme_load_balancing_t     **pme_lb_p,
@@ -301,7 +301,7 @@ static gmx_bool pme_loadbal_increase_cutoff(pme_load_balancing_t *pme_lb,
     pme_lb->n++;
     srenew(pme_lb->setup, pme_lb->n);
     set          = &pme_lb->setup[pme_lb->n-1];
-    set->pmedata = NULL;
+    set->pmedata = nullptr;
 
     get_pme_nnodes(dd, &npmeranks_x, &npmeranks_y);
 
@@ -322,11 +322,12 @@ static gmx_bool pme_loadbal_increase_cutoff(pme_load_balancing_t *pme_lb,
 
         fac *= 1.01;
         clear_ivec(set->grid);
-        sp = calc_grid(NULL, pme_lb->box_start,
-                       fac*pme_lb->setup[pme_lb->cur].spacing,
-                       &set->grid[XX],
-                       &set->grid[YY],
-                       &set->grid[ZZ]);
+        sp = calcFftGrid(nullptr, pme_lb->box_start,
+                         fac*pme_lb->setup[pme_lb->cur].spacing,
+                         minimalPmeGridSize(pme_order),
+                         &set->grid[XX],
+                         &set->grid[YY],
+                         &set->grid[ZZ]);
 
         /* As here we can't easily check if one of the PME ranks
          * uses threading, we do a conservative grid check.
@@ -335,7 +336,7 @@ static gmx_bool pme_loadbal_increase_cutoff(pme_load_balancing_t *pme_lb,
          */
         gmx_pme_check_restrictions(pme_order,
                                    set->grid[XX], set->grid[YY], set->grid[ZZ],
-                                   npmeranks_x, npmeranks_y,
+                                   npmeranks_x,
                                    TRUE,
                                    FALSE,
                                    &grid_ok);
@@ -412,12 +413,12 @@ static void print_grid(FILE *fp_err, FILE *fp_log,
             pre,
             desc, set->grid[XX], set->grid[YY], set->grid[ZZ], set->rcut_coulomb,
             buft);
-    if (fp_err != NULL)
+    if (fp_err != nullptr)
     {
         fprintf(fp_err, "\r%s\n", buf);
         fflush(fp_err);
     }
-    if (fp_log != NULL)
+    if (fp_log != nullptr)
     {
         fprintf(fp_log, "%s\n", buf);
     }
@@ -448,12 +449,12 @@ static void print_loadbal_limited(FILE *fp_err, FILE *fp_log,
             gmx_step_str(step, sbuf),
             pmelblim_str[pme_lb->elimited],
             pme_lb->setup[pme_loadbal_end(pme_lb)-1].rcut_coulomb);
-    if (fp_err != NULL)
+    if (fp_err != nullptr)
     {
         fprintf(fp_err, "\r%s\n", buf);
         fflush(fp_err);
     }
-    if (fp_log != NULL)
+    if (fp_log != nullptr)
     {
         fprintf(fp_log, "%s\n", buf);
     }
@@ -792,7 +793,7 @@ pme_load_balance(pme_load_balancing_t      *pme_lb,
     }
 
     /* We always re-initialize the tables whether they are used or not */
-    init_interaction_const_tables(NULL, ic, rtab);
+    init_interaction_const_tables(nullptr, ic, rtab);
 
     nbnxn_gpu_pme_loadbal_update_param(nbv, ic);
 
@@ -823,7 +824,7 @@ pme_load_balance(pme_load_balancing_t      *pme_lb,
          * This can lead to a lot of reallocations for PME GPU.
          * Would be nicer if the allocated grid list was hidden within a single pmedata structure.
          */
-        if ((pme_lb->setup[pme_lb->cur].pmedata == NULL) || pme_lb->setup[pme_lb->cur].pmedata->useGPU)
+        if ((pme_lb->setup[pme_lb->cur].pmedata == nullptr) || pme_lb->setup[pme_lb->cur].pmedata->useGPU)
         {
             /* Generate a new PME data structure,
              * copying part of the old pointers.
@@ -842,7 +843,7 @@ pme_load_balance(pme_load_balancing_t      *pme_lb,
 
     if (debug)
     {
-        print_grid(NULL, debug, "", "switched to", set, -1);
+        print_grid(nullptr, debug, "", "switched to", set, -1);
     }
 
     if (pme_lb->stage == pme_lb->nstage)
@@ -1009,7 +1010,7 @@ void pme_loadbal_do(pme_load_balancing_t *pme_lb,
 
         if (ir->eDispCorr != edispcNO)
         {
-            calc_enervirdiff(NULL, ir->eDispCorr, fr);
+            calc_enervirdiff(nullptr, ir->eDispCorr, fr);
         }
     }
 
@@ -1108,7 +1109,7 @@ void pme_loadbal_done(pme_load_balancing_t *pme_lb,
                       const gmx::MDLogger  &mdlog,
                       gmx_bool              bNonBondedOnGPU)
 {
-    if (fplog != NULL && (pme_lb->cur > 0 || pme_lb->elimited != epmelblimNO))
+    if (fplog != nullptr && (pme_lb->cur > 0 || pme_lb->elimited != epmelblimNO))
     {
         print_pme_loadbal_settings(pme_lb, fplog, mdlog, bNonBondedOnGPU);
     }

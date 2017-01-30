@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -59,7 +59,7 @@ static void bc_cstring(const t_commrec *cr, char **s)
 {
     int size = 0;
 
-    if (MASTER(cr) && *s != NULL)
+    if (MASTER(cr) && *s != nullptr)
     {
         /* Size of the char buffer is string length + 1 for '\0' */
         size = strlen(*s) + 1;
@@ -73,10 +73,10 @@ static void bc_cstring(const t_commrec *cr, char **s)
         }
         nblock_bc(cr, size, *s);
     }
-    else if (!MASTER(cr) && *s != NULL)
+    else if (!MASTER(cr) && *s != nullptr)
     {
         sfree(*s);
-        *s = NULL;
+        *s = nullptr;
     }
 }
 
@@ -241,7 +241,7 @@ static void bc_groups(const t_commrec *cr, t_symtab *symtab,
         block_bc(cr, n);
         if (n == 0)
         {
-            groups->grpnr[g] = NULL;
+            groups->grpnr[g] = nullptr;
         }
         else
         {
@@ -277,7 +277,6 @@ void bcast_state(const t_commrec *cr, t_state *state)
     block_bc(cr, state->nnhpres);
     block_bc(cr, state->nhchainlength);
     block_bc(cr, state->flags);
-    state->lambda.resize(efptNR);
 
     if (cr->dd)
     {
@@ -311,9 +310,9 @@ void bcast_state(const t_commrec *cr, t_state *state)
                 case estTC_INT:  nblock_abc(cr, state->ngtc, &state->therm_integral); break;
                 case estVETA:    block_bc(cr, state->veta); break;
                 case estVOL0:    block_bc(cr, state->vol0); break;
-                case estX:       bcastPaddedRVecVector(cr, &state->x, state->natoms);
-                case estV:       bcastPaddedRVecVector(cr, &state->v, state->natoms);
-                case estCGP:     bcastPaddedRVecVector(cr, &state->cg_p, state->natoms);
+                case estX:       bcastPaddedRVecVector(cr, &state->x, state->natoms); break;
+                case estV:       bcastPaddedRVecVector(cr, &state->v, state->natoms); break;
+                case estCGP:     bcastPaddedRVecVector(cr, &state->cg_p, state->natoms); break;
                 case estDISRE_INITF: block_bc(cr, state->hist.disre_initf); break;
                 case estDISRE_RM3TAV:
                     block_bc(cr, state->hist.ndisrepairs);
@@ -511,7 +510,7 @@ static void bc_pull(const t_commrec *cr, pull_params_t *pull)
     {
         if (!MASTER(cr))
         {
-            pull->coord[c].externalPotentialProvider = NULL;
+            pull->coord[c].externalPotentialProvider = nullptr;
         }
         if (pull->coord[c].eType == epullEXTERNAL)
         {
