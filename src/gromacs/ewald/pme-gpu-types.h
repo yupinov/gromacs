@@ -164,6 +164,14 @@ struct pme_gpu_atom_params_t
      */
     int *d_gridlineIndices;
 
+    /*! \brief Atom indices for the spline/spread kernel.
+     * All the atom data is looked up with the indirection through this indexing array:
+     * int atomDataIndex = d_atomIndicesSpread[atomOrderlyIndex];
+     */
+    int *d_atomIndicesSpread;
+    /*! \brief Atom indices for the gather kernel. See the comment above */
+    int *d_atomIndicesGather;
+
     /* B-spline parameters are computed entirely on GPU every MD step, not copied.
      * Unless we want to try something like GPU spread + CPU gather?
      */
@@ -256,6 +264,8 @@ struct pme_gpu_staging_t
     float  *h_dtheta;
     /*! \brief Pointer to the host memory with ivec atom gridline indices. Only used for host-side gather, or unit tests */
     int    *h_gridlineIndices;
+    /*! \brief Atom indices - used for staging d_atomIndicesSpread and d_atomIndicesGather. */
+    int    *h_atomIndices;
 };
 
 /*! \internal \brief

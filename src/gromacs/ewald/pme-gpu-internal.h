@@ -268,6 +268,13 @@ CUDA_FUNC_QUALIFIER void pme_gpu_free_spline_data(const pme_gpu_t *CUDA_FUNC_ARG
 CUDA_FUNC_QUALIFIER void pme_gpu_realloc_grid_indices(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU)) CUDA_FUNC_TERM
 
 /*! \libinternal \brief
+ * Reallocates the buffers on the GPU and the host for the kernel atom indices.
+ *
+ * \param[in] pmeGpu            The PME GPU structure.
+ */
+CUDA_FUNC_QUALIFIER void pme_gpu_realloc_atom_indices(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGpu)) CUDA_FUNC_TERM
+
+/*! \libinternal \brief
  * Frees the buffer on the GPU for the particle gridline indices.
  *
  * \param[in] pmeGPU            The PME GPU structure.

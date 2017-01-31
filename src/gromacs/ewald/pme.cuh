@@ -239,6 +239,10 @@ struct pme_gpu_cuda_t
     int gridSize;
     /*! \brief Both the kernelParams.grid.realGrid (and possibly kernelParams.grid.fourierGrid) float element count (reserved) */
     int gridSizeAlloc;
+    /*! \brief Both the kernelParams.atoms.d_atomIndicesSpread and kernelParams.atoms.d_atomIndicesGather int element count (actual) */
+    int atomIndicesSize;
+    /*! \brief Both the kernelParams.atoms.d_atomIndicesSpread and kernelParams.atoms.d_atomIndicesGather int element count (reserved) */
+    int atomIndicesSizeAlloc;
 };
 
 

@@ -441,5 +441,6 @@ void pme_gpu_reinit_atoms(pme_gpu_t *pmeGPU, const int nAtoms, const real *coeff
         pme_gpu_realloc_forces(pmeGPU);
         pme_gpu_realloc_spline_data(pmeGPU);
         pme_gpu_realloc_grid_indices(pmeGPU);
+        pme_gpu_realloc_atom_indices(pmeGPU);
     }
 }
