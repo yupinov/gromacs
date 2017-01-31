@@ -151,12 +151,13 @@ void pme_gpu_free_fract_shifts_textures(const pme_gpu_t *pmeGpu)
 /*! \brief
  * General purpose function for loading atom-related data from global to shared memory.
  *
- * \tparam[in] T                 Data type (float/int/...)
- * \tparam[in] atomsPerBlock     Number of atoms processed by a block - should be accounted for in the size of the shared memory array.
- * \tparam[in] dataCountPerAtom  Number of data elements per single atom (e.g. DIM for an rvec coordinates array).
- * \param[in]  kernelParams      Input PME CUDA data in constant memory.
- * \param[out] sm_destination    Shared memory array for output.
- * \param[in]  gm_source         Global memory array for input.
+ * \tparam[in] T                      Data type (float/int/...)
+ * \tparam[in] atomsPerBlock          Number of atoms processed by a block - should be accounted for in the size of the shared memory array.
+ * \tparam[in] dataCountPerAtom       Number of data elements per single atom (e.g. DIM for an rvec coordinates array).
+ * \param[in]  kernelParams           Input PME CUDA data in constant memory.
+ * \param[out] sm_destination         Shared memory array for output.
+ * \param[in]  gm_source              Global memory array for input.
+ * \param[in]  sm_atomIndicesGlobal   Staged global atom indices for this block.
  */
 template<typename T,
          const int atomsPerBlock,
@@ -164,18 +165,27 @@ template<typename T,
 __device__  __forceinline__
 void pme_gpu_stage_atom_data(const pme_gpu_cuda_kernel_params_t kernelParams,
                              T * __restrict__                   sm_destination,
-                             const T * __restrict__             gm_source)
+                             const T * __restrict__             gm_source,
+                             const int * __restrict__           sm_atomIndicesGlobal)
 {
     // TODO: with padding disabled, this would ignore spline data alignment
-    const int threadLocalIndex = ((threadIdx.z * blockDim.y + threadIdx.y) * blockDim.x) + threadIdx.x;
-    const int localIndex       = threadLocalIndex;
-    const int globalIndexBase  = blockIdx.x * atomsPerBlock * dataCountPerAtom;
-    const int globalIndex      = globalIndexBase + localIndex;
-    const int globalCheck      = pme_gpu_check_atom_data_index(globalIndex, kernelParams.atoms.nAtoms * dataCountPerAtom);
-    if ((localIndex < atomsPerBlock * dataCountPerAtom) & globalCheck)
+    const int threadLocalIndex   = ((threadIdx.z * blockDim.y + threadIdx.y) * blockDim.x) + threadIdx.x;
+    const int atomDataIndexLocal = threadLocalIndex;
+    const int localCheck         = (atomDataIndexLocal < atomsPerBlock * dataCountPerAtom);
+    if (localCheck)
     {
-        assert(!isnan(float(gm_source[globalIndex])));
-        sm_destination[localIndex] = gm_source[globalIndex];
+        const int atomIndexLocal     = threadLocalIndex / dataCountPerAtom;  //FIXME division, bad access?
+        const int dataComponentIndex = threadLocalIndex % dataCountPerAtom;
+        const int atomIndexGlobal    = sm_atomIndicesGlobal[atomIndexLocal];
+        assert(atomIndexGlobal >= 0);
+        assert(atomIndexGlobal < kernelParams.atoms.nAtoms);
+        const int globalCheck        = pme_gpu_check_atom_data_index(atomIndexGlobal, kernelParams.atoms.nAtoms);
+        if (globalCheck)
+        {
+            const int atomDataIndexGlobal = atomIndexGlobal * dataCountPerAtom + dataComponentIndex;
+            assert(!isnan(float(gm_source[atomDataIndexGlobal])));
+            sm_destination[atomDataIndexLocal] = gm_source[atomDataIndexGlobal];
+        }
     }
 }
 
@@ -188,9 +198,10 @@ void pme_gpu_stage_atom_data(const pme_gpu_cuda_kernel_params_t kernelParams,
  * \tparam[in] atomsPerBlock        Number of atoms processed by a block - should be accounted for
  *                                  in the sizes of the shared memory arrays.
  * \param[in]  kernelParams         Input PME CUDA data in constant memory.
- * \param[in]  atomIndexOffset      Starting atom index for the execution block w.r.t. global memory.
+ * \param[in] atomIndexOffset       FIXME document this
  * \param[in]  sm_coordinates       Atom coordinates in the shared memory.
  * \param[in]  sm_coefficients      Atom charges/coefficients in the shared memory.
+ * \param[in]  sm_atomIndicesGlobal Staged global atom indices for this block.
  * \param[out] sm_theta             Atom spline values in the shared memory.
  * \param[out] sm_gridlineIndices   Atom gridline indices in the shared memory.
  */
@@ -200,6 +211,7 @@ __device__ __forceinline__ void calculate_splines(const pme_gpu_cuda_kernel_para
                                                   const int                              atomIndexOffset,
                                                   const float3 * __restrict__            sm_coordinates,
                                                   const float * __restrict__             sm_coefficients,
+                                                  const int * __restrict__               sm_atomIndicesGlobal,
                                                   float * __restrict__                   sm_theta,
                                                   int * __restrict__                     sm_gridlineIndices)
 {
@@ -223,9 +235,8 @@ __device__ __forceinline__ void calculate_splines(const pme_gpu_cuda_kernel_para
     const int atomWarpIndex     = threadWarpIndex % PME_SPREADGATHER_ATOMS_PER_WARP;
     /* Atom index w.r.t. block/shared memory */
     const int atomIndexLocal    = warpIndex * PME_SPREADGATHER_ATOMS_PER_WARP + atomWarpIndex;
-
     /* Atom index w.r.t. global memory */
-    const int atomIndexGlobal   = atomIndexOffset + atomIndexLocal;
+    const int atomIndexGlobal = sm_atomIndicesGlobal[atomIndexLocal];
     /* Spline contribution index in one dimension */
     const int orderIndex = threadWarpIndex / (PME_SPREADGATHER_ATOMS_PER_WARP * DIM);
     /* Dimension index */
@@ -267,6 +278,10 @@ __device__ __forceinline__ void calculate_splines(const pme_gpu_cuda_kernel_para
             int           tableIndex, tInt;
             float         n, t;
             const float3  x = sm_coordinates[atomIndexLocal];
+            //FIXME staged data layout - gridline indces, spline data, etc
+            // now it's governed by the index
+            // but is that efficient? maybe keep the previous identity index for output?
+
             /* Accessing fields in fshOffset/nXYZ/recipbox/... with dimIndex offset
              * puts them into local memory(!) instead of accessing the constant memory directly.
              * That's the reason for the switch, to unroll explicitly.
@@ -508,20 +523,32 @@ __global__ void pme_spline_and_spread_kernel(const pme_gpu_cuda_kernel_params_t 
     // Spline values
     __shared__ float              sm_theta[atomsPerBlock * DIM * order];
 
+    // staged part of kernelParams.atoms.d_atomIndices_global
+    __shared__ int                sm_atomIndicesGlobal[atomsPerBlock];
+    const int * __restrict__      gm_atomIndicesGlobal = kernelParams.atoms.d_atomIndicesSpread;
+
     const int                     atomIndexOffset = blockIdx.x * atomsPerBlock;
+    // staging the atom indices - TODO: copy of stage_atom_data
+    const int                     localIndex  = ((threadIdx.z * blockDim.y + threadIdx.y) * blockDim.x) + threadIdx.x;
+    const int                     globalIndex = atomIndexOffset + localIndex;
+    const int                     globalCheck = pme_gpu_check_atom_data_index(globalIndex, kernelParams.atoms.nAtoms);
+    if ((localIndex < atomsPerBlock) & globalCheck)
+    {
+        sm_atomIndicesGlobal[localIndex] = gm_atomIndicesGlobal[globalIndex];
+    }
 
     /* Staging coefficients/charges for both spline and spread */
-    pme_gpu_stage_atom_data<float, atomsPerBlock, 1>(kernelParams, sm_coefficients, kernelParams.atoms.d_coefficients);
+    pme_gpu_stage_atom_data<float, atomsPerBlock, 1>(kernelParams, sm_coefficients, kernelParams.atoms.d_coefficients, sm_atomIndicesGlobal);
 
     if (computeSplines)
     {
         /* Staging coordinates */
         __shared__ float sm_coordinates[DIM * atomsPerBlock];
-        pme_gpu_stage_atom_data<float, atomsPerBlock, DIM>(kernelParams, sm_coordinates, kernelParams.atoms.d_coordinates);
+        pme_gpu_stage_atom_data<float, atomsPerBlock, DIM>(kernelParams, sm_coordinates, kernelParams.atoms.d_coordinates, sm_atomIndicesGlobal);
 
         __syncthreads();
         calculate_splines<order, atomsPerBlock>(kernelParams, atomIndexOffset, (const float3 *)sm_coordinates,
-                                                sm_coefficients, sm_theta, sm_gridlineIndices);
+                                                sm_coefficients, sm_atomIndicesGlobal, sm_theta, sm_gridlineIndices);
     }
     else
     {
@@ -530,9 +557,9 @@ __global__ void pme_spline_and_spread_kernel(const pme_gpu_cuda_kernel_params_t 
          * as in after running the spline kernel)
          */
         /* Spline data - only thetas (dthetas will only be needed in gather) */
-        pme_gpu_stage_atom_data<float, atomsPerBlock, DIM * order>(kernelParams, sm_theta, kernelParams.atoms.d_theta);
+        pme_gpu_stage_atom_data<float, atomsPerBlock, DIM * order>(kernelParams, sm_theta, kernelParams.atoms.d_theta, sm_atomIndicesGlobal);
         /* Gridline indices */
-        pme_gpu_stage_atom_data<int, atomsPerBlock, DIM>(kernelParams, sm_gridlineIndices, kernelParams.atoms.d_gridlineIndices);
+        pme_gpu_stage_atom_data<int, atomsPerBlock, DIM>(kernelParams, sm_gridlineIndices, kernelParams.atoms.d_gridlineIndices, sm_atomIndicesGlobal);
 
         __syncthreads();
     }

@@ -309,30 +309,41 @@ void pme_gpu_realloc_atom_indices(const pme_gpu_t *pmeGpu)
         pmalloc((void **)&pmeGpu->staging.h_atomIndices, newIndicesSize * sizeof(int));
     }
     // make an identity index on the host: [0 1 2 ... nAtoms-1]
+    const int indicesWorkSize = newIndicesSize; //to deal with padding
     std::iota(pmeGpu->staging.h_atomIndices, pmeGpu->staging.h_atomIndices + pmeGpu->kernelParams->atoms.nAtoms, 0);
     // or just mix it up: [1 0 3 2 5 4 ....]
     // TODO: could be a kernel in itself
-    for (auto i = 0; i < pmeGpu->kernelParams->atoms.nAtoms / 2 * 2; i++)
-    {
+    /*
+       for (auto i = 0; i < pmeGpu->kernelParams->atoms.nAtoms / 2 * 2; i++)
+       {
         int delta = (i % 2) ? (-1) : 1;
         pmeGpu->staging.h_atomIndices[i] += delta;
-    }
+       }
+     */
+#if PME_GPU_USE_PADDING
+    std::fill(pmeGpu->staging.h_atomIndices + pmeGpu->kernelParams->atoms.nAtoms,
+              pmeGpu->staging.h_atomIndices + indicesWorkSize,
+              0);
+#endif
+
 #ifndef NDEBUG
     // indices sanity checks
+    for (auto i = 0; i < indicesWorkSize; i++)
+    {
+        range_check(pmeGpu->staging.h_atomIndices[i], 0, pmeGpu->kernelParams->atoms.nAtoms);
+    }
     std::set<int> uniqueness;
     for (auto i = 0; i < pmeGpu->kernelParams->atoms.nAtoms; i++)
     {
-        range_check(pmeGpu->staging.h_atomIndices[i], 0, pmeGpu->kernelParams->atoms.nAtoms);
         uniqueness.insert(pmeGpu->staging.h_atomIndices[i]);
     }
     GMX_ASSERT(uniqueness.size() == pmeGpu->kernelParams->atoms.nAtoms, "Now you messed up");
 #endif
     // copy to the device
     cu_copy_H2D_async(pmeGpu->kernelParams->atoms.d_atomIndicesSpread, pmeGpu->staging.h_atomIndices,
-                      pmeGpu->kernelParams->atoms.nAtoms * sizeof(int), pmeGpu->archSpecific->pmeStream);
+                      indicesWorkSize * sizeof(int), pmeGpu->archSpecific->pmeStream);
     cu_copy_H2D_async(pmeGpu->kernelParams->atoms.d_atomIndicesGather, pmeGpu->staging.h_atomIndices,
-                      pmeGpu->kernelParams->atoms.nAtoms * sizeof(int), pmeGpu->archSpecific->pmeStream);
-    //TODO padding?
+                      indicesWorkSize * sizeof(int), pmeGpu->archSpecific->pmeStream);
 }
 
 void pme_gpu_free_grid_indices(const pme_gpu_t *pmeGPU)
