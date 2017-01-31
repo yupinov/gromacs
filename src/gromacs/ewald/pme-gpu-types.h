@@ -264,8 +264,10 @@ struct pme_gpu_staging_t
     float  *h_dtheta;
     /*! \brief Pointer to the host memory with ivec atom gridline indices. Only used for host-side gather, or unit tests */
     int    *h_gridlineIndices;
-    /*! \brief Atom indices - used for staging d_atomIndicesSpread and d_atomIndicesGather. */
-    int    *h_atomIndices;
+    /*! \brief Atom indices for spread - used for staging d_atomIndicesSpread. */
+    int    *h_atomIndicesSpread;
+    /*! \brief Atom indices for gather - used for staging d_atomIndicesGather. */
+    int    *h_atomIndicesGather;
 };
 
 /*! \internal \brief
