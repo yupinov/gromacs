@@ -159,35 +159,6 @@ void pme_gpu_free_fract_shifts_textures(const pme_gpu_t *pmeGpu)
  * \param[in]  gm_source              Global memory array for input.
  * \param[in]  sm_atomIndicesGlobal   Staged global atom indices for this block.
  */
-template<typename T,
-         const int atomsPerBlock,
-         const int dataCountPerAtom>
-__device__  __forceinline__
-void pme_gpu_stage_atom_data(const pme_gpu_cuda_kernel_params_t kernelParams,
-                             T * __restrict__                   sm_destination,
-                             const T * __restrict__             gm_source,
-                             const int * __restrict__           sm_atomIndicesGlobal)
-{
-    // TODO: with padding disabled, this would ignore spline data alignment
-    const int threadLocalIndex   = ((threadIdx.z * blockDim.y + threadIdx.y) * blockDim.x) + threadIdx.x;
-    const int atomDataIndexLocal = threadLocalIndex;
-    const int localCheck         = (atomDataIndexLocal < atomsPerBlock * dataCountPerAtom);
-    if (localCheck)
-    {
-        const int atomIndexLocal     = threadLocalIndex / dataCountPerAtom;  //FIXME division, bad access?
-        const int dataComponentIndex = threadLocalIndex % dataCountPerAtom;
-        const int atomIndexGlobal    = sm_atomIndicesGlobal[atomIndexLocal];
-        assert(atomIndexGlobal >= 0);
-        assert(atomIndexGlobal < kernelParams.atoms.nAtoms);
-        const int globalCheck        = pme_gpu_check_atom_data_index(atomIndexGlobal, kernelParams.atoms.nAtoms);
-        if (globalCheck)
-        {
-            const int atomDataIndexGlobal = atomIndexGlobal * dataCountPerAtom + dataComponentIndex;
-            assert(!isnan(float(gm_source[atomDataIndexGlobal])));
-            sm_destination[atomDataIndexLocal] = gm_source[atomDataIndexGlobal];
-        }
-    }
-}
 
 /*! \brief
  * PME GPU spline parameter and gridline indices calculation.
@@ -536,6 +507,7 @@ __global__ void pme_spline_and_spread_kernel(const pme_gpu_cuda_kernel_params_t 
     {
         sm_atomIndicesGlobal[localIndex] = gm_atomIndicesGlobal[globalIndex];
     }
+    __syncthreads();
 
     /* Staging coefficients/charges for both spline and spread */
     pme_gpu_stage_atom_data<float, atomsPerBlock, 1>(kernelParams, sm_coefficients, kernelParams.atoms.d_coefficients, sm_atomIndicesGlobal);

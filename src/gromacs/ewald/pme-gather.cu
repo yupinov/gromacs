@@ -180,22 +180,40 @@ __launch_bounds__(PME_SPREADGATHER_THREADS_PER_BLOCK, PME_MIN_BLOCKS_PER_MP)
 __global__ void pme_gather_kernel(const pme_gpu_cuda_kernel_params_t    kernelParams)
 {
     /* Global memory pointers */
-    const float * __restrict__  gm_coefficients     = kernelParams.atoms.d_coefficients;
-    const float * __restrict__  gm_grid             = kernelParams.grid.d_realGrid;
-    const float * __restrict__  gm_theta            = kernelParams.atoms.d_theta;
-    const float * __restrict__  gm_dtheta           = kernelParams.atoms.d_dtheta;
-    const int * __restrict__    gm_gridlineIndices  = kernelParams.atoms.d_gridlineIndices;
-    float * __restrict__        gm_forces           = kernelParams.atoms.d_forces;
+    const float * __restrict__    gm_coefficients     = kernelParams.atoms.d_coefficients;
+    const float * __restrict__    gm_grid             = kernelParams.grid.d_realGrid;
+    const float * __restrict__    gm_theta            = kernelParams.atoms.d_theta;
+    const float * __restrict__    gm_dtheta           = kernelParams.atoms.d_dtheta;
+    const int * __restrict__      gm_gridlineIndices  = kernelParams.atoms.d_gridlineIndices;
+    float * __restrict__          gm_forces           = kernelParams.atoms.d_forces;
+
+    const int * __restrict__      gm_atomIndicesGlobal = kernelParams.atoms.d_atomIndicesGather;
+
+    int                           threadLocalIndex = (threadIdx.z * (blockDim.x * blockDim.y))
+        + (threadIdx.y * blockDim.x)
+        + threadIdx.x;
+
 
     /* Some sizes */
-    const int    atomsPerBlock  = PME_SPREADGATHER_ATOMS_PER_BLOCK;
-    const int    atomDataSize   = PME_THREADS_PER_ATOM; /* Number of data components and threads for a single atom */
-    const int    blockSize      = atomsPerBlock * atomDataSize;
+    const int                     atomsPerBlock  = PME_SPREADGATHER_ATOMS_PER_BLOCK;
+    const int                     atomDataSize   = PME_THREADS_PER_ATOM; /* Number of data components and threads for a single atom */
+    const int                     blockSize      = atomsPerBlock * atomDataSize;
+
+    __shared__ int                sm_atomIndicesGlobal[atomsPerBlock];
+    // staging the atom indices - TODO: copy of stage_atom_data
+    const int                     atomIndexOffset   = blockIdx.x * atomsPerBlock;
+    const int                     localIndex        = threadLocalIndex;
+    const int                     globalIndex       = atomIndexOffset + localIndex;
+    const int                     globalCheckRename = pme_gpu_check_atom_data_index(globalIndex, kernelParams.atoms.nAtoms);
+    if ((localIndex < atomsPerBlock) & globalCheckRename)
+    {
+        sm_atomIndicesGlobal[localIndex] = gm_atomIndicesGlobal[globalIndex];
+    }
+    __syncthreads(); //FIXME same sync in spread ?
 
     /* These are the atom indices - for the shared and global memory */
     const int                   atomIndexLocal    = threadIdx.z;
-    const int                   atomIndexOffset   = blockIdx.x * atomsPerBlock;
-    const int                   atomIndexGlobal   = atomIndexOffset + atomIndexLocal;
+    const int                   atomIndexGlobal   = sm_atomIndicesGlobal[atomIndexLocal];
 
     const size_t                splineParamsSize             = atomsPerBlock * DIM * order;
     const size_t                gridlineIndicesSize          = atomsPerBlock * DIM;
@@ -210,29 +228,45 @@ __global__ void pme_gather_kernel(const pme_gpu_cuda_kernel_params_t    kernelPa
     const int splineIndex = threadIdx.y * blockDim.x + threadIdx.x;                  /* Relative to the current particle , 0..15 for order 4 */
     const int lineIndex   = (threadIdx.z * (blockDim.x * blockDim.y)) + splineIndex; /* And to all the block's particles */
 
-    int       threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
-        + (threadIdx.y * blockDim.x)
-        + threadIdx.x;
+    pme_gpu_stage_atom_data<int, atomsPerBlock, DIM>(kernelParams, sm_gridlineIndices, gm_gridlineIndices, sm_atomIndicesGlobal);
 
-    /* Staging the atom gridline indices, DIM * atomsPerBlock threads */
-    const int localGridlineIndicesIndex  = threadLocalId;
-    const int globalGridlineIndicesIndex = blockIdx.x * gridlineIndicesSize + localGridlineIndicesIndex;
-    const int globalCheckIndices         = pme_gpu_check_atom_data_index(globalGridlineIndicesIndex, kernelParams.atoms.nAtoms * DIM);
-    if ((localGridlineIndicesIndex < gridlineIndicesSize) & globalCheckIndices)
-    {
-        sm_gridlineIndices[localGridlineIndicesIndex] = gm_gridlineIndices[globalGridlineIndicesIndex];
-        assert(sm_gridlineIndices[localGridlineIndicesIndex] >= 0);
-    }
+    //FIXME copy of stage data with stride
     /* Staging the spline parameters, DIM * order * atomsPerBlock threads */
-    const int localSplineParamsIndex  = threadLocalId;
-    const int globalSplineParamsIndex = blockIdx.x * splineParamsSize + localSplineParamsIndex;
-    const int globalCheckSplineParams = pme_gpu_check_atom_data_index(globalSplineParamsIndex, kernelParams.atoms.nAtoms * DIM * order);
-    if ((localSplineParamsIndex < splineParamsSize) && globalCheckSplineParams)
+    const int localSplineParamsIndex  = threadLocalIndex;
+    if (localSplineParamsIndex < splineParamsSize)
     {
-        sm_splineParams[localSplineParamsIndex].x = gm_theta[globalSplineParamsIndex];
-        sm_splineParams[localSplineParamsIndex].y = gm_dtheta[globalSplineParamsIndex];
-        assert(!isnan(sm_splineParams[localSplineParamsIndex].x));
-        assert(!isnan(sm_splineParams[localSplineParamsIndex].y));
+        //FIXME arr atom idnex from spline data index
+        const int atomSplineIndexWithinWarp =  localSplineParamsIndex % 2; //& 0x1; //
+        const int atomIndexPart1            = localSplineParamsIndex / 24; //warp index?
+
+        //      cons int order 0
+        const int atomIndexLocalRename = atomSplineIndexWithinWarp + atomIndexPart1 * 2; //2 == atoms per warp
+
+        //FIXME we only need all this for paddign disabled and original layout
+        //
+        const int atomIndexGlobalRename = sm_atomIndicesGlobal[atomIndexLocalRename];
+
+        const int atomSplineIndexWithinWarpGlobal = atomIndexGlobalRename % 2;                                                                 //& 0x1; //
+        const int stuffOffset                     = localSplineParamsIndex % 24 - atomSplineIndexWithinWarp + atomSplineIndexWithinWarpGlobal; //thsi is an index within block
+        const int atomIndexPart1Global            =  atomIndexGlobalRename / 2;                                                                // global "chunk" index
+
+        assert(atomIndexGlobalRename >= 0);
+        //      assert(atomIndexGlobalRename < kernelParams.atoms.nAtoms);
+
+        //const int globalSplineParamsIndex = blockIdx.x * splineParamsSize + localSplineParamsIndex;
+        const int globalCheckSplineParams = pme_gpu_check_atom_data_index(atomIndexGlobalRename, kernelParams.atoms.nAtoms);
+        //FIXME pme_gpu_check_atom_data_index(globalSplineParamsIndex, kernelParams.atoms.nAtoms * DIM * order);
+
+        if (globalCheckSplineParams)
+        {
+            const int splineDataIndexGlobal = atomIndexPart1Global * DIM * order * 2
+                + stuffOffset;
+            sm_splineParams[localSplineParamsIndex].x = gm_theta[splineDataIndexGlobal];
+            sm_splineParams[localSplineParamsIndex].y = gm_dtheta[splineDataIndexGlobal];
+            assert(!isnan(sm_splineParams[localSplineParamsIndex].x));
+            assert(!isnan(sm_splineParams[localSplineParamsIndex].y));
+
+        }
     }
     __syncthreads();
 
@@ -241,6 +275,7 @@ __global__ void pme_gather_kernel(const pme_gpu_cuda_kernel_params_t    kernelPa
     float           fz = 0.0f;
 
     const int       globalCheck = pme_gpu_check_atom_data_index(atomIndexGlobal, kernelParams.atoms.nAtoms);
+    //FIXME charge check can be removed with indexing
     const int       chargeCheck = pme_gpu_check_atom_charge(gm_coefficients[atomIndexGlobal]);
 
     //TODO try staging coefficients
@@ -309,7 +344,7 @@ __global__ void pme_gather_kernel(const pme_gpu_cuda_kernel_params_t    kernelPa
     __syncthreads();
 
     /* Calculating the final forces with no component branching, atomsPerBlock threads */
-    const int forceIndexLocal  = threadLocalId;
+    const int forceIndexLocal  = threadLocalIndex;
     const int forceIndexGlobal = atomIndexOffset + forceIndexLocal;
     const int calcIndexCheck   = pme_gpu_check_atom_data_index(forceIndexGlobal, kernelParams.atoms.nAtoms);
     if ((forceIndexLocal < atomsPerBlock) & calcIndexCheck)
@@ -324,9 +359,10 @@ __global__ void pme_gather_kernel(const pme_gpu_cuda_kernel_params_t    kernelPa
     }
 
     /* Writing or adding the final forces component-wise, DIM * atomsPerBlock threads */
-    const int    outputIndexLocal  = threadLocalId;
+    const int    outputIndexLocal  = threadLocalIndex;
     const size_t blockForcesSize   = atomsPerBlock * DIM;
-    const int    outputIndexGlobal = blockIdx.x * blockForcesSize + outputIndexLocal;
+    const int    outputIndexGlobal = sm_atomIndicesGlobal[outputIndexLocal / DIM] * DIM + (outputIndexLocal % DIM); // TODO float3?
+    //blockIdx.x * blockForcesSize + outputIndexLocal;
     const int    globalOutputCheck = pme_gpu_check_atom_data_index(outputIndexGlobal, kernelParams.atoms.nAtoms * DIM);
     if ((outputIndexLocal < blockForcesSize) && globalOutputCheck)
     {

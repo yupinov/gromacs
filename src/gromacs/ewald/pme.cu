@@ -231,11 +231,11 @@ void pme_gpu_realloc_and_copy_input_coefficients(const pme_gpu_t *pmeGPU, const 
     cu_copy_H2D_async(pmeGPU->kernelParams.get()->atoms.d_coefficients, const_cast<float *>(h_coefficients),
                       pmeGPU->kernelParams.get()->atoms.nAtoms * sizeof(float), pmeGPU->archSpecific->pmeStream);
 #if PME_GPU_USE_PADDING
-    const size_t paddingIndex = pmeGPU->kernelParams.get()->atoms.nAtoms;
+    const size_t paddingIndex = pmeGPU->kernelParams->atoms.nAtoms;
     const size_t paddingCount = pmeGPU->nAtomsAlloc - paddingIndex;
     if (paddingCount > 0)
     {
-        cudaError_t stat = cudaMemsetAsync(pmeGPU->kernelParams.get()->atoms.d_coefficients + paddingIndex, 0, paddingCount * sizeof(float), pmeGPU->archSpecific->pmeStream);
+        cudaError_t stat = cudaMemsetAsync(pmeGPU->kernelParams->atoms.d_coefficients + paddingIndex, 0, paddingCount * sizeof(float), pmeGPU->archSpecific->pmeStream);
         CU_RET_ERR(stat, "PME failed to clear the padded charges");
     }
 #endif
@@ -312,23 +312,46 @@ void pme_gpu_prepare_atom_indices(const pme_gpu_t *pmeGpu, int *h_atomIndices, i
         h_atomIndices[i] += delta;
        }
      */
-
-    // mix it up 3: [2 0 1 5 3 4 ....]
-    for (auto i = 0; i < pmeGpu->kernelParams->atoms.nAtoms / 3 * 3; i++)
+    if (type == IndexType::Gather)
     {
-        int delta = (i % 3) ? (-1) : 2;
-        h_atomIndices[i] += delta;
+        // mix it up 3: [2 0 1 5 3 4 ....]
+        /*
+           for (auto i = 0; i < pmeGpu->kernelParams->atoms.nAtoms / 3 * 3; i++)
+           {
+            int delta = (i % 3) ? (-1) : 2;
+            h_atomIndices[i] += delta;
+           }
+         */
+
     }
 
+    /* FIXME
+     * the intermediate data should always use common layout between spread and gather
+     * options: 1) fallback on the normal, atom-ordered indexing
+                2) spread and gather use same index - pointless!
+                3) some other non-default agreement between different spread and gather indices
+                e.g. several sequences of neighbours in a 2D rect - gather goes along, spread goes across
+                make slabs/cubes, enumerate particles inside- seems pointless, again!
+     */
+
 #if PME_GPU_USE_PADDING
-    std::fill(h_atomIndices + pmeGpu->kernelParams->atoms.nAtoms, h_atomIndices + indicesWorkSize, 0);
+    const int virtualAtomIndex = pmeGpu->nAtomsAlloc - 1;
+    // this is the index of the last element in all the padded atom data arrays;
+    // it will correspond to the zero charge if there is any padding,
+    // so we can treat this index as an index to a virtual neutral atom,
+    // which will not affect the PME computation.
+    // so we can pad our atom indices with this, allowing the kernels to skip the atom index conditionals
+    // (with the small cost of spreading/gathering max 1 block of virtual atoms)
+    std::fill(h_atomIndices + pmeGpu->kernelParams->atoms.nAtoms, h_atomIndices + indicesWorkSize,
+              virtualAtomIndex);
 #endif
 
 #ifndef NDEBUG
     // indices sanity checks
     for (auto i = 0; i < indicesWorkSize; i++)
     {
-        range_check(h_atomIndices[i], 0, pmeGpu->kernelParams->atoms.nAtoms);
+        //        range_check(h_atomIndices[i], 0, pmeGpu->kernelParams->atoms.nAtoms);
+        range_check(h_atomIndices[i], 0, pmeGpu->nAtomsPadded);
     }
     std::set<int> uniqueness;
     for (auto i = 0; i < pmeGpu->kernelParams->atoms.nAtoms; i++)
@@ -351,7 +374,7 @@ void pme_gpu_realloc_atom_indices(const pme_gpu_t *pmeGpu)
     cu_realloc_buffered((void **)&pmeGpu->kernelParams->atoms.d_atomIndicesSpread, nullptr, sizeof(int),
                         &currentSizeTemp, &currentSizeTempAlloc,
                         newIndicesSize, pmeGpu->archSpecific->pmeStream, true);
-    cu_realloc_buffered((void **)&pmeGpu->kernelParams->atoms.d_atomIndicesSpread, nullptr, sizeof(int),
+    cu_realloc_buffered((void **)&pmeGpu->kernelParams->atoms.d_atomIndicesGather, nullptr, sizeof(int),
                         &pmeGpu->archSpecific->atomIndicesSize, &pmeGpu->archSpecific->atomIndicesSizeAlloc,
                         newIndicesSize, pmeGpu->archSpecific->pmeStream, true);
     if (shouldRealloc)

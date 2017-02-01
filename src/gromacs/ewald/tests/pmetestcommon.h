@@ -56,6 +56,9 @@
 
 #include "testhardwarecontexts.h"
 
+//FIXME kill this
+#define HACK_NON_IDENTITY_INDICES 0
+
 namespace gmx
 {
 namespace test

@@ -496,7 +496,7 @@ SplineParamsDimVector pmeGetSplineData(const gmx_pme_t *pme, CodePath mode,
     {
         case CodePath::CUDA:
             pme_gpu_transform_spline_atom_data(pme->gpu, atc, type, dimIndex, PmeLayoutTransform::GpuToHost);
-            // FIXME workaround added for compatibility with indices
+#if HACK_NON_IDENTITY_INDICES
             shuffle.assign(sourceBuffer, sourceBuffer + dimSize);
             for (auto i = 0; i < atomCount; i++)
             {
@@ -507,6 +507,7 @@ SplineParamsDimVector pmeGetSplineData(const gmx_pme_t *pme, CodePath mode,
                     sourceBuffer[atomIndex2 * pmeOrder + o] = shuffle[atomIndex1 * pmeOrder + o];
                 }
             }
+#endif
         // intentional absence of break
 
         case CodePath::CPU:
@@ -531,13 +532,13 @@ GridLineIndicesVector pmeGetGridlineIndices(const gmx_pme_t *pme, CodePath mode)
     switch (mode)
     {
         case CodePath::CUDA:
-            // FIXME workaround added for compatibility with indices
+#if HACK_NON_IDENTITY_INDICES
             shuffle.assign((IVec *)pme->gpu->staging.h_gridlineIndices, ((IVec *)pme->gpu->staging.h_gridlineIndices) + atomCount);
             for (auto i = 0; i < atomCount; i++)
             {
                 ((IVec *)pme->gpu->staging.h_gridlineIndices)[pme->gpu->staging.h_atomIndicesSpread[i]] = shuffle[i];
             }
-
+#endif
             gridLineIndices = GridLineIndicesVector::fromArray(reinterpret_cast<IVec *>(pme->gpu->staging.h_gridlineIndices), atomCount);
             break;
 
