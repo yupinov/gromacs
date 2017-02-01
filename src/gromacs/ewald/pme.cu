@@ -304,14 +304,14 @@ void pme_gpu_prepare_atom_indices(const pme_gpu_t *pmeGpu, int *h_atomIndices, i
     std::iota(h_atomIndices, h_atomIndices + pmeGpu->kernelParams->atoms.nAtoms, 0);
 
     // TODO: could be a kernel in itself
-    /*
-       // mix it up 2: [1 0 3 2 5 4 ....]
-       for (auto i = 0; i < pmeGpu->kernelParams->atoms.nAtoms / 2 * 2; i++)
-       {
+
+    // mix it up 2: [1 0 3 2 5 4 ....]
+    for (auto i = 0; i < pmeGpu->kernelParams->atoms.nAtoms / 2 * 2; i++)
+    {
         int delta = (i % 2) ? (-1) : 1;
         h_atomIndices[i] += delta;
-       }
-     */
+    }
+
     if (type == IndexType::Gather)
     {
         // mix it up 3: [2 0 1 5 3 4 ....]
@@ -322,7 +322,6 @@ void pme_gpu_prepare_atom_indices(const pme_gpu_t *pmeGpu, int *h_atomIndices, i
             h_atomIndices[i] += delta;
            }
          */
-
     }
 
     /* FIXME
@@ -336,11 +335,14 @@ void pme_gpu_prepare_atom_indices(const pme_gpu_t *pmeGpu, int *h_atomIndices, i
 
 #if PME_GPU_USE_PADDING
     const int virtualAtomIndex = pmeGpu->nAtomsAlloc - 1;
+    //FIXME: have a range[nAtoms, nAtosmPAdded - 1] here instead?
+    // might affect performance a bit
     // this is the index of the last element in all the padded atom data arrays;
     // it will correspond to the zero charge if there is any padding,
     // so we can treat this index as an index to a virtual neutral atom,
     // which will not affect the PME computation.
-    // so we can pad our atom indices with this, allowing the kernels to skip the atom index conditionals
+    // so we can pad our atom indices with this, allowing the kernels to skip the global atom index conditionals (wait, what, they're already irrelevant!)
+    // yes, the global index conditionals for indices themselves, not for the rest!
     // (with the small cost of spreading/gathering max 1 block of virtual atoms)
     std::fill(h_atomIndices + pmeGpu->kernelParams->atoms.nAtoms, h_atomIndices + indicesWorkSize,
               virtualAtomIndex);

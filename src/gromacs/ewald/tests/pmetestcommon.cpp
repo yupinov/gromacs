@@ -382,6 +382,9 @@ void pmeSetSplineData(const gmx_pme_t *pme, CodePath mode,
     GMX_RELEASE_ASSERT(dimSize == splineValues.size(), "Mismatch in spline data");
     real                 *splineBuffer = pmeGetSplineDataInternal(pme, type, dimIndex);
 
+    std::vector<real>     shuffle;
+    int                   atomIndex1, atomIndex2, splineIndexLinear, splineIndexBullshit, chunkIndex;
+
     switch (mode)
     {
         case CodePath::CPU:
@@ -390,6 +393,18 @@ void pmeSetSplineData(const gmx_pme_t *pme, CodePath mode,
 
         case CodePath::CUDA:
             std::copy(splineValues.begin(), splineValues.end(), splineBuffer);
+#if HACK_NON_IDENTITY_INDICES
+            shuffle.assign(splineBuffer, splineBuffer + dimSize);
+            for (auto i = 0; i < atomCount; i++)
+            {
+                atomIndex1 = i;
+                atomIndex2 = pme->gpu->staging.h_atomIndicesGather[i];
+                for (int o = 0; o < pmeOrder; o++)
+                {
+                    splineBuffer[atomIndex2 * pmeOrder + o] = shuffle[atomIndex1 * pmeOrder + o];
+                }
+            }
+#endif
             pme_gpu_transform_spline_atom_data(pme->gpu, atc, type, dimIndex, PmeLayoutTransform::HostToGpu);
             break;
 
@@ -416,11 +431,18 @@ void pmeSetGridLineIndices(const gmx_pme_t *pme, CodePath mode,
             GMX_RELEASE_ASSERT((0 <= index[i]) && (index[i] < gridSize[i]), "Invalid gridline index");
         }
     }
-
+    std::vector<IVec> shuffle;
     switch (mode)
     {
         case CodePath::CUDA:
             memcpy(pme->gpu->staging.h_gridlineIndices, gridLineIndices.data(), atomCount * sizeof(gridLineIndices[0]));
+#if HACK_NON_IDENTITY_INDICES
+            shuffle.assign((IVec *)pme->gpu->staging.h_gridlineIndices, ((IVec *)pme->gpu->staging.h_gridlineIndices) + atomCount);
+            for (auto i = 0; i < atomCount; i++)
+            {
+                ((IVec *)pme->gpu->staging.h_gridlineIndices)[pme->gpu->staging.h_atomIndicesGather[i]] = shuffle[i];
+            }
+#endif
             break;
 
         case CodePath::CPU:
