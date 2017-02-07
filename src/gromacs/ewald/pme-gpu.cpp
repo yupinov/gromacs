@@ -166,7 +166,7 @@ void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
             {
                 const auto gridOrdering = pme_gpu_uses_dd(pmeGpu) ? GridOrdering::YZX : GridOrdering::XYZ;
                 wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_SOLVE);
-                pme_gpu_solve(pmeGpu, cfftgrid, computeEnergyAndVirial, gridOrdering);
+                pme_gpu_solve(pmeGpu, cfftgrid, gridOrdering, computeEnergyAndVirial);
                 wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_SOLVE);
             }
             else

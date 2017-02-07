@@ -482,13 +482,13 @@ CUDA_FUNC_QUALIFIER void pme_gpu_3dfft(const pme_gpu_t       *CUDA_FUNC_ARGUMENT
  *
  * \param[in]     pmeGpu                  The PME GPU structure.
  * \param[in,out] h_grid                  The host-side input and output Fourier grid buffer (used only with testing or host-side FFT)
+ * \param[in]     gridOrdering            Specifies the dimension ordering of the complex grid. TODO: store this information?
  * \param[in]     computeEnergyAndVirial  Tells if the energy and virial computation should also be performed.
- * \param[in]     gridOrdering            Specifies the dimenion ordering of the complex grid. TODO: store this information?
  */
 CUDA_FUNC_QUALIFIER void pme_gpu_solve(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGpu),
                                        t_complex       *CUDA_FUNC_ARGUMENT(h_grid),
-                                       bool             CUDA_FUNC_ARGUMENT(computeEnergyAndVirial),
-                                       GridOrdering     CUDA_FUNC_ARGUMENT(gridOrdering)) CUDA_FUNC_TERM
+                                       GridOrdering     CUDA_FUNC_ARGUMENT(gridOrdering),
+                                       bool             CUDA_FUNC_ARGUMENT(computeEnergyAndVirial)) CUDA_FUNC_TERM
 
 /*! \libinternal \brief
  * A GPU force gathering function.

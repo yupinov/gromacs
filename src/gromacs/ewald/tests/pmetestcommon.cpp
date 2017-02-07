@@ -336,7 +336,7 @@ void pmePerformSolve(const gmx_pme_t *pme, CodePath mode,
             switch (method)
             {
                 case PmeSolveAlgorithm::Coulomb:
-                    pme_gpu_solve(pme->gpu, h_grid, computeEnergyAndVirial, gridOrdering);
+                    pme_gpu_solve(pme->gpu, h_grid, gridOrdering, computeEnergyAndVirial);
                     break;
 
                 default:

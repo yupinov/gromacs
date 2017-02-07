@@ -51,8 +51,11 @@
 #include "pme.cuh"
 #include "pme-timings.cuh"
 
-//! Maximum number of threads in the solve kernel block - picked on 560Ti (CC2.1), 660Ti (CC3.0) and 750 (CC5.0) GPUs (among 64, 128, 256, 512)
-constexpr int c_solveMaxThreadsPerBlock = (8 * warp_size);
+//! Solving kernel max block width in warps picked among powers of 2 (2, 4, 8, 16) for max. occupancy and min. runtime
+//! (560Ti (CC2.1), 660Ti (CC3.0) and 750 (CC5.0)))
+constexpr int c_solveMaxWarpsPerBlock = 8;
+//! Solving kernel max block size in threads
+constexpr int c_solveMaxThreadsPerBlock = (c_solveMaxWarpsPerBlock * warp_size);
 
 // CUDA 6.5 can not compile enum class as a template kernel parameter,
 // so we replace it with a duplicate simple enum
@@ -69,13 +72,13 @@ enum GridOrderingInternal
 /*! \brief
  * PME complex grid solver kernel function.
  *
- * \tparam[in] computeEnergyAndVirial   Tells if the reciprocal energy and virial should be computed.
  * \tparam[in] gridOrdering             Specifies the dimension ordering of the complex grid.
+ * \tparam[in] computeEnergyAndVirial   Tells if the reciprocal energy and virial should be computed.
  * \param[in]  kernelParams             Input PME CUDA data in constant memory.
  */
 template<
-    bool computeEnergyAndVirial,
-    GridOrderingInternal gridOrdering
+    GridOrderingInternal gridOrdering,
+    bool computeEnergyAndVirial
     >
 __launch_bounds__(c_solveMaxThreadsPerBlock)
 __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kernelParams)
@@ -111,7 +114,6 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
     const int localOffsetMinor = 0, localOffsetMajor = 0, localOffsetMiddle = 0; //unused
     const int localSizeMinor   = kernelParams.grid.complexGridSizePadded[minorDim];
     const int localSizeMiddle  = kernelParams.grid.complexGridSizePadded[middleDim];
-    const int localCountMajor  = kernelParams.grid.complexGridSize[majorDim];
     const int localCountMiddle = kernelParams.grid.complexGridSize[middleDim];
     const int localCountMinor  = kernelParams.grid.complexGridSize[minorDim];
     const int nMajor           = kernelParams.grid.realGridSize[majorDim];
@@ -126,10 +128,15 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
      * depending on the grid contiguous dimension size,
      * that can range from a part of a single gridline to several complete gridlines.
      */
-    const int threadLocalId = (threadIdx.y * blockDim.x) + threadIdx.x;
-    const int indexMinor    = blockIdx.x * blockDim.x + threadIdx.x;
-    const int indexMiddle   = blockIdx.y * blockDim.y + threadIdx.y;
-    const int indexMajor    = blockIdx.z * blockDim.z + threadIdx.z;
+    const int threadLocalId     = threadIdx.x;
+    const int gridLineSize      = localCountMinor;
+    const int gridLineIndex     = threadLocalId / gridLineSize;
+    const int gridLineCellIndex = threadLocalId - gridLineSize * gridLineIndex;
+    const int gridLinesPerBlock = blockDim.x / gridLineSize;
+    const int activeWarps       = (blockDim.x / warp_size);
+    const int indexMinor        = blockIdx.x * blockDim.x + gridLineCellIndex;
+    const int indexMiddle       = blockIdx.y * gridLinesPerBlock + gridLineIndex;
+    const int indexMajor        = blockIdx.z;
 
     /* Optional outputs */
     float energy = 0.0f;
@@ -140,8 +147,8 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
     float viryz  = 0.0f;
     float virzz  = 0.0f;
 
-    assert(indexMajor < localCountMajor);
-    if (/*(indexMajor < localCountMajor) & */ (indexMiddle < localCountMiddle) & (indexMinor < localCountMinor))
+    assert(indexMajor < kernelParams.grid.complexGridSize[majorDim]);
+    if ((indexMiddle < localCountMiddle) & (indexMinor < localCountMinor) & (gridLineIndex < gridLinesPerBlock))
     {
         /* The offset should be equal to the global thread index for coalesced access */
         const int            gridIndex     = (indexMajor * localSizeMiddle + indexMiddle) * localSizeMinor + indexMinor;
@@ -219,7 +226,7 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
             assert(m2k != 0.0f);
             //TODO: use LDG/textures for gm_splineValue
             float       denom = m2k * float(M_PI) * kernelParams.step.boxVolume * gm_splineValueMajor[kMajor] * gm_splineValueMiddle[kMiddle] * gm_splineValueMinor[kMinor];
-            assert(!isnan(denom));
+            assert(isfinite(denom));
             assert(denom != 0.0f);
             const float   tmp1   = expf(-kernelParams.grid.ewaldFactor * m2k);
             const float   etermk = kernelParams.constants.elFactor * tmp1 / denom;
@@ -307,9 +314,11 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
         const int        componentIndex      = threadLocalId & (warp_size - 1);
         const bool       validComponentIndex = (componentIndex < c_virialAndEnergyCount);
         /* Reduce 7 outputs per warp in the shared memory */
-        const int        stride              = 8; // this is c_virialAndEnergyCount==7 rounded up to power of 2 for convenience
+        const int        stride              = 8; // this is c_virialAndEnergyCount==7 rounded up to power of 2 for convenience, hence the assert
+        assert(c_virialAndEnergyCount == 7);
         const int        reductionBufferSize = (c_solveMaxThreadsPerBlock / warp_size) * stride;
         __shared__ float sm_virialAndEnergy[reductionBufferSize];
+
         if (validComponentIndex)
         {
             const int warpIndex = threadLocalId / warp_size;
@@ -322,9 +331,10 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
 #pragma unroll
         for (int reductionStride = reductionBufferSize >> 1; reductionStride >= warp_size; reductionStride >>= 1)
         {
-            if (targetIndex < reductionStride)
+            const int sourceIndex = targetIndex + reductionStride;
+            if ((targetIndex < reductionStride) & (sourceIndex < activeWarps * stride))
             {
-                const int sourceIndex = targetIndex + reductionStride;
+                // TODO: the second conditional is only needed on first iteration, actually - see if compiler eliminates it!
                 sm_virialAndEnergy[targetIndex] += sm_virialAndEnergy[sourceIndex];
             }
             __syncthreads();
@@ -342,11 +352,12 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
             /* Final output */
             if (validComponentIndex)
             {
+                assert(isfinite(output));
                 atomicAdd(gm_virialAndEnergy + componentIndex, output);
             }
         }
 #else
-        /* Shared memory reduction with atomics.
+        /* Shared memory reduction with atomics for compute capability < 3.0.
          * Each component is first reduced into warp_size positions in the shared memory;
          * Then first c_virialAndEnergyCount warps reduce everything further and add to the global memory.
          * This can likely be improved, but is anyway faster than the previous straightforward reduction,
@@ -382,7 +393,7 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
         }
         __syncthreads();
 
-        assert(blockDim.x * blockDim.y * blockDim.z >= c_virialAndEnergyCount * warp_size); // we need to cover all components
+        assert(activeWarps >= c_virialAndEnergyCount); // we need to cover all components, or have multiple iterations otherwise
         const int componentIndex = warpIndex;
         if (componentIndex < c_virialAndEnergyCount)
         {
@@ -405,7 +416,7 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
 }
 
 void pme_gpu_solve(const pme_gpu_t *pmeGpu, t_complex *h_grid,
-                   bool computeEnergyAndVirial, GridOrdering gridOrdering)
+                   GridOrdering gridOrdering, bool computeEnergyAndVirial)
 {
     const bool   copyInputAndOutputGrid = pme_gpu_is_testing(pmeGpu) || !pme_gpu_performs_FFT(pmeGpu);
 
@@ -436,11 +447,14 @@ void pme_gpu_solve(const pme_gpu_t *pmeGpu, t_complex *h_grid,
             GMX_ASSERT(false, "Implement grid ordering here and below for the kernel launch");
     }
 
-    const int   maxBlockSize      = c_solveMaxThreadsPerBlock;
-    const int   gridLineSize      = pmeGpu->kernelParams->grid.complexGridSizePadded[minorDim];
-    const int   gridLinesPerBlock = max(maxBlockSize / gridLineSize, 1);
-    const int   blocksPerGridLine = (gridLineSize + maxBlockSize - 1) / maxBlockSize;
-    dim3 threads(gridLineSize, gridLinesPerBlock);
+    const int maxBlockSize      = c_solveMaxThreadsPerBlock;
+    const int gridLineSize      = pmeGpu->kernelParams->grid.complexGridSize[minorDim];
+    const int gridLinesPerBlock = max(maxBlockSize / gridLineSize, 1);
+    const int blocksPerGridLine = (gridLineSize + maxBlockSize - 1) / maxBlockSize;
+    const int cellsPerBlock     = gridLineSize * gridLinesPerBlock;
+    const int blockSize         = (cellsPerBlock + warp_size - 1) / warp_size * warp_size;
+    // rounding up to full warps so that shuffle operations produce defined results
+    dim3 threads(blockSize);
     dim3 blocks(blocksPerGridLine,
                 (pmeGpu->kernelParams->grid.complexGridSize[middleDim] + gridLinesPerBlock - 1) / gridLinesPerBlock,
                 pmeGpu->kernelParams->grid.complexGridSize[majorDim]);
@@ -450,22 +464,22 @@ void pme_gpu_solve(const pme_gpu_t *pmeGpu, t_complex *h_grid,
     {
         if (computeEnergyAndVirial)
         {
-            pme_solve_kernel<true, GridOrderingInternal::YZX> <<< blocks, threads, 0, stream>>> (*kernelParamsPtr);
+            pme_solve_kernel<GridOrderingInternal::YZX, true> <<< blocks, threads, 0, stream>>> (*kernelParamsPtr);
         }
         else
         {
-            pme_solve_kernel<false, GridOrderingInternal::YZX> <<< blocks, threads, 0, stream>>> (*kernelParamsPtr);
+            pme_solve_kernel<GridOrderingInternal::YZX, false> <<< blocks, threads, 0, stream>>> (*kernelParamsPtr);
         }
     }
     else if (gridOrdering == GridOrdering::XYZ)
     {
         if (computeEnergyAndVirial)
         {
-            pme_solve_kernel<true, GridOrderingInternal::XYZ> <<< blocks, threads, 0, stream>>> (*kernelParamsPtr);
+            pme_solve_kernel<GridOrderingInternal::XYZ, true> <<< blocks, threads, 0, stream>>> (*kernelParamsPtr);
         }
         else
         {
-            pme_solve_kernel<false, GridOrderingInternal::XYZ> <<< blocks, threads, 0, stream>>> (*kernelParamsPtr);
+            pme_solve_kernel<GridOrderingInternal::XYZ, false> <<< blocks, threads, 0, stream>>> (*kernelParamsPtr);
         }
     }
     CU_LAUNCH_ERR("pme_solve_kernel");
