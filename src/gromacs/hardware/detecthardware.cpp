@@ -183,7 +183,7 @@ std::string sprint_gpus(const gmx_gpu_info_t *gpu_info)
  * \param[in] gpuTasks               GPU mapping information manager
  * \param[in] cr                     The communication structure
  * \param[out] gpusSharedAmongRanks  The boolean which tells if some ranks of the node use the same GPU
- * \return                   String to write to the log file (on the master rank)
+ * \return                           String to write to the log file (on the master rank)
  * \throws                   std::bad_alloc if out of memory */
 static std::string
 makeGpuUsageReport(const gmx_gpu_info_t *gpu_info,
@@ -207,7 +207,7 @@ makeGpuUsageReport(const gmx_gpu_info_t *gpu_info,
     /* First, collecting information about GPU task assignment */
     /* Preliminary reporting of GPU assignment (for each type of task - on the separate line) */
     std::string                          taskOutput;
-    const std::map<GpuTask, std::string> gpuTasksToReport = {{GpuTask::NB, "PP"}};
+    const std::map<GpuTask, std::string> gpuTasksToReport = {{GpuTask::NB, "PP"}, {GpuTask::PME, "PME"}};
     /* All the GPU IDs in use on the node will be in this container */
     std::vector<int>                     nodeGpuIds;
     /* This is a local GPU ID container for checking whether GPUs are being shared among ranks */
@@ -305,6 +305,7 @@ makeGpuUsageReport(const gmx_gpu_info_t *gpu_info,
         {
             output += gmx::formatString("On host %s ", host);
         }
+
         output += gmx::formatString("%zu GPU task%s %sselected for this run, with %zu GPU%s.\n",
                                     nodeGpuIds.size(), (nodeGpuIds.size() > 1) ? "s" : "", gpu_opt->bUserSet ? "user-" : "auto-",
                                     gpusInUseNode, (gpusInUseNode > 1) ? "s" : "");
@@ -507,6 +508,7 @@ void gmx_check_hw_runconf_consistency(const gmx::MDLogger  &mdlog,
              * TODO: Can this error be even triggered nowadays? (Instead of triggering "non-multiple GPU count" error).
              * Probably should be removed for multiple GPU tasks per rank.
              */
+#ifdef FIXME
             if (gpuTasksNodeCount != gpuRanksNodeCount)
             {
                 /* Avoid duplicate error messages.
@@ -530,7 +532,6 @@ void gmx_check_hw_runconf_consistency(const gmx::MDLogger  &mdlog,
                     {
                         reasonForLimit = "was detected";
                     }
-                    // FIXME regression tests have to be taught about new messages as well ("GPU-using" instead of "PP").
                     gmx_fatal(FARGS,
                               "Incorrect launch configuration: mismatching number of GPU-using %s and GPUs%s.\n"
                               "%s was started with %d GPU-using %s%s, but only %d GPU%s %s.",
@@ -539,6 +540,7 @@ void gmx_check_hw_runconf_consistency(const gmx::MDLogger  &mdlog,
                               gpuTasksNodeCount, gpuTasksPlural.c_str(), reasonForLimit.c_str()); // TODO count unique GPU ids here as well?
                 }
             }
+#endif
         }
         /* Some ranks might share a GPU, which generally degrades performance */
         // TODO: should this be internal to GpuTaskAssignmentManager::selectRankGpus?
