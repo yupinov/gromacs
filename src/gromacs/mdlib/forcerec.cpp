@@ -90,6 +90,7 @@
 #include "gromacs/tables/forcetable.h"
 #include "gromacs/topology/mtop_util.h"
 #include "gromacs/trajectory/trajectoryframe.h"
+#include "gromacs/utility/basenetwork.h" //TODO - only for the node hash function, should go away
 #include "gromacs/utility/cstringutil.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
@@ -2099,7 +2100,8 @@ static void init_nb_verlet(FILE                *fp,
                            const t_forcerec    *fr,
                            const t_commrec     *cr,
                            const char          *nbpu_opt,
-                           gmx_device_info_t   *gpuInfo)
+                           gmx_device_info_t   *gpuInfo,
+                           bool                 multipleContexts)
 {
     nonbonded_verlet_t *nbv;
     int                 i;
@@ -2234,7 +2236,8 @@ static void init_nb_verlet(FILE                *fp,
                        fr->ic,
                        nbv->grp,
                        cr->nodeid,
-                       (nbv->ngrp > 1) && !bHybridGPURun);
+                       (nbv->ngrp > 1) && !bHybridGPURun,
+                       multipleContexts);
 
         /* With tMPI + GPUs some ranks may be sharing GPU(s) and therefore
          * also sharing texture references. To keep the code simple, we don't
@@ -2306,7 +2309,8 @@ void init_forcerec(FILE                *fp,
                    const char          *nbpu_opt,
                    gmx_bool             bNoSolvOpt,
                    real                 print_force,
-                   gmx_device_info_t   *gpuInfo)
+                   gmx_device_info_t   *gpuInfo,
+                   bool                 multipleContexts)
 {
     int            i, m, negp_pp, negptable, egi, egj;
     real           rtab;
@@ -3200,7 +3204,7 @@ void init_forcerec(FILE                *fp,
             GMX_RELEASE_ASSERT(ir->rcoulomb == ir->rvdw, "With Verlet lists and no PME rcoulomb and rvdw should be identical");
         }
 
-        init_nb_verlet(fp, mdlog, &fr->nbv, bFEP_NonBonded, ir, fr, cr, nbpu_opt, gpuInfo);
+        init_nb_verlet(fp, mdlog, &fr->nbv, bFEP_NonBonded, ir, fr, cr, nbpu_opt, gpuInfo, multipleContexts);
     }
 
     if (ir->eDispCorr != edispcNO)
@@ -3247,12 +3251,15 @@ void free_gpu_resources(const t_forcerec     *fr,
     if (isPPrankUsingGPU)
     {
         /* Free nbnxn data in GPU memory */
+        switch_gpu_context(gpuTasks.gpuInfo(GpuTask::NB));
         nbnxn_gpu_free(fr->nbv->gpu_nbv);
     }
 
-    if (gpuTasks.rankGpuTasksCount() > 0)
+    const auto rankGpuInfos = gpuTasks.rankGpuInfos();
+    /* Stop the GPU profiler (only CUDA) */
+    for (auto *gpuInfo : rankGpuInfos)
     {
-        /* Stop the GPU profiler (only CUDA) */
+        switch_gpu_context(gpuInfo);
         stopGpuProfiler();
     }
 
@@ -3272,15 +3279,11 @@ void free_gpu_resources(const t_forcerec     *fr,
     }
 #endif  /* GMX_THREAD_MPI */
 
-    /* Uninitialize the active GPU (by destroying the context)
-     * TODO: this has always assumed that the context is active,
-     * which will be true as long as we only have single GPU context per rank.
-     * (add context switching if needed).
-     */
-    const auto rankGpuInfos = gpuTasks.rankGpuInfos();
+    /* Uninitialize all the active GPU contexts  */
     for (auto *gpuInfo : rankGpuInfos)
     {
         std::string errorString;
+        switch_gpu_context(gpuInfo);
         if (!free_cuda_gpu(gpuInfo, &errorString))
         {
             gmx_warning("On rank %d %s", cr->nodeid, errorString.c_str());
