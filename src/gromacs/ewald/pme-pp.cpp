@@ -55,6 +55,7 @@
 #include "gromacs/domdec/domdec.h"
 #include "gromacs/domdec/domdec_struct.h"
 #include "gromacs/ewald/pme.h"
+#include "gromacs/ewald/pme-gpu-internal.h" //FIXME
 #include "gromacs/gmxlib/network.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/mdlib/gmx_omp_nthreads.h"
@@ -437,7 +438,8 @@ int gmx_pme_recv_coeffs_coords(struct gmx_pme_pp *pme_pp,
                                ivec               grid_size,
                                real              *ewaldcoeff_q,
                                real              *ewaldcoeff_lj,
-                               bool              *atomSetChanged)
+                               bool              *atomSetChanged,
+                               struct pme_gpu_t  *pmeGpu)
 {
     int status = -1;
     int nat    = 0;
@@ -599,12 +601,15 @@ int gmx_pme_recv_coeffs_coords(struct gmx_pme_pp *pme_pp,
                     }
                 }
             }
+            /* The number of atoms is known */
+            //gmx_pme_reinit_atoms(pme, nat, nullptr);  //FIXME double call
+            pme_gpu_reinit_atoms(pmeGpu, nat, nullptr);
         }
 
         if (cnb.flags & PP_PME_COORD)
         {
             /* The box, FE flag and lambda are sent along with the coordinates
-             *  */
+             */
             copy_mat(cnb.box, box);
             *lambda_q       = cnb.lambda_q;
             *lambda_lj      = cnb.lambda_lj;
@@ -613,6 +618,7 @@ int gmx_pme_recv_coeffs_coords(struct gmx_pme_pp *pme_pp,
 
             /* Receive the coordinates in place */
             nat = 0;
+            int messagesCoords = messages;
             for (int sender = 0; sender < pme_pp->nnode; sender++)
             {
                 if (pme_pp->nat[sender] > 0)
@@ -620,7 +626,7 @@ int gmx_pme_recv_coeffs_coords(struct gmx_pme_pp *pme_pp,
                     MPI_Irecv(pme_pp->x[nat], pme_pp->nat[sender]*sizeof(rvec),
                               MPI_BYTE,
                               pme_pp->node[sender], eCommType_COORD,
-                              pme_pp->mpi_comm_mysim, &pme_pp->req[messages++]);
+                              pme_pp->mpi_comm_mysim, &pme_pp->req[messagesCoords++]);
                     nat += pme_pp->nat[sender];
                     if (debug)
                     {
@@ -632,6 +638,17 @@ int gmx_pme_recv_coeffs_coords(struct gmx_pme_pp *pme_pp,
             }
 
             status = pmerecvqxX;
+
+            /* Now send the coordinates rank-by-rank into PME for copying (TODO spreading as well) */
+            nat            = 0;
+            messagesCoords = messages;
+            for (int sender = 0; sender < pme_pp->nnode; sender++)
+            {
+                MPI_Wait(&pme_pp->req[messagesCoords], &pme_pp->stat[messagesCoords]);
+                pme_gpu_copy_input_coordinates(pmeGpu, pme_pp->x, nat, pme_pp->nat[sender]); // not context activation here, right? Since it's a PME-only rank?
+                messagesCoords++;
+                nat += pme_pp->nat[sender];
+            }
         }
 
         /* Wait for the coordinates and/or charges to arrive */

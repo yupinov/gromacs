@@ -202,7 +202,8 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
                                              grid_switch,
                                              &ewaldcoeff_q,
                                              &ewaldcoeff_lj,
-                                             &atomSetChanged);
+                                             &atomSetChanged,
+                                             pme->gpu);
 
             if (ret == pmerecvqxSWITCHGRID)
             {

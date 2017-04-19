@@ -217,15 +217,19 @@ CUDA_FUNC_QUALIFIER void pme_gpu_sync_output_forces(const pme_gpu_t *CUDA_FUNC_A
 CUDA_FUNC_QUALIFIER void pme_gpu_realloc_coordinates(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU)) CUDA_FUNC_TERM
 
 /*! \libinternal \brief
- * Copies the input coordinates from the CPU buffer onto the GPU.
+ * Copies the given range of input coordinates from the CPU buffer onto the GPU.
  *
  * \param[in] pmeGPU            The PME GPU structure.
  * \param[in] h_coordinates     Input coordinates (XYZ rvec array).
+ * \param[in] startAtom         Index of the start of the range (in atoms).
+ * \param[in] atomCount         The length of the range (in atoms).
  *
- * Needs to be called every MD step. The coordinates are then used in the spline calculation.
+ * Needs to be called every MD step (to copy coordinates for all the atoms). The coordinates are then used in the spline calculation.
  */
 CUDA_FUNC_QUALIFIER void pme_gpu_copy_input_coordinates(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU),
-                                                        const rvec      *CUDA_FUNC_ARGUMENT(h_coordinates)) CUDA_FUNC_TERM
+                                                        const rvec      *CUDA_FUNC_ARGUMENT(h_coordinates),
+                                                        size_t           CUDA_FUNC_ARGUMENT(startAtom),
+                                                        size_t           CUDA_FUNC_ARGUMENT(atomCount)) CUDA_FUNC_TERM
 
 /*! \libinternal \brief
  * Frees the coordinates on the GPU.
@@ -588,17 +592,6 @@ void pme_gpu_get_energy_virial(const pme_gpu_t *pmeGPU, real *energy, matrix vir
  *                           Currently it is simply compared with the previous one to determine if it needs to be updated.
  */
 void pme_gpu_update_input_box(pme_gpu_t *pmeGPU, const matrix box);
-
-/*! \libinternal \brief
- * Starts the PME GPU step (copies coordinates onto GPU, possibly sets the unit cell parameters).
- * Simply calls pme_gpu_update_input_box() and pme_gpu_copy_input_coordinates().
- *
- * \param[in] pmeGPU         The PME GPU structure.
- * \param[in] box            The unit cell box which does not necessarily change every step (only with pressure coupling enabled).
- *                           Currently it is simply compared with the previous one to determine if it needs to be updated.
- * \param[in] h_coordinates  Input coordinates (XYZ rvec array).
- */
-void pme_gpu_start_step(pme_gpu_t *pmeGPU, const matrix box, const rvec *h_coordinates);
 
 /*! \libinternal \brief
  * Finishes the PME GPU step, waiting for the output forces and/or energy/virial to be copied to the host.

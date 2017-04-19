@@ -129,7 +129,15 @@ void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
 
     wallcycle_start(wcycle, ewcLAUNCH_GPU_PME);
     wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_INIT);
-    pme_gpu_start_step(pmeGpu, box, x);
+    if (pmeGpu->settings.multipleContexts)
+    {
+        activate_gpu(pmeGpu->deviceInfo);
+    }
+    if (pme->bPPnode)                                     // a separate PME rank has already copied coordinates at this point
+    {
+        pme_gpu_copy_input_coordinates(pmeGpu, x, 0, -1); //FIXME pmeGpu->kernelParams->atoms.nAtoms);
+    }
+    pme_gpu_update_input_box(pmeGpu, box);
     wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_INIT);
 
     const unsigned int grid_index = 0;

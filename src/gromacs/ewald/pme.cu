@@ -232,16 +232,22 @@ void pme_gpu_realloc_coordinates(const pme_gpu_t *pmeGPU)
     }
 }
 
-void pme_gpu_copy_input_coordinates(const pme_gpu_t *pmeGPU, const rvec *h_coordinates)
+void pme_gpu_copy_input_coordinates(const pme_gpu_t *pmeGPU, const rvec *h_coordinates,
+                                    size_t startAtom, size_t atomCount)
 {
     GMX_ASSERT(h_coordinates, "Bad host-side coordinate buffer in PME GPU");
 #if GMX_DOUBLE
     GMX_RELEASE_ASSERT(false, "Only single precision is supported");
     GMX_UNUSED_VALUE(h_coordinates);
 #else
+    if (atomCount == -1)
+    {
+        atomCount = pmeGPU->kernelParams->atoms.nAtoms;
+    }
     pme_gpu_make_sure_memory_is_pinned((void *)h_coordinates, pmeGPU->kernelParams->atoms.nAtoms * sizeof(rvec));
-    cu_copy_H2D_async(pmeGPU->kernelParams->atoms.d_coordinates, const_cast<rvec *>(h_coordinates),
-                      pmeGPU->kernelParams->atoms.nAtoms * sizeof(rvec), pmeGPU->archSpecific->pmeStream);
+
+    cu_copy_H2D_async(pmeGPU->kernelParams->atoms.d_coordinates + startAtom * DIM, const_cast<rvec *>(h_coordinates) + startAtom,
+                      atomCount * sizeof(rvec), pmeGPU->archSpecific->pmeStream);
 #endif
 }
 

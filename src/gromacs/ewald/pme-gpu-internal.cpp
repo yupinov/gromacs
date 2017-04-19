@@ -123,16 +123,6 @@ void pme_gpu_update_input_box(pme_gpu_t *pmeGPU, const matrix box)
     }
 }
 
-void pme_gpu_start_step(pme_gpu_t *pmeGPU, const matrix box, const rvec *h_coordinates)
-{
-    if (pmeGPU->settings.multipleContexts)
-    {
-        activate_gpu(pmeGPU->deviceInfo);
-    }
-    pme_gpu_copy_input_coordinates(pmeGPU, h_coordinates);
-    pme_gpu_update_input_box(pmeGPU, box);
-}
-
 /*! \brief \libinternal
  * The PME GPU reinitialization function that is called both at the end of any MD step and on any load balancing step.
  *
@@ -458,7 +448,11 @@ void pme_gpu_reinit_atoms(pme_gpu_t *pmeGPU, const int nAtoms, const real *coeff
     GMX_RELEASE_ASSERT(false, "Only single precision supported");
     GMX_UNUSED_VALUE(coefficients);
 #else
-    pme_gpu_realloc_and_copy_input_coefficients(pmeGPU, reinterpret_cast<const float *>(coefficients));
+    //FIXME
+    if (coefficients)
+    {
+        pme_gpu_realloc_and_copy_input_coefficients(pmeGPU, reinterpret_cast<const float *>(coefficients));
+    }
     /* Could also be checked for haveToRealloc, but the copy always needs to be performed */
 #endif
 
