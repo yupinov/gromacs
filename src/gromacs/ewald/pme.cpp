@@ -628,8 +628,8 @@ int gmx_pme_init(struct gmx_pme_t   **pmedata,
             MPI_Comm_size(pme->mpi_comm_d[1], &pme->nnodes_minor);
 #endif
         }
-        pme->bPPnode = (cr->duty & DUTY_PP);
     }
+    pme->bPPnode = (cr->duty & DUTY_PP);
 
     pme->nthread = nthread;
 

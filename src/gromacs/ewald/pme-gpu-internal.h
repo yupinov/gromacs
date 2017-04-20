@@ -444,12 +444,35 @@ CUDA_FUNC_QUALIFIER void pme_gpu_get_timings(const pme_gpu_t         *CUDA_FUNC_
  *                             e.g. testing or host-side FFT)
  * \param[in]  computeSplines  Should the computation of spline parameters and gridline indices be performed.
  * \param[in]  spreadCharges   Should the charges/coefficients be spread on the grid.
+ * \param[in]  startAtom       Index of the start of the working range (in atoms).
+ * \param[in]  atomCount       The length of the working range (in atoms).
+ */
+CUDA_FUNC_QUALIFIER void pme_gpu_spread(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGpu),
+                                        int              CUDA_FUNC_ARGUMENT(gridIndex),
+                                        real            *CUDA_FUNC_ARGUMENT(h_grid),
+                                        bool             CUDA_FUNC_ARGUMENT(computeSplines),
+                                        bool             CUDA_FUNC_ARGUMENT(spreadCharges),
+                                        size_t           CUDA_FUNC_ARGUMENT(startAtom),
+                                        size_t           CUDA_FUNC_ARGUMENT(atomCount)) CUDA_FUNC_TERM
+
+//FIXME duplicate
+/*! \libinternal \brief
+ * A GPU spline computation and charge spreading function.
+ *
+ * \param[in]  pmeGpu          The PME GPU structure.
+ * \param[in]  gridIndex       Index of the PME grid - unused, assumed to be 0.
+ * \param[out] h_grid          The host-side grid buffer (used only if the result of the spread is expected on the host,
+ *                             e.g. testing or host-side FFT)
+ * \param[in]  computeSplines  Should the computation of spline parameters and gridline indices be performed.
+ * \param[in]  spreadCharges   Should the charges/coefficients be spread on the grid.
  */
 CUDA_FUNC_QUALIFIER void pme_gpu_spread(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGpu),
                                         int              CUDA_FUNC_ARGUMENT(gridIndex),
                                         real            *CUDA_FUNC_ARGUMENT(h_grid),
                                         bool             CUDA_FUNC_ARGUMENT(computeSplines),
                                         bool             CUDA_FUNC_ARGUMENT(spreadCharges)) CUDA_FUNC_TERM
+
+
 
 /*! \libinternal \brief
  * 3D FFT R2C/C2R routine.

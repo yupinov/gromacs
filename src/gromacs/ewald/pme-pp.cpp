@@ -439,7 +439,7 @@ int gmx_pme_recv_coeffs_coords(struct gmx_pme_pp *pme_pp,
                                real              *ewaldcoeff_q,
                                real              *ewaldcoeff_lj,
                                bool              *atomSetChanged,
-                               struct pme_gpu_t  *pmeGpu)
+                               const gmx_pme_t   *pme)
 {
     int status = -1;
     int nat    = 0;
@@ -602,8 +602,10 @@ int gmx_pme_recv_coeffs_coords(struct gmx_pme_pp *pme_pp,
                 }
             }
             /* The number of atoms is known */
-            //gmx_pme_reinit_atoms(pme, nat, nullptr);  //FIXME double call
-            pme_gpu_reinit_atoms(pmeGpu, nat, nullptr);
+            MPI_Waitall(messages, pme_pp->req, pme_pp->stat); //FIXME moved
+            messages = 0;
+            gmx_pme_reinit_atoms(pme, nat, pme_pp->chargeA);  //FIXME no proper conditionals
+            //FIXME sync here?
         }
 
         if (cnb.flags & PP_PME_COORD)
@@ -639,20 +641,33 @@ int gmx_pme_recv_coeffs_coords(struct gmx_pme_pp *pme_pp,
 
             status = pmerecvqxX;
 
-            /* Now send the coordinates rank-by-rank into PME for copying (TODO spreading as well) */
+            /* Now send the input box and coordinates rank-by-rank into PME for copying and spreading */
+            //FIXME conditionals on GPU being enabled
+            pme_gpu_update_input_box(pme->gpu, box);
+            // More PME GPU copypaste!
+            //TODO hide from double-precision build, etc.
+            const bool         computeSplines = true;
+            const unsigned int grid_index     = 0;
+            auto              *grid           = pme->pmegrid[grid_index].grid.grid; // duh
+
             nat            = 0;
             messagesCoords = messages;
             for (int sender = 0; sender < pme_pp->nnode; sender++)
             {
                 MPI_Wait(&pme_pp->req[messagesCoords], &pme_pp->stat[messagesCoords]);
-                pme_gpu_copy_input_coordinates(pmeGpu, pme_pp->x, nat, pme_pp->nat[sender]); // not context activation here, right? Since it's a PME-only rank?
+                //TIMER goes here? actually, with spreading startign immediately, it woudl only make sense for the box + first coord copy at most
+                pme_gpu_copy_input_coordinates(pme->gpu, pme_pp->x, nat, pme_pp->nat[sender]); // not context activation here, since it's a PME-only rank
+                //wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_SPREAD);
+                pme_gpu_spread(pme->gpu, grid_index, grid, computeSplines, true, nat, pme_pp->nat[sender]);
+                //wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_SPREAD);
+
                 messagesCoords++;
                 nat += pme_pp->nat[sender];
             }
         }
 
-        /* Wait for the coordinates and/or charges to arrive */
-        MPI_Waitall(messages, pme_pp->req, pme_pp->stat);
+        /* Wait for the charges to arrive - TODO move this */
+        //FIXME moved MPI_Waitall(messages, pme_pp->req, pme_pp->stat);
         messages = 0;
     }
     while (status == -1);

@@ -3281,7 +3281,7 @@ void free_gpu_resources(const t_forcerec     *fr,
          */
         const auto *gpuInfo1 = gpuTasks.gpuInfo(GpuTask::NB);
         const auto *gpuInfo2 = gpuTasks.gpuInfo(GpuTask::PME);
-        const auto *gpuInfo  = gpuInfo1 ? gpuInfo1 : gpuInfo2;
+        const auto *gpuInfo  = gpuInfo1 ? gpuInfo1 : gpuInfo2;  //FIXME
         std::string gpu_err_str;
         if (!free_cuda_gpu(gpuInfo, &gpu_err_str))
         {

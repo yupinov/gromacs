@@ -169,12 +169,13 @@ void pme_gpu_stage_atom_data(const pme_gpu_cuda_kernel_params_t kernelParams,
     // TODO: with padding disabled, this would ignore spline data alignment
     const int threadLocalIndex = ((threadIdx.z * blockDim.y + threadIdx.y) * blockDim.x) + threadIdx.x;
     const int localIndex       = threadLocalIndex;
-    const int globalIndexBase  = blockIdx.x * atomsPerBlock * dataCountPerAtom;
+    const int globalIndexBase  = (kernelParams.step.chunkStartAtom + blockIdx.x * atomsPerBlock) * dataCountPerAtom;
     const int globalIndex      = globalIndexBase + localIndex;
-    const int globalCheck      = pme_gpu_check_atom_data_index(globalIndex, kernelParams.atoms.nAtoms * dataCountPerAtom);
+    const int globalCheck      = pme_gpu_check_atom_data_index(globalIndex, (kernelParams.step.chunkStartAtom + kernelParams.step.chunkAtomCount) * dataCountPerAtom); //TODO test //FIXME -1?
     if ((localIndex < atomsPerBlock * dataCountPerAtom) & globalCheck)
     {
         assert(!isnan(float(gm_source[globalIndex])));
+        //printf("I'm gonna read from %p[%d] to %p[%d]\n", gm_source, globalIndex, sm_destination, localIndex);
         sm_destination[localIndex] = gm_source[globalIndex];
     }
 }
@@ -197,7 +198,7 @@ void pme_gpu_stage_atom_data(const pme_gpu_cuda_kernel_params_t kernelParams,
 template <const int order,
           const int atomsPerBlock>
 __device__ __forceinline__ void calculate_splines(const pme_gpu_cuda_kernel_params_t     kernelParams,
-                                                  const int                              atomIndexOffset,
+                                                  const int                              atomIndexOffset, // TODO why is this a parameter?
                                                   const float3 * __restrict__            sm_coordinates,
                                                   const float * __restrict__             sm_coefficients,
                                                   float * __restrict__                   sm_theta,
@@ -223,6 +224,16 @@ __device__ __forceinline__ void calculate_splines(const pme_gpu_cuda_kernel_para
     const int atomWarpIndex     = threadWarpIndex % PME_SPREADGATHER_ATOMS_PER_WARP;
     /* Atom index w.r.t. block/shared memory */
     const int atomIndexLocal    = warpIndex * PME_SPREADGATHER_ATOMS_PER_WARP + atomWarpIndex;
+    //FIXME this also assumes atomStart being aligned....
+    // how about separate aligned containers for everything? starting on the alignment of 8
+    // PRO: simpler to use
+    // CON: difficult to resize, have to be zeroed both at the beginning and the end (probably every step) or skipped
+    // separate non-aligned containers:
+    // still painful with local/global indices, but no zeroing/skpping at the beginning
+    // but then it's the same as a single container with offsets
+    // It's just the end of the coordinate array that has to be treated gracefully in a single container
+    // (alternatively just zero everything out at the step end and rely on the PP rank sequence)
+    // another option: round down atomCount to be divisible
 
     /* Atom index w.r.t. global memory */
     const int atomIndexGlobal   = atomIndexOffset + atomIndexLocal;
@@ -256,7 +267,7 @@ __device__ __forceinline__ void calculate_splines(const pme_gpu_cuda_kernel_para
 #define SPLINE_DATA(i) (*SPLINE_DATA_PTR(i))
 
     const int localCheck  = (dimIndex < DIM) && (orderIndex < (PME_GPU_PARALLEL_SPLINE ? order : 1));
-    const int globalCheck = pme_gpu_check_atom_data_index(atomIndexGlobal, kernelParams.atoms.nAtoms);
+    const int globalCheck = pme_gpu_check_atom_data_index(atomIndexGlobal, kernelParams.step.chunkStartAtom + kernelParams.step.chunkAtomCount); //TODO store end
 
     if (localCheck && globalCheck)
     {
@@ -428,7 +439,7 @@ __device__ __forceinline__ void spread_charges(const pme_gpu_cuda_kernel_params_
     const int            atomIndexLocal  = threadIdx.z;
     const int            atomIndexGlobal = atomIndexOffset + atomIndexLocal;
 
-    const int            globalCheck = pme_gpu_check_atom_data_index(atomIndexGlobal, kernelParams.atoms.nAtoms);
+    const int            globalCheck = pme_gpu_check_atom_data_index(atomIndexGlobal, kernelParams.step.chunkStartAtom + kernelParams.step.chunkAtomCount);
     const int            chargeCheck = pme_gpu_check_atom_charge(sm_coefficients[atomIndexLocal]);
     if (chargeCheck & globalCheck)
     {
@@ -507,7 +518,7 @@ __global__ void pme_spline_and_spread_kernel(const pme_gpu_cuda_kernel_params_t 
     // Spline values
     __shared__ float              sm_theta[atomsPerBlock * DIM * order];
 
-    const int                     atomIndexOffset = blockIdx.x * atomsPerBlock;
+    const int                     atomIndexOffset = kernelParams.step.chunkStartAtom + blockIdx.x * atomsPerBlock; //TODO pass it into staging as well?
 
     /* Staging coefficients/charges for both spline and spread */
     pme_gpu_stage_atom_data<float, atomsPerBlock, 1>(kernelParams, sm_coefficients, kernelParams.atoms.d_coefficients);
@@ -543,23 +554,60 @@ __global__ void pme_spline_and_spread_kernel(const pme_gpu_cuda_kernel_params_t 
     }
 }
 
+// TODO test subrange functionality as well?
 void pme_gpu_spread(const pme_gpu_t *pmeGpu,
                     int gmx_unused   gridIndex,
                     real            *h_grid,
                     bool             computeSplines,
                     bool             spreadCharges)
 {
-    GMX_RELEASE_ASSERT(computeSplines || spreadCharges, "PME spline/spread kernel has invalid input (nothing to do)");
+    pme_gpu_spread(pmeGpu, gridIndex, h_grid, computeSplines, spreadCharges, 0, pmeGpu->kernelParams->atoms.nAtoms);
+}
 
-    cudaStream_t                        stream          = pmeGpu->archSpecific->pmeStream;
-    const auto  *kernelParamsPtr = pmeGpu->kernelParams.get();
+void pme_gpu_spread(const pme_gpu_t *pmeGpu,
+                    int gmx_unused   gridIndex,
+                    real            *h_grid,
+                    bool             computeSplines,
+                    bool             spreadCharges,
+                    size_t           chunkStartAtom,
+                    size_t           chunkAtomCount)
+{
+    GMX_ASSERT(computeSplines || spreadCharges, "PME spline/spread kernel has invalid input (nothing to do)");
 
-    const int    order                   = pmeGpu->common->pme_order;
-    const int    atomsPerBlock           = PME_SPREADGATHER_ATOMS_PER_BLOCK;
+    cudaStream_t stream          = pmeGpu->archSpecific->pmeStream;
+    auto        *kernelParamsPtr = pmeGpu->kernelParams.get(); //FIXMe non const? prevents copying stuff at once
 
-    GMX_RELEASE_ASSERT(kernelParamsPtr->atoms.nAtoms > 0, "No atom data in PME GPU spread");
-    dim3 nBlocks(pmeGpu->nAtomsPadded / atomsPerBlock);
+    const int    order           = pmeGpu->common->pme_order;
+    const int    atomsPerBlock   = PME_SPREADGATHER_ATOMS_PER_BLOCK;
+
+    GMX_ASSERT(chunkAtomCount > 0, "No atom data in PME GPU spread");
+    const bool lastRange = (chunkStartAtom + chunkAtomCount == kernelParamsPtr->atoms.nAtoms);
+    // Round everythign down for now just because we work in blocks of 8 atoms
+    // Here we rely on the kernel launch order!
+
+    // Process the end of the previous range maybe
+    unsigned int chunkBlockOffset = chunkStartAtom % atomsPerBlock;
+    chunkStartAtom -= chunkBlockOffset;
+    int          padding = 0; // No padding -> rounding down;
+    if (lastRange)
+    {
+        chunkAtomCount = kernelParamsPtr->atoms.nAtoms - chunkStartAtom;
+        //this is a real atom count which then needs to be rounded up!
+        padding = atomsPerBlock - 1; // Padding for rounding up
+    }
+    else
+    {
+        chunkAtomCount += chunkBlockOffset; // not really necessary though
+    }
+    dim3 nBlocks((chunkAtomCount + padding) / atomsPerBlock);
+
+    //dim3 nBlocks ((atomCount + atomsPerBlock - 1) /  atomsPerBlock) ; // rounding up
     dim3 dimBlock(order, order, atomsPerBlock);
+    //FIXME more padding - always (atomsPerBlock - 1) to be safe
+
+    // thsi is only safe to do as long as all the kernels execute in the same stream during the step!
+    kernelParamsPtr->step.chunkAtomCount = nBlocks.x * atomsPerBlock; //chunkAtomCount;
+    kernelParamsPtr->step.chunkStartAtom = chunkStartAtom;
 
     // These should later check for PME decomposition
     const bool wrapX = true;
@@ -602,6 +650,7 @@ void pme_gpu_spread(const pme_gpu_t *pmeGpu,
             GMX_THROW(gmx::NotImplementedError("The code for pme_order != 4 was not tested!"));
     }
 
+    //FIXME for chunks
     const bool copyBackAtomData = computeSplines && (pme_gpu_is_testing(pmeGpu) || !pme_gpu_performs_gather(pmeGpu));
     if (copyBackAtomData)
     {

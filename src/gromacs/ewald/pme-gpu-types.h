@@ -198,6 +198,14 @@ struct pme_gpu_step_params_t
     float  recipBox[DIM][DIM];
     /*! \brief The unit cell volume for solving. */
     float  boxVolume;
+
+    // TODO does this go into here, or atoms?
+    // FIXME dynamic size
+    //
+    //unsigned int *d_startAtoms;
+    //unsigned int *d_atomCounts;
+    size_t chunkAtomCount; //FIXME consistent naming
+    size_t chunkStartAtom;
 };
 
 /*! \internal \brief

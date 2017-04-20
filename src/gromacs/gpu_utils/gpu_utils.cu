@@ -477,11 +477,14 @@ bool free_cuda_gpu(const gmx_device_info_t *gpuInfo, std::string *result_str)
     bool         reset_gpu_application_clocks_status = true;
     assert(gpuInfo);
 
+    activate_gpu(gpuInfo);
+
 #ifndef NDEBUG
     // Checking if the context passed in is active
     int actualGpuId;
     stat = cudaGetDevice(&actualGpuId);
-    CU_RET_ERR(stat, "free_cuda_gpu failure");
+    //FIXME CU_RET_ERR(stat, "free_cuda_gpu failure");
+    CU_CHECK_PREV_ERR(); //not a critical error - stems from sharing GPUs over tMPI
     assert(actualGpuId == gpuInfo->id);
 #endif
 

@@ -133,11 +133,15 @@ void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
     {
         activate_gpu(pmeGpu->deviceInfo);
     }
-    if (pme->bPPnode)                                     // a separate PME rank has already copied coordinates at this point
+
+    // a separate PME rank has started the input copies and spreading earlier
+    const bool startedEarly = !pme->bPPnode;
+
+    if (!startedEarly)
     {
         pme_gpu_copy_input_coordinates(pmeGpu, x, 0, -1); //FIXME pmeGpu->kernelParams->atoms.nAtoms);
+        pme_gpu_update_input_box(pmeGpu, box);
     }
-    pme_gpu_update_input_box(pmeGpu, box);
     wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_INIT);
 
     const unsigned int grid_index = 0;
@@ -148,10 +152,13 @@ void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
     if (pmeGpu->settings.stepFlags & GMX_PME_SPREAD)
     {
         /* Spread the coefficients on a grid */
-        const bool computeSplines = true; // should only be done once if multiple iterations
-        wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_SPREAD);
-        pme_gpu_spread(pmeGpu, grid_index, grid, computeSplines, true);
-        wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_SPREAD);
+        if (!startedEarly)
+        {
+            const bool computeSplines = true; // should only be done once if multiple iterations
+            wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_SPREAD);
+            pme_gpu_spread(pmeGpu, grid_index, grid, computeSplines, true);
+            wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_SPREAD);
+        }
 
         // TODO should be a grid sync here for the CPU FFT
         if (!pme_gpu_performs_wrapping(pmeGpu))

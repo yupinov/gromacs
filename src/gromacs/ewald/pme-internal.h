@@ -434,8 +434,8 @@ int gmx_pme_recv_coeffs_coords(struct gmx_pme_pp *pme_pp,
                                ivec grid_size,
                                real *ewaldcoeff_q,
                                real *ewaldcoeff_lj,
-                               bool *atomSetChanged,
-                               struct pme_gpu_t *pmeGpu); //FIXME
+                               bool *atomSetChanged,  //TODO would not be needed anymore
+                               const gmx_pme_t *pme); //FIXME
 
 /*! \brief Send the PME mesh force, virial and energy to the PP-only nodes */
 void gmx_pme_send_force_vir_ener(struct gmx_pme_pp *pme_pp,

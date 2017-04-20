@@ -267,6 +267,7 @@ void pme_gpu_realloc_and_copy_input_coefficients(const pme_gpu_t *pmeGPU, const 
     pme_gpu_make_sure_memory_is_pinned((void *)h_coefficients, newCoefficientsSize * sizeof(float));
     cu_copy_H2D_async(pmeGPU->kernelParams->atoms.d_coefficients, const_cast<float *>(h_coefficients),
                       pmeGPU->kernelParams->atoms.nAtoms * sizeof(float), pmeGPU->archSpecific->pmeStream);
+
     if (c_usePadding)
     {
         const size_t paddingIndex = pmeGPU->kernelParams->atoms.nAtoms;

@@ -448,11 +448,7 @@ void pme_gpu_reinit_atoms(pme_gpu_t *pmeGPU, const int nAtoms, const real *coeff
     GMX_RELEASE_ASSERT(false, "Only single precision supported");
     GMX_UNUSED_VALUE(coefficients);
 #else
-    //FIXME
-    if (coefficients)
-    {
-        pme_gpu_realloc_and_copy_input_coefficients(pmeGPU, reinterpret_cast<const float *>(coefficients));
-    }
+    pme_gpu_realloc_and_copy_input_coefficients(pmeGPU, reinterpret_cast<const float *>(coefficients));
     /* Could also be checked for haveToRealloc, but the copy always needs to be performed */
 #endif
 

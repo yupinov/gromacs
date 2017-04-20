@@ -203,7 +203,7 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
                                              &ewaldcoeff_q,
                                              &ewaldcoeff_lj,
                                              &atomSetChanged,
-                                             pme->gpu);
+                                             pme);
 
             if (ret == pmerecvqxSWITCHGRID)
             {
@@ -213,7 +213,7 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
 
             if (atomSetChanged)
             {
-                gmx_pme_reinit_atoms(pme, natoms, chargeA);
+                ; //FIXMEgmx_pme_reinit_atoms(pme, natoms, chargeA);
             }
 
             if (ret == pmerecvqxRESETCOUNTERS)
