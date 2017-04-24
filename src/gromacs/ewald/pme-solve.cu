@@ -73,11 +73,10 @@ template<
     bool computeEnergyAndVirial,
     GridOrderingInternal gridOrdering
     >
-//__launch_bounds__(PME_SOLVE_THREADS_PER_BLOCK, PME_MIN_BLOCKS_PER_MP)
-// FIXME: figure out when and why this produces "invalid launch argument"
+__launch_bounds__(PME_SOLVE_THREADS_PER_BLOCK, PME_MIN_BLOCKS_PER_MP) //FIXME sizing?
 __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kernelParams)
 {
-    /* This kernel supports 2 different dimension orderings: YZX and XYZ */
+    /* This kernel supports 2 different grid dimension orderings: YZX and XYZ */
     int majorDim, middleDim, minorDim;
     switch (gridOrdering)
     {
@@ -248,34 +247,46 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
 
     if (computeEnergyAndVirial)
     {
-        /* The energy and virial reduction */
+        /* A 7-thread energy and virial reduction in shared memory, inspired by reduce_force_j_generic */
+        /* TODO: there should be a shuffle reduction variant here as well (that would require cleaning the shared memory). */
 
-        /* TODO: there should be a shuffle reduction variant here as well! */
-        const int        blockSize = PME_SOLVE_ENERVIR_THREADS_PER_BLOCK;
-        __shared__ float sm_virialAndEnergy[c_virialAndEnergyCount * blockSize];
-
-        /* A 7-thread reduction in shared memory inspired by reduce_force_j_generic */
-        if (threadLocalId < blockSize)
-        {
-            sm_virialAndEnergy[threadLocalId + 0 * blockSize] = virxx;
-            sm_virialAndEnergy[threadLocalId + 1 * blockSize] = viryy;
-            sm_virialAndEnergy[threadLocalId + 2 * blockSize] = virzz;
-            sm_virialAndEnergy[threadLocalId + 3 * blockSize] = virxy;
-            sm_virialAndEnergy[threadLocalId + 4 * blockSize] = virxz;
-            sm_virialAndEnergy[threadLocalId + 5 * blockSize] = viryz;
-            sm_virialAndEnergy[threadLocalId + 6 * blockSize] = energy;
-        }
+        const int        maxBlockSize = PME_SOLVE_ENERVIR_THREADS_PER_BLOCK;
+        __shared__ float sm_virialAndEnergy[c_virialAndEnergyCount * maxBlockSize];
+        sm_virialAndEnergy[threadLocalId + 0 * maxBlockSize] = virxx;
+        sm_virialAndEnergy[threadLocalId + 1 * maxBlockSize] = viryy;
+        sm_virialAndEnergy[threadLocalId + 2 * maxBlockSize] = virzz;
+        sm_virialAndEnergy[threadLocalId + 3 * maxBlockSize] = virxy;
+        sm_virialAndEnergy[threadLocalId + 4 * maxBlockSize] = virxz;
+        sm_virialAndEnergy[threadLocalId + 5 * maxBlockSize] = viryz;
+        sm_virialAndEnergy[threadLocalId + 6 * maxBlockSize] = energy;
         __syncthreads();
 
         /* Reducing every component to fit into warp_size */
-        for (int s = blockSize >> 1; s >= warp_size; s >>= 1)
+        const int targetIndex = threadLocalId;
+
+        /* Special first iteration - not all shared memory has been zeroed */
+        int       reductionStride = maxBlockSize >> 1;
+        const int sourceIndex     = targetIndex + reductionStride;
+        const int blockSize       = blockDim.x * blockDim.y * blockDim.z;
+        if (sourceIndex < blockSize)
         {
 #pragma unroll
             for (int i = 0; i < c_virialAndEnergyCount; i++)
             {
-                if (threadLocalId < s) // TODO: split per threads?
+                sm_virialAndEnergy[i * maxBlockSize + targetIndex] += sm_virialAndEnergy[i * maxBlockSize + sourceIndex];
+            }
+        }
+        __syncthreads();
+
+        for (reductionStride = maxBlockSize >> 2; reductionStride >= warp_size; reductionStride >>= 1)
+        {
+            if (targetIndex < reductionStride)
+            {
+                const int sourceIndex = targetIndex + reductionStride;
+#pragma unroll
+                for (int i = 0; i < c_virialAndEnergyCount; i++)
                 {
-                    sm_virialAndEnergy[i * blockSize + threadLocalId] += sm_virialAndEnergy[i * blockSize + threadLocalId + s];
+                    sm_virialAndEnergy[i * maxBlockSize + targetIndex] += sm_virialAndEnergy[i * maxBlockSize + sourceIndex];
                 }
             }
             __syncthreads();
@@ -292,26 +303,23 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
 #pragma unroll
             for (int j = 0; j < contributionsPerThread; j++)
             {
-                sum += sm_virialAndEnergy[componentIndex * blockSize + j * threadsPerComponent + threadComponentOffset];
+                sum += sm_virialAndEnergy[componentIndex * maxBlockSize + j * threadsPerComponent + threadComponentOffset];
             }
             atomicAdd(gm_virialAndEnergy + componentIndex, sum);
         }
 
         /* A naive reduction for debugging purposes */
         /*
-           if (threadLocalId < blockSize)
-           {
-            sm_virialAndEnergy[sizing * threadLocalId + 0] = virxx;
-            sm_virialAndEnergy[sizing * threadLocalId + 1] = viryy;
-            sm_virialAndEnergy[sizing * threadLocalId + 2] = virzz;
-            sm_virialAndEnergy[sizing * threadLocalId + 3] = virxy;
-            sm_virialAndEnergy[sizing * threadLocalId + 4] = virxz;
-            sm_virialAndEnergy[sizing * threadLocalId + 5] = viryz;
-            sm_virialAndEnergy[sizing * threadLocalId + 6] = energy;
-           }
+           sm_virialAndEnergy[sizing * threadLocalId + 0] = virxx;
+           sm_virialAndEnergy[sizing * threadLocalId + 1] = viryy;
+           sm_virialAndEnergy[sizing * threadLocalId + 2] = virzz;
+           sm_virialAndEnergy[sizing * threadLocalId + 3] = virxy;
+           sm_virialAndEnergy[sizing * threadLocalId + 4] = virxz;
+           sm_virialAndEnergy[sizing * threadLocalId + 5] = viryz;
+           sm_virialAndEnergy[sizing * threadLocalId + 6] = energy;
            __syncthreads();
            #pragma unroll
-           for (unsigned int stride = 1; stride < blockSize; stride <<= 1)
+           for (unsigned int stride = 1; stride < maxBlockSize; stride <<= 1)
            {
             if ((threadLocalId % (stride << 1) == 0))
             {
@@ -367,11 +375,9 @@ void pme_gpu_solve(const pme_gpu_t *pmeGpu, t_complex *h_grid,
     const int   maxBlockSize      = computeEnergyAndVirial ? PME_SOLVE_ENERVIR_THREADS_PER_BLOCK : PME_SOLVE_THREADS_PER_BLOCK;
     const int   gridLineSize      = pmeGpu->kernelParams->grid.complexGridSizePadded[minorDim];
     const int   gridLinesPerBlock = max(maxBlockSize / gridLineSize, 1);
-    const int   blocksPerGridLine = (gridLineSize + maxBlockSize - 1) / maxBlockSize; // rounded up
+    const int   blocksPerGridLine = (gridLineSize + maxBlockSize - 1) / maxBlockSize;                                // How many blocks would we need to process a single (large enough) gridline?
     // Z-dimension is too small in CUDA limitations (64 on CC30?), so instead of major-middle-minor sizing we do minor-middle-major
-    // FIXME: maybe that is why YZX fails occasionally with launch bounds?
-    dim3 threads((maxBlockSize + gridLinesPerBlock - 1) / gridLinesPerBlock, gridLinesPerBlock);
-    GMX_ASSERT((int)(threads.x * threads.y * threads.z) >= maxBlockSize, "Wrong PME GPU solve launch parameters");
+    dim3 threads(gridLineSize, gridLinesPerBlock);                                                                   // this does not create enough threads to zero the shared memory?
     dim3 blocks(blocksPerGridLine,
                 (pmeGpu->kernelParams->grid.complexGridSize[middleDim] + gridLinesPerBlock - 1) / gridLinesPerBlock, // rounded up middle dimension block number
                 pmeGpu->kernelParams->grid.complexGridSize[majorDim]);
