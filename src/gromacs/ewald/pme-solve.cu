@@ -259,26 +259,23 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
         sm_virialAndEnergy[threadLocalId + 4 * maxBlockSize] = virxz;
         sm_virialAndEnergy[threadLocalId + 5 * maxBlockSize] = viryz;
         sm_virialAndEnergy[threadLocalId + 6 * maxBlockSize] = energy;
-        __syncthreads();
-
-        /* Reducing every component to fit into warp_size */
-        const int targetIndex = threadLocalId;
-
-        /* Special first iteration - not all shared memory has been zeroed */
-        int       reductionStride = maxBlockSize >> 1;
-        const int sourceIndex     = targetIndex + reductionStride;
+        // zero the rest
         const int blockSize       = blockDim.x * blockDim.y * blockDim.z;
-        if (sourceIndex < blockSize)
+        const int paddingCount    = maxBlockSize - blockSize;
+        if (threadLocalId < paddingCount)
         {
 #pragma unroll
             for (int i = 0; i < c_virialAndEnergyCount; i++)
             {
-                sm_virialAndEnergy[i * maxBlockSize + targetIndex] += sm_virialAndEnergy[i * maxBlockSize + sourceIndex];
+                sm_virialAndEnergy[i * maxBlockSize + blockSize + threadLocalId] = 0;
             }
         }
+
         __syncthreads();
 
-        for (reductionStride = maxBlockSize >> 2; reductionStride >= warp_size; reductionStride >>= 1)
+        /* Reducing every component to fit into warp_size */
+        const int targetIndex = threadLocalId;
+        for (int reductionStride = maxBlockSize >> 1; reductionStride >= warp_size; reductionStride >>= 1)
         {
             if (targetIndex < reductionStride)
             {
