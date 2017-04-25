@@ -43,6 +43,7 @@
 
 #include "config.h"
 
+#include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/gmxassert.h"
@@ -245,11 +246,67 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
         }
     }
 
+    /* Optional energy/virial reduction */
     if (computeEnergyAndVirial)
     {
-        /* A 7-thread energy and virial reduction in shared memory, inspired by reduce_force_j_generic */
-        /* TODO: there should be a shuffle reduction variant here as well (that would require cleaning the shared memory). */
+#if (GMX_PTX_ARCH >= 300)
+        /* A tricky shuffle reduction inspired by reduce_force_j_warp_shfl.
+         * The idea is to reduce 7 energy/virial components into a single variable (aligned by 8).
+         * We will reduce everything into virxx.
+         */
 
+        /* We can only reduce warp-wise */
+        const int width = warp_size;
+
+        /* Making pair sums */
+        virxx  += __shfl_down(virxx, 1, width);
+        viryy  += __shfl_up  (viryy, 1, width);
+        virzz  += __shfl_down(virzz, 1, width);
+        virxy  += __shfl_up  (virxy, 1, width);
+        virxz  += __shfl_down(virxz, 1, width);
+        viryz  += __shfl_up  (viryz, 1, width);
+        energy += __shfl_down(energy, 1, width);
+        if (threadLocalId & 1)
+        {
+            virxx = viryy; // virxx now holds virxx and viryy pair sums
+            virzz = virxy; // virzz now holds virzz and virxy pair sums
+            virxz = viryz; // virxz now holds virxz and viryz
+        }
+
+        /* Making quad sums */
+        virxx  += __shfl_down(virxx, 2, width);
+        virzz  += __shfl_up  (virzz, 2, width);
+        virxz  += __shfl_down(virxz, 2, width);
+        energy += __shfl_up(energy, 2, width);
+        if (threadLocalId & 2)
+        {
+            virxx = virzz;  // virxx now holds quad sums of virxx, virxy, virzz and virxy
+            virxz = energy; // virxz now holds quad sums of virxz, viryz, energy (and unused partial energy)
+        }
+
+        /* Making octet sums */
+        virxx += __shfl_down(virxx, 4, width);
+        virxz += __shfl_up(virxz, 4, width);
+        if (threadLocalId & 4)
+        {
+            virxx = virxz; // virxx now holds all 7 components' octets sums + 1 padding
+        }
+
+        /* We only need to reduce virxx now */
+        for (int delta = 8; delta < width; delta <<= 1)
+        {
+            virxx += __shfl_down(virxx, delta, width);
+        }
+
+        //TODO reduce in shared memory as well?
+        const int componentIndex = threadLocalId & 0x1f;
+        if (componentIndex < c_virialAndEnergyCount)
+        {
+            atomicAdd(gm_virialAndEnergy + componentIndex, virxx);
+        }
+
+#else
+        /* A 7-thread energy and virial reduction in shared memory, inspired by reduce_force_j_generic */
         const int        maxBlockSize = PME_SOLVE_ENERVIR_THREADS_PER_BLOCK;
         __shared__ float sm_virialAndEnergy[c_virialAndEnergyCount * maxBlockSize];
         sm_virialAndEnergy[threadLocalId + 0 * maxBlockSize] = virxx;
@@ -259,7 +316,7 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
         sm_virialAndEnergy[threadLocalId + 4 * maxBlockSize] = virxz;
         sm_virialAndEnergy[threadLocalId + 5 * maxBlockSize] = viryz;
         sm_virialAndEnergy[threadLocalId + 6 * maxBlockSize] = energy;
-        // zero the rest
+        // zero the rest - is there a better way to do this?
         const int blockSize       = blockDim.x * blockDim.y * blockDim.z;
         const int paddingCount    = maxBlockSize - blockSize;
         if (threadLocalId < paddingCount)
@@ -304,33 +361,7 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
             }
             atomicAdd(gm_virialAndEnergy + componentIndex, sum);
         }
-
-        /* A naive reduction for debugging purposes */
-        /*
-           sm_virialAndEnergy[sizing * threadLocalId + 0] = virxx;
-           sm_virialAndEnergy[sizing * threadLocalId + 1] = viryy;
-           sm_virialAndEnergy[sizing * threadLocalId + 2] = virzz;
-           sm_virialAndEnergy[sizing * threadLocalId + 3] = virxy;
-           sm_virialAndEnergy[sizing * threadLocalId + 4] = virxz;
-           sm_virialAndEnergy[sizing * threadLocalId + 5] = viryz;
-           sm_virialAndEnergy[sizing * threadLocalId + 6] = energy;
-           __syncthreads();
-           #pragma unroll
-           for (unsigned int stride = 1; stride < maxBlockSize; stride <<= 1)
-           {
-            if ((threadLocalId % (stride << 1) == 0))
-            {
-           #pragma unroll
-                for (int i = 0; i < sizing; i++)
-                    sm_virialAndEnergy[sizing * threadLocalId + i] += sm_virialAndEnergy[sizing * (threadLocalId + stride) + i];
-            }
-            __syncthreads();
-           }
-           if (threadLocalId < sizing)
-           {
-            atomicAdd(virialAndEnergyGlobal + threadLocalId, sm_virialAndEnergy[threadLocalId]);
-           }
-         */
+#endif
     }
 }
 
