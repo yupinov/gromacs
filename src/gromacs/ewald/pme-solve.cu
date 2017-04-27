@@ -51,8 +51,8 @@
 #include "pme.cuh"
 #include "pme-timings.cuh"
 
-
-constexpr int PME_SOLVE_THREADS_PER_BLOCK = (4 * warp_size);
+//! Tested on 560Ti (CC2.1), 660Ti (CC3.0) and 750 (CC5.0) GPUs (among 64, 128, 256, 512, 1024)
+constexpr int PME_SOLVE_THREADS_PER_BLOCK = (8 * warp_size);
 
 // CUDA 6.5 can not compile enum class as a template kernel parameter,
 // so we replace it with a duplicate simple enum
@@ -77,7 +77,7 @@ template<
     bool computeEnergyAndVirial,
     GridOrderingInternal gridOrdering
     >
-__launch_bounds__(PME_SOLVE_THREADS_PER_BLOCK, PME_MIN_BLOCKS_PER_MP) //FIXME sizing?
+__launch_bounds__(PME_SOLVE_THREADS_PER_BLOCK, PME_MIN_BLOCKS_PER_MP) //FIXME use the max number per arch
 __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kernelParams)
 {
     /* This kernel supports 2 different grid dimension orderings: YZX and XYZ */
