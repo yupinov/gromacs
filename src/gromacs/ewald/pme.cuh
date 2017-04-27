@@ -108,7 +108,7 @@ class GpuParallel3dFft;
 constexpr int PME_SPREADGATHER_THREADS_PER_BLOCK = (4 * warp_size);
 
 //! Common processor bound. Might be split in the future as well.
-constexpr int PME_MIN_BLOCKS_PER_MP = 16;
+constexpr int PME_MIN_BLOCKS_PER_MP = (GMX_PTX_ARCH >= 300) ? 16 : 8;
 
 // A couple of derived defines
 

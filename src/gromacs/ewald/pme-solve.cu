@@ -314,8 +314,8 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
 
         if (validComponentIndex)
         {
-            const int offset = threadLocalId / (warp_size / stride);
-            sm_virialAndEnergy[offset + componentIndex] = virxx;
+            const int warpIndex = threadLocalId / warp_size;
+            sm_virialAndEnergy[warpIndex * stride + componentIndex] = virxx;
         }
         __syncthreads();
 
@@ -410,17 +410,14 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
 void pme_gpu_solve(const pme_gpu_t *pmeGpu, t_complex *h_grid,
                    bool computeEnergyAndVirial, GridOrdering gridOrdering)
 {
-    /* do recip sum over local cells in grid */
-
     const bool   copyInputAndOutputGrid = pme_gpu_is_testing(pmeGpu) || !pme_gpu_performs_FFT(pmeGpu);
 
     cudaStream_t stream          = pmeGpu->archSpecific->pmeStream;
     const auto  *kernelParamsPtr = pmeGpu->kernelParams.get();
 
-    float2      *d_grid = (float2 *)kernelParamsPtr->grid.d_fourierGrid;
     if (copyInputAndOutputGrid)
     {
-        cu_copy_H2D_async(d_grid, h_grid, pmeGpu->archSpecific->complexGridSize * sizeof(float), stream);
+        cu_copy_H2D_async(kernelParamsPtr->grid.d_fourierGrid, h_grid, pmeGpu->archSpecific->complexGridSize * sizeof(float), stream);
     }
 
     int majorDim = -1, middleDim = -1, minorDim = -1;
@@ -443,15 +440,12 @@ void pme_gpu_solve(const pme_gpu_t *pmeGpu, t_complex *h_grid,
     }
 
     const int   maxBlockSize      = PME_SOLVE_THREADS_PER_BLOCK;
-    printf("solve block size %d\n", maxBlockSize);
-
     const int   gridLineSize      = pmeGpu->kernelParams->grid.complexGridSizePadded[minorDim];
     const int   gridLinesPerBlock = max(maxBlockSize / gridLineSize, 1);
-    const int   blocksPerGridLine = (gridLineSize + maxBlockSize - 1) / maxBlockSize;                                // How many blocks would we need to process a single (large enough) gridline?
-    // Z-dimension is too small in CUDA limitations (64 on CC30?), so instead of major-middle-minor sizing we do minor-middle-major
-    dim3 threads(gridLineSize, gridLinesPerBlock);                                                                   // this does not create enough threads to zero the shared memory?
+    const int   blocksPerGridLine = (gridLineSize + maxBlockSize - 1) / maxBlockSize; // How many blocks would we need to process a single (large enough) gridline?
+    dim3 threads(gridLineSize, gridLinesPerBlock);
     dim3 blocks(blocksPerGridLine,
-                (pmeGpu->kernelParams->grid.complexGridSize[middleDim] + gridLinesPerBlock - 1) / gridLinesPerBlock, // rounded up middle dimension block number
+                (pmeGpu->kernelParams->grid.complexGridSize[middleDim] + gridLinesPerBlock - 1) / gridLinesPerBlock,
                 pmeGpu->kernelParams->grid.complexGridSize[majorDim]);
 
     pme_gpu_start_timing(pmeGpu, gtPME_SOLVE);
@@ -490,7 +484,7 @@ void pme_gpu_solve(const pme_gpu_t *pmeGpu, t_complex *h_grid,
 
     if (copyInputAndOutputGrid)
     {
-        cu_copy_D2H_async(h_grid, d_grid, pmeGpu->archSpecific->complexGridSize * sizeof(float), stream);
+        cu_copy_D2H_async(h_grid, kernelParamsPtr->grid.d_fourierGrid, pmeGpu->archSpecific->complexGridSize * sizeof(float), stream);
         cudaError_t stat = cudaEventRecord(pmeGpu->archSpecific->syncSolveGridD2H, stream);
         CU_RET_ERR(stat, "PME solve grid sync event record failure");
     }
