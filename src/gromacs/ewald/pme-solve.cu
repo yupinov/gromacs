@@ -273,7 +273,7 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
         {
             virxx = viryy; // virxx now holds virxx and viryy pair sums
             virzz = virxy; // virzz now holds virzz and virxy pair sums
-            virxz = viryz; // virxz now holds virxz and viryz
+            virxz = viryz; // virxz now holds virxz and viryz pair sums
         }
 
         /* Making quad sums */
@@ -284,7 +284,7 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
         if (threadLocalId & 2)
         {
             virxx = virzz;  // virxx now holds quad sums of virxx, virxy, virzz and virxy
-            virxz = energy; // virxz now holds quad sums of virxz, viryz, energy (and unused partial energy)
+            virxz = energy; // virxz now holds quad sums of virxz, viryz, energy and unused paddings
         }
 
         /* Making octet sums */
@@ -292,22 +292,61 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
         virxz += __shfl_up(virxz, 4, width);
         if (threadLocalId & 4)
         {
-            virxx = virxz; // virxx now holds all 7 components' octets sums + 1 padding
+            virxx = virxz; // virxx now holds all 7 components' octets sums + unused paddings
         }
 
         /* We only need to reduce virxx now */
+#pragma unroll
         for (int delta = 8; delta < width; delta <<= 1)
         {
             virxx += __shfl_down(virxx, delta, width);
         }
+        /* Now first 7 threads of each warp have the full output contributions in virxx */
 
-        //TODO reduce in shared memory as well?
-        const int componentIndex = threadLocalId & 0x1f;
-        if (componentIndex < c_virialAndEnergyCount)
+        const int  componentIndex      = threadLocalId & 0x1f;
+        const bool validComponentIndex = (componentIndex < c_virialAndEnergyCount);
+
+        /* Reduce 7 outputs per warp in the shared memory */
+        const int        maxBlockSize        = PME_SOLVE_THREADS_PER_BLOCK;
+        const int        stride              = 8; // this is c_virialAndEnergyCount==7 rounded up to power of 2 for convenience
+        const int        reductionBufferSize = (maxBlockSize / warp_size) * stride;
+        __shared__ float sm_virialAndEnergy[reductionBufferSize];
+
+        if (validComponentIndex)
         {
-            atomicAdd(gm_virialAndEnergy + componentIndex, virxx);
+            const int offset = threadLocalId / (warp_size / stride);
+            sm_virialAndEnergy[offset + componentIndex] = virxx;
+        }
+        __syncthreads();
+
+        /* Reduce to the single warp size */
+        const int targetIndex = threadLocalId;
+#pragma unroll
+        for (int reductionStride = reductionBufferSize >> 1; reductionStride >= warp_size; reductionStride >>= 1)
+        {
+            if (targetIndex < reductionStride)
+            {
+                const int sourceIndex = targetIndex + reductionStride;
+                sm_virialAndEnergy[targetIndex] += sm_virialAndEnergy[sourceIndex];
+            }
+            __syncthreads();
         }
 
+        /* Now use shuffle again */
+        if (threadLocalId < warp_size)
+        {
+            float output = sm_virialAndEnergy[threadLocalId];
+#pragma unroll
+            for (int delta = stride; delta < warp_size; delta <<= 1)
+            {
+                output += __shfl_down(output, delta, warp_size);
+            }
+            /* Final output */
+            if (validComponentIndex)
+            {
+                atomicAdd(gm_virialAndEnergy + componentIndex, output);
+            }
+        }
 #else
         /* A 7-thread energy and virial reduction in shared memory, inspired by reduce_force_j_generic */
         const int        maxBlockSize = PME_SOLVE_THREADS_PER_BLOCK;
