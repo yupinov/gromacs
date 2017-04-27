@@ -51,6 +51,9 @@
 #include "pme.cuh"
 #include "pme-timings.cuh"
 
+
+constexpr int PME_SOLVE_THREADS_PER_BLOCK = (4 * warp_size);
+
 // CUDA 6.5 can not compile enum class as a template kernel parameter,
 // so we replace it with a duplicate simple enum
 #if GMX_CUDA_VERSION >= 7000
@@ -307,7 +310,7 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
 
 #else
         /* A 7-thread energy and virial reduction in shared memory, inspired by reduce_force_j_generic */
-        const int        maxBlockSize = PME_SOLVE_ENERVIR_THREADS_PER_BLOCK;
+        const int        maxBlockSize = PME_SOLVE_THREADS_PER_BLOCK;
         __shared__ float sm_virialAndEnergy[c_virialAndEnergyCount * maxBlockSize];
         sm_virialAndEnergy[threadLocalId + 0 * maxBlockSize] = virxx;
         sm_virialAndEnergy[threadLocalId + 1 * maxBlockSize] = viryy;
@@ -400,7 +403,9 @@ void pme_gpu_solve(const pme_gpu_t *pmeGpu, t_complex *h_grid,
             GMX_ASSERT(false, "Implement grid ordering here and below for the kernel launch");
     }
 
-    const int   maxBlockSize      = computeEnergyAndVirial ? PME_SOLVE_ENERVIR_THREADS_PER_BLOCK : PME_SOLVE_THREADS_PER_BLOCK;
+    const int   maxBlockSize      = PME_SOLVE_THREADS_PER_BLOCK;
+    printf("solve block size %d\n", maxBlockSize);
+
     const int   gridLineSize      = pmeGpu->kernelParams->grid.complexGridSizePadded[minorDim];
     const int   gridLinesPerBlock = max(maxBlockSize / gridLineSize, 1);
     const int   blocksPerGridLine = (gridLineSize + maxBlockSize - 1) / maxBlockSize;                                // How many blocks would we need to process a single (large enough) gridline?

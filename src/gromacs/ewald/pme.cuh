@@ -103,12 +103,9 @@ class GpuParallel3dFft;
  * Spread and gather are using the same memory layout/logic.
  * TODO: tune and specialize them for different CUDA architectures.
  */
+
 //! Spread/gather block size
 constexpr int PME_SPREADGATHER_THREADS_PER_BLOCK = (4 * warp_size);
-//! Solve block size
-constexpr int PME_SOLVE_THREADS_PER_BLOCK = (4 * warp_size);
-//! Solve with reduction
-constexpr int PME_SOLVE_ENERVIR_THREADS_PER_BLOCK = (4 * warp_size);
 
 //! Common processor bound. Might be split in the future as well.
 constexpr int PME_MIN_BLOCKS_PER_MP = 16;
