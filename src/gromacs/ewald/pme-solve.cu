@@ -305,7 +305,6 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
 
         const int  componentIndex      = threadLocalId & 0x1f;
         const bool validComponentIndex = (componentIndex < c_virialAndEnergyCount);
-
         /* Reduce 7 outputs per warp in the shared memory */
         const int        maxBlockSize        = PME_SOLVE_THREADS_PER_BLOCK;
         const int        stride              = 8; // this is c_virialAndEnergyCount==7 rounded up to power of 2 for convenience
@@ -348,61 +347,56 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
             }
         }
 #else
-        /* A 7-thread energy and virial reduction in shared memory, inspired by reduce_force_j_generic */
-        const int        maxBlockSize = PME_SOLVE_THREADS_PER_BLOCK;
-        __shared__ float sm_virialAndEnergy[c_virialAndEnergyCount * maxBlockSize];
-        sm_virialAndEnergy[threadLocalId + 0 * maxBlockSize] = virxx;
-        sm_virialAndEnergy[threadLocalId + 1 * maxBlockSize] = viryy;
-        sm_virialAndEnergy[threadLocalId + 2 * maxBlockSize] = virzz;
-        sm_virialAndEnergy[threadLocalId + 3 * maxBlockSize] = virxy;
-        sm_virialAndEnergy[threadLocalId + 4 * maxBlockSize] = virxz;
-        sm_virialAndEnergy[threadLocalId + 5 * maxBlockSize] = viryz;
-        sm_virialAndEnergy[threadLocalId + 6 * maxBlockSize] = energy;
-        // zero the rest - is there a better way to do this?
-        const int blockSize       = blockDim.x * blockDim.y * blockDim.z;
-        const int paddingCount    = maxBlockSize - blockSize;
-        if (threadLocalId < paddingCount)
-        {
+	/* Shared memory reduction with atomics.
+	 * Each component is first reduced into warp_size positions in the shared memory;
+         * Then the first warp reduces everything further and adds to the global memory.
+         * This can likely be improved, but is anyway faster than the previous straightforward reduction,
+         * which was using 48KB (shared mem limit per SM) / sizeof(float) (4) / maxBlockSize (256) / c_virialAndEnergyCount (7) ==
+         * 6 blocks per SM instead of 16 which is maximum.
+         * TODO: maybe just reduce a single component at a time in a large 'for' loop?
+	 */
+
+	bool firstWarp = (threadLocalId < warp_size);
+	 __shared__ float sm_virialAndEnergy[c_virialAndEnergyCount * warp_size];
+	if (firstWarp)
+	{
+            sm_virialAndEnergy[0 * warp_size + threadLocalId] = virxx;
+		sm_virialAndEnergy[1 * warp_size + threadLocalId] = viryy;
+		sm_virialAndEnergy[2 * warp_size + threadLocalId] = virzz;
+		sm_virialAndEnergy[3 * warp_size + threadLocalId] = virxy;
+		sm_virialAndEnergy[4 * warp_size + threadLocalId] = virxz;
+	sm_virialAndEnergy[5 * warp_size + threadLocalId] = viryz;
+		sm_virialAndEnergy[6 * warp_size + threadLocalId] = energy;
+	}
+	__syncthreads();
+	if (!firstWarp)
+	{
+            int lane = threadLocalId & 0x1f;
+	atomicAdd(sm_virialAndEnergy + 0 * warp_size + lane, virxx);
+		atomicAdd(sm_virialAndEnergy + 1 * warp_size + lane, viryy);
+		atomicAdd(sm_virialAndEnergy + 2 * warp_size + lane,  virzz);
+	atomicAdd(	sm_virialAndEnergy + 3 * warp_size + lane,  virxy);
+	atomicAdd(	sm_virialAndEnergy + 4 * warp_size + lane,  virxz);
+	atomicAdd(	sm_virialAndEnergy + 5 * warp_size + lane,  viryz);
+	atomicAdd(	sm_virialAndEnergy + 6 * warp_size + lane, energy);
+	}
+	__syncthreads();
+	if (firstWarp)
+	{
 #pragma unroll
-            for (int i = 0; i < c_virialAndEnergyCount; i++)
+            for (int componentIndex = 0; componentIndex < c_virialAndEnergyCount; componentIndex++)
             {
-                sm_virialAndEnergy[i * maxBlockSize + blockSize + threadLocalId] = 0;
-            }
-        }
-
-        __syncthreads();
-
-        /* Reducing every component to fit into warp_size */
-        const int targetIndex = threadLocalId;
-        for (int reductionStride = maxBlockSize >> 1; reductionStride >= warp_size; reductionStride >>= 1)
-        {
-            if (targetIndex < reductionStride)
-            {
-                const int sourceIndex = targetIndex + reductionStride;
 #pragma unroll
-                for (int i = 0; i < c_virialAndEnergyCount; i++)
-                {
-                    sm_virialAndEnergy[i * maxBlockSize + targetIndex] += sm_virialAndEnergy[i * maxBlockSize + sourceIndex];
-                }
-            }
-            __syncthreads();
-        }
+		for (int reductionStride = warp_size >> 1; reductionStride >= warp_size; reductionStride >>= 1)
+        	{
+			if (threadLocalId < reductionStride)			
+			sm_virialAndEnergy[componentIndex * warp_size + threadLocalId] = sm_virialAndEnergy[componentIndex * warp_size + threadLocalId + reductionStride];
+		}
+		if (threadLocalId == 0)
+		atomicAdd(gm_virialAndEnergy + componentIndex, sm_virialAndEnergy[componentIndex]);
 
-        const int threadsPerComponent    = warp_size / c_virialAndEnergyCount; // this is also the stride, will be 32 / 7 = 4
-        const int contributionsPerThread = warp_size / threadsPerComponent;    // will be 32 / 4 = 8
-        if (threadLocalId < c_virialAndEnergyCount * threadsPerComponent)
-        {
-            const int componentIndex        = threadLocalId / threadsPerComponent;
-            const int threadComponentOffset = threadLocalId - componentIndex * threadsPerComponent;
-
-            float     sum = 0.0f;
-#pragma unroll
-            for (int j = 0; j < contributionsPerThread; j++)
-            {
-                sum += sm_virialAndEnergy[componentIndex * maxBlockSize + j * threadsPerComponent + threadComponentOffset];
-            }
-            atomicAdd(gm_virialAndEnergy + componentIndex, sum);
-        }
+	    }
+	}	
 #endif
     }
 }
