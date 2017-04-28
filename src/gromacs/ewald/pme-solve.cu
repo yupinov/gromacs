@@ -51,8 +51,8 @@
 #include "pme.cuh"
 #include "pme-timings.cuh"
 
-//! Tested on 560Ti (CC2.1), 660Ti (CC3.0) and 750 (CC5.0) GPUs (among 64, 128, 256, 512, 1024)
-constexpr int PME_SOLVE_THREADS_PER_BLOCK = (8 * warp_size);
+//! Tested on 560Ti (CC2.1), 660Ti (CC3.0) and 750 (CC5.0) GPUs (among 64, 128, 256, 512)
+constexpr int c_solveThreadsPerBlock = (8 * warp_size);
 
 // CUDA 6.5 can not compile enum class as a template kernel parameter,
 // so we replace it with a duplicate simple enum
@@ -77,7 +77,7 @@ template<
     bool computeEnergyAndVirial,
     GridOrderingInternal gridOrdering
     >
-__launch_bounds__(PME_SOLVE_THREADS_PER_BLOCK, PME_MIN_BLOCKS_PER_MP) //FIXME use the max number per arch
+__launch_bounds__(c_solveThreadsPerBlock)
 __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kernelParams)
 {
     /* This kernel supports 2 different grid dimension orderings: YZX and XYZ */
@@ -122,7 +122,7 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
     const int maxkMinor        = (nMinor + 1) / 2;  // Z or X => only check for YZX
 
     /* Each thread works on one cell of the Fourier space complex 3D grid (gm_grid).
-     * Each block handles PME_SOLVE_THREADS_PER_BLOCK cells -
+     * Each block handles up to c_solveThreadsPerBlock cells -
      * depending on the grid contiguous dimension size,
      * that can range from a part of a single gridline to several complete gridlines.
      */
@@ -292,7 +292,7 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
         virxz += __shfl_up(virxz, 4, width);
         if (threadLocalId & 4)
         {
-            virxx = virxz; // virxx now holds all 7 components' octets sums + unused paddings
+            virxx = virxz; // virxx now holds all 7 components' octet sums + unused paddings
         }
 
         /* We only need to reduce virxx now */
@@ -303,14 +303,13 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
         }
         /* Now first 7 threads of each warp have the full output contributions in virxx */
 
-        const int  componentIndex      = threadLocalId & 0x1f;
-        const bool validComponentIndex = (componentIndex < c_virialAndEnergyCount);
+        const int        componentIndex      = threadLocalId & 0x1f;
+        const bool       validComponentIndex = (componentIndex < c_virialAndEnergyCount);
         /* Reduce 7 outputs per warp in the shared memory */
-        const int        maxBlockSize        = PME_SOLVE_THREADS_PER_BLOCK;
+        const int        maxBlockSize        = c_solveThreadsPerBlock;
         const int        stride              = 8; // this is c_virialAndEnergyCount==7 rounded up to power of 2 for convenience
         const int        reductionBufferSize = (maxBlockSize / warp_size) * stride;
         __shared__ float sm_virialAndEnergy[reductionBufferSize];
-
         if (validComponentIndex)
         {
             const int warpIndex = threadLocalId / warp_size;
@@ -347,56 +346,60 @@ __global__ void pme_solve_kernel(const struct pme_gpu_cuda_kernel_params_t kerne
             }
         }
 #else
-	/* Shared memory reduction with atomics.
-	 * Each component is first reduced into warp_size positions in the shared memory;
+        /* Shared memory reduction with atomics.
+         * Each component is first reduced into warp_size positions in the shared memory;
          * Then the first warp reduces everything further and adds to the global memory.
          * This can likely be improved, but is anyway faster than the previous straightforward reduction,
-         * which was using 48KB (shared mem limit per SM) / sizeof(float) (4) / maxBlockSize (256) / c_virialAndEnergyCount (7) ==
-         * 6 blocks per SM instead of 16 which is maximum.
+         * which was using too much shared memory.
+         * [48KB (shared mem limit per SM on CC2.x) / sizeof(float) (4) / maxBlockSize (256) / c_virialAndEnergyCount (7) ==
+         * 6 blocks per SM instead of 16 which is maximum on CC2.x].
          * TODO: maybe just reduce a single component at a time in a large 'for' loop?
-	 */
+         */
 
-	bool firstWarp = (threadLocalId < warp_size);
-	 __shared__ float sm_virialAndEnergy[c_virialAndEnergyCount * warp_size];
-	if (firstWarp)
-	{
+        bool             firstWarp = (threadLocalId < warp_size);
+        __shared__ float sm_virialAndEnergy[c_virialAndEnergyCount * warp_size];
+        if (firstWarp)
+        {
             sm_virialAndEnergy[0 * warp_size + threadLocalId] = virxx;
-		sm_virialAndEnergy[1 * warp_size + threadLocalId] = viryy;
-		sm_virialAndEnergy[2 * warp_size + threadLocalId] = virzz;
-		sm_virialAndEnergy[3 * warp_size + threadLocalId] = virxy;
-		sm_virialAndEnergy[4 * warp_size + threadLocalId] = virxz;
-	sm_virialAndEnergy[5 * warp_size + threadLocalId] = viryz;
-		sm_virialAndEnergy[6 * warp_size + threadLocalId] = energy;
-	}
-	__syncthreads();
-	if (!firstWarp)
-	{
+            sm_virialAndEnergy[1 * warp_size + threadLocalId] = viryy;
+            sm_virialAndEnergy[2 * warp_size + threadLocalId] = virzz;
+            sm_virialAndEnergy[3 * warp_size + threadLocalId] = virxy;
+            sm_virialAndEnergy[4 * warp_size + threadLocalId] = virxz;
+            sm_virialAndEnergy[5 * warp_size + threadLocalId] = viryz;
+            sm_virialAndEnergy[6 * warp_size + threadLocalId] = energy;
+        }
+        __syncthreads();
+        if (!firstWarp)
+        {
             int lane = threadLocalId & 0x1f;
-	atomicAdd(sm_virialAndEnergy + 0 * warp_size + lane, virxx);
-		atomicAdd(sm_virialAndEnergy + 1 * warp_size + lane, viryy);
-		atomicAdd(sm_virialAndEnergy + 2 * warp_size + lane,  virzz);
-	atomicAdd(	sm_virialAndEnergy + 3 * warp_size + lane,  virxy);
-	atomicAdd(	sm_virialAndEnergy + 4 * warp_size + lane,  virxz);
-	atomicAdd(	sm_virialAndEnergy + 5 * warp_size + lane,  viryz);
-	atomicAdd(	sm_virialAndEnergy + 6 * warp_size + lane, energy);
-	}
-	__syncthreads();
-	if (firstWarp)
-	{
+            atomicAdd(sm_virialAndEnergy + 0 * warp_size + lane, virxx);
+            atomicAdd(sm_virialAndEnergy + 1 * warp_size + lane, viryy);
+            atomicAdd(sm_virialAndEnergy + 2 * warp_size + lane,  virzz);
+            atomicAdd(  sm_virialAndEnergy + 3 * warp_size + lane,  virxy);
+            atomicAdd(  sm_virialAndEnergy + 4 * warp_size + lane,  virxz);
+            atomicAdd(  sm_virialAndEnergy + 5 * warp_size + lane,  viryz);
+            atomicAdd(  sm_virialAndEnergy + 6 * warp_size + lane, energy);
+        }
+        __syncthreads();
+        if (firstWarp)
+        {
 #pragma unroll
             for (int componentIndex = 0; componentIndex < c_virialAndEnergyCount; componentIndex++)
             {
 #pragma unroll
-		for (int reductionStride = warp_size >> 1; reductionStride >= warp_size; reductionStride >>= 1)
-        	{
-			if (threadLocalId < reductionStride)			
-			sm_virialAndEnergy[componentIndex * warp_size + threadLocalId] = sm_virialAndEnergy[componentIndex * warp_size + threadLocalId + reductionStride];
-		}
-		if (threadLocalId == 0)
-		atomicAdd(gm_virialAndEnergy + componentIndex, sm_virialAndEnergy[componentIndex]);
-
-	    }
-	}	
+                for (int reductionStride = warp_size >> 1; reductionStride >= warp_size; reductionStride >>= 1)
+                {
+                    if (threadLocalId < reductionStride)
+                    {
+                        sm_virialAndEnergy[componentIndex * warp_size + threadLocalId] = sm_virialAndEnergy[componentIndex * warp_size + threadLocalId + reductionStride];
+                    }
+                }
+                if (threadLocalId == 0)
+                {
+                    atomicAdd(gm_virialAndEnergy + componentIndex, sm_virialAndEnergy[componentIndex]);
+                }
+            }
+        }
 #endif
     }
 }
@@ -433,7 +436,7 @@ void pme_gpu_solve(const pme_gpu_t *pmeGpu, t_complex *h_grid,
             GMX_ASSERT(false, "Implement grid ordering here and below for the kernel launch");
     }
 
-    const int   maxBlockSize      = PME_SOLVE_THREADS_PER_BLOCK;
+    const int   maxBlockSize      = c_solveThreadsPerBlock;
     const int   gridLineSize      = pmeGpu->kernelParams->grid.complexGridSizePadded[minorDim];
     const int   gridLinesPerBlock = max(maxBlockSize / gridLineSize, 1);
     const int   blocksPerGridLine = (gridLineSize + maxBlockSize - 1) / maxBlockSize; // How many blocks would we need to process a single (large enough) gridline?
