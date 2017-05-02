@@ -157,6 +157,8 @@ __device__ __forceinline__ void reduce_particle_forces(float3         sm_forces[
     }
 }
 
+const int maxThreads = (GMX_PTX_ARCH >= 300) ? 2048 : 1536;
+
 /*! \brief
  *
  * A CUDA kernel which gathers the atom forces from the grid.
@@ -175,7 +177,7 @@ template <
     const bool wrapX,
     const bool wrapY
     >
-__launch_bounds__(PME_SPREADGATHER_THREADS_PER_BLOCK, PME_MIN_BLOCKS_PER_MP)
+__launch_bounds__(PME_SPREADGATHER_THREADS_PER_BLOCK, maxThreads / PME_SPREADGATHER_THREADS_PER_BLOCK)
 __global__ void pme_gather_kernel(const pme_gpu_cuda_kernel_params_t    kernelParams)
 {
     /* Global memory pointers */
@@ -325,6 +327,10 @@ __global__ void pme_gather_kernel(const pme_gpu_cuda_kernel_params_t    kernelPa
     /* Writing or adding the final forces component-wise, DIM * atomsPerBlock threads */
     const int    outputIndexLocal  = threadLocalId;
     const size_t blockForcesSize   = atomsPerBlock * DIM;
+    if (blockForcesSize > warp_size)
+    {
+        __syncthreads(); // Waiting for the previous sm_force computation if we have > 1 warp
+    }
     const int    outputIndexGlobal = blockIdx.x * blockForcesSize + outputIndexLocal;
     const int    globalOutputCheck = pme_gpu_check_atom_data_index(outputIndexGlobal, kernelParams.atoms.nAtoms * DIM);
     if ((outputIndexLocal < blockForcesSize) && globalOutputCheck)

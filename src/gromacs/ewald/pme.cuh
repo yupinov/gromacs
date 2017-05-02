@@ -110,9 +110,6 @@ constexpr int PME_SOLVE_THREADS_PER_BLOCK = (4 * warp_size);
 //! Solve with reduction
 constexpr int PME_SOLVE_ENERVIR_THREADS_PER_BLOCK = (4 * warp_size);
 
-//! Common processor bound. Might be split in the future as well.
-constexpr int PME_MIN_BLOCKS_PER_MP = 16;
-
 // A couple of derived defines
 
 //! The spread/gather integer constant; 2 particles per warp for order of 4, depends on the templated order parameter

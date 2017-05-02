@@ -496,7 +496,7 @@ template <
     const bool wrapX,
     const bool wrapY
     >
-__launch_bounds__(PME_SPREADGATHER_THREADS_PER_BLOCK, PME_MIN_BLOCKS_PER_MP)
+__launch_bounds__(PME_SPREADGATHER_THREADS_PER_BLOCK)
 __global__ void pme_spline_and_spread_kernel(const pme_gpu_cuda_kernel_params_t kernelParams)
 {
     const int                     atomsPerBlock     = PME_SPREADGATHER_ATOMS_PER_BLOCK; // TODO: put it into a better function?

@@ -76,9 +76,9 @@ void pme_gpu_make_sure_memory_is_pinned(void *h_ptr, size_t bytes)
 #else
     std::size_t pageSize = 4096; // a wild guess
 #endif
-
-    if (!pageLockedPointers.count(h_ptr))
-    {
+    /*
+       if (!pageLockedPointers.count(h_ptr))
+       {
         GMX_RELEASE_ASSERT(isAligned(h_ptr, pageSize), "Host pointer passed to pme_gpu_make_sure_memory_is_pinned not page-aligned!");
         cudaError_t stat = cudaHostRegister(h_ptr, bytes, cudaHostRegisterDefault);
         if (stat == cudaErrorHostMemoryAlreadyRegistered)
@@ -90,7 +90,8 @@ void pme_gpu_make_sure_memory_is_pinned(void *h_ptr, size_t bytes)
             CU_RET_ERR(stat, "Could not pin the PME GPU memory");
         }
         pageLockedPointers.insert(h_ptr);
-    }
+       }
+     */
 }
 
 int pme_gpu_get_atom_data_alignment(const pme_gpu_t *pmeGPU)
