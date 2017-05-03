@@ -68,14 +68,14 @@ __device__ __forceinline__ float read_grid_size(const float *realGridSizeFP,
 
 /*! \brief Reduce the order^2 contributions.
  *
- *  \param[out] sm_forcesPartial  Shared memory array with the forces
- *  \param[in] atomIndexLocal     Local atom index
- *  \param[in] splineIndex        Spline index
- *  \param[in] lineIndex          Line index
- *  \param[in] realGridSizeFP     Local grid size constant
- *  \param[in] fx                 Force partial component X
- *  \param[in] fy                 Force partial component Y
- *  \param[in] fz                 Force partial component Z
+ *  \param[out]    sm_forces          Shared memory array with the output forces (numebr of elemnts is numebr of atoms per block)
+ *  \param[in]     atomIndexLocal     Local atom index
+ *  \param[in]     splineIndex        Spline index
+ *  \param[in]     lineIndex          Line index (same as threadLocalId)
+ *  \param[in]     realGridSizeFP     Local grid size constant
+ *  \param[in]     fx                 Input force partial component X
+ *  \param[in]     fy                 Input force partial component Y
+ *  \param[in]     fz                 Input force partial component Z
  *
  */
 template <
@@ -83,14 +83,14 @@ template <
     const int atomDataSize,
     const int blockSize
     >
-__device__ __forceinline__ void reduce_particle_forces(float3         sm_forces[],
-                                                       const int      atomIndexLocal,
-                                                       const int      splineIndex,
-                                                       const int      lineIndex,
-                                                       const float   *realGridSizeFP,
-                                                       float         &fx,
-                                                       float         &fy,
-                                                       float         &fz)
+__device__ __forceinline__ void reduce_particle_forces(float3 * __restrict__ sm_forces,
+                                                       const int             atomIndexLocal,
+                                                       const int             splineIndex,
+                                                       const int             lineIndex,
+                                                       const float          *realGridSizeFP,
+                                                       float                &fx,
+                                                       float                &fy,
+                                                       float                &fz)
 {
 #if (GMX_PTX_ARCH >= 300)
     if (!(order & (order - 1))) // only for orders of power of 2
@@ -118,20 +118,21 @@ __device__ __forceinline__ void reduce_particle_forces(float3         sm_forces[
             fx = fz;
         }
 
-        // by now fx contains intermediate sums of all 3 components in groups of 4:
+        // By now fx contains intermediate quad sums of all 3 components:
         // splineIndex    0            1            2 and 3      4            5            6 and 7      8...
         // sum of...      fx0 to fx3   fy0 to fy3   fz0 to fz3   fx4 to fx7   fy4 to fy7   fz4 to fz7   etc.
 
-        // we have to just further reduce those groups of 4
+        // We have to just further reduce those groups of 4
         for (int delta = 4; delta < atomDataSize; delta <<= 1)
         {
             fx += __shfl_down(fx, delta, width);
         }
 
-        if (splineIndex < 3)
+        const int dimIndex = splineIndex;
+        if (dimIndex < DIM)
         {
-            const float n = read_grid_size(realGridSizeFP, splineIndex);
-            *((float *)(&sm_forces[atomIndexLocal]) + splineIndex) = fx * n;
+            const float n = read_grid_size(realGridSizeFP, dimIndex);
+            *((float *)(&sm_forces[atomIndexLocal]) + dimIndex) = fx * n;
         }
     }
     else
@@ -139,25 +140,99 @@ __device__ __forceinline__ void reduce_particle_forces(float3         sm_forces[
     {
         // TODO (psz): improve the generic reduction
         // lazy 3-thread reduction in shared memory inspired by reduce_force_j_generic
+
+        // We use blockSize shared memory elements to read fx, or fy, or fz, and then reduce them to fit into smemPerDim elements
+        // which are stored separately (first 2 dimensions only)
+        const int         smemPerDim   = warp_size;
+        const int         smemReserved = (DIM - 1) * smemPerDim;
+        __shared__ float  sm_forceReduction[smemReserved + blockSize];
+        __shared__ float *sm_forceTemp[DIM];
+
+        const int         numWarps  = blockSize / smemPerDim;
+        const int         minStride = max(1, atomDataSize / numWarps); // order 4: 128 threads => 4, 256 threads => 2, etc
+
+#pragma unroll
+        for (int dimIndex = 0; dimIndex < DIM; dimIndex++)
+        {
+            int elementIndex = smemReserved + lineIndex;
+            // Store input force contributions
+            sm_forceReduction[elementIndex] = (dimIndex == XX) ? fx : (dimIndex == YY) ? fy : fz;
+            // Reduce to fit into smemPerDim (warp size)
+#pragma unroll
+            for (int redStride = atomDataSize / 2; redStride > minStride; redStride >>= 1)
+            {
+                if (splineIndex < redStride)
+                {
+                    sm_forceReduction[elementIndex] += sm_forceReduction[elementIndex + redStride];
+                }
+            }
+            // Last iteration - packing everything to be nearby, storing convenience pointer
+            sm_forceTemp[dimIndex] = sm_forceReduction + dimIndex * smemPerDim;
+            int redStride = minStride;
+            if (splineIndex < redStride)
+            {
+                const int packedIndex = atomIndexLocal * redStride + splineIndex;
+                sm_forceTemp[dimIndex][packedIndex] = sm_forceReduction[elementIndex] + sm_forceReduction[elementIndex + redStride];
+            }
+        }
+
+        __syncthreads();
+
+        assert ((blockSize / warp_size) >= DIM);
+        //assert (atomsPerBlock <= warp_size);
+
+        const int warpIndex = lineIndex / warp_size;
+        const int dimIndex  = warpIndex;
+
+        // first 3 warps can now process 1 dimension each
+        if (dimIndex < DIM)
+        {
+            int sourceIndex = lineIndex % warp_size; //?
+#pragma unroll
+            for (int redStride = minStride / 2; redStride > 1; redStride >>= 1)
+            {
+                if (!(splineIndex & redStride))
+                {
+                    sm_forceTemp[dimIndex][sourceIndex] += sm_forceTemp[dimIndex][sourceIndex + redStride];
+                }
+            }
+
+            const float n = read_grid_size(realGridSizeFP, dimIndex);
+
+            const int   atomIndex = sourceIndex / minStride;
+            if (sourceIndex == minStride * atomIndex)
+            {
+                *((float *)(&sm_forces[atomIndex]) + dimIndex) = (sm_forceTemp[dimIndex][sourceIndex] + sm_forceTemp[dimIndex][sourceIndex + 1]) * n;
+            }
+        }
+
+
+#if 0   // previous one
+
+        // Lazy 3-thread reduction in shared memory inspired by reduce_force_j_generic
         __shared__ float sm_forceReduction[DIM * blockSize];
         sm_forceReduction[XX * blockSize + lineIndex] = fx;
         sm_forceReduction[YY * blockSize + lineIndex] = fy;
         sm_forceReduction[ZZ * blockSize + lineIndex] = fz;
 
-        if (splineIndex < DIM)
+        if (splineIndex < DIM) // This runs 6 threads (0..2, 16..18) in each warp
         {
             const float n = read_grid_size(realGridSizeFP, splineIndex);
             float       f = 0.0f;
+            // This runs o^2==16 iterations over all single atom, single dimension contributions
             for (int j = atomIndexLocal * atomDataSize; j < (atomIndexLocal + 1) * atomDataSize; j++)
             {
+                // Bank conflicts happen here!
                 f += sm_forceReduction[blockSize * splineIndex + j];
             }
             *((float *)(&sm_forces[atomIndexLocal]) + splineIndex) = f * n;
         }
+#endif
     }
 }
 
 const int maxThreads = (GMX_PTX_ARCH >= 300) ? 2048 : 1536;
+//TODO fixme for 20 -conflicts with 8
 
 /*! \brief
  *
@@ -299,7 +374,7 @@ __global__ void pme_gather_kernel(const pme_gpu_cuda_kernel_params_t    kernelPa
             fz += tdx.x * tdy.x * fz1;
         }
     }
-    __syncthreads();
+    //__syncthreads();
 
     // Reduction of partial force contributions
     __shared__ float3 sm_forces[atomsPerBlock];
@@ -324,27 +399,34 @@ __global__ void pme_gather_kernel(const pme_gpu_cuda_kernel_params_t    kernelPa
         sm_forces[forceIndexLocal] = result;
     }
 
-    /* Writing or adding the final forces component-wise, DIM * atomsPerBlock threads */
-    const int    outputIndexLocal  = threadLocalId;
-    const size_t blockForcesSize   = atomsPerBlock * DIM;
-    if (blockForcesSize > warp_size)
+    // No sync here
+    assert(atomsPerBlock <= warp_size);
+
+    /* Writing or adding the final forces component-wise, single warp */
+    const size_t blockForcesSize = atomsPerBlock * DIM;
+    const int    numIter         = (blockForcesSize + warp_size - 1) / warp_size;
+    const int    iterThreads     = blockForcesSize / numIter;
+    if (threadLocalId < iterThreads)
     {
-        __syncthreads(); // Waiting for the previous sm_force computation if we have > 1 warp
-    }
-    const int    outputIndexGlobal = blockIdx.x * blockForcesSize + outputIndexLocal;
-    const int    globalOutputCheck = pme_gpu_check_atom_data_index(outputIndexGlobal, kernelParams.atoms.nAtoms * DIM);
-    if ((outputIndexLocal < blockForcesSize) && globalOutputCheck)
-    {
-        const float outputForceComponent = ((float *)sm_forces)[outputIndexLocal];
-        if (overwriteForces)
+#pragma unroll
+        for (int i = 0; i < numIter; i++)
         {
-            gm_forces[outputIndexGlobal] = outputForceComponent;
+            int         outputIndexLocal  = i * iterThreads + threadLocalId;
+            int         outputIndexGlobal = blockIdx.x * blockForcesSize + outputIndexLocal;
+            const int   globalOutputCheck = pme_gpu_check_atom_data_index(outputIndexGlobal, kernelParams.atoms.nAtoms * DIM);
+            if (globalOutputCheck)
+            {
+                const float outputForceComponent = ((float *)sm_forces)[outputIndexLocal];
+                if (overwriteForces)
+                {
+                    gm_forces[outputIndexGlobal] = outputForceComponent;
+                }
+                else
+                {
+                    gm_forces[outputIndexGlobal] += outputForceComponent;
+                }
+            }
         }
-        else
-        {
-            gm_forces[outputIndexGlobal] += outputForceComponent;
-        }
-        assert(!isnan(gm_forces[outputIndexGlobal]) || (outputIndexGlobal >= kernelParams.atoms.nAtoms * DIM));
     }
 }
 

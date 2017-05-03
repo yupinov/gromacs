@@ -81,8 +81,8 @@ class GpuParallel3dFft;
     ----------------------------------------------------------------------------
 
     Each data chunk for a single warp is 24 floats. This goes both for theta and dtheta.
-    24 = 2 particles per warp *  order 4 * 3 dimensions. 48 floats (1.5 warp size) per warp in total.
-    I have also tried intertwining theta and theta in a single array (they are used in pairs in gathering stage anwyay)
+    24 = 2 particles per warp * order 4 * 3 dimensions. 48 floats (1.5 warp size) per warp in total.
+    I have also tried intertwining theta and theta in a single array (they are used in pairs in gathering stage anyway)
     and it didn't seem to make a performance difference.
 
     The corresponding defines follow.
@@ -104,7 +104,7 @@ class GpuParallel3dFft;
  * TODO: tune and specialize them for different CUDA architectures.
  */
 //! Spread/gather block size
-constexpr int PME_SPREADGATHER_THREADS_PER_BLOCK = (4 * warp_size);
+constexpr int PME_SPREADGATHER_THREADS_PER_BLOCK = (8 * warp_size);
 //! Solve block size
 constexpr int PME_SOLVE_THREADS_PER_BLOCK = (4 * warp_size);
 //! Solve with reduction
