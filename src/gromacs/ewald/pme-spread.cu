@@ -62,7 +62,7 @@
  *
  * TODO: estimate if this should be a boolean parameter (and add it to the unit test if so).
  */
-#define PME_GPU_PARALLEL_SPLINE 1
+#define PME_GPU_PARALLEL_SPLINE 0
 
 texture<int, 1, cudaReadModeElementType>   gridlineIndicesTableTextureRef;
 texture<float, 1, cudaReadModeElementType> fractShiftsTableTextureRef;
@@ -576,6 +576,7 @@ void pme_gpu_spread(const pme_gpu_t *pmeGpu,
                 if (spreadCharges)
                 {
                     pme_gpu_start_timing(pmeGpu, gtPME_SPLINEANDSPREAD);
+                    CU_RET_ERR(cudaFuncSetCacheConfig(pme_spline_and_spread_kernel<4, true, true, wrapX, wrapY>, cudaFuncCachePreferEqual), "wtf"); //L1 is too much shared use!
                     pme_spline_and_spread_kernel<4, true, true, wrapX, wrapY> <<< nBlocks, dimBlock, 0, stream>>> (*kernelParamsPtr);
                     CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
                     pme_gpu_stop_timing(pmeGpu, gtPME_SPLINEANDSPREAD);

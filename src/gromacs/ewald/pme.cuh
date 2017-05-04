@@ -104,7 +104,7 @@ class GpuParallel3dFft;
  * TODO: tune and specialize them for different CUDA architectures.
  */
 //! Spread/gather block size
-constexpr int PME_SPREADGATHER_THREADS_PER_BLOCK = (8 * warp_size);
+constexpr int PME_SPREADGATHER_THREADS_PER_BLOCK = (4 * warp_size);
 //! Solve block size
 constexpr int PME_SOLVE_THREADS_PER_BLOCK = (4 * warp_size);
 //! Solve with reduction
