@@ -50,6 +50,12 @@
 #include "pme.cuh"
 #include "pme-timings.cuh"
 
+//! Gather block size //TODO rename, use max_threads
+constexpr int PME_GATHER_THREADS_PER_BLOCK = (4 * warp_size); // 8 is almost same maybe, TODO: test on Tesla
+
+//! Used for static kernel scheduling
+#define PME_GATHER_ATOMS_PER_BLOCK (PME_GATHER_THREADS_PER_BLOCK / PME_THREADS_PER_ATOM)
+
 /*! \brief
  * An inline CUDA function: unroll the dynamic index accesses to the constant grid sizes to avoid local memory operations.
  */
@@ -252,7 +258,7 @@ template <
     const bool wrapX,
     const bool wrapY
     >
-__launch_bounds__(PME_SPREADGATHER_THREADS_PER_BLOCK, maxThreads / PME_SPREADGATHER_THREADS_PER_BLOCK)
+__launch_bounds__(PME_GATHER_THREADS_PER_BLOCK, maxThreads / PME_GATHER_THREADS_PER_BLOCK)
 __global__ void pme_gather_kernel(const pme_gpu_cuda_kernel_params_t    kernelParams)
 {
     /* Global memory pointers */
@@ -264,7 +270,7 @@ __global__ void pme_gather_kernel(const pme_gpu_cuda_kernel_params_t    kernelPa
     float * __restrict__        gm_forces           = kernelParams.atoms.d_forces;
 
     /* Some sizes */
-    const int    atomsPerBlock  = PME_SPREADGATHER_ATOMS_PER_BLOCK;
+    const int    atomsPerBlock  = PME_GATHER_ATOMS_PER_BLOCK;
     const int    atomDataSize   = PME_THREADS_PER_ATOM; /* Number of data components and threads for a single atom */
     const int    blockSize      = atomsPerBlock * atomDataSize;
 
@@ -474,7 +480,9 @@ void pme_gpu_gather(const pme_gpu_t *pmeGpu,
         cu_copy_H2D_async(kernelParamsPtr->atoms.d_theta, pmeGpu->staging.h_theta, nAtomsSplineData * splineDataSizePerAtom, stream);
     }
 
-    const int atomsPerBlock          =  PME_SPREADGATHER_ATOMS_PER_BLOCK;
+    const int atomsPerBlock          =  PME_GATHER_ATOMS_PER_BLOCK;
+    assert(!c_usePadding || !(PME_ATOM_DATA_ALIGNMENT % atomsPerBlock));
+
     dim3 nBlocks(pmeGpu->nAtomsPadded / atomsPerBlock);
     dim3 dimBlock(order, order, atomsPerBlock);
 

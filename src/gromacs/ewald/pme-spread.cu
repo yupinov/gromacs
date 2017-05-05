@@ -46,6 +46,7 @@
 #include <cassert>
 
 #include "gromacs/ewald/pme.h"
+#include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/gmxassert.h"
@@ -63,6 +64,24 @@
  * TODO: estimate if this should be a boolean parameter (and add it to the unit test if so).
  */
 #define PME_GPU_PARALLEL_SPLINE 0
+
+//! Spreading max block size TODO: rename, use maxtherads, etc
+constexpr int PME_SPREAD_THREADS_PER_BLOCK = ((((300 <= GMX_PTX_ARCH) && (GMX_PTX_ARCH < 400)) ? 2 : 8) * warp_size);
+//660Ti which is 3.0 is really weak on throughput, otherwise 8? How to pick?
+
+//FIXME store in one place.
+__host__ __device__ int getSpreadBlockWidth(const pme_gpu_t *pmeGpu)
+{
+    const bool smallerBlocks = ((GMX_PTX_ARCH == 0) && (pmeGpu->deviceInfo->prop.major == 3)) || // host pass for CC 3.x
+        ((300 <= GMX_PTX_ARCH) && (GMX_PTX_ARCH < 400));                                         // devcie pass for 3.x
+
+    return (smallerBlocks ? 2 : 8) * warp_size;
+}
+
+//FIXME same sizes in host and device code
+
+//! Used for static kernel scheduling
+#define PME_SPREAD_ATOMS_PER_BLOCK (PME_SPREAD_THREADS_PER_BLOCK / PME_THREADS_PER_ATOM)
 
 texture<int, 1, cudaReadModeElementType>   gridlineIndicesTableTextureRef;
 texture<float, 1, cudaReadModeElementType> fractShiftsTableTextureRef;
@@ -496,10 +515,10 @@ template <
     const bool wrapX,
     const bool wrapY
     >
-__launch_bounds__(PME_SPREADGATHER_THREADS_PER_BLOCK)
+__launch_bounds__(PME_SPREAD_THREADS_PER_BLOCK)
 __global__ void pme_spline_and_spread_kernel(const pme_gpu_cuda_kernel_params_t kernelParams)
 {
-    const int                     atomsPerBlock     = PME_SPREADGATHER_ATOMS_PER_BLOCK; // TODO: put it into a better function?
+    const int                     atomsPerBlock     = PME_SPREAD_ATOMS_PER_BLOCK; // TODO: put it into a better function?
     // Gridline indices, ivec
     __shared__ int                sm_gridlineIndices[atomsPerBlock * DIM];
     // Charges
@@ -555,7 +574,11 @@ void pme_gpu_spread(const pme_gpu_t *pmeGpu,
     const auto  *kernelParamsPtr = pmeGpu->kernelParams.get();
 
     const int    order                   = pmeGpu->common->pme_order;
-    const int    atomsPerBlock           = PME_SPREADGATHER_ATOMS_PER_BLOCK;
+    const int    atomsPerBlock           = getSpreadBlockWidth(pmeGpu) / PME_THREADS_PER_ATOM;
+
+    assert(!c_usePadding || !(PME_ATOM_DATA_ALIGNMENT % atomsPerBlock));
+
+    printf("atomsPerBlock %d\n", atomsPerBlock);
 
     GMX_RELEASE_ASSERT(kernelParamsPtr->atoms.nAtoms > 0, "No atom data in PME GPU spread");
     dim3 nBlocks(pmeGpu->nAtomsPadded / atomsPerBlock);

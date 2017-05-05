@@ -94,7 +94,6 @@ class GpuParallel3dFft;
 /*! \brief
  * The number of GPU threads used for computing spread/gather contributions of a single atom as function of the PME order.
  * The assumption is currently that any thread processes only a single atom's contributions.
- * Another assumption is spread and gather using same layout/scheduling, having common launch bounds, etc.
  */
 #define PME_THREADS_PER_ATOM (order * order)
 
@@ -103,21 +102,18 @@ class GpuParallel3dFft;
  * Spread and gather are using the same memory layout/logic.
  * TODO: tune and specialize them for different CUDA architectures.
  */
-//! Spread/gather block size
-constexpr int PME_SPREADGATHER_THREADS_PER_BLOCK = (4 * warp_size);
-//! Solve block size
-constexpr int PME_SOLVE_THREADS_PER_BLOCK = (4 * warp_size);
-//! Solve with reduction
-constexpr int PME_SOLVE_ENERVIR_THREADS_PER_BLOCK = (4 * warp_size);
 
-// A couple of derived defines
+//! Solve block size
+constexpr int PME_SOLVE_THREADS_PER_BLOCK = (8 * warp_size);
+//! Solve with reduction
+constexpr int PME_SOLVE_ENERVIR_THREADS_PER_BLOCK = (8 * warp_size);
 
 //! The spread/gather integer constant; 2 particles per warp for order of 4, depends on the templated order parameter
 #define PME_SPREADGATHER_ATOMS_PER_WARP (warp_size / PME_THREADS_PER_ATOM)
 
-//! Used for indexing the shared/global atom data in kernels, as well as for scheduling
-#define PME_SPREADGATHER_ATOMS_PER_BLOCK (PME_SPREADGATHER_THREADS_PER_BLOCK / PME_THREADS_PER_ATOM)
-
+//! Atom data alignment - has to be divisible both by spread and gather maximum atoms-per-block counts,
+//!  which is assert'ed in case we use atom data padding at all.
+#define PME_ATOM_DATA_ALIGNMENT (8 * PME_SPREADGATHER_ATOMS_PER_WARP);
 
 /*! \brief \internal
  * An inline CUDA function for checking the global atom data indices against the atom data array sizes.
