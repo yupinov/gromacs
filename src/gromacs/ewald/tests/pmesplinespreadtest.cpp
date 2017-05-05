@@ -105,14 +105,23 @@ class PmeSplineAndSpreadTest : public ::testing::TestWithParam<SplineAndSpreadIn
             inputRec.coulombtype = eelPME;
             inputRec.epsilon_r   = 1.0;
 
-            TestReferenceData                                      refData;
-
             const std::map<CodePath, std::string>                  modesToTest   = {{CodePath::CPU, "CPU"},
                                                                                     {CodePath::CUDA, "CUDA"}};
 
             const std::map<PmeSplineAndSpreadOptions, std::string> optionsToTest = {{PmeSplineAndSpreadOptions::SplineAndSpreadUnified, "spline computation and charge spreading (fused)"},
                                                                                     {PmeSplineAndSpreadOptions::SplineOnly, "spline computation"},
                                                                                     {PmeSplineAndSpreadOptions::SpreadOnly, "charge spreading"}};
+
+            // There is a subtle problem with multiple comparisons against same reference data:
+            // The subsequent (GPU) spreading runs at one point didn't actually copy the output grid into the proper buffer,
+            // but the reference data was already marked as checked (hasBeenChecked_) by the CPU run, so nothing failed.
+            // For now we will manually track that the count of the grid entries is the same on each run.
+            // This is just a hack for a single specific output though.
+            // What would be much better TODO is implement resetUncheckedStatus() for refdata and call it after each run.
+            bool              gridValuesSizeAssigned = false;
+            size_t            previousGridValuesSize;
+
+            TestReferenceData refData;
 
             for (const auto &mode : modesToTest)
             {
@@ -207,6 +216,16 @@ class PmeSplineAndSpreadTest : public ::testing::TestWithParam<SplineAndSpreadIn
                                 /* 2 is empiric; sqrt(atomCount) assumes all the input charges may spread onto the same cell */
                                 SCOPED_TRACE(formatString("Testing grid values with tolerance of %ld", ulpToleranceGrid));
                                 gridValuesChecker.setDefaultTolerance(relativeToleranceAsUlp(1.0, ulpToleranceGrid));
+                                if (!gridValuesSizeAssigned)
+                                {
+                                    previousGridValuesSize = nonZeroGridValues.size();
+                                    gridValuesSizeAssigned = true;
+                                }
+                                else
+                                {
+                                    EXPECT_EQ(previousGridValuesSize, nonZeroGridValues.size());
+                                }
+
                                 for (const auto &point : nonZeroGridValues)
                                 {
                                     gridValuesChecker.checkReal(point.second, point.first.c_str());

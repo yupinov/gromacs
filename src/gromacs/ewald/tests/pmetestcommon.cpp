@@ -264,6 +264,11 @@ void pmePerformSplineAndSpread(gmx_pme_t *pme, CodePath mode, // TODO const qual
 
         case CodePath::CUDA:
             pme_gpu_spread(pme->gpu, gridIndex, h_grid, computeSplines, spreadCharges);
+            if (spreadCharges)
+            {
+                pme_gpu_synchronize(pme->gpu);
+                copy_pmegrid_to_fftgrid(pme, h_grid, fftgrid, gridIndex);
+            }
             break;
 
         default:
