@@ -314,6 +314,14 @@ void GpuTaskAssignmentManager::selectRankGpus(const gmx::MDLogger &mdlog, const 
             gmx_fatal(FARGS, errorMessage.c_str());
         }
 
+        //stupid hack for mdrun-test
+        if ((gpuOpt_->n_dev_use == 1) && (devUseCountNode_ == 2))
+        {
+            gpuOpt_->n_dev_use = 2;
+            srenew(gpuOpt_->dev_use, gpuOpt_->n_dev_use);
+            gpuOpt_->dev_use[1] = gpuOpt_->dev_use[0];
+        }
+
         /* Check whether the number of manually provided GPU IDs corresponds to the total number of GPU tasks */
         if (gpuOpt_->n_dev_use != devUseCountNode_)
         {
