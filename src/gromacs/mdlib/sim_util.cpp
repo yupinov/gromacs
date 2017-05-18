@@ -779,7 +779,7 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
     bDoForces     = (flags & GMX_FORCE_FORCES);
     bUseGPU       = fr->nbv->bUseGPU;
     bUseOrEmulGPU = bUseGPU || (nbv->grp[0].kernel_type == nbnxnk8x8x8_PlainC);
-    const bool boxPossiblyChanged = flags & GMX_FORCE_DYNAMICBOX;
+    const bool boxPossiblyChanged = flags & GMX_FORCE_DYNAMICBOX || (step ==0) || true;
 
     if (bStateChanged)
     {
