@@ -79,7 +79,7 @@ void pme_gpu_make_sure_memory_is_pinned(void *h_ptr, size_t bytes)
 
     if (!pageLockedPointers.count(h_ptr))
     {
-        GMX_RELEASE_ASSERT(isAligned(h_ptr, pageSize), "Host pointer passed to pme_gpu_make_sure_memory_is_pinned not page-aligned!");
+        GMX_ASSERT(isAligned(h_ptr, pageSize), "Host pointer passed to pme_gpu_make_sure_memory_is_pinned not page-aligned!");
         cudaError_t stat = cudaHostRegister(h_ptr, bytes, cudaHostRegisterDefault);
         if (stat == cudaErrorHostMemoryAlreadyRegistered)
         {
