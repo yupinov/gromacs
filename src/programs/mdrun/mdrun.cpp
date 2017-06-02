@@ -299,7 +299,7 @@ int gmx_mdrun(int argc, char *argv[])
     const char       *nbpu_opt[] =
     { nullptr, "auto", "cpu", "gpu", "gpu_cpu", nullptr };
     const char       *pme_opt[] =
-    { nullptr, "auto", "cpu", "gpu", nullptr };
+    { nullptr, "auto", "cpu", "gpu", "hybrid", nullptr };
 
     real              rdd                   = 0.0, rconstr = 0.0, dlb_scale = 0.8, pforce = -1;
     char             *ddcsx                 = nullptr, *ddcsy = nullptr, *ddcsz = nullptr;

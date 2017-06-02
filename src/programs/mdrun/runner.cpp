@@ -801,8 +801,17 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
     gmx_membed_t *            membed       = nullptr;
     gmx_hw_info_t            *hwinfo       = nullptr;
     /* The master rank decides early on GPU use and broadcasts this later */
-    bool useGpuPME        = false;
-    bool useGpuNB         = false;
+    bool                      useGpuPME        = false;
+    bool                      useGpuNB         = false;
+    PmeRunMode                pmeRunMode; //FIXME this now is superior to useGpuPME
+    switch (pme_opt[0])
+    {
+        case 'g': pmeRunMode = PmeRunMode::GPU; break;                 // "gpu"
+        case 'c': pmeRunMode = PmeRunMode::CPU; break;                 // "cpu"
+        case 'h': pmeRunMode = PmeRunMode::Hybrid; break;              // "hybrid"
+        case 'a': GMX_RELEASE_ASSERT(false, "not implemented"); break; // "auto" FIXME add heuristics below
+        default: GMX_RELEASE_ASSERT(false, "Undefined PME run option"); break;
+    }
 
     /* CAUTION: threads may be started later on in this function, so
        cr doesn't reflect the final parallel state right now */
@@ -820,7 +829,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
     bRerunMD     = (Flags & MD_RERUN);
     // TODO variables below would be nicer as enums parsed from the command line
     const bool forceUseGpuNB  = (strncmp(nbpu_opt, "gpu", 3) == 0);
-    const bool forceUseGpuPME = (strncmp(pme_opt, "gpu", 3) == 0);
+    const bool forceUseGpuPME = (pmeRunMode == PmeRunMode::Hybrid) || (pmeRunMode == PmeRunMode::GPU);
     const bool tryUseGpuNB    = (strncmp(nbpu_opt, "auto", 4) == 0) || forceUseGpuNB;
     const bool tryUseGpuPME   = (strncmp(pme_opt, "auto", 4) == 0) || forceUseGpuPME;
 
@@ -1019,8 +1028,9 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
          * broadcast this information to all ranks.
          */
         gmx_bcast_sim(sizeof(useGpuNB), &useGpuNB, cr);
-        gmx_bcast_sim(sizeof(useGpuPME), &useGpuPME, cr);
+        gmx_bcast_sim(sizeof(pmeRunMode), &pmeRunMode, cr);
     }
+    useGpuPME = (pmeRunMode != PmeRunMode::CPU);
     // TODO: Error handling
     mdModules.assignOptionsToModules(*inputrec->params, nullptr);
 
@@ -1446,7 +1456,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
                                       (Flags & MD_REPRODUCIBLE),
                                       ewaldcoeff_q, ewaldcoeff_lj,
                                       nthreads_pme,
-                                      useGpuPME, nullptr, gpuTasks.gpuInfo(GpuTask::PME), mdlog);
+                                      pmeRunMode, nullptr, gpuTasks.gpuInfo(GpuTask::PME), mdlog);
             }
             GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
             if (status != 0)

@@ -75,7 +75,6 @@ void pme_gpu_make_sure_memory_is_pinned(void *h_ptr, size_t bytes)
 #else
     std::size_t pageSize = 4096; // a wild guess
 #endif
-
     if (!pageLockedPointers.count(h_ptr))
     {
         GMX_RELEASE_ASSERT(isAligned(h_ptr, pageSize), "Host pointer passed to pme_gpu_make_sure_memory_is_pinned not page-aligned!");
@@ -436,6 +435,22 @@ void pme_gpu_sync_output_energy_virial(const pme_gpu_t *pmeGPU)
     {
         GMX_ASSERT(!isnan(pmeGPU->staging.h_virialAndEnergy[j]), "PME GPU produces incorrect energy/virial.");
     }
+}
+
+void pme_gpu_copy_input_gather_grid(const pme_gpu_t *pmeGpu, float *h_grid)
+{
+    const size_t gridSize = pmeGpu->archSpecific->realGridSize * sizeof(float);
+    pme_gpu_make_sure_memory_is_pinned(h_grid, gridSize);
+    cu_copy_H2D_async(pmeGpu->kernelParams->grid.d_realGrid, h_grid, gridSize, pmeGpu->archSpecific->pmeStream);
+}
+
+void pme_gpu_copy_output_spread_grid(const pme_gpu_t *pmeGpu, float *h_grid)
+{
+    const size_t gridSize = pmeGpu->archSpecific->realGridSize * sizeof(float);
+    pme_gpu_make_sure_memory_is_pinned(h_grid, gridSize);
+    cu_copy_D2H_async(h_grid, pmeGpu->kernelParams->grid.d_realGrid, gridSize, pmeGpu->archSpecific->pmeStream);
+    cudaError_t stat = cudaEventRecord(pmeGpu->archSpecific->syncSpreadGridD2H, pmeGpu->archSpecific->pmeStream);
+    CU_RET_ERR(stat, "PME spread grid sync event record failure");
 }
 
 void pme_gpu_sync_spread_grid(const pme_gpu_t *pmeGPU)

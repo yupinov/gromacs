@@ -64,6 +64,16 @@
 struct gmx_hw_info;
 struct gmx_device_info_t;
 
+/*! \brief Types of PME runs
+ * FIXME: make this enum class with gmx_pme_t C++ refactoring
+ */
+enum PmeRunMode
+{
+    CPU,     // whole PME step is done on CPU
+    GPU,     // whole PME step is done on GPU
+    Hybrid,  // only spread and gather run on GPU; FFT and solving are done on CPU
+};
+
 #if GMX_GPU == GMX_GPU_CUDA
 
 struct pme_gpu_cuda_t;
@@ -293,6 +303,8 @@ struct pme_shared_t
     std::vector<real> fsh[DIM];
     /*! \brief Precomputed B-spline values */
     std::vector<real> bsp_mod[DIM];
+    /*! \brief The PME mode */
+    PmeRunMode        runMode;
 };
 
 /*! \internal \brief

@@ -59,6 +59,9 @@
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
 
+#include "pme-gpu-types.h"
+
+
 struct t_commrec;
 struct t_inputrec;
 struct pme_gpu_t;
@@ -108,7 +111,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata, struct t_commrec *cr,
                  gmx_bool bReproducible,
                  real ewaldcoeff_q, real ewaldcoeff_lj,
                  int nthread,
-                 bool bPMEGPU,
+                 PmeRunMode runMode,
                  pme_gpu_t *pmeGPU,
                  gmx_device_info_t *gpuInfo,
                  const gmx::MDLogger &mdlog);
@@ -278,6 +281,8 @@ void pme_gpu_launch_gather(const gmx_pme_t      *pme,
 
 /*! \brief
  * Gets the output forces and virial/energy if corresponding flags were passed in.
+ * FIXME: this also handles the mixed mode (where solving is performed on CPU),
+ * so should this be called pme_get_results()? It is not called in the pure CPU mode - for now.
  *
  * \param[in]  pme            The PME data structure.
  * \param[in]  wcycle         The wallclock counter.

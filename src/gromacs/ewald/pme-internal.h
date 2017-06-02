@@ -57,6 +57,8 @@
 
 #include <stdio.h>
 
+#include "pme-gpu-types.h"
+
 #include "gromacs/math/gmxcomplex.h"
 #include "gromacs/timing/wallcycle.h"
 #include "gromacs/timing/walltime_accounting.h"
@@ -268,8 +270,9 @@ struct gmx_pme_t {
                                          * FIXME: this is the information that should be owned by the task scheduler,
                                          * and ideally not be duplicated here.
                                          */
+    enum PmeRunMode runMode;
 
-    pme_gpu_t *gpu;                     /* A pointer to the GPU data.
+    pme_gpu_t      *gpu;                /* A pointer to the GPU data.
                                          * TODO: this should be unique or a shared pointer.
                                          * Currently in practice there is a single gmx_pme_t instance while a code
                                          * is partially set up for many of them. The PME tuning calls gmx_pme_reinit()
