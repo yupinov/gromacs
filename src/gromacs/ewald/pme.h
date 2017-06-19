@@ -50,6 +50,7 @@
 
 #include <stdio.h>
 
+#include "pme-gpu-types.h"
 #include "gromacs/gmxlib/nrnb.h"
 #include "gromacs/math/vectypes.h"
 #include "gromacs/mdtypes/forcerec.h"
@@ -88,7 +89,7 @@ int gmx_pme_init(struct gmx_pme_t **pmedata, struct t_commrec *cr,
                  gmx_bool bReproducible,
                  real ewaldcoeff_q, real ewaldcoeff_lj,
                  int nthread,
-                 bool bPMEGPU,
+                 PmeRunMode runMode,
                  pme_gpu_t *pmeGPU,
                  gmx_device_info_t *gpuInfo,
                  const gmx::MDLogger &mdlog,

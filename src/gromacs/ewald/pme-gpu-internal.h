@@ -327,6 +327,24 @@ CUDA_FUNC_QUALIFIER void pme_gpu_free_fract_shifts(const pme_gpu_t *CUDA_FUNC_AR
 CUDA_FUNC_QUALIFIER void pme_gpu_sync_output_energy_virial(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU)) CUDA_FUNC_TERM
 
 /*! \libinternal \brief
+ * Copies the input real-space grid from the host to the GPU.
+ *
+ * \param[in] pmeGPU   The PME GPU structure.
+ * \param[in] h_grid   The host-side grid buffer.
+ */
+CUDA_FUNC_QUALIFIER void pme_gpu_copy_input_gather_grid(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU),
+                                                        float           *CUDA_FUNC_ARGUMENT(h_grid)) CUDA_FUNC_TERM
+
+/*! \libinternal \brief
+ * Copies the output real-space grid from the GPU to the host.
+ *
+ * \param[in] pmeGPU   The PME GPU structure.
+ * \param[out] h_grid  The host-side grid buffer.
+ */
+CUDA_FUNC_QUALIFIER void pme_gpu_copy_output_spread_grid(const pme_gpu_t *CUDA_FUNC_ARGUMENT(pmeGPU),
+                                                         float           *CUDA_FUNC_ARGUMENT(h_grid)) CUDA_FUNC_TERM
+
+/*! \libinternal \brief
  * Waits for the grid copying to the host-side buffer after spreading to finish.
  *
  * \param[in] pmeGPU  The PME GPU structure.

@@ -143,11 +143,11 @@ void pme_gpu_finish_step(const pme_gpu_t *pmeGPU, const bool bCalcF, const bool 
 
     pme_gpu_synchronize(pmeGPU);
 
-    if (bCalcF)
+    if (bCalcF && pme_gpu_performs_gather(pmeGPU))
     {
         pme_gpu_sync_output_forces(pmeGPU);
     }
-    if (bCalcEnerVir)
+    if (bCalcEnerVir && pme_gpu_performs_solve(pmeGPU))
     {
         pme_gpu_sync_output_energy_virial(pmeGPU);
     }
@@ -170,15 +170,22 @@ void pme_gpu_reinit_grids(pme_gpu_t *pmeGPU)
     {
         kernelParamsPtr->grid.realGridSize[i]       = pmeGPU->common->nk[i];
         kernelParamsPtr->grid.realGridSizeFP[i]     = (float)kernelParamsPtr->grid.realGridSize[i];
-        kernelParamsPtr->grid.realGridSizePadded[i] = pmeGPU->common->pmegrid_n[i];
+        kernelParamsPtr->grid.realGridSizePadded[i] = kernelParamsPtr->grid.realGridSize[i];
 
         // The complex grid currently uses no padding;
         // if it starts to do so, then another test should be added for that
         kernelParamsPtr->grid.complexGridSize[i]       = kernelParamsPtr->grid.realGridSize[i];
         kernelParamsPtr->grid.complexGridSizePadded[i] = kernelParamsPtr->grid.realGridSize[i];
     }
-    /* FFT: n real elements correspond to (n / 2 + 1) complex elements in minor dimension */
-    kernelParamsPtr->grid.complexGridSize[ZZ] /= 2;
+    
+    if (!pme_gpu_performs_FFT(pmeGPU))
+    {
+        // This allows for GPU spreading grid and CPU fftgrid to have the same layout, so that we can copy the data directly
+        kernelParamsPtr->grid.realGridSizePadded[ZZ] = (kernelParamsPtr->grid.realGridSize[ZZ] / 2 + 1) * 2;
+    }
+
+    /* GPU FFT: n real elements correspond to (n / 2 + 1) complex elements in minor dimension */
+kernelParamsPtr->grid.complexGridSize[ZZ] /= 2;
     kernelParamsPtr->grid.complexGridSize[ZZ]++;
     kernelParamsPtr->grid.complexGridSizePadded[ZZ] = kernelParamsPtr->grid.complexGridSize[ZZ];
     //TODO: shouldn't this take the X dimension for YZX ordering? Find out once GPU PME + CPU FFT is covered by tests!
@@ -226,6 +233,7 @@ void pme_gpu_copy_common_data_from(const gmx_pme_t *pme)
     pmeGPU->common->nn[XX].assign(pme->nnx, pme->nnx + cellCount * pme->nkx);
     pmeGPU->common->nn[YY].assign(pme->nny, pme->nny + cellCount * pme->nky);
     pmeGPU->common->nn[ZZ].assign(pme->nnz, pme->nnz + cellCount * pme->nkz);
+    pmeGPU->common->runMode = pme->runMode;
 }
 
 /*! \brief \libinternal
@@ -300,10 +308,6 @@ void pme_gpu_init(gmx_pme_t *pme, gmx_device_info_t *gpuInfo, const gmx::MDLogge
     /* Some settings are set here at once for the whole run */
     /* A convenience variable. */
     pmeGPU->settings.useDecomposition = (pme->nnodes == 1);
-    /* GPU FFT will only get used for a single rank. */
-    pmeGPU->settings.performGPUFFT = !pme_gpu_uses_dd(pmeGPU) && !getenv("GMX_PME_GPU_FFTW");
-    /* FIXME - CPU solve/FFTW after the GPU spread is definitely broken at the moment - 20160511 */
-    pmeGPU->settings.performGPUSolve = true;
     /* FIXME: CPU gather with GPU spread has got to be broken as well due to different theta/dtheta layout. */
     pmeGPU->settings.performGPUGather = true;
     pmeGPU->settings.multipleContexts = multipleContexts;
@@ -409,6 +413,9 @@ void pme_gpu_reinit(gmx_pme_t *pme, gmx_device_info_t *gpuInfo, const gmx::MDLog
         /* After this call nothing in the GPU code should refer to the gmx_pme_t *pme itself - until the next pme_gpu_reinit */
         pme_gpu_copy_common_data_from(pme);
     }
+    /* GPU FFT will only get used for a single rank.*/
+    pme->gpu->settings.performGPUFFT   = (pme->gpu->common->runMode == PmeRunMode::GPU) && !pme_gpu_uses_dd(pme->gpu);
+    pme->gpu->settings.performGPUSolve = (pme->gpu->common->runMode == PmeRunMode::GPU);
 
     pme_gpu_reinit_grids(pme->gpu);
     pme_gpu_reinit_step(pme->gpu);

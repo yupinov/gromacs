@@ -525,7 +525,7 @@ int gmx_pme_init(struct gmx_pme_t   **pmedata,
                  real                 ewaldcoeff_q,
                  real                 ewaldcoeff_lj,
                  int                  nthread,
-                 bool                 bPMEGPU,
+                 PmeRunMode           runMode,
                  pme_gpu_t           *pmeGPU,
                  gmx_device_info_t   *gpuInfo,
                  const gmx::MDLogger &mdlog,
@@ -757,7 +757,8 @@ int gmx_pme_init(struct gmx_pme_t   **pmedata,
     snew(pme->bsp_mod[ZZ], pme->nkz);
 
     pme->gpu    = pmeGPU; /* Carrying over the single GPU structure */
-    pme->useGPU = bPMEGPU;
+    pme->runMode = runMode;
+    pme->useGPU  = (runMode != PmeRunMode::CPU);
 
     /* The required size of the interpolation grid, including overlap.
      * The allocated size (pmegrid_n?) might be slightly larger.
@@ -912,7 +913,7 @@ int gmx_pme_reinit(struct gmx_pme_t **pmedata,
         // TODO: when PME is an object, it should take reference to mdlog on construction and save it.
         ret = gmx_pme_init(pmedata, cr, pme_src->nnodes_major, pme_src->nnodes_minor,
                            &irc, homenr, pme_src->bFEP_q, pme_src->bFEP_lj, FALSE, ewaldcoeff_q, ewaldcoeff_lj,
-                           pme_src->nthread, pme_gpu_active(pme_src), pme_src->gpu, nullptr, dummyLogger,
+                           pme_src->nthread, pme_src->runMode, pme_src->gpu, nullptr, dummyLogger,
                            pme_src->gpu ? pme_src->gpu->settings.multipleContexts : false);
         //TODO this is mostly passing around current values
     }

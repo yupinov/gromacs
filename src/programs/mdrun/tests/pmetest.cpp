@@ -91,6 +91,7 @@ TEST_F(PmeTest, ReproducesEnergies)
     runModes.push_back("-pme cpu");
 #if GMX_GPU == GMX_GPU_CUDA
     runModes.push_back("-pme gpu");
+    runModes.push_back("-pme hybrid");
 #endif
     TestReferenceData    refData;
     TestReferenceChecker rootChecker(refData.rootChecker());

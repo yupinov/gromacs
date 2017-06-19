@@ -47,6 +47,7 @@
 #include "gromacs/ewald/pme.h"
 #include "gromacs/fft/parallel_3dfft.h"
 #include "gromacs/gpu_utils/gpu_utils.h"
+#include "gromacs/math/invertmatrix.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/gmxassert.h"
@@ -109,9 +110,7 @@ void inline parallel_3dfft_execute_gpu_wrapper(gmx_pme_t              *pme,
     }
 }
 
-/* The actual PME step code in a few separate functions.
- * Together, they are a GPU counterpart to gmx_pme_do, albeit cut down due to unsupported features
- */
+/* The actual PME step code in a few separate functions. */
 void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
                                           const rvec           *x,
                                           bool                  needToUpdateBox,
@@ -131,37 +130,27 @@ void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
     wallcycle_start(wcycle, ewcLAUNCH_GPU_PME);
     wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_INIT);
     pme_gpu_start_step(pmeGpu, needToUpdateBox, box, x);
+    if (needToUpdateBox && !pme_gpu_performs_solve(pmeGpu))
+    {
+        gmx::invertMatrix(box, pme->recipbox);  // FIXME this has already been computed in pme->gpu
+    }
     wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_INIT);
 
-    const unsigned int grid_index = 0;
-    const pmegrids_t  *pmegrid    = &pme->pmegrid[grid_index];
-    real              *fftgrid    = pme->fftgrid[grid_index];
-    t_complex         *cfftgrid   = pme->cfftgrid[grid_index];
-    real              *grid       = pmegrid->grid.grid;
+    const unsigned int gridIndex  = 0;
+    real              *fftgrid    = pme->fftgrid[gridIndex];
+    t_complex         *cfftgrid   = pme->cfftgrid[gridIndex];
     if (pmeGpu->settings.stepFlags & GMX_PME_SPREAD)
     {
         /* Spread the coefficients on a grid */
-        const bool computeSplines = true; // should only be done once if multiple iterations
+        const bool computeSplines = true;  // should only be done once if multiple iterations
         wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_SPREAD);
-        pme_gpu_spread(pmeGpu, grid_index, grid, computeSplines, true);
+        pme_gpu_spread(pmeGpu, gridIndex, fftgrid, computeSplines, true);
         wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_SPREAD);
 
-        // TODO should be a grid sync here for the CPU FFT
-        if (!pme_gpu_performs_wrapping(pmeGpu))
-        {
-            wrap_periodic_pmegrid(pme, grid);
-        }
-        /* sum contributions to local grid from other nodes */
-#if GMX_MPI
-        if (pme->nnodes > 1)
-        {
-            gmx_sum_qgrid_dd(pme, grid, GMX_SUM_GRID_FORWARD);
-            where();
-        }
-#endif
         if (!pme_gpu_performs_FFT(pmeGpu))
         {
-            copy_pmegrid_to_fftgrid(pme, grid, fftgrid, grid_index);
+            pme_gpu_synchronize(pme->gpu);
+            pme_gpu_sync_spread_grid(pme->gpu);
         }
     }
 
@@ -170,8 +159,7 @@ void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
         if (pmeGpu->settings.stepFlags & GMX_PME_SOLVE)
         {
             /* do R2C 3D-FFT */
-            parallel_3dfft_execute_gpu_wrapper(pme, grid_index, GMX_FFT_REAL_TO_COMPLEX,
-                                               wcycle);
+            parallel_3dfft_execute_gpu_wrapper(pme, gridIndex, GMX_FFT_REAL_TO_COMPLEX, wcycle);
 
             /* solve in k-space for our local cells */
             if (pme_gpu_performs_solve(pmeGpu))
@@ -195,35 +183,9 @@ void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
 
         if (performBackFFT)
         {
-            /* do C2R 3D-FFT */
-            parallel_3dfft_execute_gpu_wrapper(pme, grid_index, GMX_FFT_COMPLEX_TO_REAL, wcycle);
-
-            if (!pme_gpu_performs_FFT(pmeGpu) || !pme_gpu_performs_gather(pmeGpu))
-            {
-#pragma omp parallel for num_threads(pme->nthread) schedule(static)
-                for (int thread = 0; thread < pme->nthread; thread++)
-                {
-                    copy_fftgrid_to_pmegrid(pme, fftgrid, grid, grid_index, pme->nthread, thread);
-                }
-            }
+            parallel_3dfft_execute_gpu_wrapper(pme, gridIndex, GMX_FFT_COMPLEX_TO_REAL, wcycle);
         }
     } GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
-
-    if (performBackFFT)
-    {
-        /* distribute local grid to all nodes */
-#if GMX_MPI
-        if (pme->nnodes > 1)
-        {
-            gmx_sum_qgrid_dd(pme, grid, GMX_SUM_GRID_BACKWARD);
-        }
-#endif
-        if (!pme_gpu_performs_wrapping(pmeGpu))
-        {
-            unwrap_periodic_pmegrid(pme, grid);
-        }
-    }
-
     wallcycle_stop(wcycle, ewcLAUNCH_GPU_PME);
 }
 
@@ -247,7 +209,9 @@ void pme_gpu_launch_gather(const gmx_pme_t                 *pme,
 
     wallcycle_start_nocount(wcycle, ewcLAUNCH_GPU_PME);
     wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_GATHER);
-    pme_gpu_gather(pme->gpu, reinterpret_cast<float *>(forces), overwriteForces, nullptr);
+    const unsigned int gridIndex  = 0;
+    real              *fftgrid    = pme->fftgrid[gridIndex];
+    pme_gpu_gather(pme->gpu, reinterpret_cast<float *>(forces), overwriteForces, fftgrid);    
     wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_GATHER);
     wallcycle_stop(wcycle, ewcLAUNCH_GPU_PME);
 }
@@ -277,7 +241,14 @@ void pme_gpu_get_results(const gmx_pme_t *pme,
     {
         if (pme->doCoulomb)
         {
-            pme_gpu_get_energy_virial(pme->gpu, energy_q, vir_q);
+            if (pme_gpu_performs_solve(pme->gpu))
+            {
+                pme_gpu_get_energy_virial(pme->gpu, energy_q, vir_q);
+            }
+            else
+            {
+                get_pme_ener_vir_q(pme->solve_work, pme->nthread, energy_q, vir_q);
+            }
         }
         else
         {
