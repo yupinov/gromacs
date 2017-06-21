@@ -225,7 +225,7 @@ void pme_gpu_get_timings(const gmx_pme_t         *pme,
 /* The main PME GPU functions */
 
 /*! \brief
- * Launches most of the PME GPU stages, except for gathering.
+ * Launches PME GPU H2D input transfers, spreading kernel, and D2H grid transfer if needed.
  *
  * \param[in] pme               The PME data structure.
  * \param[in] x                 The array of local atoms' coordinates.
@@ -235,12 +235,21 @@ void pme_gpu_get_timings(const gmx_pme_t         *pme,
  * \param[in] flags             The combination of flags to affect the PME computation.
  *                              The flags are the GMX_PME_ flags from pme.h.
  */
-void pme_gpu_launch_everything_but_gather(gmx_pme_t               *pme,
+void pme_gpu_launch_spread(gmx_pme_t               *pme,
                                           const rvec              *x,
                                           bool                     needToUpdateBox,
                                           const matrix             box,
                                           gmx_wallcycle_t          wcycle,
                                           int                      flags);
+
+/*! \brief
+ * Launches PME middle part either on GPU or on CPU - FFT3D R2C, solving, FFT C2R.
+ *
+ * \param[in] pme               The PME data structure.
+ * \param[in] wcycle            The wallclock counter.
+ */
+void pme_gpu_launch_middle(gmx_pme_t               *pme,
+                           gmx_wallcycle_t          wcycle);
 
 /*! \brief
  * Launches the PME GPU gathering and its force manipulations.
@@ -270,6 +279,5 @@ void pme_gpu_get_results(const gmx_pme_t *pme,
                          gmx_wallcycle_t  wcycle,
                          matrix           vir_q,
                          real            *energy_q);
-
 
 #endif

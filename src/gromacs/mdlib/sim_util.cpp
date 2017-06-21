@@ -53,6 +53,7 @@
 #include "gromacs/domdec/domdec_struct.h"
 #include "gromacs/essentialdynamics/edsam.h"
 #include "gromacs/ewald/pme.h"
+#include "gromacs/ewald/pme-internal.h"
 #include "gromacs/gmxlib/chargegroup.h"
 #include "gromacs/gmxlib/network.h"
 #include "gromacs/gmxlib/nrnb.h"
@@ -1044,12 +1045,16 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
                     }
                     if (useGpuPme)
                     {
-                        pme_gpu_launch_everything_but_gather(fr->pmedata,
+                        pme_gpu_launch_spread(fr->pmedata,
                                                              x,
                                                              boxPossiblyChanged,
                                                              bSB ? boxs : box,
                                                              wcycle,
                                                              pme_flags);
+			if (fr->pmedata->runMode != PmeRunMode::Hybrid)
+			  {
+			    pme_gpu_launch_middle(fr->pmedata, wcycle);
+			  }
                     }
                 }
             }
@@ -1064,6 +1069,11 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
                      nrnb, wcycle);
         wallcycle_stop(wcycle, ewcLAUNCH_GPU_NB);
     }
+
+    if (fr->pmedata->runMode == PmeRunMode::Hybrid)
+			  {
+			    pme_gpu_launch_middle(fr->pmedata, wcycle);
+			  }
 
     /* Communicate coordinates and sum dipole if necessary +
        do non-local pair search */

@@ -78,6 +78,8 @@ void pme_gpu_get_timings(const gmx_pme_t *pme, gmx_wallclock_gpu_pme_t *timings)
     }
 }
 
+real g_boxVolume;
+
 /*! \brief
  * A convenience wrapper for launching either the GPU or CPU FFT.
  *
@@ -111,12 +113,12 @@ void inline parallel_3dfft_execute_gpu_wrapper(gmx_pme_t              *pme,
 }
 
 /* The actual PME step code in a few separate functions. */
-void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
-                                          const rvec           *x,
-                                          bool                  needToUpdateBox,
-                                          const matrix          box,
-                                          gmx_wallcycle_t       wcycle,
-                                          int                   flags)
+void pme_gpu_launch_spread(gmx_pme_t            *pme,
+                           const rvec           *x,
+                           bool                  needToUpdateBox,
+                           const matrix          box,
+                           gmx_wallcycle_t       wcycle,
+                           int                   flags)
 {
     GMX_ASSERT(pme_gpu_active(pme), "This should be a GPU run of PME but it is not enabled.");
     GMX_ASSERT(pme->nnodes > 0, "");
@@ -124,8 +126,6 @@ void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
 
     pme_gpu_t *pmeGpu = pme->gpu;
     pmeGpu->settings.stepFlags = flags;
-    const bool computeEnergyAndVirial = pmeGpu->settings.stepFlags & GMX_PME_CALC_ENER_VIR;
-    const bool performBackFFT         = pmeGpu->settings.stepFlags & (GMX_PME_CALC_F | GMX_PME_CALC_POT);
 
     wallcycle_start(wcycle, ewcLAUNCH_GPU_PME);
     wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_INIT);
@@ -133,12 +133,12 @@ void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
     if (needToUpdateBox && !pme_gpu_performs_solve(pmeGpu))
     {
         gmx::invertMatrix(box, pme->recipbox);  // FIXME this has already been computed in pme->gpu
+	g_boxVolume = box[XX][XX] * box[YY][YY] * box[ZZ][ZZ];
     }
     wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_INIT);
 
     const unsigned int gridIndex  = 0;
     real              *fftgrid    = pme->fftgrid[gridIndex];
-    t_complex         *cfftgrid   = pme->cfftgrid[gridIndex];
     if (pmeGpu->settings.stepFlags & GMX_PME_SPREAD)
     {
         /* Spread the coefficients on a grid */
@@ -146,7 +146,22 @@ void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
         wallcycle_sub_start(wcycle, ewcsLAUNCH_GPU_PME_SPREAD);
         pme_gpu_spread(pmeGpu, gridIndex, fftgrid, computeSplines, true);
         wallcycle_sub_stop(wcycle, ewcsLAUNCH_GPU_PME_SPREAD);
+    }
+    wallcycle_stop(wcycle, ewcLAUNCH_GPU_PME);
+}
 
+void pme_gpu_launch_middle(gmx_pme_t            *pme,
+                           gmx_wallcycle_t       wcycle)
+{
+    pme_gpu_t *pmeGpu = pme->gpu;
+    const bool computeEnergyAndVirial = pmeGpu->settings.stepFlags & GMX_PME_CALC_ENER_VIR;
+    const bool performBackFFT         = pmeGpu->settings.stepFlags & (GMX_PME_CALC_F | GMX_PME_CALC_POT);
+    const unsigned int gridIndex  = 0;
+    t_complex         *cfftgrid   = pme->cfftgrid[gridIndex];
+
+    wallcycle_start_nocount(wcycle, ewcLAUNCH_GPU_PME);  
+   if (pmeGpu->settings.stepFlags & GMX_PME_SPREAD)
+   {
         if (!pme_gpu_performs_FFT(pmeGpu))
         {
             pme_gpu_synchronize(pme->gpu);
@@ -174,8 +189,7 @@ void pme_gpu_launch_everything_but_gather(gmx_pme_t            *pme,
 #pragma omp parallel for num_threads(pme->nthread) schedule(static)
                 for (int thread = 0; thread < pme->nthread; thread++)
                 {
-                    solve_pme_yzx(pme, cfftgrid,
-                                  box[XX][XX]*box[YY][YY]*box[ZZ][ZZ],
+		  solve_pme_yzx(pme, cfftgrid, g_boxVolume,
                                   computeEnergyAndVirial, pme->nthread, thread);
                 }
             }

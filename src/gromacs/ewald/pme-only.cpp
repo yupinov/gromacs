@@ -248,7 +248,8 @@ int gmx_pmeonly(struct gmx_pme_t *pme,
         if (useGpu)
         {
             const bool boxChanged = true; //TODO this should be set properly by gmx_pme_recv_coeffs_coords
-            pme_gpu_launch_everything_but_gather(pme, x_pp, boxChanged, box, wcycle, pmeFlags);
+            pme_gpu_launch_spread(pme, x_pp, boxChanged, box, wcycle, pmeFlags);
+	    pme_gpu_launch_middle(pme, wcycle);	    
             pme_gpu_launch_gather(pme, wcycle, f_pp, true);
             pme_gpu_get_results(pme, wcycle, vir_q, &energy_q);
         }
