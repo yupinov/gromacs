@@ -57,6 +57,7 @@
 #include "gromacs/math/vecdump.h"
 #include "gromacs/mdlib/forcerec-threading.h"
 #include "gromacs/mdlib/genborn.h"
+#include "gromacs/mdlib/gmx_omp_nthreads.h"
 #include "gromacs/mdlib/mdrun.h"
 #include "gromacs/mdlib/ns.h"
 #include "gromacs/mdlib/qmmm.h"
@@ -157,9 +158,24 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
     t_pbc       pbc;
     real        dvdl_dum[efptNR], dvdl_nb[efptNR];
 
+    const bool  reduceForcesOnCpu = (getenv("REDUCE_FORCES_ON_CPU") != nullptr);
+    // false (default): listed forces are computed on CPU, copied to GPU, PME gather is launched on GPU, reducing into those and copying back the result.
+    // true: PME gather and copy back are launched on GPU, listed forces are computed on CPU, gather output forces are synchronized and reduced into listed forces on CPU.
+    // This variable only means something if PME gather is done on GPU.
+    auto *pmeGpuForces = as_rvec_array(reduceForcesOnCpu ? fr->forceBufferIntermediate->data() : fr->f_novirsum->data());
+    // With CPU reduction, forces are copied from GPU into fr->forceBufferIntermediate first.
+
+
 #if GMX_MPI
     double  t0 = 0.0, t1, t2, t3; /* time measurement for coarse load balancing */
 #endif
+
+    if (useGpuPme && reduceForcesOnCpu)
+    {
+        wallcycle_stop(wcycle, ewcFORCE);
+        pme_gpu_launch_gather(fr->pmedata, wcycle, pmeGpuForces, reduceForcesOnCpu);
+        wallcycle_start_nocount(wcycle, ewcFORCE);
+    }
 
     set_pbc(&pbc, fr->ePBC, box);
 
@@ -491,10 +507,10 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
             enerd->dvdl_lin[efptCOUL] += dvdl_long_range_correction_q;
             enerd->dvdl_lin[efptVDW]  += dvdl_long_range_correction_lj;
 
-            if (useGpuPme)
+            if (useGpuPme && !reduceForcesOnCpu)
             {
                 wallcycle_stop(wcycle, ewcFORCE);
-                pme_gpu_launch_gather(fr->pmedata, wcycle, as_rvec_array(fr->f_novirsum->data()), false);
+                pme_gpu_launch_gather(fr->pmedata, wcycle, pmeGpuForces, reduceForcesOnCpu);
                 wallcycle_start_nocount(wcycle, ewcFORCE);
             }
 
@@ -549,8 +565,28 @@ void do_force_lowlevel(t_forcerec *fr,      t_inputrec *ir,
                                             wcycle,
                                             fr->vir_el_recip,
                                             &Vlr_q);
-                    }
+                        if (reduceForcesOnCpu)
+                        {
+                            // Here we add pmeGpuForces into fr->f_novirsum - should be a separate routine, if there isn't one already
+                            int         atomCount      = fr->f_novirsum->size();
+                            int         nthreads       = gmx_omp_nthreads_get_simple_rvec_task(emntPME, atomCount); // PME thread count because why not
+                            int         atomsPerThread = atomCount / nthreads + 1;
 
+                            rvec       *dst = as_rvec_array(fr->f_novirsum->data());
+                            const rvec *src = pmeGpuForces;
+
+#pragma omp parallel for num_threads(nthreads) schedule(static)
+                            for (int t = 0; t < nthreads; t++)
+                            {
+                                int atomStart = t * atomsPerThread;
+                                int atomEnd   = std::min(atomStart + atomsPerThread, atomCount);
+                                for (int i = atomStart; i < atomEnd; i++)
+                                {
+                                    rvec_inc((real *)(dst + i), src[i]);  // annoying type casts
+                                }
+                            }
+                        }
+                    }
 
                     /* We should try to do as little computation after
                      * this as possible, because parallel PME synchronizes

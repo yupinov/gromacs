@@ -1509,6 +1509,7 @@ void forcerec_set_ranges(t_forcerec *fr,
     {
         /* TODO: remove this + 1 when padding is properly implemented */
         fr->forceBufferNoVirialSummation->resize(natoms_f_novirsum + 1);
+        fr->forceBufferIntermediate->resize(natoms_f_novirsum + 1);
     }
 }
 
@@ -2826,6 +2827,7 @@ void init_forcerec(FILE                *fp,
     if (fr->bF_NoVirSum)
     {
         fr->forceBufferNoVirialSummation = new PaddedRVecVector;
+        fr->forceBufferIntermediate      = new PaddedRVecVector;
     }
 
     if (fr->cutoff_scheme == ecutsGROUP &&

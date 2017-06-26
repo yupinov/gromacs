@@ -314,8 +314,10 @@ struct t_forcerec {
 #ifdef __cplusplus
     /* TODO: Replace the pointer by an object once we got rid of C */
     PaddedRVecVector *forceBufferNoVirialSummation;
+    PaddedRVecVector *forceBufferIntermediate; // used only for PME GPU gather D2H copy and reduction into forceBufferNoVirialSummation
 #else
     void             *forceBufferNoVirialSummation_dummy;
+    void             *forceBufferIntermediate_dummy;
 #endif
     /* Pointer that points to forceNoVirialSummation when virial is calcaluted,
      * points to the normal force vector when the virial is not requested
