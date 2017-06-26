@@ -780,7 +780,7 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
     bDoForces     = (flags & GMX_FORCE_FORCES);
     bUseGPU       = fr->nbv->bUseGPU;
     bUseOrEmulGPU = bUseGPU || (nbv->grp[0].kernel_type == nbnxnk8x8x8_PlainC);
-    const bool boxPossiblyChanged = flags & GMX_FORCE_DYNAMICBOX || (step ==0) || true;
+    const bool boxPossiblyChanged = flags & GMX_FORCE_DYNAMICBOX || (step == 0) || true;
 
     if (bStateChanged)
     {
@@ -1046,15 +1046,15 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
                     if (useGpuPme)
                     {
                         pme_gpu_launch_spread(fr->pmedata,
-                                                             x,
-                                                             boxPossiblyChanged,
-                                                             bSB ? boxs : box,
-                                                             wcycle,
-                                                             pme_flags);
-			if (fr->pmedata->runMode != PmeRunMode::Hybrid)
-			  {
-			    pme_gpu_launch_middle(fr->pmedata, wcycle);
-			  }
+                                              x,
+                                              boxPossiblyChanged,
+                                              bSB ? boxs : box,
+                                              wcycle,
+                                              pme_flags);
+                        if (fr->pmedata->runMode != PmeRunMode::Hybrid)
+                        {
+                            pme_gpu_launch_middle(fr->pmedata, wcycle);
+                        }
                     }
                 }
             }
@@ -1070,10 +1070,10 @@ void do_force_cutsVERLET(FILE *fplog, t_commrec *cr,
         wallcycle_stop(wcycle, ewcLAUNCH_GPU_NB);
     }
 
-    if (fr->pmedata->runMode == PmeRunMode::Hybrid)
-			  {
-			    pme_gpu_launch_middle(fr->pmedata, wcycle);
-			  }
+    if (useGpuPme && (fr->pmedata->runMode == PmeRunMode::Hybrid))
+    {
+        pme_gpu_launch_middle(fr->pmedata, wcycle);
+    }
 
     /* Communicate coordinates and sum dipole if necessary +
        do non-local pair search */
