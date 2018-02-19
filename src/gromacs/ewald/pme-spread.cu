@@ -1,3 +1,4 @@
+
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
@@ -499,6 +500,20 @@ void pme_gpu_spread(const PmeGpu    *pmeGpu,
     const bool wrapY = true;
     GMX_UNUSED_VALUE(wrapX);
     GMX_UNUSED_VALUE(wrapY);
+
+    KernelLaunchConfig config;
+    // p.gridSize         = dimGrid; //FIXME
+    config.sharedMemorySize = 0;
+    //p.blockSize        = dimBlock;
+    config.stream           = stream;
+
+    config.gridSize.x  = dimGrid.x;
+    config.blockSize.x = dimBlock.x;
+    config.gridSize.y  = dimGrid.y;
+    config.blockSize.y = dimBlock.y;
+    config.gridSize.z  = dimGrid.z;
+    config.blockSize.z = dimBlock.z;
+
     switch (order)
     {
         case 4:
@@ -509,14 +524,14 @@ void pme_gpu_spread(const PmeGpu    *pmeGpu,
                 if (spreadCharges)
                 {
                     pme_gpu_start_timing(pmeGpu, gtPME_SPLINEANDSPREAD);
-                    pme_spline_and_spread_kernel<4, true, true, wrapX, wrapY> <<< nBlocks, dimBlock, 0, stream>>> (*kernelParamsPtr);
+                    launchGpuKernel(config, pme_spline_and_spread_kernel<4, true, true, wrapX, wrapY>, kernelParamsPtr);
                     CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
                     pme_gpu_stop_timing(pmeGpu, gtPME_SPLINEANDSPREAD);
                 }
                 else
                 {
                     pme_gpu_start_timing(pmeGpu, gtPME_SPLINE);
-                    pme_spline_and_spread_kernel<4, true, false, wrapX, wrapY> <<< nBlocks, dimBlock, 0, stream>>> (*kernelParamsPtr);
+                    launchGpuKernel(config, pme_spline_and_spread_kernel<4, true, false, wrapX, wrapY>, kernelParamsPtr);
                     CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
                     pme_gpu_stop_timing(pmeGpu, gtPME_SPLINE);
                 }
@@ -524,7 +539,7 @@ void pme_gpu_spread(const PmeGpu    *pmeGpu,
             else
             {
                 pme_gpu_start_timing(pmeGpu, gtPME_SPREAD);
-                pme_spline_and_spread_kernel<4, false, true, wrapX, wrapY> <<< nBlocks, dimBlock, 0, stream>>> (*kernelParamsPtr);
+                launchGpuKernel(config, pme_spline_and_spread_kernel<4, false, true, wrapX, wrapY>, kernelParamsPtr);
                 CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
                 pme_gpu_stop_timing(pmeGpu, gtPME_SPREAD);
             }
