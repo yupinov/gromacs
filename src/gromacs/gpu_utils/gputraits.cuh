@@ -49,4 +49,16 @@ using CommandEvent  = void;
 //! \brief Context used explicitly in OpenCL, does nothing in CUDA
 using Context       = void *;
 
+/*! \internal \brief
+ * GPU kernels scheduling description.
+ * This is same in OpenCL/CUDA.
+ */
+struct KernelLaunchConfig
+{
+    size_t        gridSize[3]      = {1, 1, 1}; //!< Block counts
+    size_t        blockSize[3]     = {1, 1, 1}; //!< Per-block thread counts
+    size_t        sharedMemorySize = 0;         //!< Shared memory size in bytes
+    CommandStream stream           = nullptr;   //!< Stream to launch kernel in
+};
+
 #endif
