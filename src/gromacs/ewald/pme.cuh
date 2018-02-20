@@ -51,6 +51,7 @@
 #include <set>
 
 #include "gromacs/gpu_utils/gputraits.cuh"
+#include "gromacs/gpu_utils/devicebuffer.cuh"
 
 //#include "gromacs/gpu_utils/cuda_arch_utils.cuh" // for warp_size
 

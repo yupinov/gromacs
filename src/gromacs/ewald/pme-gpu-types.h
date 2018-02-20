@@ -104,7 +104,7 @@ struct PmeGpuConstParams
     float elFactor;
     /*! \brief Virial and energy GPU array. Size is PME_GPU_ENERGY_AND_VIRIAL_COUNT (7) floats.
      * The element order is virxx, viryy, virzz, virxy, virxz, viryz, energy. */
-    float *d_virialAndEnergy;
+    DeviceBuffer<float> d_virialAndEnergy;
 };
 
 /*! \internal \brief

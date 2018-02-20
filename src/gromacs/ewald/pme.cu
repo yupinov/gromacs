@@ -79,8 +79,7 @@ void pme_gpu_synchronize(const PmeGpu *pmeGpu)
 void pme_gpu_alloc_energy_virial(const PmeGpu *pmeGpu)
 {
     const size_t energyAndVirialSize = c_virialAndEnergyCount * sizeof(float);
-    cudaError_t  stat                = cudaMalloc((void **)&pmeGpu->kernelParams->constants.d_virialAndEnergy, energyAndVirialSize);
-    CU_RET_ERR(stat, "cudaMalloc failed on PME energy and virial");
+    allocateDeviceBuffer(&pmeGpu->kernelParams->constants.d_virialAndEnergy, c_virialAndEnergyCount, pmeGpu->archSpecific->context);
     ocl_pmalloc((void **)&pmeGpu->staging.h_virialAndEnergy, energyAndVirialSize);
 }
 

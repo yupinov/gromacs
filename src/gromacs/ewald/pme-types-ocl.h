@@ -51,6 +51,8 @@
 #include <set>
 
 #include "gromacs/gpu_utils/gputraits_ocl.h"
+#include "gromacs/gpu_utils/devicebuffer_ocl.h"
+
 
 //#include "gromacs/gpu_utils/cuda_arch_utils.cuh" // for warp_size
 #define warp_size 32 //FIXME this is for PME OpenCL only!
