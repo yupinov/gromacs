@@ -53,7 +53,7 @@
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
 
-//#include "pme.cuh"
+#include "pme-types-ocl.h"
 //#include "pme-3dfft.cuh"
 #include "pme-grid.h"
 
