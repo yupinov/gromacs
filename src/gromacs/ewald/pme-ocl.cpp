@@ -49,7 +49,7 @@
 
 //#include "gromacs/gpu_utils/cudautils.cuh"
 //#include "gromacs/gpu_utils/devicebuffer.cuh"
-//#include "gromacs/gpu_utils/pmalloc_cuda.h"
+#include "gromacs/gpu_utils/oclutils.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
 
@@ -82,7 +82,7 @@ void pme_gpu_alloc_energy_virial(const PmeGpu *pmeGpu)
     const size_t energyAndVirialSize = c_virialAndEnergyCount * sizeof(float);
     cudaError_t  stat                = cudaMalloc((void **)&pmeGpu->kernelParams->constants.d_virialAndEnergy, energyAndVirialSize);
     CU_RET_ERR(stat, "cudaMalloc failed on PME energy and virial");
-    pmalloc((void **)&pmeGpu->staging.h_virialAndEnergy, energyAndVirialSize);
+    ocl_pmalloc((void **)&pmeGpu->staging.h_virialAndEnergy, energyAndVirialSize);
 }
 
 void pme_gpu_free_energy_virial(PmeGpu *pmeGpu)
@@ -90,7 +90,7 @@ void pme_gpu_free_energy_virial(PmeGpu *pmeGpu)
     cudaError_t stat = cudaFree(pmeGpu->kernelParams->constants.d_virialAndEnergy);
     CU_RET_ERR(stat, "cudaFree failed on PME energy and virial");
     pmeGpu->kernelParams->constants.d_virialAndEnergy = nullptr;
-    pfree(pmeGpu->staging.h_virialAndEnergy);
+    ocl_pfree(pmeGpu->staging.h_virialAndEnergy);
     pmeGpu->staging.h_virialAndEnergy = nullptr;
 }
 
@@ -119,8 +119,8 @@ void pme_gpu_realloc_and_copy_bspline_values(const PmeGpu *pmeGpu)
     if (shouldRealloc)
     {
         /* Reallocate the host buffer */
-        pfree(pmeGpu->staging.h_splineModuli);
-        pmalloc((void **)&pmeGpu->staging.h_splineModuli, newSplineValuesSize * sizeof(float));
+        ocl_pfree(pmeGpu->staging.h_splineModuli);
+        ocl_pmalloc((void **)&pmeGpu->staging.h_splineModuli, newSplineValuesSize * sizeof(float));
     }
     for (int i = 0; i < DIM; i++)
     {
@@ -133,7 +133,7 @@ void pme_gpu_realloc_and_copy_bspline_values(const PmeGpu *pmeGpu)
 
 void pme_gpu_free_bspline_values(const PmeGpu *pmeGpu)
 {
-    pfree(pmeGpu->staging.h_splineModuli);
+    ocl_pfree(pmeGpu->staging.h_splineModuli);
     freeDeviceBuffer(&pmeGpu->kernelParams->grid.d_splineModuli);
 }
 
@@ -245,10 +245,10 @@ void pme_gpu_realloc_spline_data(const PmeGpu *pmeGpu)
     // the host side reallocation
     if (shouldRealloc)
     {
-        pfree(pmeGpu->staging.h_theta);
-        pmalloc((void **)&pmeGpu->staging.h_theta, newSplineDataSize * sizeof(float));
-        pfree(pmeGpu->staging.h_dtheta);
-        pmalloc((void **)&pmeGpu->staging.h_dtheta, newSplineDataSize * sizeof(float));
+        ocl_pfree(pmeGpu->staging.h_theta);
+        ocl_pmalloc((void **)&pmeGpu->staging.h_theta, newSplineDataSize * sizeof(float));
+        ocl_pfree(pmeGpu->staging.h_dtheta);
+        ocl_pmalloc((void **)&pmeGpu->staging.h_dtheta, newSplineDataSize * sizeof(float));
     }
 }
 
@@ -257,8 +257,8 @@ void pme_gpu_free_spline_data(const PmeGpu *pmeGpu)
     /* Two arrays of the same size */
     freeDeviceBuffer(&pmeGpu->kernelParams->atoms.d_theta);
     freeDeviceBuffer(&pmeGpu->kernelParams->atoms.d_dtheta);
-    pfree(pmeGpu->staging.h_theta);
-    pfree(pmeGpu->staging.h_dtheta);
+    ocl_pfree(pmeGpu->staging.h_theta);
+    ocl_pfree(pmeGpu->staging.h_dtheta);
 }
 
 void pme_gpu_realloc_grid_indices(const PmeGpu *pmeGpu)
@@ -267,14 +267,14 @@ void pme_gpu_realloc_grid_indices(const PmeGpu *pmeGpu)
     GMX_ASSERT(newIndicesSize > 0, "Bad number of atoms in PME GPU");
     reallocateDeviceBuffer(&pmeGpu->kernelParams->atoms.d_gridlineIndices, newIndicesSize,
                            &pmeGpu->archSpecific->gridlineIndicesSize, &pmeGpu->archSpecific->gridlineIndicesSizeAlloc, pmeGpu->archSpecific->pmeStream);
-    pfree(pmeGpu->staging.h_gridlineIndices);
-    pmalloc((void **)&pmeGpu->staging.h_gridlineIndices, newIndicesSize * sizeof(int));
+    ocl_pfree(pmeGpu->staging.h_gridlineIndices);
+    ocl_pmalloc((void **)&pmeGpu->staging.h_gridlineIndices, newIndicesSize * sizeof(int));
 }
 
 void pme_gpu_free_grid_indices(const PmeGpu *pmeGpu)
 {
     freeDeviceBuffer(&pmeGpu->kernelParams->atoms.d_gridlineIndices);
-    pfree(pmeGpu->staging.h_gridlineIndices);
+    ocl_pfree(pmeGpu->staging.h_gridlineIndices);
 }
 
 void pme_gpu_realloc_grids(PmeGpu *pmeGpu)
