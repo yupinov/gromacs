@@ -41,14 +41,14 @@
 
 #include "gmxpre.h"
 
-#include "pme-timings.cuh"
+#include "pme-timings-ocl.h"
 
 #include "gromacs/utility/gmxassert.h"
 
-#include "pme.cuh"
+#include "pme-types-ocl.h"
 
 /*! \brief \internal
- * Tells if CUDA-based performance tracking is enabled for PME.
+ * Tells if GPU host-side performance tracking is enabled for PME.
  *
  * \param[in] pme            The PME data structure.
  * \returns                  True if timings are enabled, false otherwise.

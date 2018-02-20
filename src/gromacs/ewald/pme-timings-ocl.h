@@ -39,10 +39,10 @@
  *  \author Aleksei Iupinov <a.yupinov@gmail.com>
  */
 
-#ifndef GMX_EWALD_PME_TIMINGS_CUH
-#define GMX_EWALD_PME_TIMINGS_CUH
+#ifndef GMX_EWALD_PME_TIMINGS_OCL_H
+#define GMX_EWALD_PME_TIMINGS_OCL_H
 
-#include "gromacs/gpu_utils/gpuregiontimer.cuh"
+#include "gromacs/gpu_utils/gpuregiontimer_ocl.h"
 #include "gromacs/timing/gpu_timing.h"       // TODO: move include to the source files
 
 struct PmeGpu;
