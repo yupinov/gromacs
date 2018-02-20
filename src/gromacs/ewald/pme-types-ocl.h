@@ -57,6 +57,8 @@
 
 class GpuParallel3dFft;
 
+#define DEVICE_INLINE inline
+
 /* Some defines for PME behaviour follow */
 
 /*
@@ -118,7 +120,7 @@ class GpuParallel3dFft;
  * This is called from the spline_and_spread and gather PME kernels.
  * The goal is to isolate the global range checks, and allow avoiding them with c_usePadding enabled.
  */
-int __device__ __forceinline__ pme_gpu_check_atom_data_index(const int atomDataIndex, const int nAtomData)
+int DEVICE_INLINE pme_gpu_check_atom_data_index(const int atomDataIndex, const int nAtomData)
 {
     return c_usePadding ? 1 : (atomDataIndex < nAtomData);
 }
@@ -131,7 +133,7 @@ int __device__ __forceinline__ pme_gpu_check_atom_data_index(const int atomDataI
  *
  * This is called from the spline_and_spread and gather PME kernels.
  */
-int __device__ __forceinline__ pme_gpu_check_atom_charge(const float coefficient)
+int DEVICE_INLINE pme_gpu_check_atom_charge(const float coefficient)
 {
     assert(isfinite(coefficient));
     return c_skipNeutralAtoms ? (coefficient != 0.0f) : 1;
