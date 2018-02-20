@@ -212,6 +212,8 @@ struct PmeGpuCuda
     int complexGridSize;
     /*! \brief The kernelParams.grid.fourierGrid float (not float2!) element count (reserved) */
     int complexGridSizeAlloc;
+
+    Context context; //FIXME
 };
 
 

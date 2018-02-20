@@ -436,6 +436,26 @@ void pme_gpu_init_internal(PmeGpu *pmeGpu)
      * TODO: PME could also try to pick up nice grid sizes (with factors of 2, 3, 5, 7).
      */
 
+    //FIXME all this code borrowed from nbnxn_
+    cl_context_properties     context_properties[3];
+    cl_platform_id            platform_id;
+    cl_device_id              device_id;
+    cl_int                    cl_error;
+
+    platform_id      = pmeGpu->deviceInfo->ocl_gpu_id.ocl_platform_id;
+    device_id        = pmeGpu->deviceInfo->ocl_gpu_id.ocl_device_id;
+
+    context_properties[0] = CL_CONTEXT_PLATFORM;
+    context_properties[1] = (cl_context_properties) platform_id;
+    context_properties[2] = 0; /* Terminates the list of properties */
+
+    pmeGpu->archSpecific->context = clCreateContext(context_properties, 1, &device_id, NULL, NULL, &cl_error);
+    GMX_RELEASE_ASSERT(CL_SUCCESS == cl_error, "whatever");
+                     /*
+                       gmx::formatString("Failed to create context for PME on GPU #%s:\n OpenCL error %d: %s",
+                  pmeGpu->deviceInfo->device_name,
+                  cl_error, ocl_get_error_string(cl_error).c_str())*/
+
     /* WARNING: CUDA timings are incorrect with multiple streams.
      *          This is the main reason why they are disabled by default.
      */

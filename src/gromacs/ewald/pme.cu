@@ -436,6 +436,8 @@ void pme_gpu_init_internal(PmeGpu *pmeGpu)
      * TODO: PME could also try to pick up nice grid sizes (with factors of 2, 3, 5, 7).
      */
 
+    pmeGpu->archSpecific->context = nullptr; //TODO is this worth it. such explict zeroing?
+
     /* WARNING: CUDA timings are incorrect with multiple streams.
      *          This is the main reason why they are disabled by default.
      */
