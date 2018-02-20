@@ -55,7 +55,7 @@
 //#include "gromacs/gpu_utils/cuda_arch_utils.cuh" // for warp_size
 
 #include "pme-gpu-internal.h"                    // for the general PME GPU behaviour defines
-//#include "pme-timings.cuh"
+#include "pme-timings-ocl.h"
 
 class GpuParallel3dFft;
 
