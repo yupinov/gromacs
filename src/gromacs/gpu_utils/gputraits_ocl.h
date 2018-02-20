@@ -48,6 +48,8 @@
 using CommandStream = cl_command_queue;
 //! \brief Single GPU call timing event
 using CommandEvent  = cl_event;
+//! \brief GPU stream synchronization event
+using SyncEvent     = cl_event;
 //! \brief Context used explicitly in OpenCL
 using Context       = cl_context;
 

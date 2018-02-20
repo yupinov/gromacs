@@ -151,7 +151,7 @@ struct PmeGpuCuda
 
     /* Synchronization events */
     /*! \brief Triggered after the grid has been copied to the host (after the spreading stage). */
-    cudaEvent_t syncSpreadGridD2H;
+    SyncEvent syncSpreadGridD2H;
 
     // TODO: consider moving some things below into the non-CUDA struct.
 

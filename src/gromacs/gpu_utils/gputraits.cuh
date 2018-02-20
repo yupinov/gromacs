@@ -46,6 +46,8 @@
 using CommandStream = cudaStream_t;
 //! \brief Single GPU call timing event - meaningless in CUDA
 using CommandEvent  = void;
+//! \brief GPU stream synchronization event
+using SyncEvent     = cudaEvent_t;
 //! \brief Context used explicitly in OpenCL, does nothing in CUDA
 using Context       = void *;
 
