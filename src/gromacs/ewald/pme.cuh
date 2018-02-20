@@ -135,7 +135,7 @@ int DEVICE_INLINE pme_gpu_check_atom_data_index(const int atomDataIndex, const i
  */
 int DEVICE_INLINE pme_gpu_check_atom_charge(const float coefficient)
 {
-    assert(isfinite(coefficient));
+    assert(std::isfinite(coefficient));
     return c_skipNeutralAtoms ? (coefficient != 0.0f) : 1;
 }
 
