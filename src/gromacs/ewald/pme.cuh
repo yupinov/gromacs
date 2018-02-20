@@ -50,6 +50,8 @@
 #include <array>
 #include <set>
 
+#include "gromacs/gpu_utils/gputraits.cuh"
+
 //#include "gromacs/gpu_utils/cuda_arch_utils.cuh" // for warp_size
 
 #include "pme-gpu-internal.h"                    // for the general PME GPU behaviour defines
@@ -145,7 +147,7 @@ int DEVICE_INLINE pme_gpu_check_atom_charge(const float coefficient)
 struct PmeGpuCuda
 {
     /*! \brief The CUDA stream where everything related to the PME happens. */
-    cudaStream_t pmeStream;
+    CommandStream pmeStream;
 
     /* Synchronization events */
     /*! \brief Triggered after the grid has been copied to the host (after the spreading stage). */
