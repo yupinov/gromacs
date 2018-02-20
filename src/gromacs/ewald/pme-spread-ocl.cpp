@@ -47,14 +47,14 @@
 #include <cassert>
 
 #include "gromacs/ewald/pme.h"
-#include "gromacs/gpu_utils/cuda_kernel_utils.cuh"
-#include "gromacs/gpu_utils/cudautils.cuh"
+//#include "gromacs/gpu_utils/cuda_kernel_utils.cuh"
+//#include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/gmxassert.h"
 
-#include "pme.cuh"
+//#include "pme.cuh"
 #include "pme-grid.h"
-#include "pme-timings.cuh"
+//#include "pme-timings.cuh"
 
 /*
  * This define affects the spline calculation behaviour in the kernel.

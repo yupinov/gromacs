@@ -47,14 +47,14 @@
 /* The rest */
 #include "pme.h"
 
-#include "gromacs/gpu_utils/cudautils.cuh"
-#include "gromacs/gpu_utils/devicebuffer.cuh"
-#include "gromacs/gpu_utils/pmalloc_cuda.h"
+//#include "gromacs/gpu_utils/cudautils.cuh"
+//#include "gromacs/gpu_utils/devicebuffer.cuh"
+//#include "gromacs/gpu_utils/pmalloc_cuda.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
 
-#include "pme.cuh"
-#include "pme-3dfft.cuh"
+//#include "pme.cuh"
+//#include "pme-3dfft.cuh"
 #include "pme-grid.h"
 
 int pme_gpu_get_atom_data_alignment(const PmeGpu *pmeGpu)
