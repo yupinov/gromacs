@@ -92,9 +92,9 @@ void pme_gpu_free_energy_virial(PmeGpu *pmeGpu)
 
 void pme_gpu_clear_energy_virial(const PmeGpu *pmeGpu)
 {
-    cudaError_t stat = cudaMemsetAsync(pmeGpu->kernelParams->constants.d_virialAndEnergy, 0,
-                                       c_virialAndEnergyCount * sizeof(float), pmeGpu->archSpecific->pmeStream);
-    CU_RET_ERR(stat, "PME energy/virial cudaMemsetAsync error");
+    clearDeviceBufferAsync(&pmeGpu->kernelParams->constants.d_virialAndEnergy,
+                                   pmeGpu->archSpecific->pmeStream,
+                                   c_virialAndEnergyCount);
 }
 
 void pme_gpu_realloc_and_copy_bspline_values(const PmeGpu *pmeGpu)
@@ -314,10 +314,9 @@ void pme_gpu_free_grids(const PmeGpu *pmeGpu)
 
 void pme_gpu_clear_grids(const PmeGpu *pmeGpu)
 {
-    cudaError_t stat = cudaMemsetAsync(pmeGpu->kernelParams->grid.d_realGrid, 0,
-                                       pmeGpu->archSpecific->realGridSize * sizeof(float), pmeGpu->archSpecific->pmeStream);
-    /* Should the complex grid be cleared in some weird case? */
-    CU_RET_ERR(stat, "cudaMemsetAsync on the PME grid error");
+    clearDeviceBufferAsync(&pmeGpu->kernelParams->grid.d_realGrid,
+                           pmeGpu->archSpecific->pmeStream,
+                           pmeGpu->archSpecific->realGridSize);
 }
 
 void pme_gpu_realloc_and_copy_fract_shifts(PmeGpu *pmeGpu)
