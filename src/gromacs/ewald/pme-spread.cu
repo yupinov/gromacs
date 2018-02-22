@@ -52,7 +52,7 @@
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/gmxassert.h"
 
-//#include "pme.cuh"
+#include "pme.cuh"
 #include "pme-grid.h"
 //#include "pme-timings.cuh"
 
