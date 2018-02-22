@@ -127,9 +127,9 @@ struct PmeGpuGridParams
 
     /* Grid pointers */
     /*! \brief Real space grid. */
-    float *d_realGrid;
+    DeviceBuffer<float> d_realGrid;
     /*! \brief Complex grid - used in FFT/solve. If inplace cuFFT is used, then it is the same pointer as realGrid. */
-    float *d_fourierGrid;
+    DeviceBuffer<float> d_fourierGrid;
 
     /*! \brief Ewald solving factor = (M_PI / pme->ewaldcoeff_q)^2 */
     float ewaldFactor;
@@ -137,15 +137,15 @@ struct PmeGpuGridParams
     /*! \brief Grid spline values as in pme->bsp_mod
      * (laid out sequentially (XXX....XYYY......YZZZ.....Z))
      */
-    float              *d_splineModuli;
+    DeviceBuffer<float> d_splineModuli;
     /*! \brief Offsets for X/Y/Z components of d_splineModuli */
     int                 splineValuesOffset[DIM];
 
     /*! \brief Fractional shifts lookup table as in pme->fshx/fshy/fshz, laid out sequentially (XXX....XYYY......YZZZ.....Z) */
-    float               *d_fractShiftsTable;
+    DeviceBuffer<float> d_fractShiftsTable;
     /*! \brief Gridline indices lookup table
      * (modulo lookup table as in pme->nnx/nny/nnz, laid out sequentially (XXX....XYYY......YZZZ.....Z)) */
-    int                *d_gridlineIndicesTable;
+    DeviceBuffer<int> d_gridlineIndicesTable;
     /*! \brief Offsets for X/Y/Z components of d_fractShiftsTable and d_gridlineIndicesTable */
     int                 tablesOffsets[DIM];
 };
@@ -162,28 +162,28 @@ struct PmeGpuAtomParams
      * The coordinates themselves change and need to be copied to the GPU for every PME computation,
      * but reallocation happens only at DD.
      */
-    float *d_coordinates;
+    DeviceBuffer<float> d_coordinates;
     /*! \brief Pointer to the global GPU memory with input atom charges.
      * The charges only need to be reallocated and copied to the GPU at DD step.
      */
-    float  *d_coefficients;
+    DeviceBuffer<float> d_coefficients;
     /*! \brief Pointer to the global GPU memory with input/output rvec atom forces.
      * The forces change and need to be copied from (and possibly to) the GPU for every PME computation,
      * but reallocation happens only at DD.
      */
-    float  *d_forces;
+    DeviceBuffer<float> d_forces;
     /*! \brief Pointer to the global GPU memory with ivec atom gridline indices.
      * Computed on GPU in the spline calculation part.
      */
-    int *d_gridlineIndices;
+    DeviceBuffer<int> d_gridlineIndices;
 
     /* B-spline parameters are computed entirely on GPU for every PME computation, not copied.
      * Unless we want to try something like GPU spread + CPU gather?
      */
     /*! \brief Pointer to the global GPU memory with B-spline values */
-    float  *d_theta;
+    DeviceBuffer<float> d_theta;
     /*! \brief Pointer to the global GPU memory with B-spline derivative values */
-    float  *d_dtheta;
+    DeviceBuffer<float> d_dtheta;
 };
 
 /*! \internal \brief
