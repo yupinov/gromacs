@@ -142,6 +142,28 @@ void copyToDeviceBuffer(DeviceBuffer<ValueType> *buffer,
     }
 }
 
+/*! \brief
+ * Clears the device buffer asynchronously.
+ *
+ * \tparam        ValueType            Raw value type of the \p buffer.
+ * \param[in,out] buffer               Pointer to the device-side buffer
+ * \param[in]     stream               GPU stream.
+ * \param[in]     numValues            Number of values to clear.
+ */
+template <typename ValueType>
+void clearDeviceBufferAsync(DeviceBuffer<ValueType> *buffer,
+                            CommandStream            stream,
+                            size_t                   numValues)
+{
+   GMX_ASSERT(buffer, "needs a buffer pointer");
+   const size_t startingValueIndex = 0;
+   const size_t bytes  = numValues * sizeof(ValueType);
+   const char pattern = 0;
+
+   stat = cudaMemsetAsync(*((ValueType **)buffer) + startingValueIndex, pattern, bytes, stream);
+   GMX_RELEASE_ASSERT(stat == cudaSuccess, "Couldn't clear the device buffer");
+}
+
 // included after DeviceBuffer and its implementation functions are defined
 #include "gromacs/gpu_utils/devicebuffer.h"
 
