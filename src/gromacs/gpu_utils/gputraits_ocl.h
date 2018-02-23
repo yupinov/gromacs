@@ -65,8 +65,9 @@ struct KernelLaunchConfig
 //Sync object
 
 #include "gromacs/utility/gmxassert.h"
-#include "gromacs/gpu_utils/oclutils.h" //for ocl_get_error_string
-
+// FIXME: doesn't work #include "gromacs/gpu_utils/oclutils.h" //for ocl_get_error_string
+#include <string>
+std::string ocl_get_error_string(cl_int);
 
 class SyncEvent
 {
