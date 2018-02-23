@@ -373,20 +373,6 @@ GPU_FUNC_QUALIFIER void pme_gpu_init_internal(PmeGpu *GPU_FUNC_ARGUMENT(pmeGpu))
 GPU_FUNC_QUALIFIER void pme_gpu_destroy_specific(const PmeGpu *GPU_FUNC_ARGUMENT(pmeGpu)) GPU_FUNC_TERM
 
 /*! \libinternal \brief
- * Initializes the PME GPU synchronization events.
- *
- * \param[in] pmeGpu  The PME GPU structure.
- */
-GPU_FUNC_QUALIFIER void pme_gpu_init_sync_events(const PmeGpu *GPU_FUNC_ARGUMENT(pmeGpu)) GPU_FUNC_TERM
-
-/*! \libinternal \brief
- * Destroys the PME GPU synchronization events.
- *
- * \param[in] pmeGpu  The PME GPU structure.
- */
-GPU_FUNC_QUALIFIER void pme_gpu_destroy_sync_events(const PmeGpu *GPU_FUNC_ARGUMENT(pmeGpu)) GPU_FUNC_TERM
-
-/*! \libinternal \brief
  * Initializes the CUDA FFT structures.
  *
  * \param[in] pmeGpu  The PME GPU structure.
@@ -837,7 +823,6 @@ static void pme_gpu_init(gmx_pme_t *pme, gmx_device_info_t *gpuInfo)
     pmeGpu->deviceInfo = gpuInfo;
 
     pme_gpu_init_internal(pmeGpu);
-    pme_gpu_init_sync_events(pmeGpu);
     pme_gpu_alloc_energy_virial(pmeGpu);
 
     pme_gpu_copy_common_data_from(pme);
@@ -965,7 +950,6 @@ void pme_gpu_destroy(PmeGpu *pmeGpu)
     pme_gpu_free_grids(pmeGpu);
 
     pme_gpu_destroy_3dfft(pmeGpu);
-    pme_gpu_destroy_sync_events(pmeGpu);
 
     /* Free the GPU-framework specific data last */
     pme_gpu_destroy_specific(pmeGpu);

@@ -46,9 +46,48 @@
 using CommandStream = cudaStream_t;
 //! \brief Single GPU call timing event - meaningless in CUDA
 using CommandEvent  = void;
-//! \brief GPU stream synchronization event
-using SyncEvent     = cudaEvent_t;
 //! \brief Context used explicitly in OpenCL, does nothing in CUDA
 using Context       = void *;
+
+#include "gromacs/utility/gmxassert.h"
+class SyncEvent
+{
+    public:
+        SyncEvent()
+        {
+            cudaError_t stat = cudaEventCreateWithFlags(&event_, cudaEventDisableTiming);
+            GMX_RELEASE_ASSERT(stat == cudaSuccess, "cudaEventCreate failed");
+        }
+
+        ~SyncEvent()
+        {
+            stat = cudaEventDestroy(&event_);
+            GMX_RELEASE_ASSERT(stat == cudaSuccess, "cudaEventDestroy failed");
+        }
+
+        //FIXME disable copy
+
+        inline void markSyncEvent(CommandStream stream)
+        {
+            cudaError_t stat = cudaEventRecord(event_, stream);
+            GMX_ASSERT(stat == cudaSuccess, "cudaEventRecord failed");
+        }
+
+        /*! \brief Enqueues a wait for event completion.
+         *
+         * Then it releases the event and sets it to 0.
+         * Don't use this function when more than one wait will be issued for the event.
+         * Equivalent to Cuda Stream Sync.
+        */
+        // copied from sync_ocl_event
+        inline void waitForSyncEvent(CommandStream stream)
+        {
+            cudaError_t stat = cudaStreamWaitEvent(stream, event_, 0);
+            GMX_ASSERT(stat == cudaSuccess, "cudaStreamWaitEvent failed");
+        }
+
+    private:
+       cudaEvent_t event_;
+};
 
 #endif

@@ -48,9 +48,69 @@
 using CommandStream = cl_command_queue;
 //! \brief Single GPU call timing event
 using CommandEvent  = cl_event;
-//! \brief GPU stream synchronization event
-using SyncEvent     = cl_event;
 //! \brief Context used explicitly in OpenCL
 using Context       = cl_context;
+
+//Sync object
+
+#include "gromacs/utility/gmxassert.h"
+#include "gromacs/gpu_utils/oclutils.h" //for ocl_get_error_string
+
+
+class SyncEvent
+{
+    public:
+        SyncEvent()
+        {
+            //??????
+        }
+
+        ~SyncEvent()
+        {
+            cl_int clError = clReleaseEvent(event_);
+            GMX_RELEASE_ASSERT(CL_SUCCESS == clError, ocl_get_error_string(clError).c_str());
+        }
+
+        //FIXME disable copy
+
+        inline void markSyncEvent(CommandStream stream)
+        {
+            cl_int clError;
+#ifdef CL_VERSION_1_2
+            clError = clEnqueueMarkerWithWaitList(stream, 0, nullptr, &event_);
+#else
+            clError = clEnqueueMarker(stream, &event_);
+#endif
+            GMX_ASSERT(CL_SUCCESS == clError, ocl_get_error_string(clError).c_str());
+        }
+
+        /*! \brief Enqueues a wait for event completion.
+         *
+         * Then it releases the event and sets it to 0.
+         * Don't use this function when more than one wait will be issued for the event.
+         * Equivalent to Cuda Stream Sync.
+        */
+        // copied from sync_ocl_event
+        inline void waitForSyncEvent(CommandStream stream)
+        {
+            cl_int clError;
+
+            /* Enqueue wait */
+        #ifdef CL_VERSION_1_2
+            clError = clEnqueueBarrierWithWaitList(stream, 1, &event_, nullptr);
+        #else
+            clEerror = clEnqueueWaitForEvents(stream, 1, &event_);
+        #endif
+            GMX_ASSERT(CL_SUCCESS == clError, ocl_get_error_string(clError).c_str());
+
+            /* Release event and reset it to 0. It is ok to release it as enqueuewaitforevents performs implicit retain for events. */
+            clError = clReleaseEvent(event_);
+            GMX_ASSERT(CL_SUCCESS == clError, ocl_get_error_string(clError).c_str());
+            event_ = nullptr; //FIXME is thsi correct&
+        }
+
+    private:
+        cl_event event_;
+};
 
 #endif
