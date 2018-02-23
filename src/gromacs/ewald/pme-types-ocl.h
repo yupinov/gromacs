@@ -226,13 +226,14 @@ struct PmeGpuCuda
  */
 struct PmeGpuCudaKernelParams : PmeGpuKernelParamsBase
 {
-#if GMX_GPU == GMX_GPU_CUDA
+#if GMX_GPU != GMX_GPU_CUDA
+    using cudaTextureObject_t = void *; //FIXME
+#endif
     /* These are CUDA texture objects, related to the grid size. */
     /*! \brief CUDA texture object for accessing grid.d_fractShiftsTable */
     cudaTextureObject_t fractShiftsTableTexture;
     /*! \brief CUDA texture object for accessing grid.d_gridlineIndicesTable */
     cudaTextureObject_t gridlineIndicesTableTexture;
-#endif
 };
 
 #endif
