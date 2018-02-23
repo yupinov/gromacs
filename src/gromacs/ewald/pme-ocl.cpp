@@ -508,6 +508,7 @@ void pme_gpu_destroy_specific(const PmeGpu *pmeGpu)
     GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "PME context destruction error");
 }
 
+#ifdef CLFFTFOUND
 void pme_gpu_reinit_3dfft(const PmeGpu *pmeGpu)
 {
     if (pme_gpu_performs_FFT(pmeGpu))
@@ -524,3 +525,9 @@ void pme_gpu_destroy_3dfft(const PmeGpu *pmeGpu)
 {
     pmeGpu->archSpecific->fftSetup.resize(0);
 }
+#else
+struct GpuParallel3dFft
+{
+    //hello I am dummy!
+};
+#endif
