@@ -46,6 +46,8 @@
 
 #include <cassert>
 
+#include "gromacs/gpu_utils/gputraits_ocl.h"
+
 #include "gromacs/ewald/pme.h"
 //#include "gromacs/gpu_utils/cuda_kernel_utils.cuh"
 //#include "gromacs/gpu_utils/cudautils.cuh"
