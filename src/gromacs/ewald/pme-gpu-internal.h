@@ -340,7 +340,7 @@ GPU_FUNC_QUALIFIER void pme_gpu_copy_output_spread_grid(const PmeGpu    *GPU_FUN
  *
  * \param[in] pmeGpu   The PME GPU structure.
  */
-GPU_FUNC_QUALIFIER void pme_gpu_copy_output_spread_atom_data(const PmeGpu *GPU_FUNC_ARGUMENT(pmeGpu)) GPU_FUNC_TERM
+GPU_FUNC_QUALIFIER void pme_gpu_copy_output_spread_atom_data(PmeGpu *pmeGpu) GPU_FUNC_TERM
 
 /*! \libinternal \brief
  * Copies the gather input spline data and gridline indices from the host to the GPU.

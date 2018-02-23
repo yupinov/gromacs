@@ -372,8 +372,8 @@ bool pme_gpu_stream_query(const PmeGpu *pmeGpu)
 
 void pme_gpu_copy_input_gather_grid(const PmeGpu *pmeGpu, float *h_grid)
 {
-    const size_t gridSize = pmeGpu->archSpecific->realGridSize * sizeof(float);
-    copyToDeviceBuffer(&pmeGpu->kernelParams->grid.d_realGrid, h_grid, gridSize, pmeGpu->archSpecific->pmeStream, pmeGpu->settings.transferKind, nullptr);
+    copyToDeviceBuffer(&pmeGpu->kernelParams->grid.d_realGrid, h_grid, 0,
+                       pmeGpu->archSpecific->realGridSize, pmeGpu->archSpecific->pmeStream, pmeGpu->settings.transferKind, nullptr);
 }
 
 void pme_gpu_copy_output_spread_grid(const PmeGpu *pmeGpu, float *h_grid)
@@ -384,7 +384,7 @@ void pme_gpu_copy_output_spread_grid(const PmeGpu *pmeGpu, float *h_grid)
     CU_RET_ERR(stat, "PME spread grid sync event record failure");
 }
 
-void pme_gpu_copy_output_spread_atom_data(const PmeGpu *pmeGpu)
+void pme_gpu_copy_output_spread_atom_data(PmeGpu *pmeGpu)
 {
     const int    alignment       = pme_gpu_get_atoms_per_warp(pmeGpu);
     const size_t nAtomsPadded    = ((pmeGpu->nAtomsAlloc + alignment - 1) / alignment) * alignment;
@@ -403,7 +403,7 @@ void pme_gpu_copy_input_gather_atom_data(const PmeGpu *pmeGpu)
 {
     const int    alignment       = pme_gpu_get_atoms_per_warp(pmeGpu);
     const size_t nAtomsPadded    = ((pmeGpu->nAtomsAlloc + alignment - 1) / alignment) * alignment;
-    const size_t splinesSize     = DIM * nAtomsPadded * pmeGpu->common->pme_order * sizeof(float);
+    const size_t splinesSize     = DIM * nAtomsPadded * pmeGpu->common->pme_order;
     auto        *kernelParamsPtr = pmeGpu->kernelParams.get();
     if (c_usePadding)
     {
@@ -416,10 +416,12 @@ void pme_gpu_copy_input_gather_atom_data(const PmeGpu *pmeGpu)
         clearDeviceBufferAsync(&kernelParamsPtr->atoms.d_theta, 0,
                                 pmeGpu->nAtomsAlloc * splineValuesPerAtom, pmeGpu->archSpecific->pmeStream);
     }
-    copyToDeviceBuffer(&kernelParamsPtr->atoms.d_dtheta, pmeGpu->staging.h_dtheta, splinesSize, pmeGpu->archSpecific->pmeStream, pmeGpu->settings.transferKind, nullptr);
-    copyToDeviceBuffer(&kernelParamsPtr->atoms.d_theta, pmeGpu->staging.h_theta, splinesSize, pmeGpu->archSpecific->pmeStream, pmeGpu->settings.transferKind, nullptr);
-    copyToDeviceBuffer(&kernelParamsPtr->atoms.d_gridlineIndices, pmeGpu->staging.h_gridlineIndices,
-                kernelParamsPtr->atoms.nAtoms * DIM * sizeof(int), pmeGpu->archSpecific->pmeStream, pmeGpu->settings.transferKind, nullptr);
+    copyToDeviceBuffer(&kernelParamsPtr->atoms.d_dtheta, pmeGpu->staging.h_dtheta, 0,
+                       splinesSize, pmeGpu->archSpecific->pmeStream, pmeGpu->settings.transferKind, nullptr);
+    copyToDeviceBuffer(&kernelParamsPtr->atoms.d_theta, pmeGpu->staging.h_theta, 0,
+                       splinesSize, pmeGpu->archSpecific->pmeStream, pmeGpu->settings.transferKind, nullptr);
+    copyToDeviceBuffer(&kernelParamsPtr->atoms.d_gridlineIndices, pmeGpu->staging.h_gridlineIndices, 0,
+                kernelParamsPtr->atoms.nAtoms * DIM, pmeGpu->archSpecific->pmeStream, pmeGpu->settings.transferKind, nullptr);
 }
 
 void pme_gpu_sync_spread_grid(const PmeGpu *pmeGpu)
