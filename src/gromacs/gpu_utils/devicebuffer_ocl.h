@@ -211,16 +211,17 @@ void copyFromDeviceBuffer(ValueType                     *hostBuffer,
  *
  * \tparam        ValueType            Raw value type of the \p buffer.
  * \param[in,out] buffer               Pointer to the device-side buffer
- * \param[in]     stream               GPU stream.
+ * \param[in]     startingValueIndex   Offset (in values) at the device-side buffer to start clearing at.
  * \param[in]     numValues            Number of values to clear.
+ * \param[in]     stream               GPU stream.
  */
 template <typename ValueType>
 void clearDeviceBufferAsync(DeviceBuffer<ValueType> *buffer,
-                            CommandStream            stream,
-                            size_t                   numValues)
+                            size_t                   startingValueIndex,
+                            size_t                   numValues,
+                            CommandStream            stream)
 {
    GMX_ASSERT(buffer, "needs a buffer pointer");
-   const size_t startingValueIndex = 0;
    const size_t offset = startingValueIndex * sizeof(ValueType);
    const size_t bytes  = numValues * sizeof(ValueType);
    const ValueType pattern = 0;
