@@ -227,10 +227,10 @@ void clearDeviceBufferAsync(DeviceBuffer<ValueType> *buffer,
    const ValueType pattern = 0;
    const cl_uint numWaitEvents = 0;
    const cl_event *waitEvents = nullptr;
-   const cl_event *commandEvent = nullptr;
+   cl_event commandEvent;
    cl_int clError = clEnqueueFillBuffer(stream, *buffer, &pattern, sizeof(pattern),
                                         offset, bytes,
-                                        numWaitEvents, waitEvents, commandEvent);
+                                        numWaitEvents, waitEvents, &commandEvent);
    GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "Couldn't clear the device buffer");
 }
 
