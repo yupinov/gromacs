@@ -159,7 +159,7 @@ void copyToDeviceBuffer(DeviceBuffer<ValueType> *buffer,
  */
 template <typename ValueType>
 void copyFromDeviceBuffer(ValueType                     *hostBuffer,
-                          const DeviceBuffer<ValueType> *buffer,
+                          DeviceBuffer<ValueType>       *buffer,
                           size_t                         startingValueIndex,
                           size_t                         numValues,
                           CommandStream                  stream,

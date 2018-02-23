@@ -177,7 +177,7 @@ void copyToDeviceBuffer(DeviceBuffer<ValueType> *buffer,
  */
 template <typename ValueType>
 void copyFromDeviceBuffer(ValueType                     *hostBuffer,
-                          const DeviceBuffer<ValueType> *buffer,
+                          DeviceBuffer<ValueType>       *buffer,
                           size_t                         startingValueIndex,
                           size_t                         numValues,
                           CommandStream                  stream,
@@ -196,7 +196,7 @@ void copyFromDeviceBuffer(ValueType                     *hostBuffer,
             GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "Asynchronous D2H copy failed");
             break;
 
-        case GpuApiCallBehavior::Async:
+        case GpuApiCallBehavior::Sync:
             clError = clEnqueueReadBuffer(stream, *buffer, CL_TRUE, offset, bytes, hostBuffer, 0, nullptr, timingEvent);
             GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "Synchronous D2H copy failed");
             break;
