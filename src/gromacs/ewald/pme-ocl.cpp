@@ -466,9 +466,21 @@ void pme_gpu_init_internal(PmeGpu *pmeGpu)
      *          This is the main reason why they are disabled by default.
      */
     // TODO: Consider turning on by default when we can detect nr of streams.
-    pmeGpu->archSpecific->useTiming = (getenv("GMX_ENABLE_GPU_TIMING") != nullptr);
+    pmeGpu->archSpecific->useTiming = (getenv("GMX_ENABLE_GPU_TIMING") != nullptr); //FIXME: DISABLE for OpenCL?
 
-    /* Creating a PME CUDA stream */
+    /* Creating a GPU stream */
+
+    // TODO wrapper;
+    // TODO priorities/out of order? CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE
+#if GMX_GPU == GMX_GPU_OPENCL
+    cl_command_queue_properties queueProperties = pmeGpu->archSpecific->useTiming ? CL_QUEUE_PROFILING_ENABLE : 0;
+
+    /* local/non-local GPU streams */
+    pmeGpu->archSpecific->pmeStream = clCreateCommandQueue(pmeGpu->archSpecific->context,
+                                                           device_id, queueProperties, &cl_error);
+    GMX_RELEASE_ASSERT(cl_error == CL_SUCCESS, "Failed to create command queue");
+#endif
+#if GMX_GPU == GMX_GPU_CUDA
     cudaError_t stat;
     int         highest_priority, lowest_priority;
     stat = cudaDeviceGetStreamPriorityRange(&lowest_priority, &highest_priority);
@@ -477,6 +489,7 @@ void pme_gpu_init_internal(PmeGpu *pmeGpu)
                                         cudaStreamDefault, //cudaStreamNonBlocking,
                                         highest_priority);
     CU_RET_ERR(stat, "cudaStreamCreateWithPriority on the PME stream failed");
+#endif
 }
 
 void pme_gpu_destroy_specific(const PmeGpu *pmeGpu)
