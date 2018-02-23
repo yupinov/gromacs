@@ -219,11 +219,12 @@ int cu_copy_H2D_async(void * /*d_dest*/, void * /*h_src*/, size_t /*bytes*/, cud
  * \param[in]  devInfo   pointer to the info struct of the device in use
  */
 template <typename T>
-void initParamLookupTable(T                        * &d_ptr,
+void initParamLookupTable(T                         **d_ptr,
                           cudaTextureObject_t        &texObj,
                           const T                    *h_ptr,
                           int                         numElem,
-                          const gmx_device_info_t    *devInfo);
+                          const gmx_device_info_t    *devInfo,
+                          void                       *contextDummy); //FIXME
 
 /*! \brief Destroy parameter lookup table.
  *

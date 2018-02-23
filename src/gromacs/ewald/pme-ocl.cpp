@@ -341,26 +341,28 @@ void pme_gpu_realloc_and_copy_fract_shifts(PmeGpu *pmeGpu)
 
     const int    newFractShiftsSize  = cellCount * (nx + ny + nz);
 
-    initParamLookupTable(kernelParamsPtr->grid.d_fractShiftsTable,
+    initParamLookupTable(&kernelParamsPtr->grid.d_fractShiftsTable,
                          kernelParamsPtr->fractShiftsTableTexture,
                          pmeGpu->common->fsh.data(),
                          newFractShiftsSize,
-                         pmeGpu->deviceInfo);
+                         pmeGpu->deviceInfo,
+                         pmeGpu->archSpecific->context);
 
-    initParamLookupTable(kernelParamsPtr->grid.d_gridlineIndicesTable,
+    initParamLookupTable(&kernelParamsPtr->grid.d_gridlineIndicesTable,
                          kernelParamsPtr->gridlineIndicesTableTexture,
                          pmeGpu->common->nn.data(),
                          newFractShiftsSize,
-                         pmeGpu->deviceInfo);
+                         pmeGpu->deviceInfo,
+                         pmeGpu->archSpecific->context);
 }
 
 void pme_gpu_free_fract_shifts(const PmeGpu *pmeGpu)
 {
     auto *kernelParamsPtr = pmeGpu->kernelParams.get();
-    destroyParamLookupTable(kernelParamsPtr->grid.d_fractShiftsTable,
+    destroyParamLookupTable(&kernelParamsPtr->grid.d_fractShiftsTable,
                             kernelParamsPtr->fractShiftsTableTexture,
                             pmeGpu->deviceInfo);
-    destroyParamLookupTable(kernelParamsPtr->grid.d_gridlineIndicesTable,
+    destroyParamLookupTable(&kernelParamsPtr->grid.d_gridlineIndicesTable,
                             kernelParamsPtr->gridlineIndicesTableTexture,
                             pmeGpu->deviceInfo);
 }
