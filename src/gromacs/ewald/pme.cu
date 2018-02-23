@@ -477,7 +477,7 @@ void pme_gpu_init_internal(PmeGpu *pmeGpu)
 
 void pme_gpu_destroy_specific(const PmeGpu *pmeGpu)
 {
-    /* Destroy the CUDA stream */
+    /* Destroy the CUDA stream */    
     cudaError_t stat = cudaStreamDestroy(pmeGpu->archSpecific->pmeStream);
     CU_RET_ERR(stat, "PME cudaStreamDestroy error");
 }

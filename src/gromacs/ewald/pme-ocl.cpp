@@ -495,9 +495,17 @@ void pme_gpu_init_internal(PmeGpu *pmeGpu)
 
 void pme_gpu_destroy_specific(const PmeGpu *pmeGpu)
 {
-    /* Destroy the CUDA stream */
-    cudaError_t stat = cudaStreamDestroy(pmeGpu->archSpecific->pmeStream);
-    CU_RET_ERR(stat, "PME cudaStreamDestroy error");
+    /* Free command queues */
+    cl_int clError = clReleaseCommandQueue(pmeGpu->archSpecific->pmeStream);
+    GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "PME stream destruction error");
+
+    //FIXME
+    /*
+    free_gpu_device_runtime_data(nb->dev_rundata);
+    sfree(nb->dev_rundata);
+    */
+    clError = clReleaseContext(pmeGpu->archSpecific->context);
+    GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "PME context destruction error");
 }
 
 void pme_gpu_reinit_3dfft(const PmeGpu *pmeGpu)
