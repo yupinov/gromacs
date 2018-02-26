@@ -93,7 +93,7 @@ constexpr int c_spreadMaxThreadsPerBlock = c_spreadMaxWarpsPerBlock * warp_size;
 template<typename T,
          const int atomsPerBlock,
          const int dataCountPerAtom>
-__device__  __forceinline__
+DEVICE_INLINE
 void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
                              T * __restrict__                   sm_destination,
                              const T * __restrict__             gm_source)
@@ -128,7 +128,7 @@ void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
  */
 template <const int order,
           const int atomsPerBlock>
-__device__ __forceinline__ void calculate_splines(const PmeGpuCudaKernelParams           kernelParams,
+DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kernelParams,
                                                   const int                              atomIndexOffset,
                                                   const float3 * __restrict__            sm_coordinates,
                                                   const float * __restrict__             sm_coefficients,
@@ -335,7 +335,7 @@ __device__ __forceinline__ void calculate_splines(const PmeGpuCudaKernelParams  
  */
 template <
     const int order, const bool wrapX, const bool wrapY>
-__device__ __forceinline__ void spread_charges(const PmeGpuCudaKernelParams           kernelParams,
+DEVICE_INLINE void spread_charges(const PmeGpuCudaKernelParams           kernelParams,
                                                int                                    atomIndexOffset,
                                                const float * __restrict__             sm_coefficients,
                                                const int * __restrict__               sm_gridlineIndices,
