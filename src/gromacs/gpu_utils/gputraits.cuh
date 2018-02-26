@@ -60,6 +60,8 @@ struct KernelLaunchConfig
     CommandStream stream;           //!< Stream to launch kernel in
 };
 
+#define KERNEL_FUNC __global
+
 #include "gromacs/utility/gmxassert.h"
 class SyncEvent
 {

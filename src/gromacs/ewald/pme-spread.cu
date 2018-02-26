@@ -424,7 +424,7 @@ template <
     const bool wrapY
     >
 __launch_bounds__(c_spreadMaxThreadsPerBlock)
-__global__ void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kernelParams)
+KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kernelParams)
 {
     const int        atomsPerBlock = c_spreadMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM;
     // Gridline indices, ivec
