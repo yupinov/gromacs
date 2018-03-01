@@ -106,6 +106,15 @@ const bool c_skipNeutralAtoms = false;
  */
 const int c_virialAndEnergyCount = 7;
 
+//FIXME this is a copy!
+//! Spreading max block width in warps picked among powers of 2 (2, 4, 8, 16) for max. occupancy and min. runtime in most cases
+constexpr int c_spreadMaxWarpsPerBlock = 8;
+/* TODO: it has been observed that the kernel can be faster with smaller block sizes (2 or 4 warps)
+ * only on some GPUs (660Ti) with large enough grid (>= 48^3) due to load/store units being overloaded
+ * (ldst_fu_utilization metric maxed out in nvprof). Runtime block size choice might be nice to have.
+ * This has been tried on architectures up to Maxwell (GTX 750) and it would be good to revisit this.
+ */
+
 /* A block of GPU-only functions that live in pme.cu/pme-ocl.cpp */
 
 /*! \libinternal \brief
