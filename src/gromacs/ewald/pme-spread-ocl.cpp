@@ -111,7 +111,7 @@ void pme_gpu_spread(PmeGpu    *pmeGpu,
     GMX_UNUSED_VALUE(wrapY);
     switch (order)
     {
-        case 4:
+        case 4: // FIXME make thsi conditionals go away
         {
             // TODO: cleaner unroll with some template trick?
             if (computeSplines)
@@ -119,14 +119,16 @@ void pme_gpu_spread(PmeGpu    *pmeGpu,
                 if (spreadCharges)
                 {
                     pme_gpu_start_timing(pmeGpu, gtPME_SPLINEANDSPREAD);
-                    launchGpuKernel(config, pme_spline_and_spread_kernel<4, true, true, wrapX, wrapY>, kernelParamsPtr);
+                    //launchGpuKernel(config, pme_spline_and_spread_kernel<4, true, true, wrapX, wrapY>, kernelParamsPtr);
+                    launchGpuKernel(config, pmeGpu->archSpecific->splineAndSpreadKernel, kernelParamsPtr);
                     //FIXME error handling? CU_LAUNCH_ERR("pme_spline_and_spread_kernel"); - common result?
                     pme_gpu_stop_timing(pmeGpu, gtPME_SPLINEANDSPREAD);
                 }
                 else
                 {
                     pme_gpu_start_timing(pmeGpu, gtPME_SPLINE);
-                    launchGpuKernel(config, pme_spline_and_spread_kernel<4, true, false, wrapX, wrapY>, kernelParamsPtr);
+                    //launchGpuKernel(config, pme_spline_and_spread_kernel<4, true, false, wrapX, wrapY>, kernelParamsPtr);
+                    launchGpuKernel(config, pmeGpu->archSpecific->splineKernel, kernelParamsPtr);
                     //CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
                     pme_gpu_stop_timing(pmeGpu, gtPME_SPLINE);
                 }
@@ -134,7 +136,8 @@ void pme_gpu_spread(PmeGpu    *pmeGpu,
             else
             {
                 pme_gpu_start_timing(pmeGpu, gtPME_SPREAD);
-                launchGpuKernel(config, pme_spline_and_spread_kernel<4, false, true, wrapX, wrapY>, kernelParamsPtr);
+                launchGpuKernel(config, pmeGpu->archSpecific->spreadKernel, kernelParamsPtr); // TODO make those namespointers in CUDA version!
+                //launchGpuKernel(config, pme_spline_and_spread_kernel<4, false, true, wrapX, wrapY>, kernelParamsPtr);
                 //CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
                 pme_gpu_stop_timing(pmeGpu, gtPME_SPREAD);
             }
