@@ -50,6 +50,7 @@
 //#include "gromacs/gpu_utils/cudautils.cuh"
 //#include "gromacs/gpu_utils/devicebuffer.cuh"
 #include "gromacs/gpu_utils/oclutils.h"
+#include "gromacs/gpu_utils/ocl_compiler.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
 
@@ -431,6 +432,63 @@ void pme_gpu_sync_spread_grid(const PmeGpu *pmeGpu)
     pmeGpu->archSpecific->syncSpreadGridD2H.waitForSyncEvent(pmeGpu->archSpecific->pmeStream);
 }
 
+#if GMX_GPU == GMX_GPU_OPENCL
+// based on nbnxn_gpu_compile_kernels
+void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
+{
+    cl_program program  = nullptr;
+    /* Need to catch std::bad_alloc here and during compilation string
+       handling. */
+    try
+    {
+        /* Here we pass macros and static const int variables defined in include
+         * files outside the nbnxn_ocl as macros, to avoid including those files
+         * in the JIT compilation that happens at runtime.
+         */
+
+        const std::string defines = "";
+        #if 0
+                * gmx::formatString(
+                    " -DCENTRAL=%d "
+                    "-DNBNXN_GPU_NCLUSTER_PER_SUPERCLUSTER=%d -DNBNXN_GPU_CLUSTER_SIZE=%d -DNBNXN_GPU_JGROUP_SIZE=%d "
+                    "-DGMX_NBNXN_PRUNE_KERNEL_J4_CONCURRENCY=%d "
+                    "-DNBNXN_MIN_RSQ=%s %s",
+                    CENTRAL,                                                /* Defined in ishift.h */
+                    c_nbnxnGpuNumClusterPerSupercluster,                    /* Defined in nbnxn_pairlist.h */
+                    c_nbnxnGpuClusterSize,                                  /* Defined in nbnxn_pairlist.h */
+                    c_nbnxnGpuJgroupSize,                                   /* Defined in nbnxn_pairlist.h */
+                    getOclPruneKernelJ4Concurrency(nb->dev_info->vendor_e), /* In nbnxn_ocl_types.h  */
+                    STRINGIFY_MACRO(NBNXN_MIN_RSQ)                          /* Defined in nbnxn_consts.h */
+                                                                            /* NBNXN_MIN_RSQ passed as string to avoid
+                                                                                floating point representation problems with sprintf */
+                    , (nb->bPrefetchLjParam) ? "-DIATYPE_SHMEM" : ""
+                    );
+#endif
+
+        try
+        {
+            /* TODO when we have a proper MPI-aware logging module,
+               the log output here should be written there */
+            program = gmx::ocl::compileProgram(stderr,
+                                               "pme-spread-kernel.cl",
+                                               defines,
+                                               pmeGpu->archSpecific->context,
+                                               pmeGpu->deviceInfo->ocl_gpu_id.ocl_device_id,
+                                               pmeGpu->deviceInfo->vendor_e);
+        }
+        catch (gmx::GromacsException &e)
+        {
+            e.prependContext(gmx::formatString("Failed to compile PME kernels for GPU #%s\n",
+                                               pmeGpu->deviceInfo->device_name));
+            throw;
+        }
+    }
+    GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
+
+    pmeGpu->archSpecific->program = program;
+}
+#endif
+
 void pme_gpu_init_internal(PmeGpu *pmeGpu)
 {
     /* Allocate the target-specific structures */
@@ -490,6 +548,10 @@ void pme_gpu_init_internal(PmeGpu *pmeGpu)
                                         cudaStreamDefault, //cudaStreamNonBlocking,
                                         highest_priority);
     CU_RET_ERR(stat, "cudaStreamCreateWithPriority on the PME stream failed");
+#endif
+
+#if GMX_GPU == GMX_GPU_OPENCL
+    pme_gpu_compile_kernels(pmeGpu);
 #endif
 }
 
