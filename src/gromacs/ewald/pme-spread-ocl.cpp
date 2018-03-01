@@ -58,14 +58,14 @@
 #include "pme-grid.h"
 //#include "pme-timings.cuh"
 
-void pme_gpu_spread(const PmeGpu    *pmeGpu,
+void pme_gpu_spread(PmeGpu    *pmeGpu,
                     int gmx_unused   gridIndex,
                     real            *h_grid,
                     bool             computeSplines,
                     bool             spreadCharges)
 {
     GMX_ASSERT(computeSplines || spreadCharges, "PME spline/spread kernel has invalid input (nothing to do)");
-    cudaStream_t  stream          = pmeGpu->archSpecific->pmeStream;
+    CommandStream stream          = pmeGpu->archSpecific->pmeStream;
     const auto   *kernelParamsPtr = pmeGpu->kernelParams.get();
     GMX_ASSERT(kernelParamsPtr->atoms.nAtoms > 0, "No atom data in PME GPU spread");
 
@@ -79,9 +79,27 @@ void pme_gpu_spread(const PmeGpu    *pmeGpu,
     //(for spline data mostly, together with varying PME_GPU_PARALLEL_SPLINE define)
     GMX_ASSERT(!c_usePadding || !(PME_ATOM_DATA_ALIGNMENT % atomsPerBlock), "inconsistent atom data padding vs. spreading block size");
 
-    dim3 nBlocks(pmeGpu->nAtomsPadded / atomsPerBlock);
-    dim3 dimBlock(order, order, atomsPerBlock);
+    const int blockCount = pmeGpu->nAtomsPadded / atomsPerBlock;
+    //FIXME pickup Fermi fix pmeGpuCreateGrid(pmeGpu, blockCount);
 
+    KernelLaunchConfig config;
+    config.sharedMemorySize = 0;
+    config.stream      = stream;
+
+    config.blockSize.x = order;
+    config.blockSize.y = order;
+    config.blockSize.z = atomsPerBlock;
+    config.gridSize.x  = blockCount;
+    config.gridSize.y  = 1;
+    config.gridSize.z  = 1;
+
+    // FIXME unite dim3/size_t[3]
+    //FIXME mvoe to launcher*
+    config.gridSize.x *= config.blockSize.x;
+    config.gridSize.y *= config.blockSize.y;
+    config.gridSize.z *= config.blockSize.z;
+
+    
     // These should later check for PME decomposition
     const bool wrapX = true;
     const bool wrapY = true;
@@ -98,14 +116,14 @@ void pme_gpu_spread(const PmeGpu    *pmeGpu,
                 {
                     pme_gpu_start_timing(pmeGpu, gtPME_SPLINEANDSPREAD);
                     launchGpuKernel(config, pme_spline_and_spread_kernel<4, true, true, wrapX, wrapY>, kernelParamsPtr);
-                    CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
+                    //FIXME error handling? CU_LAUNCH_ERR("pme_spline_and_spread_kernel"); - common result?
                     pme_gpu_stop_timing(pmeGpu, gtPME_SPLINEANDSPREAD);
                 }
                 else
                 {
                     pme_gpu_start_timing(pmeGpu, gtPME_SPLINE);
                     launchGpuKernel(config, pme_spline_and_spread_kernel<4, true, false, wrapX, wrapY>, kernelParamsPtr);
-                    CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
+                    //CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
                     pme_gpu_stop_timing(pmeGpu, gtPME_SPLINE);
                 }
             }
@@ -113,7 +131,7 @@ void pme_gpu_spread(const PmeGpu    *pmeGpu,
             {
                 pme_gpu_start_timing(pmeGpu, gtPME_SPREAD);
                 launchGpuKernel(config, pme_spline_and_spread_kernel<4, false, true, wrapX, wrapY>, kernelParamsPtr);
-                CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
+                //CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
                 pme_gpu_stop_timing(pmeGpu, gtPME_SPREAD);
             }
         }
