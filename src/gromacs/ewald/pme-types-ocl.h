@@ -55,7 +55,7 @@
 
 
 //#include "gromacs/gpu_utils/cuda_arch_utils.cuh" // for warp_size
-#define warp_size 32 //FIXME this is for PME OpenCL only!
+#define warp_size 32 //FIXME this is for PME OpenCL only! thsi shoud lalso be dynamic
 
 #include "pme-gpu-internal.h"                    // for the general PME GPU behaviour defines
 #include "pme-timings-ocl.h"
