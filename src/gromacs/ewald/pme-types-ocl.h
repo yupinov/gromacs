@@ -216,6 +216,29 @@ struct PmeGpuCuda
     int complexGridSizeAlloc;
 
     Context context; //FIXME
+
+    //The only -non-CUDA thing!
+#if GMX_GPU == GMX_GPU_OPENCL
+    cl_program program;
+    // TODO: All these kernels are compiled during pme_gpu_init() only for the given PME order!
+    // (and only order of 4 is supported now, anyway).
+    // spreading kernels also have hardcoded X/Y indices wrapping parameters as a placeholder for implementing
+    // 1/2D decomposition.
+    cl_kernel splineKernel;
+    cl_kernel spreadKernel;
+    cl_kernel splineAndSpreadKernel;
+    // Same for gather: hardcoded X/Y unwrap parameters, order of 4,
+    // + it can reduce with previous forces in the host buffer, or ignore it.
+    cl_kernel gatherReduceWithInputKernel;
+    cl_kernel gatherKernel;
+    // solve kernel doesn't care about spline order, but can optionally compute energy and virial,
+    // and supports XYZ and YZX grid orderings.
+    cl_kernel solveYZXKernel;
+    cl_kernel solveXYZKernel;
+    cl_kernel solveYZXEnergyKernel;
+    cl_kernel solveXYZEnergyKernel;
+    // Not all of those kernels are used in mdrun, but all are covered with unit-tests.
+#endif
 };
 
 
