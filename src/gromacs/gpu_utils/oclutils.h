@@ -232,7 +232,7 @@ inline void launchOpenCLKernel(const KernelLaunchConfig &config,
     const cl_event *waitList         = nullptr;
     cl_event       *timingEvent      = nullptr; //FIXMEbDoTime ? t->nb_k[iloc].fetchNextEvent() : nullptr);
     cl_int          clError          = clEnqueueNDRangeKernel(config.stream, kernel, 3, globalWorkOffset,
-                                                              config.gridSize, config.blockSize, waitListSize, waitList, timingEvent);
+                                                              (size_t*)&config.gridSize, (size_t*)&config.blockSize, waitListSize, waitList, timingEvent);
     GMX_RELEASE_ASSERT(CL_SUCCESS == clError, ocl_get_error_string(clError).c_str());
 }
 
