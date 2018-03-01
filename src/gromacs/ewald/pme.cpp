@@ -113,7 +113,13 @@
 
 #include "calculate-spline-moduli.h"
 #include "pme-gather.h"
-#include "pme-gpu-internal.h"
+//#include "pme-gpu-internal.h"
+//FIXME
+#include "gromacs/gpu_utils/gpu_macros.h"
+GPU_FUNC_QUALIFIER void pme_gpu_destroy(PmeGpu *) GPU_FUNC_TERM
+GPU_FUNC_QUALIFIER void pme_gpu_reinit(gmx_pme_t *, gmx_device_info_t *) GPU_FUNC_TERM
+GPU_FUNC_QUALIFIER void pme_gpu_reinit_atoms(PmeGpu *, int, const real *) GPU_FUNC_TERM
+
 #include "pme-grid.h"
 #include "pme-internal.h"
 #include "pme-redistribute.h"
