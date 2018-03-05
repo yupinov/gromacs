@@ -793,8 +793,8 @@ static void pme_gpu_init(gmx_pme_t *pme, gmx_device_info_t *gpuInfo)
     auto *kernelParamsPtr = pme_gpu_get_kernel_params_base_ptr(pmeGpu);
     kernelParamsPtr->constants.elFactor = ONE_4PI_EPS0 / pmeGpu->common->epsilon_r;
 }
-
-inline void pme_gpu_transform_spline_atom_data(const PmeGpu *pmeGpu, const pme_atomcomm_t *atc,
+#if 0 //moved to pme-ocl.cpp
+void pme_gpu_transform_spline_atom_data(const PmeGpu *pmeGpu, const pme_atomcomm_t *atc,
                                         PmeSplineDataType type, int dimIndex, PmeLayoutTransform transform)
 {
     // The GPU atom spline data is laid out in a different way currently than the CPU one.
@@ -852,7 +852,7 @@ inline void pme_gpu_transform_spline_atom_data(const PmeGpu *pmeGpu, const pme_a
     }
 }
 
-inline void pme_gpu_get_real_grid_sizes(const PmeGpu *pmeGpu, gmx::IVec *gridSize, gmx::IVec *paddedGridSize)
+void pme_gpu_get_real_grid_sizes(const PmeGpu *pmeGpu, gmx::IVec *gridSize, gmx::IVec *paddedGridSize)
 {
     GMX_ASSERT(gridSize != nullptr, "");
     GMX_ASSERT(paddedGridSize != nullptr, "");
@@ -865,7 +865,6 @@ inline void pme_gpu_get_real_grid_sizes(const PmeGpu *pmeGpu, gmx::IVec *gridSiz
     }
 }
 
-#if 0 //moved to pme-ocl.cpp
 inline void pme_gpu_reinit(gmx_pme_t *pme, gmx_device_info_t *gpuInfo)
 {
     if (!pme_gpu_active(pme))
