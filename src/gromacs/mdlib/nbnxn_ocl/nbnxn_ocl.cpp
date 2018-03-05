@@ -394,7 +394,6 @@ void nbnxn_gpu_launch_kernel(gmx_nbnxn_ocl_t               *nb,
     bool                 bCalcEner   = flags & GMX_FORCE_ENERGY;
     int                  bCalcFshift = flags & GMX_FORCE_VIRIAL;
     bool                 bDoTime     = nb->bDoTime;
-    cl_uint              arg_no;
 
     cl_nbparam_params_t  nbparams_params;
 
@@ -525,11 +524,10 @@ void nbnxn_gpu_launch_kernel(gmx_nbnxn_ocl_t               *nb,
     KernelLaunchConfig p;
     p.sharedMemorySize = shmem;
     p.stream           = stream;
-    for (int i = 0; i < 3; i++)
-    {
-        p.gridSize[i]  =  global_work_size[i]; //FIXME
-        p.blockSize[i] =  local_work_size[i];
-    }
+    p.gridSize.x       = plist->nsci;
+    p.blockSize.x      = c_clSize;
+    p.blockSize.y      = c_clSize;
+
     //FIXME bDoTime ? t->nb_k[iloc].fetchNextEvent() : nullptr)
 
     if (useLjCombRule(nb->nbparam->vdwtype))
@@ -681,12 +679,17 @@ void nbnxn_gpu_launch_kernel_pruneonly(gmx_nbnxn_gpu_t       *nb,
     KernelLaunchConfig p;
     p.sharedMemorySize = shmem;
     p.stream           = stream;
+    /*
     for (int i = 0; i < 3; i++)
     {
         p.gridSize[i]  =  global_work_size[i]; //FIXME
         p.blockSize[i] =  local_work_size[i];
-    }
+    }*/
+    p.blockSize.x = c_clSize;
+    p.blockSize.y = c_clSize;
+    p.blockSize.z = num_threads_z;
 
+    p.gridSize.x = numSciInPart;
 
     //{global_work_size, local_work_size, shmem, stream};
     launchGpuKernel(p, pruneKernel, &nbparams_params, &adat->xq, &adat->shift_vec,

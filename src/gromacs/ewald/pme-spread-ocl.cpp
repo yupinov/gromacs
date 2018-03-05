@@ -99,9 +99,11 @@ void pme_gpu_spread(PmeGpu    *pmeGpu,
 
     // FIXME unite dim3/size_t[3]
     //FIXME mvoe to launcher*
+    /*
     config.gridSize.x *= config.blockSize.x;
     config.gridSize.y *= config.blockSize.y;
     config.gridSize.z *= config.blockSize.z;
+    */
 
     
     // These should later check for PME decomposition

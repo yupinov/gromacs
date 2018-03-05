@@ -60,7 +60,7 @@ struct dim3_replacement
 #endif
 };
 
-
+#include <cstdio>
 
 /*! \brief GPU kernels scheduling description.
  * Currently this is almost same in OpenCL/CUDA.
@@ -71,6 +71,14 @@ struct KernelLaunchConfig
     dim3_replacement        blockSize;     //!< Per-block thread counts
     size_t        sharedMemorySize; //!< Shared memory size in bytes
     CommandStream stream;           //!< Stream to launch kernel in
+
+    KernelLaunchConfig()
+    {
+        printf("hello\n");
+        gridSize.x = gridSize.y = gridSize.z = blockSize.x = blockSize.y = blockSize.z = 1;
+        sharedMemorySize = 0;
+        stream = nullptr;
+    }
 };
 
 #define KERNEL_FUNC __kernel

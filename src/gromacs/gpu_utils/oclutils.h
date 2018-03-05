@@ -231,8 +231,13 @@ inline void launchOpenCLKernel(const KernelLaunchConfig &config,
     const size_t    waitListSize     = 0;
     const cl_event *waitList         = nullptr;
     cl_event       *timingEvent      = nullptr; //FIXMEbDoTime ? t->nb_k[iloc].fetchNextEvent() : nullptr);
-    cl_int          clError          = clEnqueueNDRangeKernel(config.stream, kernel, 3, globalWorkOffset,
-                                                              (size_t*)&config.gridSize, (size_t*)&config.blockSize, waitListSize, waitList, timingEvent);
+    const int workDim = 3;
+    size_t globalWorkSize[3];
+    globalWorkSize[0] = config.gridSize.x * config.blockSize.x;
+    globalWorkSize[1] = config.gridSize.y * config.blockSize.y;
+    globalWorkSize[2] = config.gridSize.z * config.blockSize.z;
+    cl_int  clError = clEnqueueNDRangeKernel(config.stream, kernel, workDim, globalWorkOffset,
+                                                              globalWorkSize, (size_t*)&config.blockSize, waitListSize, waitList, timingEvent);
     GMX_RELEASE_ASSERT(CL_SUCCESS == clError, ocl_get_error_string(clError).c_str());
 }
 
