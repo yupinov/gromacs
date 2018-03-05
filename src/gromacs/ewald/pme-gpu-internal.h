@@ -439,7 +439,7 @@ GPU_FUNC_QUALIFIER void pme_gpu_get_timings(const PmeGpu            *GPU_FUNC_AR
  * \param[in]  computeSplines  Should the computation of spline parameters and gridline indices be performed.
  * \param[in]  spreadCharges   Should the charges/coefficients be spread on the grid.
  */
-GPU_FUNC_QUALIFIER void pme_gpu_spread(const PmeGpu    *GPU_FUNC_ARGUMENT(pmeGpu),
+GPU_FUNC_QUALIFIER void pme_gpu_spread(PmeGpu    *GPU_FUNC_ARGUMENT(pmeGpu),
                                         int              GPU_FUNC_ARGUMENT(gridIndex),
                                         real            *GPU_FUNC_ARGUMENT(h_grid),
                                         bool             GPU_FUNC_ARGUMENT(computeSplines),
