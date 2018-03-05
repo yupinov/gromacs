@@ -485,7 +485,7 @@ void pmeSetGridLineIndices(const gmx_pme_t *pme, CodePath mode,
     switch (mode)
     {
         case CodePath::CUDA:
-            memcpy(pme->gpu->staging.h_gridlineIndices, gridLineIndices.data(), atomCount * sizeof(gridLineIndices[0]));
+            pmeGpuSetGridlineIndices(pme->gpu, gridLineIndices);
             break;
 
         case CodePath::CPU:
@@ -604,7 +604,7 @@ GridLineIndicesVector pmeGetGridlineIndices(const gmx_pme_t *pme, CodePath mode)
     switch (mode)
     {
         case CodePath::CUDA:
-            gridLineIndices = arrayRefFromArray(reinterpret_cast<IVec *>(pme->gpu->staging.h_gridlineIndices), atomCount);
+            gridLineIndices = pmeGpuGetGridlineIndices(pme->gpu);
             break;
 
         case CodePath::CPU:

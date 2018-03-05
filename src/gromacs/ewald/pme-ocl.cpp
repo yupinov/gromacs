@@ -675,3 +675,15 @@ void pme_gpu_reinit_atoms(PmeGpu *pmeGpu, const int nAtoms, const real *charges)
         pme_gpu_realloc_grid_indices(pmeGpu);
     }
 }
+
+#include "gromacs/utility/arrayref.h"
+
+gmx::ArrayRef<const gmx::IVec> pmeGpuGetGridlineIndices(const PmeGpu *pmeGpu)
+{
+    return arrayRefFromArray(reinterpret_cast<gmx::IVec *>(pmeGpu->staging.h_gridlineIndices), pmeGpu->kernelParams->atoms.nAtoms);
+}
+
+void pmeGpuSetGridlineIndices(PmeGpu *pmeGpu, gmx::ArrayRef<const gmx::IVec> gridlineIndices)
+{
+    memcpy(pmeGpu->staging.h_gridlineIndices, gridlineIndices.data(), gridlineIndices.size() * sizeof(gridlineIndices[0]));
+}

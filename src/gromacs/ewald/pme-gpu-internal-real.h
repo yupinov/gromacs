@@ -88,5 +88,9 @@ CUDA_FUNC_QUALIFIER void pme_gpu_gather(PmeGpu                *CUDA_FUNC_ARGUMEN
 
 gmx::ArrayRef<gmx::RVec> pme_gpu_get_forces(PmeGpu *pmeGpu);
 
+gmx::ArrayRef<const gmx::IVec> pmeGpuGetGridlineIndices(const PmeGpu *pmeGpu);
+
+void pmeGpuSetGridlineIndices(PmeGpu *pmeGpu, gmx::ArrayRef<const gmx::IVec> gridlineIndices);
+
 
 #endif // PMEGPUINTERNALREAL_H
