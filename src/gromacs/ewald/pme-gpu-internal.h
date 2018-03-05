@@ -612,12 +612,12 @@ static PmeGpuKernelParamsBase *pme_gpu_get_kernel_params_base_ptr(const PmeGpu *
     return kernelParamsPtr;
 }
 
-gmx::ArrayRef<gmx::RVec> pme_gpu_get_forces(PmeGpu *pmeGpu)
+inline gmx::ArrayRef<gmx::RVec> pme_gpu_get_forces(PmeGpu *pmeGpu)
 {
     return pmeGpu->staging.h_forces;
 }
 
-void pme_gpu_get_energy_virial(const PmeGpu *pmeGpu, real *energy, matrix virial)
+inline void pme_gpu_get_energy_virial(const PmeGpu *pmeGpu, real *energy, matrix virial)
 {
     for (int j = 0; j < c_virialAndEnergyCount; j++)
     {
@@ -635,7 +635,7 @@ void pme_gpu_get_energy_virial(const PmeGpu *pmeGpu, real *energy, matrix virial
     *energy        = 0.5f * pmeGpu->staging.h_virialAndEnergy[j++];
 }
 
-void pme_gpu_update_input_box(PmeGpu gmx_unused       *pmeGpu,
+inline void pme_gpu_update_input_box(PmeGpu gmx_unused       *pmeGpu,
                               const matrix gmx_unused  box)
 {
 #if GMX_DOUBLE
@@ -668,7 +668,7 @@ void pme_gpu_update_input_box(PmeGpu gmx_unused       *pmeGpu,
  *
  * \param[in] pmeGpu            The PME GPU structure.
  */
-void pme_gpu_reinit_computation(const PmeGpu *pmeGpu)
+inline void pme_gpu_reinit_computation(const PmeGpu *pmeGpu)
 {
     pme_gpu_clear_grids(pmeGpu);
     pme_gpu_clear_energy_virial(pmeGpu);
@@ -842,7 +842,7 @@ static void pme_gpu_init(gmx_pme_t *pme, gmx_device_info_t *gpuInfo)
     kernelParamsPtr->constants.elFactor = ONE_4PI_EPS0 / pmeGpu->common->epsilon_r;
 }
 
-void pme_gpu_transform_spline_atom_data(const PmeGpu *pmeGpu, const pme_atomcomm_t *atc,
+inline void pme_gpu_transform_spline_atom_data(const PmeGpu *pmeGpu, const pme_atomcomm_t *atc,
                                         PmeSplineDataType type, int dimIndex, PmeLayoutTransform transform)
 {
     // The GPU atom spline data is laid out in a different way currently than the CPU one.
@@ -900,7 +900,7 @@ void pme_gpu_transform_spline_atom_data(const PmeGpu *pmeGpu, const pme_atomcomm
     }
 }
 
-void pme_gpu_get_real_grid_sizes(const PmeGpu *pmeGpu, gmx::IVec *gridSize, gmx::IVec *paddedGridSize)
+inline void pme_gpu_get_real_grid_sizes(const PmeGpu *pmeGpu, gmx::IVec *gridSize, gmx::IVec *paddedGridSize)
 {
     GMX_ASSERT(gridSize != nullptr, "");
     GMX_ASSERT(paddedGridSize != nullptr, "");
@@ -913,7 +913,7 @@ void pme_gpu_get_real_grid_sizes(const PmeGpu *pmeGpu, gmx::IVec *gridSize, gmx:
     }
 }
 
-void pme_gpu_reinit(gmx_pme_t *pme, gmx_device_info_t *gpuInfo)
+inline void pme_gpu_reinit(gmx_pme_t *pme, gmx_device_info_t *gpuInfo)
 {
     if (!pme_gpu_active(pme))
     {
@@ -945,7 +945,7 @@ void pme_gpu_reinit(gmx_pme_t *pme, gmx_device_info_t *gpuInfo)
     std::memset(pme->gpu->common->previousBox, 0, sizeof(pme->gpu->common->previousBox));
 }
 
-void pme_gpu_destroy(PmeGpu *pmeGpu)
+inline void pme_gpu_destroy(PmeGpu *pmeGpu)
 {
     /* Free lots of data */
     pme_gpu_free_energy_virial(pmeGpu);
@@ -966,7 +966,7 @@ void pme_gpu_destroy(PmeGpu *pmeGpu)
     delete pmeGpu;
 }
 
-void pme_gpu_reinit_atoms(PmeGpu *pmeGpu, const int nAtoms, const real *charges)
+inline void pme_gpu_reinit_atoms(PmeGpu *pmeGpu, const int nAtoms, const real *charges)
 {
     auto      *kernelParamsPtr = pme_gpu_get_kernel_params_base_ptr(pmeGpu);
     kernelParamsPtr->atoms.nAtoms = nAtoms;
