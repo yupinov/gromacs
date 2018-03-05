@@ -46,7 +46,6 @@
 #include <cstring>
 
 #include "gromacs/ewald/pme-gather.h"
-#include "gromacs/ewald/pme-gpu-internal.h"
 #include "gromacs/ewald/pme-grid.h"
 #include "gromacs/ewald/pme-internal.h"
 #include "gromacs/ewald/pme-solve.h"

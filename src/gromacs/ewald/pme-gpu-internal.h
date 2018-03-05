@@ -50,6 +50,7 @@
 #include "gromacs/gpu_utils/gpu_macros.h"      // for the GPU_FUNC_ macros
 #include "gromacs/utility/arrayref.h"
 
+#include "pme-gpu-internal-real.h"
 #include "pme-gpu-types.h"                     // for the inline functions accessing PmeGpu members
 
 struct gmx_hw_info_t;
@@ -63,20 +64,6 @@ namespace gmx
 {
 class MDLogger;
 }
-
-//! Type of spline data
-enum class PmeSplineDataType
-{
-    Values,      // theta
-    Derivatives, // dtheta
-};               //TODO move this into new and shiny pme.h (pme-types.h?)
-
-//! PME grid dimension ordering (from major to minor)
-enum class GridOrdering
-{
-    YZX,
-    XYZ
-};
 
 /* Some general constants for PME GPU behaviour follow. */
 
@@ -456,33 +443,6 @@ CUDA_FUNC_QUALIFIER void pme_gpu_3dfft(const PmeGpu          *CUDA_FUNC_ARGUMENT
                                        enum gmx_fft_direction CUDA_FUNC_ARGUMENT(direction),
                                        const int              CUDA_FUNC_ARGUMENT(gridIndex)) CUDA_FUNC_TERM
 
-/*! \libinternal \brief
- * A GPU Fourier space solving function.
- *
- * \param[in]     pmeGpu                  The PME GPU structure.
- * \param[in,out] h_grid                  The host-side input and output Fourier grid buffer (used only with testing or host-side FFT)
- * \param[in]     gridOrdering            Specifies the dimenion ordering of the complex grid. TODO: store this information?
- * \param[in]     computeEnergyAndVirial  Tells if the energy and virial computation should also be performed.
- */
-CUDA_FUNC_QUALIFIER void pme_gpu_solve(const PmeGpu    *CUDA_FUNC_ARGUMENT(pmeGpu),
-                                       t_complex       *CUDA_FUNC_ARGUMENT(h_grid),
-                                       GridOrdering     CUDA_FUNC_ARGUMENT(gridOrdering),
-                                       bool             CUDA_FUNC_ARGUMENT(computeEnergyAndVirial)) CUDA_FUNC_TERM
-
-/*! \libinternal \brief
- * A GPU force gathering function.
- *
- * \param[in]     pmeGpu           The PME GPU structure.
- * \param[in]     forceTreatment   Tells how data in h_forces should be treated.
- *                                 TODO: determine efficiency/balance of host/device-side reductions.
- * \param[in]     h_grid           The host-side grid buffer (used only in testing mode)
- */
-CUDA_FUNC_QUALIFIER void pme_gpu_gather(PmeGpu                *CUDA_FUNC_ARGUMENT(pmeGpu),
-                                        PmeForceOutputHandling CUDA_FUNC_ARGUMENT(forceTreatment),
-                                        const float           *CUDA_FUNC_ARGUMENT(h_grid)
-                                        ) CUDA_FUNC_TERM
-
-
 /* The inlined convenience PME GPU status getters */
 
 /*! \libinternal \brief
@@ -571,14 +531,6 @@ inline bool pme_gpu_is_testing(const PmeGpu *pmeGpu)
 
 
 //FIXME
-
-//! A binary enum for spline data layout transformation
-enum class PmeLayoutTransform
-{
-    GpuToHost,
-    HostToGpu
-};
-
 
 
 #include "config.h"

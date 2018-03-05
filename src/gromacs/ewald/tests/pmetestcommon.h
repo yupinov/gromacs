@@ -49,7 +49,7 @@
 #include <gtest/gtest.h>
 
 #include "gromacs/ewald/pme.h"
-#include "gromacs/ewald/pme-gpu-internal.h"
+#include "gromacs/ewald/pme-gpu-internal-real.h"
 #include "gromacs/math/gmxcomplex.h"
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/unique_cptr.h"
