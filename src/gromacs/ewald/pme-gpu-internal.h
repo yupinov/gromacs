@@ -913,6 +913,7 @@ inline void pme_gpu_get_real_grid_sizes(const PmeGpu *pmeGpu, gmx::IVec *gridSiz
     }
 }
 
+#if 0 //moved to pme-ocl.cpp
 inline void pme_gpu_reinit(gmx_pme_t *pme, gmx_device_info_t *gpuInfo)
 {
     if (!pme_gpu_active(pme))
@@ -945,6 +946,7 @@ inline void pme_gpu_reinit(gmx_pme_t *pme, gmx_device_info_t *gpuInfo)
     std::memset(pme->gpu->common->previousBox, 0, sizeof(pme->gpu->common->previousBox));
 }
 
+
 inline void pme_gpu_destroy(PmeGpu *pmeGpu)
 {
     /* Free lots of data */
@@ -965,6 +967,7 @@ inline void pme_gpu_destroy(PmeGpu *pmeGpu)
 
     delete pmeGpu;
 }
+
 
 inline void pme_gpu_reinit_atoms(PmeGpu *pmeGpu, const int nAtoms, const real *charges)
 {
@@ -992,7 +995,7 @@ inline void pme_gpu_reinit_atoms(PmeGpu *pmeGpu, const int nAtoms, const real *c
         pme_gpu_realloc_grid_indices(pmeGpu);
     }
 }
-
+#endif
 
 
 #if 0

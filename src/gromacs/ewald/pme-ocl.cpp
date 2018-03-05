@@ -593,3 +593,85 @@ struct GpuParallel3dFft
     //hello I am dummy!
 };
 #endif
+
+//FIXME: these guys are here because they need to be instantiated for pme.cpp calls
+
+void pme_gpu_destroy(PmeGpu *pmeGpu)
+{
+    /* Free lots of data */
+    pme_gpu_free_energy_virial(pmeGpu);
+    pme_gpu_free_bspline_values(pmeGpu);
+    pme_gpu_free_forces(pmeGpu);
+    pme_gpu_free_coordinates(pmeGpu);
+    pme_gpu_free_coefficients(pmeGpu);
+    pme_gpu_free_spline_data(pmeGpu);
+    pme_gpu_free_grid_indices(pmeGpu);
+    pme_gpu_free_fract_shifts(pmeGpu);
+    pme_gpu_free_grids(pmeGpu);
+
+    pme_gpu_destroy_3dfft(pmeGpu);
+
+    /* Free the GPU-framework specific data last */
+    pme_gpu_destroy_specific(pmeGpu);
+
+    delete pmeGpu;
+}
+
+void pme_gpu_reinit(gmx_pme_t *pme, gmx_device_info_t *gpuInfo)
+{
+    if (!pme_gpu_active(pme))
+    {
+        return;
+    }
+
+    if (!pme->gpu)
+    {
+        /* First-time initialization */
+        pme_gpu_init(pme, gpuInfo);
+    }
+    else
+    {
+        /* After this call nothing in the GPU code should refer to the gmx_pme_t *pme itself - until the next pme_gpu_reinit */
+        pme_gpu_copy_common_data_from(pme);
+    }
+    /* GPU FFT will only get used for a single rank.*/
+    pme->gpu->settings.performGPUFFT   = (pme->gpu->common->runMode == PmeRunMode::GPU) && !pme_gpu_uses_dd(pme->gpu);
+    pme->gpu->settings.performGPUSolve = (pme->gpu->common->runMode == PmeRunMode::GPU);
+
+    /* Reinit active timers */
+    pme_gpu_reinit_timings(pme->gpu);
+
+    pme_gpu_reinit_grids(pme->gpu);
+    pme_gpu_reinit_computation(pme->gpu);
+    /* Clear the previous box - doesn't hurt, and forces the PME CPU recipbox
+     * update for mixed mode on grid switch. TODO: use shared recipbox field.
+     */
+    std::memset(pme->gpu->common->previousBox, 0, sizeof(pme->gpu->common->previousBox));
+}
+
+void pme_gpu_reinit_atoms(PmeGpu *pmeGpu, const int nAtoms, const real *charges)
+{
+    auto      *kernelParamsPtr = pme_gpu_get_kernel_params_base_ptr(pmeGpu);
+    kernelParamsPtr->atoms.nAtoms = nAtoms;
+    const int  alignment = pme_gpu_get_atom_data_alignment(pmeGpu);
+    pmeGpu->nAtomsPadded = ((nAtoms + alignment - 1) / alignment) * alignment;
+    const int  nAtomsAlloc   = c_usePadding ? pmeGpu->nAtomsPadded : nAtoms;
+    const bool haveToRealloc = (pmeGpu->nAtomsAlloc < nAtomsAlloc); /* This check might be redundant, but is logical */
+    pmeGpu->nAtomsAlloc = nAtomsAlloc;
+
+#if GMX_DOUBLE
+    GMX_RELEASE_ASSERT(false, "Only single precision supported");
+    GMX_UNUSED_VALUE(charges);
+#else
+    pme_gpu_realloc_and_copy_input_coefficients(pmeGpu, reinterpret_cast<const float *>(charges));
+    /* Could also be checked for haveToRealloc, but the copy always needs to be performed */
+#endif
+
+    if (haveToRealloc)
+    {
+        pme_gpu_realloc_coordinates(pmeGpu);
+        pme_gpu_realloc_forces(pmeGpu);
+        pme_gpu_realloc_spline_data(pmeGpu);
+        pme_gpu_realloc_grid_indices(pmeGpu);
+    }
+}
