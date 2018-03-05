@@ -470,7 +470,7 @@ void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
             /* TODO when we have a proper MPI-aware logging module,
                the log output here should be written there */
             program = gmx::ocl::compileProgram(stderr,
-                                               "pme-spread-kernel.cl",
+                                               "../../ewald/pme-spread-kernel.cl", //FIXME
                                                defines,
                                                pmeGpu->archSpecific->context,
                                                pmeGpu->deviceInfo->ocl_gpu_id.ocl_device_id,
