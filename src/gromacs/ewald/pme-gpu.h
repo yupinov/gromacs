@@ -50,11 +50,6 @@ bool pme_gpu_supports_input(const t_inputrec *ir, std::string *error)
         errorReasons.push_back("double precision");
     }
 #endif
-#if GMX_GPU != GMX_GPU_CUDA
-    {
-        errorReasons.push_back("non-CUDA build of GROMACS");
-    }
-#endif
     if (ir->cutoff_scheme == ecutsGROUP)
     {
         errorReasons.push_back("group cutoff scheme");
