@@ -107,7 +107,7 @@ void PmeTestEnvironment::SetUp()
         std::string description = "(GPU " + std::string(stmp) + ") ";
         gpuContexts.emplace_back(TestHardwareContext(description.c_str(), getDeviceInfo(hardwareInfo_->gpu_info, gpuIndex)));
     }
-#if GMX_GPU == GMX_GPU_CUDA
+#if GMX_GPU != GMX_GPU_NONE //FIXME why are you just using cuda you lazy ass
     hardwareContextsByMode_[CodePath::CUDA] = gpuContexts;
 #endif
 }
