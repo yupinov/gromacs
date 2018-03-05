@@ -8,6 +8,23 @@
  */
 #define PME_GPU_PARALLEL_SPLINE 0
 
+#define OPENCL_C99_ONLY (defined(__OPENCL_C_VERSION__) && (__OPENCL_C_VERSION__ <= 200))
+
+//FIXME try opencl 2.2 or remove version check?
+
+//FIXME
+#if OPENCL_C99_ONLY
+#define constexpr __constant
+#endif
+
+//FIXME path
+//#include "../../ewald/pme-types-ocl.h"
+
+//FIXME redefeinition
+#define warp_size 32
+#define DEVICE_INLINE inline
+
+
 
 //! Spreading max block width in warps picked among powers of 2 (2, 4, 8, 16) for max. occupancy and min. runtime in most cases
 constexpr int c_spreadMaxWarpsPerBlock = 8;
@@ -30,15 +47,19 @@ constexpr int c_spreadMaxThreadsPerBlock = c_spreadMaxWarpsPerBlock * warp_size;
  * \param[out] sm_destination    Shared memory array for output.
  * \param[in]  gm_source         Global memory array for input.
  */
+#if !OPENCL_C99_ONLY
 template<typename T,
          const int atomsPerBlock,
          const int dataCountPerAtom>
+#endif
 DEVICE_INLINE
 void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
                              T * __restrict__                   sm_destination,
                              const T * __restrict__             gm_source)
 {
+#if !OPENCL_C99_ONLY
     static_assert(c_usePadding, "With padding disabled, index checking should be fixed to account for spline theta/dtheta per-warp alignment");
+#endif
     const int threadLocalIndex = ((threadIdx.z * blockDim.y + threadIdx.y) * blockDim.x) + threadIdx.x;
     const int localIndex       = threadLocalIndex;
     const int globalIndexBase  = blockIdx.x * atomsPerBlock * dataCountPerAtom;
@@ -66,8 +87,10 @@ void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
  * \param[out] sm_theta             Atom spline values in the shared memory.
  * \param[out] sm_gridlineIndices   Atom gridline indices in the shared memory.
  */
+#if !OPENCL_C99_ONLY
 template <const int order,
           const int atomsPerBlock>
+#endif
 DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kernelParams,
                                                   const int                              atomIndexOffset,
                                                   const float3 * __restrict__            sm_coordinates,
@@ -273,8 +296,10 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
  * \param[in]  sm_gridlineIndices   Atom gridline indices in the shared memory.
  * \param[in]  sm_theta             Atom spline values in the shared memory.
  */
+#if !OPENCL_C99_ONLY
 template <
     const int order, const bool wrapX, const bool wrapY>
+#endif
 DEVICE_INLINE void spread_charges(const PmeGpuCudaKernelParams           kernelParams,
                                                int                                    atomIndexOffset,
                                                const float * __restrict__             sm_coefficients,
@@ -357,6 +382,7 @@ DEVICE_INLINE void spread_charges(const PmeGpuCudaKernelParams           kernelP
  * \tparam[in] wrapY                A boolean which tells if the grid overlap in dimension Y should be wrapped.
  * \param[in]  kernelParams         Input PME CUDA data in constant memory.
  */
+#if !OPENCL_C99_ONLY
 template <
     const int order,
     const bool computeSplines,
@@ -364,6 +390,7 @@ template <
     const bool wrapX,
     const bool wrapY
     >
+#endif
 __launch_bounds__(c_spreadMaxThreadsPerBlock)
 KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kernelParams)
 {
