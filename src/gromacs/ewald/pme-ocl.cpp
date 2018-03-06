@@ -453,23 +453,29 @@ void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
         //FIXME thsi should be deduced with pme_gpu_copy_common_data_from()
         const int order = 4;
 
-        const std::string generalDefines = gmx::formatString(
+        const std::string spreadGatherDefines = gmx::formatString(
                     //All those are not needed for solve, but whatever
                     "-Dorder=%d "
                     "-DPME_SPREADGATHER_ATOMS_PER_WARP=%d "
                     "-DPME_SPLINE_THETA_STRIDE=%d "
+                    "-Dc_usePadding=%d "
+                    "-Dc_skipNeutralAtoms=%d "  //TODO stringify
                     ,
                     order,
                     PME_SPREADGATHER_ATOMS_PER_WARP,
-                    PME_SPLINE_THETA_STRIDE);
+                    PME_SPLINE_THETA_STRIDE,
+                    c_usePadding,
+                    c_skipNeutralAtoms);
         const std::string spreadDefines = gmx::formatString(
-                "-DatomsPerBlock=%d "
+                    "-DatomsPerBlock=%d "
+                    "-Dc_pmeMaxUnitcellShift=%d "
                     // unused template params for decomposition
                     "-DwrapX=true -DwrapY=true",
-                    c_spreadMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM
+                    c_spreadMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM,
+                    c_pmeMaxUnitcellShift
                     );
 
-        const std::string defines = generalDefines + " " + spreadDefines;
+        const std::string defines = spreadGatherDefines + " " + spreadDefines;
 
 
 
