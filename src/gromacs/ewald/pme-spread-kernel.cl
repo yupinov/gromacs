@@ -8,7 +8,11 @@
  */
 #define PME_GPU_PARALLEL_SPLINE 0
 
-#define OPENCL_C99_ONLY (defined(__OPENCL_C_VERSION__) && (__OPENCL_C_VERSION__ <= 200))
+#define OPENCL_COMPILATION defined(__OPENCL_C_VERSION__)
+
+#define OPENCL_C99_ONLY (OPENCL_COMPILATION && (__OPENCL_C_VERSION__ <= 200))
+
+#include "../../ewald/pme-ocl-types-kernel.clh"
 
 //FIXME try opencl 2.2 or remove version check?
 
@@ -21,11 +25,12 @@
 //#include "../../ewald/pme-types-ocl.h"
 
 //FIXME redefeinition
-#define warp_size 32
+#define warp_size WARP_SIZE_TEST
+//FIXME there is also WARP_SIZE_TEST
 #define DEVICE_INLINE inline
 
 
-
+#if !OPENCL_COMPILATION
 //! Spreading max block width in warps picked among powers of 2 (2, 4, 8, 16) for max. occupancy and min. runtime in most cases
 constexpr int c_spreadMaxWarpsPerBlock = 8;
 /* TODO: it has been observed that the kernel can be faster with smaller block sizes (2 or 4 warps)
@@ -35,6 +40,8 @@ constexpr int c_spreadMaxWarpsPerBlock = 8;
  */
 //! Spreading max block size in threads
 constexpr int c_spreadMaxThreadsPerBlock = c_spreadMaxWarpsPerBlock * warp_size;
+
+#endif
 
 
 /*! \brief

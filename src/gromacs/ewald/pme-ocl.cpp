@@ -446,9 +446,17 @@ void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
          * in the JIT compilation that happens at runtime.
          */
 
-        const std::string defines = "";
-        #if 0
-                * gmx::formatString(
+        const std::string generalDefines = gmx::formatString(
+                    ""//"-I\"../../ewald\" " //FIXME
+                    ) ;//"-Dwarp_size=%d", 32);
+        const std::string spreadDefines = "";
+
+        const std::string defines = generalDefines + " " + spreadDefines;
+
+
+
+#if 0
+                gmx::formatString(
                     " -DCENTRAL=%d "
                     "-DNBNXN_GPU_NCLUSTER_PER_SUPERCLUSTER=%d -DNBNXN_GPU_CLUSTER_SIZE=%d -DNBNXN_GPU_JGROUP_SIZE=%d "
                     "-DGMX_NBNXN_PRUNE_KERNEL_J4_CONCURRENCY=%d "
