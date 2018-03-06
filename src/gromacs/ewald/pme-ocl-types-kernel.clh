@@ -163,6 +163,10 @@ struct PmeGpuKernelParamsBase
      * before launching spreading.
      */
     struct PmeGpuDynamicParams current;
+
+    //FIXME this is criminal
+    void *fractShiftsTableTexture;
+    void *gridlineIndicesTableTexture;
 };
 
 

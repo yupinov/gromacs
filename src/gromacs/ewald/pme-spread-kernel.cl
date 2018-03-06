@@ -134,7 +134,9 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
                     ,
                                             float * __restrict__ gm_theta,
                                             float * __restrict__ gm_dtheta,
-                                            int * __restrict__   gm_gridlineIndices
+                                            int * __restrict__   gm_gridlineIndices,
+                                            const float * __restrict__ gm_fractShiftsTable,
+                                            const int * __restrict__ gm_gridlineIndicesTable
 #endif
                                             )
 {
@@ -143,6 +145,8 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
     float * __restrict__ gm_theta           = kernelParams.atoms.d_theta;
     float * __restrict__ gm_dtheta          = kernelParams.atoms.d_dtheta;
     int * __restrict__   gm_gridlineIndices = kernelParams.atoms.d_gridlineIndices;
+    const float * __restrict__ gm_fractShiftsTable = kernelParams.grid.d_fractShiftsTable;
+    const int * __restrict__ gm_gridlineIndicesTable = kernelParams.grid.d_gridlineIndicesTable;
 #endif
 
     /* Fractional coordinates */
@@ -240,11 +244,11 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
             // TODO have shared table for both parameters to share the fetch, as index is always same?
             // TODO compare texture/LDG performance
             sm_fractCoords[sharedMemoryIndex] +=
-                fetchFromParamLookupTable(kernelParams.grid.d_fractShiftsTable,
+                fetchFromParamLookupTable(gm_fractShiftsTable,
                                           kernelParams.fractShiftsTableTexture,
                                           tableIndex);
             sm_gridlineIndices[sharedMemoryIndex] =
-                fetchFromParamLookupTable(kernelParams.grid.d_gridlineIndicesTable,
+                fetchFromParamLookupTable(gm_gridlineIndicesTable,
                                           kernelParams.gridlineIndicesTableTexture,
                                           tableIndex);
             gm_gridlineIndices[atomIndexOffset * DIM + sharedMemoryIndex] = sm_gridlineIndices[sharedMemoryIndex];
@@ -442,7 +446,12 @@ template <
 __launch_bounds__(c_spreadMaxThreadsPerBlock)
 KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kernelParams
 #if !CAN_USE_BUFFERS_IN_STRUCTS
-            , float * gm_theta, float * gm_dtheta, int * gm_gridlineIndices, float *__restrict__ gm_grid//FIXME restrict
+            , float * __restrict__ gm_theta,
+            float * __restrict__ gm_dtheta,
+            int * __restrict__ gm_gridlineIndices,
+            float *__restrict__ gm_grid,
+            const float * __restrict__ gm_fractShiftsTable,
+            const int * __restrict__ gm_gridlineIndicesTable
 #endif
 )
 {
@@ -469,7 +478,7 @@ KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kerne
         calculate_splines<order, atomsPerBlock>(kernelParams, atomIndexOffset, (const float3 *)sm_coordinates,
                                                 sm_coefficients, sm_theta, sm_gridlineIndices
 #if !CAN_USE_BUFFERS_IN_STRUCTS
-         , gm_theta, gm_dtheta, gm_gridlineIndices
+         , gm_theta, gm_dtheta, gm_gridlineIndices, gm_fractShiftsTable, gm_gridlineIndicesTable
 #endif
 );
         gmx_syncwarp();
