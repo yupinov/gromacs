@@ -452,13 +452,22 @@ KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kerne
             GLOBAL int * __restrict__ gm_gridlineIndices,
             GLOBAL float *__restrict__ gm_grid,
             GLOBAL const float * __restrict__ gm_fractShiftsTable,
-            GLOBAL const int * __restrict__ gm_gridlineIndicesTable
+            GLOBAL const int * __restrict__ gm_gridlineIndicesTable,
+            GLOBAL const float * __restrict__ gm_coefficients,
+            GLOBAL const float * __restrict__ gm_coordinates
 #endif
 )
 {
 #if CAN_USE_TEMPLATES
     const int atomsPerBlock = c_spreadMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM;
 #endif
+#if CAN_USE_BUFFERS_IN_STRUCTS
+    GLOBAL float * __restrict__ gm_theta = kernelParams.atoms.d_theta;
+    GLOBAL int * __restrict__ gm_gridlineIndices = kernelParams.atoms.d_gridlineIndices;
+    GLOBAL const float * __restrict__ gm_coefficients = kernelParams.atoms.d_coefficients;
+    GLOBAL const float * __restrict__ gm_coordinates = kernelParams.atoms.d_coordinates; //FIXME float3
+#endif
+
     // Gridline indices, ivec
     SHARED int   sm_gridlineIndices[atomsPerBlock * DIM];
     // Charges
@@ -469,13 +478,13 @@ KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kerne
     const int        atomIndexOffset = getBlockIndex(XX) * atomsPerBlock;
 
     /* Staging coefficients/charges for both spline and spread */
-    pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, 1)(kernelParams, sm_coefficients, kernelParams.atoms.d_coefficients);
+    pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, 1)(kernelParams, sm_coefficients, gm_coefficients);
 
     if (computeSplines)
     {
         /* Staging coordinates */
         SHARED float sm_coordinates[DIM * atomsPerBlock];
-        pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, DIM) (kernelParams, sm_coordinates, kernelParams.atoms.d_coordinates);
+        pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, DIM) (kernelParams, sm_coordinates, gm_coordinates);
 
         __syncthreads();
         calculate_splines TEMPLATE_PARAMETERS2(order, atomsPerBlock)(kernelParams, atomIndexOffset, (const float3 *)sm_coordinates,
@@ -493,9 +502,9 @@ KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kerne
          * as in after running the spline kernel)
          */
         /* Spline data - only thetas (dthetas will only be needed in gather) */
-        pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, DIM * order)(kernelParams, sm_theta, kernelParams.atoms.d_theta);
+        pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, DIM * order)(kernelParams, sm_theta, gm_theta);
         /* Gridline indices */
-        pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(int, atomsPerBlock, DIM)(kernelParams, sm_gridlineIndices, kernelParams.atoms.d_gridlineIndices);
+        pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(int, atomsPerBlock, DIM)(kernelParams, sm_gridlineIndices, gm_gridlineIndices);
 
         __syncthreads();
     }
