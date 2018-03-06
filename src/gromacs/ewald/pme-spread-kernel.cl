@@ -8,16 +8,15 @@
  */
 #define PME_GPU_PARALLEL_SPLINE 0
 
-#define OPENCL_COMPILATION defined(__OPENCL_C_VERSION__)
-
-#define OPENCL_C99_ONLY (OPENCL_COMPILATION && (__OPENCL_C_VERSION__ <= 200))
-
 #include "../../ewald/pme-ocl-types-kernel.clh"
 
 //FIXME try opencl 2.2 or remove version check?
 
+
+
+
 //FIXME
-#if OPENCL_C99_ONLY
+#if USE_C99_ONLY
 #define constexpr __constant
 #endif
 
@@ -45,7 +44,7 @@ constexpr int c_spreadMaxThreadsPerBlock = c_spreadMaxWarpsPerBlock * warp_size;
 
 
 //FIXME unify me later!
-#if !OPENCL_C99_ONLY
+#if !USE_C99_ONLY
 /*! \brief
  * General purpose function for loading atom-related data from global to shared memory.
  *
@@ -56,7 +55,7 @@ constexpr int c_spreadMaxThreadsPerBlock = c_spreadMaxWarpsPerBlock * warp_size;
  * \param[out] sm_destination    Shared memory array for output.
  * \param[in]  gm_source         Global memory array for input.
  */
-#if !OPENCL_C99_ONLY
+#if !USE_C99_ONLY
 template<typename T,
          const int atomsPerBlock,
          const int dataCountPerAtom>
@@ -121,7 +120,7 @@ void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
  * \param[out] sm_theta             Atom spline values in the shared memory.
  * \param[out] sm_gridlineIndices   Atom gridline indices in the shared memory.
  */
-#if !OPENCL_C99_ONLY
+#if !USE_C99_ONLY
 template <const int order,
           const int atomsPerBlock>
 #endif
@@ -130,12 +129,21 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
                                                   const float3 * __restrict__            sm_coordinates,
                                                   const float * __restrict__             sm_coefficients,
                                                   float * __restrict__                   sm_theta,
-                                                  int * __restrict__                     sm_gridlineIndices)
+                                                  int * __restrict__                     sm_gridlineIndices
+#if !CAN_USE_BUFFERS_IN_STRUCTS //FIXME docs
+                    ,
+                                            float * __restrict__ gm_theta,
+                                            float * __restrict__ gm_dtheta,
+                                            int * __restrict__   gm_gridlineIndices
+#endif
+                                            )
 {
+#if CAN_USE_BUFFERS_IN_STRUCTS
     /* Global memory pointers for output */
     float * __restrict__ gm_theta           = kernelParams.atoms.d_theta;
     float * __restrict__ gm_dtheta          = kernelParams.atoms.d_dtheta;
     int * __restrict__   gm_gridlineIndices = kernelParams.atoms.d_gridlineIndices;
+#endif
 
     /* Fractional coordinates */
     __shared__ float sm_fractCoords[atomsPerBlock * DIM];
@@ -330,7 +338,7 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
  * \param[in]  sm_gridlineIndices   Atom gridline indices in the shared memory.
  * \param[in]  sm_theta             Atom spline values in the shared memory.
  */
-#if !OPENCL_C99_ONLY
+#if !USE_C99_ONLY
 template <
     const int order, const bool wrapX, const bool wrapY>
 #endif
@@ -338,11 +346,17 @@ DEVICE_INLINE void spread_charges(const PmeGpuCudaKernelParams           kernelP
                                                int                                    atomIndexOffset,
                                                const float * __restrict__             sm_coefficients,
                                                const int * __restrict__               sm_gridlineIndices,
-                                               const float * __restrict__             sm_theta)
+                                               const float * __restrict__             sm_theta
+#if !CAN_USE_BUFFERS_IN_STRUCTS
+                                               ,
+                                               float * __restrict__ gm_grid
+#endif
+                                               )
 {
+#if CAN_USE_BUFFERS_IN_STRUCTS
     /* Global memory pointer to the output grid */
     float * __restrict__ gm_grid = kernelParams.grid.d_realGrid;
-
+#endif
 
     const int nx  = kernelParams.grid.realGridSize[XX];
     const int ny  = kernelParams.grid.realGridSize[YY];
@@ -416,7 +430,7 @@ DEVICE_INLINE void spread_charges(const PmeGpuCudaKernelParams           kernelP
  * \tparam[in] wrapY                A boolean which tells if the grid overlap in dimension Y should be wrapped.
  * \param[in]  kernelParams         Input PME CUDA data in constant memory.
  */
-#if !OPENCL_C99_ONLY
+#if !USE_C99_ONLY
 template <
     const int order,
     const bool computeSplines,
@@ -426,7 +440,11 @@ template <
     >
 #endif
 __launch_bounds__(c_spreadMaxThreadsPerBlock)
-KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kernelParams)
+KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kernelParams
+#if !CAN_USE_BUFFERS_IN_STRUCTS
+            , float * gm_theta, float * gm_dtheta, int * gm_gridlineIndices, float *__restrict__ gm_grid//FIXME restrict
+#endif
+)
 {
     const int        atomsPerBlock = c_spreadMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM;
     // Gridline indices, ivec
@@ -449,7 +467,11 @@ KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kerne
 
         __syncthreads();
         calculate_splines<order, atomsPerBlock>(kernelParams, atomIndexOffset, (const float3 *)sm_coordinates,
-                                                sm_coefficients, sm_theta, sm_gridlineIndices);
+                                                sm_coefficients, sm_theta, sm_gridlineIndices
+#if !CAN_USE_BUFFERS_IN_STRUCTS
+         , gm_theta, gm_dtheta, gm_gridlineIndices
+#endif
+);
         gmx_syncwarp();
     }
     else
@@ -469,7 +491,11 @@ KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kerne
     /* Spreading */
     if (spreadCharges)
     {
-        spread_charges<order, wrapX, wrapY>(kernelParams, atomIndexOffset, sm_coefficients, sm_gridlineIndices, sm_theta);
+        spread_charges<order, wrapX, wrapY>(kernelParams, atomIndexOffset, sm_coefficients, sm_gridlineIndices, sm_theta
+#if !CAN_USE_BUFFERS_IN_STRUCTS
+        , gm_grid
+#endif
+        );
     }
 }
 

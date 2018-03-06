@@ -3,6 +3,23 @@
 
 // FIXME this files is a total duplicate of pmegputypes.h, meant for inclusion in  OCL kernels
 
+// the only original part
+
+#define OPENCL_COMPILATION defined(__OPENCL_C_VERSION__)
+
+#define USE_C99_ONLY (OPENCL_COMPILATION && (__OPENCL_C_VERSION__ <= 200))
+
+//FIXME check if macors are duplicate, and use them correctly
+#define CAN_USE_BUFFERS_IN_STRUCTS !USE_C99_ONLY
+
+// No assertions of any kind in OpenCL C, but at least we can compile the common code
+#if USE_C99_ONLY
+#define assert(x)
+#define static_assert(x, y)
+#endif
+
+
+
 //#include "../gpu_utils/devicebuffer_ocl.h" //FIXME stumbles on gpu_utils.h
 
 //copy of vectypes.h
@@ -22,7 +39,7 @@ struct PmeGpuConstParams
 {
     /*! \brief Electrostatics coefficient = ONE_4PI_EPS0 / pme->epsilon_r */
     float elFactor;
-#if !OPENCL_C99_ONLY
+#if CAN_USE_BUFFERS_IN_STRUCTS
     /*! \brief Virial and energy GPU array. Size is PME_GPU_ENERGY_AND_VIRIAL_COUNT (7) floats.
      * The element order is virxx, viryy, virzz, virxy, virxz, viryz, energy. */
     DeviceBuffer<float> d_virialAndEnergy;
@@ -52,7 +69,7 @@ struct PmeGpuGridParams
     int splineValuesOffset[DIM];
     /*! \brief Offsets for X/Y/Z components of d_fractShiftsTable and d_gridlineIndicesTable */
     int tablesOffsets[DIM];
-#if !OPENCL_C99_ONLY
+#if CAN_USE_BUFFERS_IN_STRUCTS
     /* Grid pointers */
     /*! \brief Real space grid. */
     DeviceBuffer<float> d_realGrid;
@@ -82,7 +99,7 @@ struct PmeGpuAtomParams
      * The coordinates themselves change and need to be copied to the GPU for every PME computation,
      * but reallocation happens only at DD.
      */
-#if !OPENCL_C99_ONLY
+#if CAN_USE_BUFFERS_IN_STRUCTS
     DeviceBuffer<float> d_coordinates;
     /*! \brief Pointer to the global GPU memory with input atom charges.
      * The charges only need to be reallocated and copied to the GPU at DD step.
@@ -158,7 +175,7 @@ typedef struct PmeGpuKernelParamsBase PmeGpuCudaKernelParams;
 #define DEVICE_INLINE inline
 
 //constexpr bool c_usePadding = true;
-#if OPENCL_C99_ONLY
+#if USE_C99_ONLY
 #define c_usePadding true
 #endif
 
@@ -177,11 +194,6 @@ int DEVICE_INLINE pme_gpu_check_atom_data_index(const int atomDataIndex, const i
     return c_usePadding ? 1 : (atomDataIndex < nAtomData);
 }
 
-// No assertions of any kind in OpenCL C, but at least we can compile the common code
-#if OPENCL_C99_ONLY
-#define assert(x)
-#define static_assert(x, y)
-#endif
 
 
 #endif // PMEOCLTYPESKERNEL_CLH
