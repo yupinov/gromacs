@@ -181,7 +181,9 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
     SHARED float sm_splineData[splineDataStride * order];
     float           *splineDataPtr = sm_splineData;
 #else
-    const int        splineDataStride = 1;
+    //const int        splineDataStride = 1;
+    //FIXME constexpr complains abut static linkage
+    #define splineDataStride 1
     const int        splineDataIndex  = 0;
     float            splineData[splineDataStride * order];
     float           *splineDataPtr = splineData;
