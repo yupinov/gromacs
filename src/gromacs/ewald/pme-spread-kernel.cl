@@ -60,7 +60,7 @@ template<typename T,
 DEVICE_INLINE
 void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
                              T * __restrict__                   sm_destination,
-                             const T * __restrict__             gm_source,
+                             GLOBAL const T * __restrict__      gm_source,
 )
 {
     static_assert(c_usePadding, "With padding disabled, index checking should be fixed to account for spline theta/dtheta per-warp alignment");
@@ -78,9 +78,10 @@ void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
 
 #else
 
+DEVICE_INLINE
 void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
                              float * __restrict__               sm_destination,
-                             const float * __restrict__         gm_source,
+                             GLOBAL const float * __restrict__  gm_source,
                              const int dataCountPerAtom)              //FIXME template parameter
 {
     static_assert(c_usePadding, "With padding disabled, index checking should be fixed to account for spline theta/dtheta per-warp alignment");
@@ -128,21 +129,21 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
                                                   int * __restrict__                     sm_gridlineIndices
 #if !CAN_USE_BUFFERS_IN_STRUCTS //FIXME docs //FIXME GLOBAL
                     ,
-                                            float * __restrict__ gm_theta,
-                                            float * __restrict__ gm_dtheta,
-                                            int * __restrict__   gm_gridlineIndices,
-                                            const float * __restrict__ gm_fractShiftsTable,
-                                            const int * __restrict__ gm_gridlineIndicesTable
+                                            GLOBAL float * __restrict__ gm_theta,
+                                            GLOBAL float * __restrict__ gm_dtheta,
+                                            GLOBAL int * __restrict__   gm_gridlineIndices,
+                                            GLOBAL const float * __restrict__ gm_fractShiftsTable,
+                                            GLOBAL const int * __restrict__ gm_gridlineIndicesTable
 #endif
                                             )
 {
 #if CAN_USE_BUFFERS_IN_STRUCTS
     /* Global memory pointers for output */
-    float * __restrict__ gm_theta           = kernelParams.atoms.d_theta;
-    float * __restrict__ gm_dtheta          = kernelParams.atoms.d_dtheta;
-    int * __restrict__   gm_gridlineIndices = kernelParams.atoms.d_gridlineIndices;
-    const float * __restrict__ gm_fractShiftsTable = kernelParams.grid.d_fractShiftsTable;
-    const int * __restrict__ gm_gridlineIndicesTable = kernelParams.grid.d_gridlineIndicesTable;
+    GLOBAL float * __restrict__ gm_theta           = kernelParams.atoms.d_theta;
+    GLOBAL float * __restrict__ gm_dtheta          = kernelParams.atoms.d_dtheta;
+    GLOBAL int * __restrict__   gm_gridlineIndices = kernelParams.atoms.d_gridlineIndices;
+    GLOBAL const float * __restrict__ gm_fractShiftsTable = kernelParams.grid.d_fractShiftsTable;
+    GLOBAL const int * __restrict__ gm_gridlineIndicesTable = kernelParams.grid.d_gridlineIndicesTable;
 #endif
 
     /* Fractional coordinates */
@@ -445,12 +446,13 @@ __launch_bounds__(c_spreadMaxThreadsPerBlock)
 #endif
 KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kernelParams
 #if !CAN_USE_BUFFERS_IN_STRUCTS
-            , float * __restrict__ gm_theta,
-            float * __restrict__ gm_dtheta,
-            int * __restrict__ gm_gridlineIndices,
+            ,
+            GLOBAL float * __restrict__ gm_theta,
+            GLOBAL float * __restrict__ gm_dtheta,
+            GLOBAL int * __restrict__ gm_gridlineIndices,
             GLOBAL float *__restrict__ gm_grid,
-            const float * __restrict__ gm_fractShiftsTable,
-            const int * __restrict__ gm_gridlineIndicesTable
+            GLOBAL const float * __restrict__ gm_fractShiftsTable,
+            GLOBAL const int * __restrict__ gm_gridlineIndicesTable
 #endif
 )
 {
