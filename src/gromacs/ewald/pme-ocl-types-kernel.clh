@@ -149,6 +149,10 @@ struct PmeGpuKernelParamsBase
 };
 
 
+// this is stupid and wrong
+
+typedef struct PmeGpuKernelParamsBase PmeGpuCudaKernelParams;
+
 
 
 #endif // PMEOCLTYPESKERNEL_CLH
