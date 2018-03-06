@@ -58,6 +58,12 @@
 //Device help helpers
 //int or uint?????
 
+DEVICE_INLINE size_t getBlockIndex(size_t dimIndex)
+{
+    //blockIdx.x/y/z
+    return get_global_id(dimIndex);
+}
+
 DEVICE_INLINE size_t getThreadLocalIndex(size_t dimIndex)
 {
     //threadIdx.x/y/z

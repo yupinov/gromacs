@@ -466,7 +466,7 @@ KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kerne
     // Spline values
     SHARED float sm_theta[atomsPerBlock * DIM * order];
 
-    const int        atomIndexOffset = blockIdx.x * atomsPerBlock;
+    const int        atomIndexOffset = getBlockIndex(XX) * atomsPerBlock;
 
     /* Staging coefficients/charges for both spline and spread */
     pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, 1)(kernelParams, sm_coefficients, kernelParams.atoms.d_coefficients);
