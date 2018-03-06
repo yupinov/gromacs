@@ -7,6 +7,8 @@
 
 #define OPENCL_COMPILATION defined(__OPENCL_C_VERSION__)
 
+
+//FIXME try opencl 2.2 or remove version check?
 #define USE_C99_ONLY (OPENCL_COMPILATION && (__OPENCL_C_VERSION__ <= 200))
 
 //FIXME check if macors are duplicate, and use them correctly
@@ -17,6 +19,26 @@
 #define assert(x)
 #define static_assert(x, y)
 #endif
+
+#define DEVICE_INLINE inline
+
+#define SHARED __local
+//__shared__ in CUDA
+
+//Device help helpers
+//int or uint?????
+
+DEVICE_INLINE size_t getThreadLocalIndex(size_t dimIndex)
+{
+    //threadIdx.x/y/z
+    return get_local_id(dimIndex);
+}
+
+DEVICE_INLINE size_t getThreadLocalIndex3d()
+{
+    //((threadIdx.z * blockDim.y + threadIdx.y) * blockDim.x) + threadIdx.x;
+    return (get_local_id(2) * get_local_size(1) + get_local_id(1)) * get_local_size(0) + get_local_id(0);
+}
 
 
 
@@ -176,8 +198,6 @@ typedef struct PmeGpuKernelParamsBase PmeGpuCudaKernelParams;
 
 // more copies
 
-#define DEVICE_INLINE inline
-
 //constexpr bool c_usePadding = true;
 #if USE_C99_ONLY
 #define c_usePadding true
@@ -193,7 +213,7 @@ typedef struct PmeGpuKernelParamsBase PmeGpuCudaKernelParams;
  * This is called from the spline_and_spread and gather PME kernels.
  * The goal is to isolate the global range checks, and allow avoiding them with c_usePadding enabled.
  */
-int DEVICE_INLINE pme_gpu_check_atom_data_index(const int atomDataIndex, const int nAtomData)
+int DEVICE_INLINE pme_gpu_check_atom_data_index(const size_t atomDataIndex, const size_t nAtomData)
 {
     return c_usePadding ? 1 : (atomDataIndex < nAtomData);
 }

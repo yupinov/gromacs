@@ -10,10 +10,7 @@
 
 #include "../../ewald/pme-ocl-types-kernel.clh"
 
-//FIXME try opencl 2.2 or remove version check?
-
-
-
+//FIXME fix all access modifiers
 
 //FIXME
 #if USE_C99_ONLY
@@ -87,12 +84,11 @@ void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
                              const int dataCountPerAtom)              //FIXME template parameter
 {
     static_assert(c_usePadding, "With padding disabled, index checking should be fixed to account for spline theta/dtheta per-warp alignment");
-    const int threadLocalIndex = (get_local_id(2) * get_local_size(1) + get_local_id(1)) * get_local_size(0) + get_local_id(0);
-    //FIXME inline help helper ((threadIdx.z * blockDim.y + threadIdx.y) * blockDim.x) + threadIdx.x;
-    const int localIndex       = threadLocalIndex;
-    const int globalIndexBase  = get_group_id(0) * atomsPerBlock * dataCountPerAtom;
+    const size_t threadLocalIndex = getThreadLocalIndex3d();
+    const size_t localIndex       = threadLocalIndex;
+    const size_t globalIndexBase  = get_group_id(0) * atomsPerBlock * dataCountPerAtom;
     //FIXME blockIdx.x * atomsPerBlock * dataCountPerAtom;
-    const int globalIndex      = globalIndexBase + localIndex;
+    const size_t globalIndex      = globalIndexBase + localIndex;
     const int globalCheck      = pme_gpu_check_atom_data_index(globalIndex, kernelParams.atoms.nAtoms * dataCountPerAtom);
     if ((localIndex < atomsPerBlock * dataCountPerAtom) & globalCheck)
     {
@@ -150,15 +146,14 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
 #endif
 
     /* Fractional coordinates */
-    __shared__ float sm_fractCoords[atomsPerBlock * DIM];
+    SHARED float sm_fractCoords[atomsPerBlock * DIM];
 
     /* Thread index w.r.t. block */
-    const int threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
-        + (threadIdx.y * blockDim.x) + threadIdx.x;
+    const int threadLocalIndex = getThreadLocalIndex3d();
     /* Warp index w.r.t. block - could probably be obtained easier? */
-    const int warpIndex = threadLocalId / warp_size;
+    const int warpIndex = threadLocalIndex / warp_size;
     /* Thread index w.r.t. warp */
-    const int threadWarpIndex = threadLocalId % warp_size;
+    const int threadWarpIndex = threadLocalIndex % warp_size;
     /* Atom index w.r.t. warp - alternating 0 1 0 1 .. */
     const int atomWarpIndex = threadWarpIndex % PME_SPREADGATHER_ATOMS_PER_WARP;
     /* Atom index w.r.t. block/shared memory */
@@ -183,7 +178,7 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
 #if PME_GPU_PARALLEL_SPLINE
     const int        splineDataStride  = atomsPerBlock * DIM;
     const int        splineDataIndex   = sharedMemoryIndex;
-    __shared__ float sm_splineData[splineDataStride * order];
+    SHARED float sm_splineData[splineDataStride * order];
     float           *splineDataPtr = sm_splineData;
 #else
     const int        splineDataStride = 1;
@@ -370,7 +365,7 @@ DEVICE_INLINE void spread_charges(const PmeGpuCudaKernelParams           kernelP
 
     const int offx = 0, offy = 0, offz = 0; // unused for now
 
-    const int atomIndexLocal  = threadIdx.z;
+    const int atomIndexLocal  = getThreadLocalIndex(ZZ);
     const int atomIndexGlobal = atomIndexOffset + atomIndexLocal;
 
     const int globalCheck = pme_gpu_check_atom_data_index(atomIndexGlobal, kernelParams.atoms.nAtoms);
@@ -378,8 +373,8 @@ DEVICE_INLINE void spread_charges(const PmeGpuCudaKernelParams           kernelP
     if (chargeCheck & globalCheck)
     {
         // Spline Y/Z coordinates
-        const int ithy   = threadIdx.y;
-        const int ithz   = threadIdx.x;
+        const int ithy   = getThreadLocalIndex(YY);
+        const int ithz   = getThreadLocalIndex(XX);
         const int ixBase = sm_gridlineIndices[atomIndexLocal * DIM + XX] - offx;
         int       iy     = sm_gridlineIndices[atomIndexLocal * DIM + YY] - offy + ithy;
         if (wrapY & (iy >= ny))
@@ -457,11 +452,11 @@ KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kerne
 {
     const int        atomsPerBlock = c_spreadMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM;
     // Gridline indices, ivec
-    __shared__ int   sm_gridlineIndices[atomsPerBlock * DIM];
+    SHARED int   sm_gridlineIndices[atomsPerBlock * DIM];
     // Charges
-    __shared__ float sm_coefficients[atomsPerBlock];
+    SHARED float sm_coefficients[atomsPerBlock];
     // Spline values
-    __shared__ float sm_theta[atomsPerBlock * DIM * order];
+    SHARED float sm_theta[atomsPerBlock * DIM * order];
 
     const int        atomIndexOffset = blockIdx.x * atomsPerBlock;
 
@@ -471,7 +466,7 @@ KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kerne
     if (computeSplines)
     {
         /* Staging coordinates */
-        __shared__ float sm_coordinates[DIM * atomsPerBlock];
+        SHARED float sm_coordinates[DIM * atomsPerBlock];
         pme_gpu_stage_atom_data<float, atomsPerBlock, DIM>(kernelParams, sm_coordinates, kernelParams.atoms.d_coordinates);
 
         __syncthreads();
