@@ -22,8 +22,15 @@
 
 #define DEVICE_INLINE inline
 
+#define CUDA_COMPILATION 0
+
+#if OPENCL_COMPILATION
 #define SHARED __local
-//__shared__ in CUDA
+#define GLOBAL __global
+#elif CUDA_COMPILATION
+#define SHARED  __shared__
+#define GLOBAL
+#endif
 
 //Device help helpers
 //int or uint?????

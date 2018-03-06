@@ -126,7 +126,7 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
                                                   const float * __restrict__             sm_coefficients,
                                                   float * __restrict__                   sm_theta,
                                                   int * __restrict__                     sm_gridlineIndices
-#if !CAN_USE_BUFFERS_IN_STRUCTS //FIXME docs
+#if !CAN_USE_BUFFERS_IN_STRUCTS //FIXME docs //FIXME GLOBAL
                     ,
                                             float * __restrict__ gm_theta,
                                             float * __restrict__ gm_dtheta,
@@ -350,13 +350,13 @@ DEVICE_INLINE void spread_charges(const PmeGpuCudaKernelParams           kernelP
                                                const float * __restrict__             sm_theta
 #if !CAN_USE_BUFFERS_IN_STRUCTS
                                                ,
-                                               float * __restrict__ gm_grid
+                                               GLOBAL float * __restrict__ gm_grid
 #endif
                                                )
 {
 #if CAN_USE_BUFFERS_IN_STRUCTS
     /* Global memory pointer to the output grid */
-    float * __restrict__ gm_grid = kernelParams.grid.d_realGrid;
+    GLOBAL float * __restrict__ gm_grid = kernelParams.grid.d_realGrid;
 #endif
 
     const int nx  = kernelParams.grid.realGridSize[XX];
@@ -446,7 +446,7 @@ KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kerne
             , float * __restrict__ gm_theta,
             float * __restrict__ gm_dtheta,
             int * __restrict__ gm_gridlineIndices,
-            float *__restrict__ gm_grid,
+            GLOBAL float *__restrict__ gm_grid,
             const float * __restrict__ gm_fractShiftsTable,
             const int * __restrict__ gm_gridlineIndicesTable
 #endif
