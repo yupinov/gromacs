@@ -136,16 +136,16 @@ struct PmeGpuDynamicParams
 struct PmeGpuKernelParamsBase
 {
     /*! \brief Constant data that is set once. */
-    PmeGpuConstParams   constants;
+    struct PmeGpuConstParams   constants;
     /*! \brief Data dependent on the grid size/cutoff. */
-    PmeGpuGridParams    grid;
+    struct PmeGpuGridParams    grid;
     /*! \brief Data dependent on the DD and local atoms. */
-    PmeGpuAtomParams    atoms;
+    struct PmeGpuAtomParams    atoms;
     /*! \brief Data that possibly changes for every new PME computation.
      * This should be kept up-to-date by calling pme_gpu_prepare_computation(...)
      * before launching spreading.
      */
-    PmeGpuDynamicParams current;
+    struct PmeGpuDynamicParams current;
 };
 
 
