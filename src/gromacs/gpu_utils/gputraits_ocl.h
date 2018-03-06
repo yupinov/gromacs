@@ -81,8 +81,6 @@ struct KernelLaunchConfig
     }
 };
 
-#define KERNEL_FUNC __kernel
-
 //Sync object
 
 #include "gromacs/utility/gmxassert.h"

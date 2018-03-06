@@ -440,7 +440,9 @@ template <
     const bool wrapY
     >
 #endif
+#if defined(GMX_PTX_ARCH) //FIXME icnldue config.h and verify
 __launch_bounds__(c_spreadMaxThreadsPerBlock)
+#endif
 KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kernelParams
 #if !CAN_USE_BUFFERS_IN_STRUCTS
             , float * __restrict__ gm_theta,

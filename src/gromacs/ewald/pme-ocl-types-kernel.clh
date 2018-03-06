@@ -25,11 +25,22 @@
 #define CUDA_COMPILATION 0
 
 #if OPENCL_COMPILATION
+// variable memory spaces
 #define SHARED __local
 #define GLOBAL __global
+// function attributes
+#define KERNEL_FUNC __kernel
+// We could ignoring CUDA kernel execution hints,
+// but they can come with one or 2 arguents, and OpenCL doesn't necessarily support
+// variadic macros, so whatever
+//#define __launch_bounds__ (x, y)
+//#define __launch_bounds__ (x)
 #elif CUDA_COMPILATION
+// variable memory spaces
 #define SHARED  __shared__
 #define GLOBAL
+// function attributes
+#define KERNEL_FUNC __global
 #endif
 
 //Device help helpers
