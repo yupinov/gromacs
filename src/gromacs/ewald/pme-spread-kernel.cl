@@ -67,9 +67,7 @@ void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
                              const T * __restrict__             gm_source,
 )
 {
-#if !OPENCL_C99_ONLY
     static_assert(c_usePadding, "With padding disabled, index checking should be fixed to account for spline theta/dtheta per-warp alignment");
-#endif
     const int threadLocalIndex = ((threadIdx.z * blockDim.y + threadIdx.y) * blockDim.x) + threadIdx.x;
     const int localIndex       = threadLocalIndex;
     const int globalIndexBase  = blockIdx.x * atomsPerBlock * dataCountPerAtom;
@@ -89,6 +87,7 @@ void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
                              const float * __restrict__         gm_source,
                              const int dataCountPerAtom)              //FIXME template parameter
 {
+    static_assert(c_usePadding, "With padding disabled, index checking should be fixed to account for spline theta/dtheta per-warp alignment");
     const int threadLocalIndex = (get_local_id(2) * get_local_size(1) + get_local_id(1)) * get_local_size(0) + get_local_id(0);
     //FIXME inline help helper ((threadIdx.z * blockDim.y + threadIdx.y) * blockDim.x) + threadIdx.x;
     const int localIndex       = threadLocalIndex;
