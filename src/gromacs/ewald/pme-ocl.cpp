@@ -454,10 +454,18 @@ void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
         const int order = 4;
 
         const std::string generalDefines = gmx::formatString(
-                    ""//"-I\"../../ewald\" " //FIXME
-                    ) ;//"-Dwarp_size=%d", 32);
+                    //All those are not needed for solve, but whatever
+                    "-Dorder=%d "
+                    "-DPME_SPREADGATHER_ATOMS_PER_WARP=%d "
+                    "-DPME_SPLINE_THETA_STRIDE=%d "
+                    ,
+                    order,
+                    PME_SPREADGATHER_ATOMS_PER_WARP,
+                    PME_SPLINE_THETA_STRIDE);
         const std::string spreadDefines = gmx::formatString(
-                "-DatomsPerBlock=%d ",
+                "-DatomsPerBlock=%d "
+                    // unused template params for decomposition
+                    "-DwrapX=true -DwrapY=true",
                     c_spreadMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM
                     );
 
