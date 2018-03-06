@@ -5,6 +5,12 @@
 
 //#include "../gpu_utils/devicebuffer_ocl.h" //FIXME stumbles on gpu_utils.h
 
+//copy of vectypes.h
+#define XX 0
+#define YY 1
+#define ZZ 2
+#define DIM 3
+
 // copy of all kernel param structures (non-OCL ones)
 // All deviceBuffers are shielded. Again: check if 2.x is viable with those at all.
 
