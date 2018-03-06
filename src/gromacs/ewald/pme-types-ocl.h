@@ -64,6 +64,11 @@ class GpuParallel3dFft;
 
 #define DEVICE_INLINE inline
 
+// FIXME what is the best place for this? thsi shoudl also be dynamic in OpenCL!
+//! Spreading max block size in threads
+constexpr int c_spreadMaxThreadsPerBlock = c_spreadMaxWarpsPerBlock * warp_size;
+
+
 /* Some defines for PME behaviour follow */
 
 /*

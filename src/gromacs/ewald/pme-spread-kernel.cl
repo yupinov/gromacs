@@ -44,6 +44,8 @@ constexpr int c_spreadMaxThreadsPerBlock = c_spreadMaxWarpsPerBlock * warp_size;
 #endif
 
 
+//FIXME unify me later!
+#if !OPENCL_C99_ONLY
 /*! \brief
  * General purpose function for loading atom-related data from global to shared memory.
  *
@@ -62,7 +64,8 @@ template<typename T,
 DEVICE_INLINE
 void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
                              T * __restrict__                   sm_destination,
-                             const T * __restrict__             gm_source)
+                             const T * __restrict__             gm_source,
+)
 {
 #if !OPENCL_C99_ONLY
     static_assert(c_usePadding, "With padding disabled, index checking should be fixed to account for spline theta/dtheta per-warp alignment");
@@ -78,6 +81,31 @@ void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
         sm_destination[localIndex] = gm_source[globalIndex];
     }
 }
+
+#else
+
+void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
+                             float * __restrict__               sm_destination,
+                             const float * __restrict__         gm_source,
+                             const int dataCountPerAtom)              //FIXME template parameter
+{
+    const int threadLocalIndex = (get_local_id(2) * get_local_size(1) + get_local_id(1)) * get_local_size(0) + get_local_id(0);
+    //FIXME inline help helper ((threadIdx.z * blockDim.y + threadIdx.y) * blockDim.x) + threadIdx.x;
+    const int localIndex       = threadLocalIndex;
+    const int globalIndexBase  = get_group_id(0) * atomsPerBlock * dataCountPerAtom;
+    //FIXME blockIdx.x * atomsPerBlock * dataCountPerAtom;
+    const int globalIndex      = globalIndexBase + localIndex;
+    const int globalCheck      = pme_gpu_check_atom_data_index(globalIndex, kernelParams.atoms.nAtoms * dataCountPerAtom);
+    if ((localIndex < atomsPerBlock * dataCountPerAtom) & globalCheck)
+    {
+        assert(isfinite(float(gm_source[globalIndex])));
+        sm_destination[localIndex] = gm_source[globalIndex];
+    }
+}
+
+#endif
+
+
 
 /*! \brief
  * PME GPU spline parameter and gridline indices calculation.

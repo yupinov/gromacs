@@ -69,10 +69,6 @@ void pme_gpu_spread(PmeGpu    *pmeGpu,
     const auto   *kernelParamsPtr = pmeGpu->kernelParams.get();
     GMX_ASSERT(kernelParamsPtr->atoms.nAtoms > 0, "No atom data in PME GPU spread");
 
-    // FIXME this has to be computed during init? at keast getwarpSize
-    //! Spreading max block size in threads
-    constexpr int c_spreadMaxThreadsPerBlock = c_spreadMaxWarpsPerBlock * warp_size;
-
     const int order         = pmeGpu->common->pme_order;
     const int atomsPerBlock = c_spreadMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM;
     // TODO: pick smaller block size in runtime if needed

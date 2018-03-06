@@ -433,6 +433,9 @@ void pme_gpu_sync_spread_grid(const PmeGpu *pmeGpu)
 }
 
 #if GMX_GPU == GMX_GPU_OPENCL
+
+#include "pme-types-ocl.h"
+
 // based on nbnxn_gpu_compile_kernels
 void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
 {
@@ -446,10 +449,17 @@ void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
          * in the JIT compilation that happens at runtime.
          */
 
+
+        //FIXME thsi should be deduced with pme_gpu_copy_common_data_from()
+        const int order = 4;
+
         const std::string generalDefines = gmx::formatString(
                     ""//"-I\"../../ewald\" " //FIXME
                     ) ;//"-Dwarp_size=%d", 32);
-        const std::string spreadDefines = "";
+        const std::string spreadDefines = gmx::formatString(
+                "-DatomsPerBlock=%d ",
+                    c_spreadMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM
+                    );
 
         const std::string defines = generalDefines + " " + spreadDefines;
 
