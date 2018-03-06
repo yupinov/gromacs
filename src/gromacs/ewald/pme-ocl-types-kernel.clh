@@ -11,8 +11,20 @@
 //FIXME try opencl 2.2 or remove version check?
 #define USE_C99_ONLY (OPENCL_COMPILATION && (__OPENCL_C_VERSION__ <= 200))
 
-//FIXME check if macors are duplicate, and use them correctly
+//FIXME check if macros are duplicate, and use them correctly
 #define CAN_USE_BUFFERS_IN_STRUCTS !USE_C99_ONLY
+
+//FIXME check if macros are duplicate, and use them correctly
+#define CAN_USE_TEMPLATES !USE_C99_ONLY
+#if CAN_USE_TEMPLATES
+#define TEMPLATE_PARAMETERS2(a, b) <a, b>
+#define TEMPLATE_PARAMETERS3(a, b, c) <a, b, c>
+#else
+#define TEMPLATE_PARAMETERS2(a, b)
+#define TEMPLATE_PARAMETERS3(a, b, c)
+#endif
+
+
 
 // No assertions of any kind in OpenCL C, but at least we can compile the common code
 #if USE_C99_ONLY

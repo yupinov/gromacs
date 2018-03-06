@@ -52,7 +52,7 @@ constexpr int c_spreadMaxThreadsPerBlock = c_spreadMaxWarpsPerBlock * warp_size;
  * \param[out] sm_destination    Shared memory array for output.
  * \param[in]  gm_source         Global memory array for input.
  */
-#if !USE_C99_ONLY
+#if CAN_USE_TEMPLATES
 template<typename T,
          const int atomsPerBlock,
          const int dataCountPerAtom>
@@ -117,7 +117,7 @@ void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
  * \param[out] sm_theta             Atom spline values in the shared memory.
  * \param[out] sm_gridlineIndices   Atom gridline indices in the shared memory.
  */
-#if !USE_C99_ONLY
+#if CAN_USE_TEMPLATES //FIXME docs
 template <const int order,
           const int atomsPerBlock>
 #endif
@@ -340,7 +340,7 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
  * \param[in]  sm_gridlineIndices   Atom gridline indices in the shared memory.
  * \param[in]  sm_theta             Atom spline values in the shared memory.
  */
-#if !USE_C99_ONLY
+#if CAN_USE_TEMPLATES
 template <
     const int order, const bool wrapX, const bool wrapY>
 #endif
@@ -432,7 +432,7 @@ DEVICE_INLINE void spread_charges(const PmeGpuCudaKernelParams           kernelP
  * \tparam[in] wrapY                A boolean which tells if the grid overlap in dimension Y should be wrapped.
  * \param[in]  kernelParams         Input PME CUDA data in constant memory.
  */
-#if !USE_C99_ONLY
+#if CAN_USE_TEMPLATES
 template <
     const int order,
     const bool computeSplines,
@@ -456,7 +456,9 @@ KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kerne
 #endif
 )
 {
-    const int        atomsPerBlock = c_spreadMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM;
+#if CAN_USE_TEMPLATES
+    const int atomsPerBlock = c_spreadMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM;
+#endif
     // Gridline indices, ivec
     SHARED int   sm_gridlineIndices[atomsPerBlock * DIM];
     // Charges
@@ -467,16 +469,16 @@ KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kerne
     const int        atomIndexOffset = blockIdx.x * atomsPerBlock;
 
     /* Staging coefficients/charges for both spline and spread */
-    pme_gpu_stage_atom_data<float, atomsPerBlock, 1>(kernelParams, sm_coefficients, kernelParams.atoms.d_coefficients);
+    pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, 1)(kernelParams, sm_coefficients, kernelParams.atoms.d_coefficients);
 
     if (computeSplines)
     {
         /* Staging coordinates */
         SHARED float sm_coordinates[DIM * atomsPerBlock];
-        pme_gpu_stage_atom_data<float, atomsPerBlock, DIM>(kernelParams, sm_coordinates, kernelParams.atoms.d_coordinates);
+        pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, DIM) (kernelParams, sm_coordinates, kernelParams.atoms.d_coordinates);
 
         __syncthreads();
-        calculate_splines<order, atomsPerBlock>(kernelParams, atomIndexOffset, (const float3 *)sm_coordinates,
+        calculate_splines TEMPLATE_PARAMETERS2(order, atomsPerBlock)(kernelParams, atomIndexOffset, (const float3 *)sm_coordinates,
                                                 sm_coefficients, sm_theta, sm_gridlineIndices
 #if !CAN_USE_BUFFERS_IN_STRUCTS
          , gm_theta, gm_dtheta, gm_gridlineIndices, gm_fractShiftsTable, gm_gridlineIndicesTable
@@ -491,9 +493,9 @@ KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kerne
          * as in after running the spline kernel)
          */
         /* Spline data - only thetas (dthetas will only be needed in gather) */
-        pme_gpu_stage_atom_data<float, atomsPerBlock, DIM * order>(kernelParams, sm_theta, kernelParams.atoms.d_theta);
+        pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, DIM * order)(kernelParams, sm_theta, kernelParams.atoms.d_theta);
         /* Gridline indices */
-        pme_gpu_stage_atom_data<int, atomsPerBlock, DIM>(kernelParams, sm_gridlineIndices, kernelParams.atoms.d_gridlineIndices);
+        pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(int, atomsPerBlock, DIM)(kernelParams, sm_gridlineIndices, kernelParams.atoms.d_gridlineIndices);
 
         __syncthreads();
     }
@@ -501,7 +503,7 @@ KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kerne
     /* Spreading */
     if (spreadCharges)
     {
-        spread_charges<order, wrapX, wrapY>(kernelParams, atomIndexOffset, sm_coefficients, sm_gridlineIndices, sm_theta
+        spread_charges TEMPLATE_PARAMETERS3(order, wrapX, wrapY)(kernelParams, atomIndexOffset, sm_coefficients, sm_gridlineIndices, sm_theta
 #if !CAN_USE_BUFFERS_IN_STRUCTS
         , gm_grid
 #endif
