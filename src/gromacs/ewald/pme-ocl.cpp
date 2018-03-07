@@ -438,6 +438,9 @@ void pme_gpu_sync_spread_grid(const PmeGpu *pmeGpu)
 
 #include "pme-types-ocl.h"
 
+#include <string>
+#include <vector>
+
 // based on nbnxn_gpu_compile_kernels
 void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
 {
@@ -522,7 +525,38 @@ void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
     }
     GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
 
+    //this is technically a separate function already
+    // also, clCreateKernelsInProgram?
     pmeGpu->archSpecific->program = program;
+
+    std::vector<cl_kernel> kernels;
+    cl_uint justEnough = 8; //?
+    kernels.resize(justEnough);
+    cl_uint actualKernelCount = 0;
+    cl_int status = clCreateKernelsInProgram(program, justEnough,
+					      kernels.data(), &actualKernelCount);
+    throwUponFailure(status);
+    fprintf(stderr, "got me soem kernels %u\n", actualKernelCount);
+    kernels.resize(actualKernelCount);
+
+    std::array<char, 100> kernelNamesBuffer;
+    for (const auto &kernel: kernels)
+    {
+        status = clGetKernelInfo(kernel, CL_KERNEL_FUNCTION_NAME,
+				 kernelNamesBuffer.size(), kernelNamesBuffer.data(), nullptr);
+	throwUponFailure(status);
+	fprintf(stderr, "got a nice kernel: %\n", kernelNamesBuffer.data());
+	if (!strcmp(kernelNamesBuffer.data(), "pmeSplineKernel"))
+	  pmeGpu->archSpecific->splineKernel = kernel;
+	if (!strcmp(kernelNamesBuffer.data(), "pmeSplineAndSpreadKernel"))
+	  pmeGpu->archSpecific->splineAndSpreadKernel = kernel;
+	if (!strcmp(kernelNamesBuffer.data(), "pmeSpreadKernel"))
+	  pmeGpu->archSpecific->spreadKernel = kernel;
+    }
+	    
+    //TODO put those guys in a map with string name as a key
+    //TODO release all those guys
+    //pmeGpu->archSpecific->splineKernel = pmeSplineKernel;
 }
 #endif
 
