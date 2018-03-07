@@ -60,7 +60,7 @@ template<typename T,
 DEVICE_INLINE
 void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
                              T * __restrict__                   sm_destination,
-                             GLOBAL const T * __restrict__      gm_source,
+                             GLOBAL const T * __restrict__      gm_source
 )
 {
     static_assert(c_usePadding, "With padding disabled, index checking should be fixed to account for spline theta/dtheta per-warp alignment");
@@ -82,7 +82,7 @@ DEVICE_INLINE
 void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
                              float * __restrict__               sm_destination,
                              GLOBAL const float * __restrict__  gm_source,
-                             const int dataCountPerAtom)              //FIXME template parameter
+                             const int dataCountPerAtom)              //FIXME template parameter - maybe inline is just fine?!
 {
     static_assert(c_usePadding, "With padding disabled, index checking should be fixed to account for spline theta/dtheta per-warp alignment");
     const size_t threadLocalIndex = getThreadLocalIndex3d();
@@ -478,15 +478,16 @@ KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kerne
     const int        atomIndexOffset = getBlockIndex(XX) * atomsPerBlock;
 
     /* Staging coefficients/charges for both spline and spread */
-    pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, 1)(kernelParams, sm_coefficients, gm_coefficients);
+    pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, 1)(kernelParams, sm_coefficients, gm_coefficients, 1);
 
     if (computeSplines)
     {
         /* Staging coordinates */
         SHARED float sm_coordinates[DIM * atomsPerBlock];
-        pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, DIM) (kernelParams, sm_coordinates, gm_coordinates);
+        pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, DIM) (kernelParams, sm_coordinates, gm_coordinates, DIM);
 
         __syncthreads();
+	//FIXME float3 everywhere
         calculate_splines TEMPLATE_PARAMETERS2(order, atomsPerBlock)(kernelParams, atomIndexOffset, (const float3 *)sm_coordinates,
                                                 sm_coefficients, sm_theta, sm_gridlineIndices
 #if !CAN_USE_BUFFERS_IN_STRUCTS
@@ -502,9 +503,9 @@ KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kerne
          * as in after running the spline kernel)
          */
         /* Spline data - only thetas (dthetas will only be needed in gather) */
-        pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, DIM * order)(kernelParams, sm_theta, gm_theta);
+        pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, DIM * order)(kernelParams, sm_theta, gm_theta, DIM* order);
         /* Gridline indices */
-        pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(int, atomsPerBlock, DIM)(kernelParams, sm_gridlineIndices, gm_gridlineIndices);
+        pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(int, atomsPerBlock, DIM)(kernelParams, sm_gridlineIndices, gm_gridlineIndices, DIM);
 
         __syncthreads();
     }
