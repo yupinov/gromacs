@@ -98,8 +98,8 @@ class SyncEvent
 
         ~SyncEvent()
         {
-            cl_int clError = clReleaseEvent(event_);
-            GMX_RELEASE_ASSERT(CL_SUCCESS == clError, ocl_get_error_string(clError).c_str());
+	  /*cl_int clError = */clReleaseEvent(event_);
+            //FIXME GMX_RELEASE_ASSERT(CL_SUCCESS == clError, ocl_get_error_string(clError).c_str());
         }
 
         //FIXME disable copy
