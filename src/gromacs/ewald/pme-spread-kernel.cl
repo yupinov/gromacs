@@ -1,4 +1,4 @@
-/*
+/*	
  * This define affects the spline calculation behaviour in the kernel.
  * 0: a single GPU thread handles a single dimension of a single particle (calculating and storing (order) spline values and derivatives).
  * 1: (order) threads do redundant work on this same task, each one stores only a single theta and single dtheta into global arrays.
@@ -59,7 +59,7 @@ template<typename T,
 #endif
 DEVICE_INLINE
 void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
-                             T * __restrict__                   sm_destination,
+                             SHARED T * __restrict__            sm_destination,
                              GLOBAL const T * __restrict__      gm_source
 )
 {
@@ -78,9 +78,12 @@ void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
 
 #else
 
+
+//TODO: stringify?
+
 DEVICE_INLINE
 void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
-                             float * __restrict__               sm_destination,
+                             SHARED float * __restrict__        sm_destination,
                              GLOBAL const float * __restrict__  gm_source,
                              const int dataCountPerAtom)              //FIXME template parameter - maybe inline is just fine?!
 {
@@ -122,12 +125,12 @@ template <const int order,
           const int atomsPerBlock>
 #endif
 DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kernelParams,
-                                                  const int                              atomIndexOffset,
-                                                  const float3 * __restrict__            sm_coordinates,
-                                                  const float * __restrict__             sm_coefficients,
-                                                  float * __restrict__                   sm_theta,
-                                                  int * __restrict__                     sm_gridlineIndices
-#if !CAN_USE_BUFFERS_IN_STRUCTS //FIXME docs //FIXME GLOBAL
+                                          const int                              atomIndexOffset,
+                                         SHARED const float3 * __restrict__            sm_coordinates,
+                                         SHARED const float * __restrict__             sm_coefficients,
+                                         SHARED float * __restrict__                   sm_theta,
+                                          SHARED int * __restrict__                     sm_gridlineIndices
+#if !CAN_USE_BUFFERS_IN_STRUCTS //FIXME doc
                     ,
                                             GLOBAL float * __restrict__ gm_theta,
                                             GLOBAL float * __restrict__ gm_dtheta,
@@ -346,9 +349,9 @@ template <
 #endif
 DEVICE_INLINE void spread_charges(const PmeGpuCudaKernelParams           kernelParams,
                                                int                                    atomIndexOffset,
-                                               const float * __restrict__             sm_coefficients,
-                                               const int * __restrict__               sm_gridlineIndices,
-                                               const float * __restrict__             sm_theta
+                                               SHARED const float * __restrict__             sm_coefficients,
+                                               SHARED const int * __restrict__               sm_gridlineIndices,
+                                               SHARED const float * __restrict__             sm_theta
 #if !CAN_USE_BUFFERS_IN_STRUCTS
                                                ,
                                                GLOBAL float * __restrict__ gm_grid
@@ -403,7 +406,7 @@ DEVICE_INLINE void spread_charges(const PmeGpuCudaKernelParams           kernelP
         const float  constVal       = thetaZ * thetaY * sm_coefficients[atomIndexLocal];
         assert(isfinite(constVal));
         const int    constOffset       = iy * pnz + iz;
-        const float *sm_thetaX         = sm_theta + (thetaOffsetBase + XX * dimStride);
+        SHARED const float *sm_thetaX         = sm_theta + (thetaOffsetBase + XX * dimStride);
 
 #pragma unroll
         for (int ithx = 0; (ithx < order); ithx++)
@@ -488,7 +491,7 @@ KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kerne
 
         __syncthreads();
 	//FIXME float3 everywhere
-        calculate_splines TEMPLATE_PARAMETERS2(order, atomsPerBlock)(kernelParams, atomIndexOffset, (const float3 *)sm_coordinates,
+        calculate_splines TEMPLATE_PARAMETERS2(order, atomsPerBlock)(kernelParams, atomIndexOffset, (SHARED const float3 *)sm_coordinates,
                                                 sm_coefficients, sm_theta, sm_gridlineIndices
 #if !CAN_USE_BUFFERS_IN_STRUCTS
          , gm_theta, gm_dtheta, gm_gridlineIndices, gm_fractShiftsTable, gm_gridlineIndicesTable
@@ -505,7 +508,8 @@ KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kerne
         /* Spline data - only thetas (dthetas will only be needed in gather) */
         pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, DIM * order)(kernelParams, sm_theta, gm_theta, DIM* order);
         /* Gridline indices */
-        pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(int, atomsPerBlock, DIM)(kernelParams, sm_gridlineIndices, gm_gridlineIndices, DIM);
+	//FIXME hack, assumign sizes
+        pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(int, atomsPerBlock, DIM)(kernelParams, (SHARED float *)sm_gridlineIndices, (GLOBAL const float *)gm_gridlineIndices, DIM);
 
         __syncthreads();
     }
