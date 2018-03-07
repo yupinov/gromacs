@@ -13,6 +13,7 @@
 
 //FIXME try opencl 2.2 or remove version check?
 #define USE_C99_ONLY (OPENCL_COMPILATION && (__OPENCL_C_VERSION__ <= 200))
+//FIXME this would needs also a corresponding host-side conditional for launchign correct kernels
 
 //FIXME check if macros are duplicate, and use them correctly
 #define CAN_USE_BUFFERS_IN_STRUCTS !USE_C99_ONLY

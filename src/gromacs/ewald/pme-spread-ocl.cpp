@@ -58,6 +58,10 @@
 #include "pme-grid.h"
 //#include "pme-timings.cuh"
 
+//#include "pme-ocl-types-kernel.clh"
+//CAN_USE_BUFFERS_IN_STRUCTS
+constexpr bool c_canUseBuffersInStructs = (GMX_GPU != GMX_GPU_OPENCL); //&& (__OPENCL_C_VERSION__ <= 200))
+
 void pme_gpu_spread(PmeGpu    *pmeGpu,
                     int gmx_unused   gridIndex,
                     real            *h_grid,
@@ -101,6 +105,29 @@ void pme_gpu_spread(PmeGpu    *pmeGpu,
     config.gridSize.z *= config.blockSize.z;
     */
 
+
+    int timingId;
+    cl_kernel kernel;
+
+    if (computeSplines)
+    {
+        if (spreadCharges)
+        {
+	    kernel = pmeGpu->archSpecific->splineAndSpreadKernel;
+	    timingId = gtPME_SPLINEANDSPREAD;
+	}
+	else
+	{
+	    kernel = pmeGpu->archSpecific->splineKernel;
+	    timingId = gtPME_SPLINE;
+	}
+    }
+    else
+    {
+        kernel = pmeGpu->archSpecific->spreadKernel;
+        timingId = gtPME_SPREAD;
+    }
+
     
     // These should later check for PME decomposition
     const bool wrapX = true;
@@ -111,36 +138,27 @@ void pme_gpu_spread(PmeGpu    *pmeGpu,
     {
         case 4: // FIXME make thsi conditionals go away
         {
-            // TODO: cleaner unroll with some template trick?
-            if (computeSplines)
-            {
-                if (spreadCharges)
-                {
-                    pme_gpu_start_timing(pmeGpu, gtPME_SPLINEANDSPREAD);
-                    //launchGpuKernel(config, pme_spline_and_spread_kernel<4, true, true, wrapX, wrapY>, kernelParamsPtr);
-                    launchGpuKernel(config, pmeGpu->archSpecific->splineAndSpreadKernel, kernelParamsPtr);
-                    //FIXME error handling? CU_LAUNCH_ERR("pme_spline_and_spread_kernel"); - common result?
-                    pme_gpu_stop_timing(pmeGpu, gtPME_SPLINEANDSPREAD);
-                }
-                else
-                {
-                    pme_gpu_start_timing(pmeGpu, gtPME_SPLINE);
-                    //launchGpuKernel(config, pme_spline_and_spread_kernel<4, true, false, wrapX, wrapY>, kernelParamsPtr);
-                    launchGpuKernel(config, pmeGpu->archSpecific->splineKernel, kernelParamsPtr);
-                    //CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
-                    pme_gpu_stop_timing(pmeGpu, gtPME_SPLINE);
-                }
-            }
+            pme_gpu_start_timing(pmeGpu, timingId);
+            if (c_canUseBuffersInStructs)
+              launchGpuKernel(config, pmeGpu->archSpecific->splineAndSpreadKernel, kernelParamsPtr);
             else
-            {
-                pme_gpu_start_timing(pmeGpu, gtPME_SPREAD);
-                launchGpuKernel(config, pmeGpu->archSpecific->spreadKernel, kernelParamsPtr); // TODO make those namespointers in CUDA version!
-                //launchGpuKernel(config, pme_spline_and_spread_kernel<4, false, true, wrapX, wrapY>, kernelParamsPtr);
-                //CU_LAUNCH_ERR("pme_spline_and_spread_kernel");
-                pme_gpu_stop_timing(pmeGpu, gtPME_SPREAD);
-            }
-        }
-        break;
+	      launchGpuKernel(config, pmeGpu->archSpecific->splineAndSpreadKernel, kernelParamsPtr,
+			      &kernelParamsPtr->atoms.d_theta,
+			      &kernelParamsPtr->atoms.d_dtheta,
+			      &kernelParamsPtr->atoms.d_gridlineIndices,
+			      &kernelParamsPtr->grid.d_realGrid, 
+			      &kernelParamsPtr->grid.d_fractShiftsTable,
+			      &kernelParamsPtr->grid.d_gridlineIndicesTable,
+			      &kernelParamsPtr->atoms.d_coefficients,
+			      &kernelParamsPtr->atoms.d_coordinates
+			      );
+              
+
+            //launchGpuKernel(config, pme_spline_and_spread_kernel<4, true, true, wrapX, wrapY>, kernelParamsPtr);
+            //FIXME error handling? CU_LAUNCH_ERR("pme_spline_and_spread_kernel"); - common result?
+            pme_gpu_stop_timing(pmeGpu, timingId);
+       }
+       break;
 
         default:
             GMX_THROW(gmx::NotImplementedError("The code for pme_order != 4 was not tested!"));
