@@ -5,6 +5,9 @@
 
 // the only original part
 
+//FIXME find out OpenCL counterpart
+#define gmx_syncwarp()
+
 #define OPENCL_COMPILATION defined(__OPENCL_C_VERSION__)
 
 
@@ -23,8 +26,6 @@
 #define TEMPLATE_PARAMETERS2(a, b)
 #define TEMPLATE_PARAMETERS3(a, b, c)
 #endif
-
-
 
 // No assertions of any kind in OpenCL C, but at least we can compile the common code
 #if USE_C99_ONLY
