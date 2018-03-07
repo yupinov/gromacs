@@ -81,6 +81,12 @@ struct KernelLaunchConfig
     }
 };
 
+inline void throwUponFailure(cl_int status)
+{
+  if (status != CL_SUCCESS)
+    throw status;
+}
+
 //Sync object
 
 #include "gromacs/utility/gmxassert.h"

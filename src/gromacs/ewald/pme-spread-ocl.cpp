@@ -142,15 +142,16 @@ void pme_gpu_spread(PmeGpu    *pmeGpu,
             if (c_canUseBuffersInStructs)
               launchGpuKernel(config, pmeGpu->archSpecific->splineAndSpreadKernel, kernelParamsPtr);
             else
+              #define STUPID_CAST (cl_mem*)
 	      launchGpuKernel(config, pmeGpu->archSpecific->splineAndSpreadKernel, kernelParamsPtr,
-			      &kernelParamsPtr->atoms.d_theta,
-			      &kernelParamsPtr->atoms.d_dtheta,
-			      &kernelParamsPtr->atoms.d_gridlineIndices,
-			      &kernelParamsPtr->grid.d_realGrid, 
-			      &kernelParamsPtr->grid.d_fractShiftsTable,
-			      &kernelParamsPtr->grid.d_gridlineIndicesTable,
-			      &kernelParamsPtr->atoms.d_coefficients,
-			      &kernelParamsPtr->atoms.d_coordinates
+			      STUPID_CAST &kernelParamsPtr->atoms.d_theta,
+			      STUPID_CAST &kernelParamsPtr->atoms.d_dtheta,
+			      STUPID_CAST &kernelParamsPtr->atoms.d_gridlineIndices,
+			      STUPID_CAST &kernelParamsPtr->grid.d_realGrid, 
+			      STUPID_CAST &kernelParamsPtr->grid.d_fractShiftsTable,
+			      STUPID_CAST &kernelParamsPtr->grid.d_gridlineIndicesTable,
+			      STUPID_CAST &kernelParamsPtr->atoms.d_coefficients,
+			      STUPID_CAST &kernelParamsPtr->atoms.d_coordinates
 			      );
               
 

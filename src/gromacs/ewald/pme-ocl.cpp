@@ -545,7 +545,7 @@ void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
         status = clGetKernelInfo(kernel, CL_KERNEL_FUNCTION_NAME,
 				 kernelNamesBuffer.size(), kernelNamesBuffer.data(), nullptr);
 	throwUponFailure(status);
-	fprintf(stderr, "got a nice kernel: %\n", kernelNamesBuffer.data());
+	fprintf(stderr, "got a nice kernel: %s\n", kernelNamesBuffer.data());
 	if (!strcmp(kernelNamesBuffer.data(), "pmeSplineKernel"))
 	  pmeGpu->archSpecific->splineKernel = kernel;
 	if (!strcmp(kernelNamesBuffer.data(), "pmeSplineAndSpreadKernel"))

@@ -69,12 +69,6 @@ class TypedClMemory
 template<typename ValueType>
 using DeviceBuffer = TypedClMemory<ValueType>;
 
-inline void throwUponFailure(cl_int status)
-{
-  if (status != CL_SUCCESS)
-    throw status;
-}
-
 /*! \libinternal \brief
  * Allocates a device-side buffer.
  * It is currently a caller's responsibility to call it only on not-yet allocated buffers.
