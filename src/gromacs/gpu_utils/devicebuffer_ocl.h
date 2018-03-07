@@ -251,7 +251,7 @@ void clearDeviceBufferAsync(DeviceBuffer<ValueType> *buffer,
  */
 template <typename ValueType>
 void initParamLookupTable(DeviceBuffer<ValueType>   *buffer,
-                          void *                     &dummyCudaTexObj,
+                          int                     &dummyCudaTexObj,
                           const ValueType            *hostBuffer,
                           size_t                      numValues,
                           const gmx_device_info_t    *devInfo,
@@ -260,6 +260,8 @@ void initParamLookupTable(DeviceBuffer<ValueType>   *buffer,
     GMX_ASSERT(buffer, "needs a buffer pointer");
     allocateDeviceBuffer(buffer, numValues, context);
     CommandStream stream = 0; //FIXME
+    GMX_UNUSED_VALUE(dummyCudaTexObj);
+    GMX_UNUSED_VALUE(devInfo);
     copyToDeviceBuffer(buffer, hostBuffer, 0, numValues, stream, GpuApiCallBehavior::Sync, nullptr);
     //FIXME  c_disableCudaTextures
 }
@@ -275,10 +277,12 @@ void initParamLookupTable(DeviceBuffer<ValueType>   *buffer,
  */
 template <typename ValueType>
 void destroyParamLookupTable(DeviceBuffer<ValueType>   *buffer,
-                             void *                  &dummyCudaTexObj,
+                             int                     &dummyCudaTexObj,
                              const gmx_device_info_t *devInfo)
 {
     GMX_ASSERT(buffer, "needs a buffer pointer");
+    GMX_UNUSED_VALUE(dummyCudaTexObj);
+    GMX_UNUSED_VALUE(devInfo);
     freeDeviceBuffer(buffer);
 }
 
