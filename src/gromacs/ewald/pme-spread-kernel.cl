@@ -39,6 +39,9 @@ constexpr int c_spreadMaxThreadsPerBlock = c_spreadMaxWarpsPerBlock * warp_size;
 
 #endif
 
+#ifndef COMPILE_HELPERS_ONCE
+#define COMPILE_HELPERS_ONCE
+
 
 //FIXME unify me later!
 #if !USE_C99_ONLY
@@ -424,6 +427,9 @@ DEVICE_INLINE void spread_charges(const PmeGpuCudaKernelParams           kernelP
     }
 }
 
+#endif //COMPILE_HELPERS_ONCE
+
+
 /*! \brief
  * A spline computation and charge spreading kernel function.
  *
@@ -444,10 +450,10 @@ template <
     const bool wrapY
     >
 #endif
-#if defined(GMX_PTX_ARCH) //FIXME icnldue config.h and verify
+#if defined(GMX_PTX_ARCH) //FIXME icnldue config.h and verify - also __attribute__((reqd_work_group_size(CL_SIZE, CL_SIZE, 1)))???
 __launch_bounds__(c_spreadMaxThreadsPerBlock)
 #endif
-KERNEL_FUNC void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kernelParams
+KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_spline_and_spread_kernel)(const PmeGpuCudaKernelParams kernelParams
 #if !CAN_USE_BUFFERS_IN_STRUCTS
             ,
             GLOBAL float * __restrict__ gm_theta,
