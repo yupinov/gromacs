@@ -552,6 +552,9 @@ void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
 	  pmeGpu->archSpecific->splineAndSpreadKernel = kernel;
 	if (!strcmp(kernelNamesBuffer.data(), "pmeSpreadKernel"))
 	  pmeGpu->archSpecific->spreadKernel = kernel;
+        status = clGetKernelInfo(kernel, CL_KERNEL_FUNCTION_NAME,
+				 kernelNamesBuffer.size(), kernelNamesBuffer.data(), nullptr);
+	throwUponFailure(status);
     }
 	    
     //TODO put those guys in a map with string name as a key

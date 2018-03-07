@@ -57,6 +57,11 @@
 #define KERNEL_FUNC __global
 #endif
 
+
+//FIXME
+#define POINTER_SIZE 8
+
+
 //Device help helpers
 //int or uint?????
 
@@ -103,6 +108,8 @@ struct PmeGpuConstParams
     /*! \brief Virial and energy GPU array. Size is PME_GPU_ENERGY_AND_VIRIAL_COUNT (7) floats.
      * The element order is virxx, viryy, virzz, virxy, virxz, viryz, energy. */
     DeviceBuffer<float> d_virialAndEnergy;
+#else
+    char dummy[1 * POINTER_SIZE];    
 #endif
 };
 
@@ -144,6 +151,8 @@ struct PmeGpuGridParams
     /*! \brief Gridline indices lookup table
      * (modulo lookup table as in pme->nnx/nny/nnz, laid out sequentially (XXX....XYYY......YZZZ.....Z)) */
     DeviceBuffer<int> d_gridlineIndicesTable;
+#else
+    char dummy[5 * POINTER_SIZE];
 #endif
 };
 
@@ -182,6 +191,8 @@ struct PmeGpuAtomParams
     DeviceBuffer<float> d_theta;
     /*! \brief Pointer to the global GPU memory with B-spline derivative values */
     DeviceBuffer<float> d_dtheta;
+#else
+    char dummy[6 * POINTER_SIZE];
 #endif
 };
 

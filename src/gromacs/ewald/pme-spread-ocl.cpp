@@ -128,6 +128,11 @@ void pme_gpu_spread(PmeGpu    *pmeGpu,
         timingId = gtPME_SPREAD;
     }
 
+
+    //    fprintf(stderr, "SIZE %zu\n", sizeof(DeviceBuffer<float>));
+
+    
+
     
     // These should later check for PME decomposition
     const bool wrapX = true;
@@ -140,10 +145,10 @@ void pme_gpu_spread(PmeGpu    *pmeGpu,
         {
             pme_gpu_start_timing(pmeGpu, timingId);
             if (c_canUseBuffersInStructs)
-              launchGpuKernel(config, pmeGpu->archSpecific->splineAndSpreadKernel, kernelParamsPtr);
+              launchGpuKernel(config, kernel, kernelParamsPtr);
             else
               #define STUPID_CAST (cl_mem*)
-	      launchGpuKernel(config, pmeGpu->archSpecific->splineAndSpreadKernel, kernelParamsPtr,
+	      launchGpuKernel(config, kernel, kernelParamsPtr,
 			      STUPID_CAST &kernelParamsPtr->atoms.d_theta,
 			      STUPID_CAST &kernelParamsPtr->atoms.d_dtheta,
 			      STUPID_CAST &kernelParamsPtr->atoms.d_gridlineIndices,
