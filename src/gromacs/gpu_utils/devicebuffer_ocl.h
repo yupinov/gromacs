@@ -69,6 +69,12 @@ class TypedClMemory
 template<typename ValueType>
 using DeviceBuffer = TypedClMemory<ValueType>;
 
+inline void throwUponFailure(cl_int status)
+{
+  if (status != CL_SUCCESS)
+    throw status;
+}
+
 /*! \libinternal \brief
  * Allocates a device-side buffer.
  * It is currently a caller's responsibility to call it only on not-yet allocated buffers.
@@ -146,17 +152,18 @@ void copyToDeviceBuffer(DeviceBuffer<ValueType> *buffer,
     {
         case GpuApiCallBehavior::Async:
             clError = clEnqueueWriteBuffer(stream, *buffer, CL_FALSE, offset, bytes, hostBuffer, 0, nullptr, timingEvent);
-            GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "Asynchronous H2D copy failed");
+            //GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "Asynchronous H2D copy failed");
             break;
 
         case GpuApiCallBehavior::Sync:
             clError = clEnqueueWriteBuffer(stream, *buffer, CL_TRUE, offset, bytes, hostBuffer, 0, nullptr, timingEvent);
-            GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "Synchronous H2D copy failed");
+            //GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "Synchronous H2D copy failed");
             break;
 
         default:
             throw;
     }
+    throwUponFailure(clError);
 }
 
 /*! \brief

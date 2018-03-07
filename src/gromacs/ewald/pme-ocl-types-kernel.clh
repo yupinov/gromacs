@@ -5,7 +5,7 @@
 
 // the only original part
 
-//FIXME find out OpenCL counterpart
+//FIXME find out OpenCL counterpart -  barrier(CLK_LOCAL_MEM_FENCE) is __syncthreads
 #define gmx_syncwarp()
 
 #define OPENCL_COMPILATION defined(__OPENCL_C_VERSION__)
