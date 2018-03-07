@@ -255,6 +255,7 @@ void clearDeviceBufferAsync(DeviceBuffer<ValueType> *buffer,
  * \param[in]  h_ptr     pointer to the host memory to be uploaded to the device
  * \param[in]  numElem   number of elements in the h_ptr
  * \param[in]  devInfo   pointer to the info struct of the device in use
+ * \param[in]  stream    GPU stream for copying //FIXME
  */
 template <typename ValueType>
 void initParamLookupTable(DeviceBuffer<ValueType>   *buffer,
@@ -262,11 +263,11 @@ void initParamLookupTable(DeviceBuffer<ValueType>   *buffer,
                           const ValueType            *hostBuffer,
                           size_t                      numValues,
                           const gmx_device_info_t    *devInfo,
-                          Context                     context)
+                          Context                     context,
+			  CommandStream               stream)
 {
     GMX_ASSERT(buffer, "needs a buffer pointer");
     allocateDeviceBuffer(buffer, numValues, context);
-    CommandStream stream = 0; //FIXME
     GMX_UNUSED_VALUE(dummyCudaTexObj);
     GMX_UNUSED_VALUE(devInfo);
     copyToDeviceBuffer(buffer, hostBuffer, 0, numValues, stream, GpuApiCallBehavior::Sync, nullptr);
