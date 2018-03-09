@@ -126,6 +126,12 @@ struct PmeGpuGridParams
     int   complexGridSize[DIM];
     /*! \brief Fourier grid dimensions (padded). This counts the complex numbers! */
     int   complexGridSizePadded[DIM];
+    /*! \brief Ewald solving factor = (M_PI / pme->ewaldcoeff_q)^2 */
+    float ewaldFactor;
+    /*! \brief Offsets for X/Y/Z components of d_splineModuli */
+    int  splineValuesOffset[DIM];
+    /*! \brief Offsets for X/Y/Z components of d_fractShiftsTable and d_gridlineIndicesTable */
+    int  tablesOffsets[DIM];
 
     /* Grid pointers */
     /*! \brief Real space grid. */
@@ -133,24 +139,18 @@ struct PmeGpuGridParams
     /*! \brief Complex grid - used in FFT/solve. If inplace cuFFT is used, then it is the same pointer as realGrid. */
     DeviceBuffer<float> d_fourierGrid;
 
-    /*! \brief Ewald solving factor = (M_PI / pme->ewaldcoeff_q)^2 */
-    float ewaldFactor;
 
     /*! \brief Grid spline values as in pme->bsp_mod
      * (laid out sequentially (XXX....XYYY......YZZZ.....Z))
      */
     DeviceBuffer<float> d_splineModuli;
-    /*! \brief Offsets for X/Y/Z components of d_splineModuli */
-    int                 splineValuesOffset[DIM];
 
     /*! \brief Fractional shifts lookup table as in pme->fshx/fshy/fshz, laid out sequentially (XXX....XYYY......YZZZ.....Z) */
     DeviceBuffer<float> d_fractShiftsTable;
     /*! \brief Gridline indices lookup table
      * (modulo lookup table as in pme->nnx/nny/nnz, laid out sequentially (XXX....XYYY......YZZZ.....Z)) */
     DeviceBuffer<int> d_gridlineIndicesTable;
-    /*! \brief Offsets for X/Y/Z components of d_fractShiftsTable and d_gridlineIndicesTable */
-    int                 tablesOffsets[DIM];
-};
+   };
 
 /*! \internal \brief
  * A GPU data structure for storing the PME data of the atoms, local to this process' domain partition.

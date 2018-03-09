@@ -135,12 +135,10 @@ void pme_gpu_spread(PmeGpu    *pmeGpu,
 
     struct PACKED PmeGpuKernelParamsBase2
     {
-    #ifdef hideme
         /*! \brief Constant data that is set once. */
         struct PmeGpuConstParams   constants;
         /*! \brief Data dependent on the grid size/cutoff. */
         struct PmeGpuGridParams    grid;
-     #endif
         /*! \brief Data dependent on the DD and local atoms. */
         struct PmeGpuAtomParams  atoms;
         /*! \brief Data that possibly changes for every new PME computation.
