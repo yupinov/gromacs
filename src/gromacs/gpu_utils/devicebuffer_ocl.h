@@ -194,17 +194,18 @@ void copyFromDeviceBuffer(ValueType                     *hostBuffer,
     {
         case GpuApiCallBehavior::Async:
             clError = clEnqueueReadBuffer(stream, *buffer, CL_FALSE, offset, bytes, hostBuffer, 0, nullptr, timingEvent);
-            GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "Asynchronous D2H copy failed");
+            //GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "Asynchronous D2H copy failed");
             break;
 
         case GpuApiCallBehavior::Sync:
             clError = clEnqueueReadBuffer(stream, *buffer, CL_TRUE, offset, bytes, hostBuffer, 0, nullptr, timingEvent);
-            GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "Synchronous D2H copy failed");
+            //GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "Synchronous D2H copy failed");
             break;
 
         default:
             throw;
     }
+    throwUponFailure(clError);
 }
 
 /*! \brief
