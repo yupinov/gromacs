@@ -67,6 +67,8 @@
 struct gmx_hw_info;
 struct gmx_device_info_t;
 
+#define PACKED __attribute__ ((aligned(8)))
+
 #if GMX_GPU != GMX_GPU_NONE
 //FIXME rename types then
 
@@ -211,7 +213,7 @@ struct PmeGpuDynamicParams
  * This way, most code preparing the kernel parameters can be GPU-agnostic by casting
  * the kernel parameter data pointer to PmeGpuKernelParamsBase.
  */
-struct PmeGpuKernelParamsBase
+struct PACKED PmeGpuKernelParamsBase
 {
     /*! \brief Constant data that is set once. */
     PmeGpuConstParams   constants;

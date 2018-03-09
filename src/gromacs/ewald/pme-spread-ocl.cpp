@@ -133,6 +133,27 @@ void pme_gpu_spread(PmeGpu    *pmeGpu,
 
     
 
+    struct PACKED PmeGpuKernelParamsBase2
+    {
+    #ifdef hideme
+        /*! \brief Constant data that is set once. */
+        struct PmeGpuConstParams   constants;
+        /*! \brief Data dependent on the grid size/cutoff. */
+        struct PmeGpuGridParams    grid;
+     #endif
+        /*! \brief Data dependent on the DD and local atoms. */
+        struct PmeGpuAtomParams  atoms;
+        /*! \brief Data that possibly changes for every new PME computation.
+         * This should be kept up-to-date by calling pme_gpu_prepare_computation(...)
+         * before launching spreading.
+         */
+        struct PmeGpuDynamicParams current;
+        //FIXME this is criminal
+        int fractShiftsTableTexture;
+        int gridlineIndicesTableTexture;
+    } thing;
+
+
     
     // These should later check for PME decomposition
     const bool wrapX = true;
@@ -148,7 +169,7 @@ void pme_gpu_spread(PmeGpu    *pmeGpu,
               launchGpuKernel(config, kernel, kernelParamsPtr);
             else
               #define STUPID_CAST (cl_mem*)
-	      launchGpuKernel(config, kernel, kernelParamsPtr,
+          launchGpuKernel(config, kernel, &thing,//kernelParamsPtr,
 			      STUPID_CAST &kernelParamsPtr->atoms.d_theta,
 			      STUPID_CAST &kernelParamsPtr->atoms.d_dtheta,
 			      STUPID_CAST &kernelParamsPtr->atoms.d_gridlineIndices,

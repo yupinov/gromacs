@@ -8,6 +8,8 @@
 //FIXME find out OpenCL counterpart -  barrier(CLK_LOCAL_MEM_FENCE) is __syncthreads
 #define gmx_syncwarp()
 
+#define PACKED __attribute__ ((aligned(8)))
+
 #define OPENCL_COMPILATION defined(__OPENCL_C_VERSION__)
 
 
@@ -221,23 +223,25 @@ struct PmeGpuDynamicParams
  * This way, most code preparing the kernel parameters can be GPU-agnostic by casting
  * the kernel parameter data pointer to PmeGpuKernelParamsBase.
  */
-struct PmeGpuKernelParamsBase
+struct PACKED PmeGpuKernelParamsBase
 {
+#ifdef hideme
     /*! \brief Constant data that is set once. */
     struct PmeGpuConstParams   constants;
     /*! \brief Data dependent on the grid size/cutoff. */
     struct PmeGpuGridParams    grid;
+#endif
     /*! \brief Data dependent on the DD and local atoms. */
-    struct PmeGpuAtomParams    atoms;
+    struct PmeGpuAtomParams  atoms;
     /*! \brief Data that possibly changes for every new PME computation.
      * This should be kept up-to-date by calling pme_gpu_prepare_computation(...)
      * before launching spreading.
      */
     struct PmeGpuDynamicParams current;
-
     //FIXME this is criminal
     int fractShiftsTableTexture;
     int gridlineIndicesTableTexture;
+
 };
 
 
