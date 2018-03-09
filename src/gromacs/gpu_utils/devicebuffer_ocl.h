@@ -253,7 +253,7 @@ void clearDeviceBufferAsync(DeviceBuffer<ValueType> *buffer,
  */
 template <typename ValueType>
 void initParamLookupTable(DeviceBuffer<ValueType>   *buffer,
-                          int                     &dummyCudaTexObj,
+                          int                     dummyCudaTexObj,
                           const ValueType            *hostBuffer,
                           size_t                      numValues,
                           const gmx_device_info_t    *devInfo,
@@ -279,7 +279,7 @@ void initParamLookupTable(DeviceBuffer<ValueType>   *buffer,
  */
 template <typename ValueType>
 void destroyParamLookupTable(DeviceBuffer<ValueType>   *buffer,
-                             int                     &dummyCudaTexObj,
+                             int                    dummyCudaTexObj,
                              const gmx_device_info_t *devInfo)
 {
     GMX_ASSERT(buffer, "needs a buffer pointer");
