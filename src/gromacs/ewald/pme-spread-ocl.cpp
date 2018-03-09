@@ -115,12 +115,12 @@ void pme_gpu_spread(PmeGpu    *pmeGpu,
         {
 	    kernel = pmeGpu->archSpecific->splineAndSpreadKernel;
 	    timingId = gtPME_SPLINEANDSPREAD;
-	}
-	else
-	{
-	    kernel = pmeGpu->archSpecific->splineKernel;
-	    timingId = gtPME_SPLINE;
-	}
+        }
+        else
+        {
+            kernel = pmeGpu->archSpecific->splineKernel;
+            timingId = gtPME_SPLINE;
+        }
     }
     else
     {
@@ -128,31 +128,6 @@ void pme_gpu_spread(PmeGpu    *pmeGpu,
         timingId = gtPME_SPREAD;
     }
 
-
-    //    fprintf(stderr, "SIZE %zu\n", sizeof(DeviceBuffer<float>));
-
-    
-
-    struct PACKED PmeGpuKernelParamsBase2
-    {
-        /*! \brief Constant data that is set once. */
-        struct PmeGpuConstParams   constants;
-        /*! \brief Data dependent on the grid size/cutoff. */
-        struct PmeGpuGridParams    grid;
-        /*! \brief Data dependent on the DD and local atoms. */
-        struct PmeGpuAtomParams  atoms;
-        /*! \brief Data that possibly changes for every new PME computation.
-         * This should be kept up-to-date by calling pme_gpu_prepare_computation(...)
-         * before launching spreading.
-         */
-        struct PmeGpuDynamicParams current;
-        //FIXME this is criminal
-        int fractShiftsTableTexture;
-        int gridlineIndicesTableTexture;
-    } thing;
-
-
-    
     // These should later check for PME decomposition
     const bool wrapX = true;
     const bool wrapY = true;
@@ -167,7 +142,7 @@ void pme_gpu_spread(PmeGpu    *pmeGpu,
               launchGpuKernel(config, kernel, kernelParamsPtr);
             else
               #define STUPID_CAST (cl_mem*)
-          launchGpuKernel(config, kernel, &thing,//kernelParamsPtr,
+          launchGpuKernel(config, kernel, kernelParamsPtr,
 			      STUPID_CAST &kernelParamsPtr->atoms.d_theta,
 			      STUPID_CAST &kernelParamsPtr->atoms.d_dtheta,
 			      STUPID_CAST &kernelParamsPtr->atoms.d_gridlineIndices,
