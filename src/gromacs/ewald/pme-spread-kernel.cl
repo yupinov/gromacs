@@ -39,8 +39,6 @@ constexpr int c_spreadMaxThreadsPerBlock = c_spreadMaxWarpsPerBlock * warp_size;
 
 #endif
 
-#ifdef hideme
-
 #ifndef COMPILE_HELPERS_ONCE
 #define COMPILE_HELPERS_ONCE
 
@@ -431,8 +429,6 @@ DEVICE_INLINE void spread_charges(const PmeGpuCudaKernelParams           kernelP
 
 #endif //COMPILE_HELPERS_ONCE
 
-#endif //hideme
-
 /*! \brief
  * A spline computation and charge spreading kernel function.
  *
@@ -470,9 +466,6 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_spline_and_spread_kernel)(const PmeG
 #endif
 )
 {
-
-#ifdef hideme
-
 #if CAN_USE_TEMPLATES
     const int atomsPerBlock = c_spreadMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM;
 #endif
@@ -535,6 +528,5 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_spline_and_spread_kernel)(const PmeG
 #endif
         );
     }
-#endif //hideme
 }
 
