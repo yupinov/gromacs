@@ -466,6 +466,7 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_spline_and_spread_kernel)(const PmeG
 #endif
 )
 {
+#if 0
 #if CAN_USE_TEMPLATES
     const int atomsPerBlock = c_spreadMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM;
 #endif
@@ -528,5 +529,6 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_spline_and_spread_kernel)(const PmeG
 #endif
         );
     }
+#endif
 }
 

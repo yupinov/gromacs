@@ -164,11 +164,17 @@ void pme_gpu_spread(PmeGpu    *pmeGpu,
     }
 
     const bool copyBackGrid = spreadCharges && (pme_gpu_is_testing(pmeGpu) || !pme_gpu_performs_FFT(pmeGpu));
+    const bool copyBackAtomData = computeSplines && (pme_gpu_is_testing(pmeGpu) || !pme_gpu_performs_gather(pmeGpu));
+    if (copyBackGrid || copyBackAtomData)
+    {
+        //FIXME wait events instead?
+        //throwUponFailure(clFlush(stream));
+        throwUponFailure(clFinish(stream));
+    }
     if (copyBackGrid)
     {
         pme_gpu_copy_output_spread_grid(pmeGpu, h_grid);
     }
-    const bool copyBackAtomData = computeSplines && (pme_gpu_is_testing(pmeGpu) || !pme_gpu_performs_gather(pmeGpu));
     if (copyBackAtomData)
     {
         pme_gpu_copy_output_spread_atom_data(pmeGpu);
