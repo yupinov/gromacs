@@ -183,10 +183,10 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
      * The buffer is accessed with SPLINE_DATA_PTR and SPLINE_DATA macros.
      */
 #if PME_GPU_PARALLEL_SPLINE
-    const int        splineDataStride  = atomsPerBlock * DIM;
+    #define  splineDataStride   (atomsPerBlock * DIM)
     const int        splineDataIndex   = sharedMemoryIndex;
     SHARED float sm_splineData[splineDataStride * order];
-    float           *splineDataPtr = sm_splineData;
+    SHARED float *splineDataPtr = sm_splineData;
 #else
     //const int        splineDataStride = 1;
     //FIXME constexpr complains abut static linkage
