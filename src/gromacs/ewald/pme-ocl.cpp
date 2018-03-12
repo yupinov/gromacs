@@ -473,11 +473,11 @@ void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
                     c_skipNeutralAtoms);
         const std::string spreadDefines = gmx::formatString(
                     "-DatomsPerBlock=%d "
-                    "-Dc_pmeMaxUnitcellShift=%d "
+                    "-Dc_pmeMaxUnitcellShift=%f "
                     // unused template params for decomposition
                     "-DwrapX=true -DwrapY=true",
                     c_spreadMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM,
-                    c_pmeMaxUnitcellShift
+                    static_cast<float>(c_pmeMaxUnitcellShift)
                     );
 
         
