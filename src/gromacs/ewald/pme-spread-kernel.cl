@@ -495,7 +495,8 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_spline_and_spread_kernel)(const PmeG
         SHARED float sm_coordinates[DIM * atomsPerBlock];
         pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, DIM) (kernelParams, sm_coordinates, gm_coordinates, DIM);
 
-        __syncthreads();
+        barrier(CLK_LOCAL_MEM_FENCE); //TODO LOCAL here because we stage into shared mem?
+        //__syncthreads(); //FIXME wrap this?
 	//FIXME float3 everywhere
         calculate_splines TEMPLATE_PARAMETERS2(order, atomsPerBlock)(kernelParams, atomIndexOffset, (SHARED const float3 *)sm_coordinates,
                                                 sm_coefficients, sm_theta, sm_gridlineIndices
@@ -517,9 +518,8 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_spline_and_spread_kernel)(const PmeG
 	//FIXME hack, assumign sizes
         pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(int, atomsPerBlock, DIM)(kernelParams, (SHARED float *)sm_gridlineIndices, (GLOBAL const float *)gm_gridlineIndices, DIM);
 
-        __syncthreads();
+        barrier(CLK_LOCAL_MEM_FENCE);
     }
-
     /* Spreading */
     if (spreadCharges)
     {
