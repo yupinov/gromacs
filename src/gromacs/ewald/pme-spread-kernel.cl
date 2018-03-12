@@ -129,7 +129,7 @@ template <const int order,
 #endif
 DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kernelParams,
                                           const int                              atomIndexOffset,
-                                         SHARED const float3 * __restrict__            sm_coordinates,
+                                         SHARED const float * __restrict__            sm_coordinates,
                                          SHARED const float * __restrict__             sm_coefficients,
                                          SHARED float * __restrict__                   sm_theta,
                                           SHARED int * __restrict__                     sm_gridlineIndices
@@ -205,12 +205,12 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
     if (localCheck && globalCheck)
     {
         /* Indices interpolation */
-
         if (orderIndex == 0)
         {
             int           tableIndex, tInt;
             float         n, t;
-            const float3  x = sm_coordinates[atomIndexLocal];
+            const float3  x = vload3(atomIndexLocal, sm_coordinates);//sm_coordinates[atomIndexLocal];
+
             /* Accessing fields in fshOffset/nXYZ/recipbox/... with dimIndex offset
              * puts them into local memory(!) instead of accessing the constant memory directly.
              * That's the reason for the switch, to unroll explicitly.
@@ -474,7 +474,7 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_spline_and_spread_kernel)(const PmeG
     GLOBAL float * __restrict__ gm_theta = kernelParams.atoms.d_theta;
     GLOBAL int * __restrict__ gm_gridlineIndices = kernelParams.atoms.d_gridlineIndices;
     GLOBAL const float * __restrict__ gm_coefficients = kernelParams.atoms.d_coefficients;
-    GLOBAL const float * __restrict__ gm_coordinates = kernelParams.atoms.d_coordinates; //FIXME float3
+    GLOBAL const float * __restrict__ gm_coordinates = kernelParams.atoms.d_coordinates;
 #endif
 
     // Gridline indices, ivec
@@ -497,8 +497,7 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_spline_and_spread_kernel)(const PmeG
 
         barrier(CLK_LOCAL_MEM_FENCE); //TODO LOCAL here because we stage into shared mem?
         //__syncthreads(); //FIXME wrap this?
-	//FIXME float3 everywhere
-        calculate_splines TEMPLATE_PARAMETERS2(order, atomsPerBlock)(kernelParams, atomIndexOffset, (SHARED const float3 *)sm_coordinates,
+        calculate_splines TEMPLATE_PARAMETERS2(order, atomsPerBlock)(kernelParams, atomIndexOffset, sm_coordinates, //FIXME CUDA had a type cast (SHARED const float3 *)sm_coordinates,
                                                 sm_coefficients, sm_theta, sm_gridlineIndices
 #if !CAN_USE_BUFFERS_IN_STRUCTS
          , gm_theta, gm_dtheta, gm_gridlineIndices, gm_fractShiftsTable, gm_gridlineIndicesTable
