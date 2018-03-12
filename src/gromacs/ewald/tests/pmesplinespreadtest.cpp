@@ -170,7 +170,6 @@ class PmeSplineAndSpreadTest : public ::testing::TestWithParam<SplineAndSpreadIn
 
                         /* Outputs correctness check */
                         /* All tolerances were picked empirically for single precision on CPU */
-#if 0
                         TestReferenceChecker rootChecker(refData.rootChecker());
 
                         const auto           maxGridSize              = std::max(std::max(gridSize[XX], gridSize[YY]), gridSize[ZZ]);
@@ -192,7 +191,7 @@ class PmeSplineAndSpreadTest : public ::testing::TestWithParam<SplineAndSpreadIn
                                 auto splineValuesDim = pmeGetSplineData(pmeSafe.get(), mode.first, PmeSplineDataType::Values, i);
                                 splineValuesChecker.checkSequence(splineValuesDim.begin(), splineValuesDim.end(), dimString[i]);
                             }
-
+#if 0
                             /* Spline derivatives */
                             const auto ulpToleranceSplineDerivatives = 4 * ulpToleranceSplineValues;
                             /* 4 is just a wild guess since the derivatives are deltas of neighbor spline values which could differ greatly */
@@ -208,8 +207,9 @@ class PmeSplineAndSpreadTest : public ::testing::TestWithParam<SplineAndSpreadIn
                             /* Particle gridline indices */
                             auto gridLineIndices = pmeGetGridlineIndices(pmeSafe.get(), mode.first);
                             rootChecker.checkSequence(gridLineIndices.begin(), gridLineIndices.end(), "Gridline indices");
+#endif
                         }
-
+#if 0
                         if (spreadCharges)
                         {
                             /* The wrapped grid */

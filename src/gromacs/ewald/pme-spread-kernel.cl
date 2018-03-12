@@ -151,7 +151,6 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
     GLOBAL const float * __restrict__ gm_fractShiftsTable = kernelParams.grid.d_fractShiftsTable;
     GLOBAL const int * __restrict__ gm_gridlineIndicesTable = kernelParams.grid.d_gridlineIndicesTable;
 #endif
-
     /* Fractional coordinates */
     SHARED float sm_fractCoords[atomsPerBlock * DIM];
 
@@ -237,6 +236,7 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
                     break;
             }
             const float shift = c_pmeMaxUnitcellShift;
+            //printf("before %d %f %f %f \n", threadLocalIndex, t, shift, n);
             /* Fractional coordinates along box vectors, adding a positive shift to ensure t is positive for triclinic boxes */
             t    = (t + shift) * n;
             tInt = (int)t;
@@ -244,13 +244,15 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
             tableIndex                       += tInt;
             assert(tInt >= 0);
             assert(tInt < c_pmeNeighborUnitcellCount * n);
-
             // TODO have shared table for both parameters to share the fetch, as index is always same?
             // TODO compare texture/LDG performance
+            //printf("after %d %f\n", threadLocalIndex, t);
+            //printf("index %d %p %f\n", tableIndex, gm_fractShiftsTable, gm_fractShiftsTable[tableIndex]);
             sm_fractCoords[sharedMemoryIndex] +=
                 fetchFromParamLookupTable(gm_fractShiftsTable,
                                           kernelParams.fractShiftsTableTexture,
                                           tableIndex);
+
             sm_gridlineIndices[sharedMemoryIndex] =
                 fetchFromParamLookupTable(gm_gridlineIndicesTable,
                                           kernelParams.gridlineIndicesTableTexture,
@@ -466,7 +468,6 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_spline_and_spread_kernel)(const PmeG
 #endif
 )
 {
-#if 0
 #if CAN_USE_TEMPLATES
     const int atomsPerBlock = c_spreadMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM;
 #endif
@@ -528,6 +529,5 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_spline_and_spread_kernel)(const PmeG
 #endif
         );
     }
-#endif
 }
 
