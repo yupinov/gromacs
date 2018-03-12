@@ -67,7 +67,7 @@
 struct gmx_hw_info;
 struct gmx_device_info_t;
 
-#define PACKED __attribute__ ((aligned(32)))
+#define PACKED  __attribute__ ((aligned(8)))
 
 #if GMX_GPU != GMX_GPU_NONE
 //FIXME rename types then
@@ -100,7 +100,7 @@ typedef int PmeGpuKernelParams;
  * A GPU data structure for storing the constant PME data.
  * This only has to be initialized once.
  */
-struct PmeGpuConstParams
+struct PACKED PmeGpuConstParams
 {
     /*! \brief Electrostatics coefficient = ONE_4PI_EPS0 / pme->epsilon_r */
     float elFactor;
@@ -113,7 +113,7 @@ struct PmeGpuConstParams
  * A GPU data structure for storing the PME data related to the grid sizes and cut-off.
  * This only has to be updated at every DD step.
  */
-struct PmeGpuGridParams
+struct PACKED PmeGpuGridParams
 {
     /* Grid sizes */
     /*! \brief Real-space grid data dimensions. */
@@ -156,7 +156,7 @@ struct PmeGpuGridParams
  * A GPU data structure for storing the PME data of the atoms, local to this process' domain partition.
  * This only has to be updated every DD step.
  */
-struct PmeGpuAtomParams
+struct PACKED PmeGpuAtomParams
 {
     /*! \brief Number of local atoms */
     int    nAtoms;
@@ -191,7 +191,7 @@ struct PmeGpuAtomParams
 /*! \internal \brief
  * A GPU data structure for storing the PME data which might change for each new PME computation.
  */
-struct PmeGpuDynamicParams
+struct PACKED PmeGpuDynamicParams
 {
     /* The box parameters. The box only changes size with pressure coupling enabled. */
     /*! \brief
