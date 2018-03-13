@@ -206,7 +206,7 @@ class PmeSplineAndSpreadTest : public ::testing::TestWithParam<SplineAndSpreadIn
                             auto gridLineIndices = pmeGetGridlineIndices(pmeSafe.get(), mode.first);
                             rootChecker.checkSequence(gridLineIndices.begin(), gridLineIndices.end(), "Gridline indices");
                         }
-#if 0
+
                         if (spreadCharges)
                         {
                             /* The wrapped grid */
@@ -231,7 +231,6 @@ class PmeSplineAndSpreadTest : public ::testing::TestWithParam<SplineAndSpreadIn
                                 gridValuesChecker.checkReal(point.second, point.first.c_str());
                             }
                         }
-#endif
                     }
                 }
             }

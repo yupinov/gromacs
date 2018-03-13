@@ -128,6 +128,17 @@ void pme_gpu_spread(PmeGpu    *pmeGpu,
         timingId = gtPME_SPREAD;
     }
 
+    // DEBUG
+    /*
+   printf("  HOST SIZES %lu %lu %lu %lu %lu\n", sizeof(*kernelParamsPtr),
+          sizeof(kernelParamsPtr->constants),
+          sizeof(kernelParamsPtr->grid),
+          sizeof(kernelParamsPtr->atoms),
+          sizeof(kernelParamsPtr->current)
+          );
+          */
+
+
     // These should later check for PME decomposition
     const bool wrapX = true;
     const bool wrapY = true;
@@ -167,9 +178,9 @@ void pme_gpu_spread(PmeGpu    *pmeGpu,
     const bool copyBackAtomData = computeSplines && (pme_gpu_is_testing(pmeGpu) || !pme_gpu_performs_gather(pmeGpu));
     if (copyBackGrid || copyBackAtomData)
     {
-        //FIXME wait events instead?
+        //FIXME wait events instead? FIXME  shoudl this be needed for mixed mode?
         //throwUponFailure(clFlush(stream));
-        throwUponFailure(clFinish(stream));
+        //throwUponFailure(clFinish(stream));
     }
     if (copyBackGrid)
     {

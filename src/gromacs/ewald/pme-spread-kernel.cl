@@ -236,7 +236,7 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
                     break;
             }
             const float shift = c_pmeMaxUnitcellShift;
-            //printf("before %d %f %f %f \n", threadLocalIndex, t, shift, n);
+
             /* Fractional coordinates along box vectors, adding a positive shift to ensure t is positive for triclinic boxes */
             t    = (t + shift) * n;
             tInt = (int)t;
@@ -246,8 +246,6 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
             assert(tInt < c_pmeNeighborUnitcellCount * n);
             // TODO have shared table for both parameters to share the fetch, as index is always same?
             // TODO compare texture/LDG performance
-            //printf("after %d %f\n", threadLocalIndex, t);
-            //printf("index %d %p %f\n", tableIndex, gm_fractShiftsTable, gm_fractShiftsTable[tableIndex]);
             sm_fractCoords[sharedMemoryIndex] +=
                 fetchFromParamLookupTable(gm_fractShiftsTable,
                                           kernelParams.fractShiftsTableTexture,
@@ -513,7 +511,7 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_spline_and_spread_kernel)(const PmeG
          * as in after running the spline kernel)
          */
         /* Spline data - only thetas (dthetas will only be needed in gather) */
-        pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, DIM * order)(kernelParams, sm_theta, gm_theta, DIM* order);
+        pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, DIM * order)(kernelParams, sm_theta, gm_theta, DIM * order);
         /* Gridline indices */
 	//FIXME hack, assumign sizes
         pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(int, atomsPerBlock, DIM)(kernelParams, (SHARED float *)sm_gridlineIndices, (GLOBAL const float *)gm_gridlineIndices, DIM);

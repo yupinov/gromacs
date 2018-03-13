@@ -7,6 +7,7 @@
 
 //FIXME find out OpenCL counterpart -  barrier(CLK_LOCAL_MEM_FENCE) is __syncthreads
 #define gmx_syncwarp()
+//barrier(CLK_GLOBAL_MEM_FENCE)
 
 #define PACKED  __attribute__ ((aligned(8)))
 

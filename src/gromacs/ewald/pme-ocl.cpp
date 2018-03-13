@@ -536,7 +536,7 @@ void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
     cl_int status = clCreateKernelsInProgram(program, justEnough,
 					      kernels.data(), &actualKernelCount);
     throwUponFailure(status);
-    fprintf(stderr, "got me soem kernels %u\n", actualKernelCount);
+    //fprintf(stderr, "got me soem kernels %u\n", actualKernelCount);
     kernels.resize(actualKernelCount);
 
     std::array<char, 100> kernelNamesBuffer;
@@ -545,7 +545,7 @@ void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
         status = clGetKernelInfo(kernel, CL_KERNEL_FUNCTION_NAME,
 				 kernelNamesBuffer.size(), kernelNamesBuffer.data(), nullptr);
 	throwUponFailure(status);
-	fprintf(stderr, "got a nice kernel: %s\n", kernelNamesBuffer.data());
+    //FIXME fprintf(stderr, "got a nice kernel: %s\n", kernelNamesBuffer.data());
 	if (!strcmp(kernelNamesBuffer.data(), "pmeSplineKernel"))
 	  pmeGpu->archSpecific->splineKernel = kernel;
 	if (!strcmp(kernelNamesBuffer.data(), "pmeSplineAndSpreadKernel"))
@@ -579,7 +579,7 @@ void pme_gpu_init_internal(PmeGpu *pmeGpu)
     cl_context_properties     context_properties[3];
     cl_platform_id            platform_id;
     cl_device_id              device_id;
-    cl_int                    cl_error;
+    cl_int                    clError;
 
     platform_id      = pmeGpu->deviceInfo->ocl_gpu_id.ocl_platform_id;
     device_id        = pmeGpu->deviceInfo->ocl_gpu_id.ocl_device_id;
@@ -588,12 +588,13 @@ void pme_gpu_init_internal(PmeGpu *pmeGpu)
     context_properties[1] = (cl_context_properties) platform_id;
     context_properties[2] = 0; /* Terminates the list of properties */
 
-    pmeGpu->archSpecific->context = clCreateContext(context_properties, 1, &device_id, NULL, NULL, &cl_error);
-    GMX_RELEASE_ASSERT(CL_SUCCESS == cl_error, "whatever");
+    pmeGpu->archSpecific->context = clCreateContext(context_properties, 1, &device_id, NULL, NULL, &clError);
+    throwUponFailure(clError);
+    //GMX_RELEASE_ASSERT(CL_SUCCESS == clError, "whatever");
                      /*
                        gmx::formatString("Failed to create context for PME on GPU #%s:\n OpenCL error %d: %s",
                   pmeGpu->deviceInfo->device_name,
-                  cl_error, ocl_get_error_string(cl_error).c_str())*/
+                  clError, ocl_get_error_string(clError).c_str())*/
 
     /* WARNING: CUDA timings are incorrect with multiple streams.
      *          This is the main reason why they are disabled by default.
@@ -610,8 +611,8 @@ void pme_gpu_init_internal(PmeGpu *pmeGpu)
 
     /* local/non-local GPU streams */
     pmeGpu->archSpecific->pmeStream = clCreateCommandQueue(pmeGpu->archSpecific->context,
-                                                           device_id, queueProperties, &cl_error);
-    GMX_RELEASE_ASSERT(cl_error == CL_SUCCESS, "Failed to create command queue");
+                                                           device_id, queueProperties, &clError);
+    GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "Failed to create command queue");
 #endif
 #if GMX_GPU == GMX_GPU_CUDA
     cudaError_t stat;
@@ -631,9 +632,20 @@ void pme_gpu_init_internal(PmeGpu *pmeGpu)
 
 void pme_gpu_destroy_specific(const PmeGpu *pmeGpu)
 {
+    //FIXME do we care abotu errors here at all?
+    //FIXME retain all the stuff for the unit tests???
+
+    clReleaseKernel(pmeGpu->archSpecific->splineAndSpreadKernel);
+    clReleaseKernel(pmeGpu->archSpecific->splineKernel);
+    clReleaseKernel(pmeGpu->archSpecific->spreadKernel);
+
+    clReleaseProgram(pmeGpu->archSpecific->program);
+
+
     /* Free command queues */
     cl_int clError = clReleaseCommandQueue(pmeGpu->archSpecific->pmeStream);
-    GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "PME stream destruction error");
+    //throwUponFailure(clError);
+    //GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "PME stream destruction error");
 
     //FIXME
     /*
@@ -641,7 +653,8 @@ void pme_gpu_destroy_specific(const PmeGpu *pmeGpu)
     sfree(nb->dev_rundata);
     */
     clError = clReleaseContext(pmeGpu->archSpecific->context);
-    GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "PME context destruction error");
+    //throwUponFailure(clError);
+    //GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "PME context destruction error");
 }
 
 #ifdef CLFFTFOUND

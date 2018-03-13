@@ -74,7 +74,6 @@ struct KernelLaunchConfig
 
     KernelLaunchConfig()
     {
-        printf("hello\n");
         gridSize.x = gridSize.y = gridSize.z = blockSize.x = blockSize.y = blockSize.z = 1;
         sharedMemorySize = 0;
         stream = nullptr;
