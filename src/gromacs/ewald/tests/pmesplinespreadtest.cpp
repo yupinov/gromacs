@@ -181,7 +181,6 @@ class PmeSplineAndSpreadTest : public ::testing::TestWithParam<SplineAndSpreadIn
                         if (computeSplines)
                         {
                             const char *dimString[] = { "X", "Y", "Z" };
-
                             /* Spline values */
                             SCOPED_TRACE(formatString("Testing spline values with tolerance of %ld", ulpToleranceSplineValues));
                             TestReferenceChecker splineValuesChecker(rootChecker.checkCompound("Splines", "Values"));
@@ -191,7 +190,6 @@ class PmeSplineAndSpreadTest : public ::testing::TestWithParam<SplineAndSpreadIn
                                 auto splineValuesDim = pmeGetSplineData(pmeSafe.get(), mode.first, PmeSplineDataType::Values, i);
                                 splineValuesChecker.checkSequence(splineValuesDim.begin(), splineValuesDim.end(), dimString[i]);
                             }
-#if 0
                             /* Spline derivatives */
                             const auto ulpToleranceSplineDerivatives = 4 * ulpToleranceSplineValues;
                             /* 4 is just a wild guess since the derivatives are deltas of neighbor spline values which could differ greatly */
@@ -207,7 +205,6 @@ class PmeSplineAndSpreadTest : public ::testing::TestWithParam<SplineAndSpreadIn
                             /* Particle gridline indices */
                             auto gridLineIndices = pmeGetGridlineIndices(pmeSafe.get(), mode.first);
                             rootChecker.checkSequence(gridLineIndices.begin(), gridLineIndices.end(), "Gridline indices");
-#endif
                         }
 #if 0
                         if (spreadCharges)
