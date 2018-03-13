@@ -200,12 +200,9 @@ void launchOpenCLKernel(const KernelLaunchConfig &config,
                         const CurrentArg *        arg,
                         const RemainingArgs *...  otherArgs)
 {
-  fprintf(stderr, "Unroll!\n");
-  fprintf(stderr, "UNROLL SIZE %zu\n", sizeof(*arg));
-
     cl_int clError = clSetKernelArg(kernel, argIndex, sizeof(CurrentArg), arg);
     throwUponFailure(clError);
-		     //    GMX_ASSERT(CL_SUCCESS == clError, ocl_get_error_string(clError).c_str());
+    //    GMX_ASSERT(CL_SUCCESS == clError, ocl_get_error_string(clError).c_str());
 
     launchOpenCLKernel(config, kernel, argIndex + 1, otherArgs ...);
 }
