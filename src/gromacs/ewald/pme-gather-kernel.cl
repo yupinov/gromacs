@@ -90,7 +90,7 @@ DEVICE_INLINE void reduce_atom_forces(SHARED float3 * __restrict__ sm_forces,
                                                    float                &fy,
                                                    float                &fz)
 {
-#if (GMX_PTX_ARCH >= 300)
+#if (GMX_PTX_ARCH >= 300) && defined(FIXME)
     if (!(order & (order - 1))) // Only for orders of power of 2
     {
         const unsigned int activeMask = c_fullWarpMask;
