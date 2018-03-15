@@ -471,20 +471,27 @@ void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
                     PME_SPLINE_THETA_STRIDE,
                     c_usePadding,
                     c_skipNeutralAtoms);
-        const std::string spreadDefines = gmx::formatString(
-                    "-DatomsPerBlock=%d "
+        const std::string spreadOnlyDefines = gmx::formatString(
+                    //FIXME "-DatomsPerBlock=%d "
                     "-Dc_pmeMaxUnitcellShift=%f "
                     // unused template params for decomposition
                     "-DwrapX=true -DwrapY=true",
-                    c_spreadMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM,
+                    //c_spreadMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM,
                     static_cast<float>(c_pmeMaxUnitcellShift)
                     );
+    /*
+        const std::string gatherOnlyDefines = gmx::formatString(
+                    "-DatomsPerBlock=%d "
+                    // unused template params for decomposition
+                    "-DwrapX=true -DwrapY=true",
+                    c_gatherMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM
+                    );
+                    */
 
-        
 	
 
-        const std::string defines = spreadGatherDefines + " " + spreadDefines;
-
+        const std::string spreadDefines = spreadGatherDefines + " " + spreadOnlyDefines;
+        //const std::string gatherDefines = spreadGatherDefines + " " + gatherOnlyDefines;
 
 
 #if 0
@@ -511,7 +518,7 @@ void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
                the log output here should be written there */
             program = gmx::ocl::compileProgram(stderr,
                                                "../../ewald/pme-program.cl", //FIXME
-                                               defines,
+                                               spreadDefines,
                                                pmeGpu->archSpecific->context,
                                                pmeGpu->deviceInfo->ocl_gpu_id.ocl_device_id,
                                                pmeGpu->deviceInfo->vendor_e);
@@ -552,8 +559,10 @@ void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
 	  pmeGpu->archSpecific->splineAndSpreadKernel = kernel;
 	if (!strcmp(kernelNamesBuffer.data(), "pmeSpreadKernel"))
 	  pmeGpu->archSpecific->spreadKernel = kernel;
-        status = clGetKernelInfo(kernel, CL_KERNEL_FUNCTION_NAME,
-				 kernelNamesBuffer.size(), kernelNamesBuffer.data(), nullptr);
+    if (!strcmp(kernelNamesBuffer.data(), "pmeGatherKernel"))
+      pmeGpu->archSpecific->gatherKernel = kernel;
+    if (!strcmp(kernelNamesBuffer.data(), "pmeGatherReduceWithInputKernel"))
+      pmeGpu->archSpecific->gatherReduceWithInputKernel = kernel;
 	throwUponFailure(status);
     }
 	    
@@ -638,6 +647,9 @@ void pme_gpu_destroy_specific(const PmeGpu *pmeGpu)
     clReleaseKernel(pmeGpu->archSpecific->splineAndSpreadKernel);
     clReleaseKernel(pmeGpu->archSpecific->splineKernel);
     clReleaseKernel(pmeGpu->archSpecific->spreadKernel);
+    clReleaseKernel(pmeGpu->archSpecific->gatherKernel);
+    clReleaseKernel(pmeGpu->archSpecific->gatherReduceWithInputKernel);
+
 
     clReleaseProgram(pmeGpu->archSpecific->program);
 
