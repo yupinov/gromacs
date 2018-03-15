@@ -364,7 +364,7 @@ KERNEL_FUNC void pme_gather_kernel(const PmeGpuCudaKernelParams       kernelPara
 
     // Reduction of partial force contributions
     SHARED float3 sm_forces[atomsPerBlock]; //FIXME float3
-    reduce_atom_forces<order, atomDataSize, blockSize>(sm_forces,
+    reduce_atom_forces TEMPLATE_PARAMETERS3(order, atomDataSize, blockSize) (sm_forces,
                                                        atomIndexLocal, splineIndex, lineIndex,
                                                        kernelParams.grid.realGridSizeFP,
                                                        fx, fy, fz);
