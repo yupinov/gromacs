@@ -41,10 +41,13 @@
 
 #include "../../ewald/pme-ocl-types-kernel.clh"
 
+#ifndef COMPILE_HELPERS_ONCE
+#define COMPILE_HELPERS_ONCE
+
 /*! \brief
  * An inline CUDA function: unroll the dynamic index accesses to the constant grid sizes to avoid local memory operations.
  */
-__device__ __forceinline__ float read_grid_size(const float *realGridSizeFP,
+DEVICE_INLINE float read_grid_size(const float *realGridSizeFP,
                                                 const int    dimIndex)
 {
     switch (dimIndex)
@@ -76,7 +79,7 @@ template <
     const int atomDataSize,
     const int blockSize
     >
-__device__ __forceinline__ void reduce_atom_forces(float3 * __restrict__ sm_forces,
+DEVICE_INLINE void reduce_atom_forces(float3 * __restrict__ sm_forces,
                                                    const int             atomIndexLocal,
                                                    const int             splineIndex,
                                                    const int             lineIndex,
@@ -201,6 +204,8 @@ __device__ __forceinline__ void reduce_atom_forces(float3 * __restrict__ sm_forc
     }
 }
 
+#endif //COMPILE_HELPERS_ONCE
+
 /*! \brief
  * A CUDA kernel which gathers the atom forces from the grid.
  * The grid is assumed to be wrapped in dimension Z.
@@ -219,7 +224,7 @@ template <
     const bool wrapY
     >
 __launch_bounds__(c_gatherMaxThreadsPerBlock, c_gatherMinBlocksPerMP)
-__global__ void pme_gather_kernel(const PmeGpuCudaKernelParams    kernelParams)
+KERNEL_FUNC void pme_gather_kernel(const PmeGpuCudaKernelParams    kernelParams)
 {
     /* Global memory pointers */
     const float * __restrict__  gm_coefficients     = kernelParams.atoms.d_coefficients;

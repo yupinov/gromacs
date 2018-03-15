@@ -23,7 +23,6 @@
 //FIXME redefeinition
 #define warp_size WARP_SIZE_TEST
 //FIXME there is also WARP_SIZE_TEST
-#define DEVICE_INLINE inline
 
 
 #if !OPENCL_COMPILATION
