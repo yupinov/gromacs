@@ -39,16 +39,7 @@
  *  \author Aleksei Iupinov <a.yupinov@gmail.com>
  */
 
-#include "gmxpre.h"
-
-#include <cassert>
-
-#include "gromacs/gpu_utils/cudautils.cuh"
-#include "gromacs/utility/exceptions.h"
-#include "gromacs/utility/gmxassert.h"
-
-#include "pme.cuh"
-#include "pme-timings.cuh"
+#include "../../ewald/pme-ocl-types-kernel.clh"
 
 /*! \brief
  * An inline CUDA function: unroll the dynamic index accesses to the constant grid sizes to avoid local memory operations.
