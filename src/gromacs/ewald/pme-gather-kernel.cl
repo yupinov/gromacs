@@ -74,11 +74,13 @@ DEVICE_INLINE float read_grid_size(const float *realGridSizeFP,
  * \param[in]  fy                 Input force partial component Y
  * \param[in]  fz                 Input force partial component Z
  */
+#if CAN_USE_TEMPLATES
 template <
     const int order,
     const int atomDataSize,
     const int blockSize
     >
+#endif
 DEVICE_INLINE void reduce_atom_forces(float3 * __restrict__ sm_forces,
                                                    const int             atomIndexLocal,
                                                    const int             splineIndex,
@@ -217,12 +219,14 @@ DEVICE_INLINE void reduce_atom_forces(float3 * __restrict__ sm_forces,
  * \tparam[in] wrapY                Tells if the grid is wrapped in the Y dimension.
  * \param[in]  kernelParams         All the PME GPU data.
  */
+#if CAN_USE_TEMPLATES
 template <
     const int order,
     const bool overwriteForces,
     const bool wrapX,
     const bool wrapY
     >
+#endif
 __launch_bounds__(c_gatherMaxThreadsPerBlock, c_gatherMinBlocksPerMP)
 KERNEL_FUNC void pme_gather_kernel(const PmeGpuCudaKernelParams    kernelParams)
 {
