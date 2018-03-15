@@ -462,12 +462,14 @@ void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
                     //All those are not needed for solve, but whatever
                     "-Dorder=%d "
                     "-DPME_SPREADGATHER_ATOMS_PER_WARP=%d "
+                    "-DPME_SPREADGATHER_THREADS_PER_ATOM=%d "
                     "-DPME_SPLINE_THETA_STRIDE=%d "
                     "-Dc_usePadding=%d "
                     "-Dc_skipNeutralAtoms=%d "  //TODO stringify
                     ,
                     order,
                     PME_SPREADGATHER_ATOMS_PER_WARP,
+                    PME_SPREADGATHER_THREADS_PER_ATOM,
                     PME_SPLINE_THETA_STRIDE,
                     c_usePadding,
                     c_skipNeutralAtoms);
