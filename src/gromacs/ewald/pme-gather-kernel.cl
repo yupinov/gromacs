@@ -229,7 +229,7 @@ template <
 #endif
 //FIXME __launch_bounds__(c_gatherMaxThreadsPerBlock, c_gatherMinBlocksPerMP)
 __attribute__((reqd_work_group_size(order, order, atomsPerBlock))) //and the otehr work size hint maybe?????
-KERNEL_FUNC void pme_gather_kernel(const PmeGpuCudaKernelParams       kernelParams
+KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_gather_kernel)(const PmeGpuCudaKernelParams       kernelParams
 #if !CAN_USE_BUFFERS_IN_STRUCTS
                                    ,
                                    GLOBAL const float * __restrict__  gm_coefficients,
