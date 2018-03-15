@@ -229,18 +229,32 @@ template <
 #endif
 //FIXME __launch_bounds__(c_gatherMaxThreadsPerBlock, c_gatherMinBlocksPerMP)
 __attribute__((reqd_work_group_size(order, order, atomsPerBlock))) //and the otehr work size hint maybe?????
-KERNEL_FUNC void pme_gather_kernel(const PmeGpuCudaKernelParams    kernelParams)
+KERNEL_FUNC void pme_gather_kernel(const PmeGpuCudaKernelParams       kernelParams
+#if !CAN_USE_BUFFERS_IN_STRUCTS
+                                   ,
+                                   GLOBAL const float * __restrict__  gm_coefficients,
+                                   GLOBAL const float * __restrict__  gm_grid,
+                                   GLOBAL const float * __restrict__  gm_theta,
+                                   GLOBAL const float * __restrict__  gm_dtheta,
+                                   GLOBAL const int * __restrict__    gm_gridlineIndices,
+                                   GLOBAL float * __restrict__        gm_forces
+#endif
+)
 {
+#if CAN_USE_BUFFERS_IN_STRUCTS
     /* Global memory pointers */
-    const float * __restrict__  gm_coefficients     = kernelParams.atoms.d_coefficients;
-    const float * __restrict__  gm_grid             = kernelParams.grid.d_realGrid;
-    const float * __restrict__  gm_theta            = kernelParams.atoms.d_theta;
-    const float * __restrict__  gm_dtheta           = kernelParams.atoms.d_dtheta;
-    const int * __restrict__    gm_gridlineIndices  = kernelParams.atoms.d_gridlineIndices;
-    float * __restrict__        gm_forces           = kernelParams.atoms.d_forces;
+    GLOBAL const float * __restrict__  gm_coefficients     = kernelParams.atoms.d_coefficients;
+    GLOBAL const float * __restrict__  gm_grid             = kernelParams.grid.d_realGrid;
+    GLOBAL const float * __restrict__  gm_theta            = kernelParams.atoms.d_theta;
+    GLOBAL const float * __restrict__  gm_dtheta           = kernelParams.atoms.d_dtheta;
+    GLOBAL const int * __restrict__    gm_gridlineIndices  = kernelParams.atoms.d_gridlineIndices;
+    GLOBAL float * __restrict__        gm_forces           = kernelParams.atoms.d_forces;
+#endif
 
     /* Some sizes */
+#if CAN_USE_TEMPLATES
     const int    atomsPerBlock  = (c_gatherMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM);
+#endif
     const int    atomDataSize   = PME_SPREADGATHER_THREADS_PER_ATOM; /* Number of data components and threads for a single atom */
     const int    blockSize      = atomsPerBlock * atomDataSize;
 
@@ -250,9 +264,9 @@ KERNEL_FUNC void pme_gather_kernel(const PmeGpuCudaKernelParams    kernelParams)
     const int         atomIndexGlobal   = atomIndexOffset + atomIndexLocal;
 
     const int         splineParamsSize             = atomsPerBlock * DIM * order;
-    const int         gridlineIndicesSize          = atomsPerBlock * DIM;
-    __shared__ int    sm_gridlineIndices[gridlineIndicesSize];
-    __shared__ float2 sm_splineParams[splineParamsSize]; /* Theta/dtheta pairs  as .x/.y */
+    constexpr int         gridlineIndicesSize          = atomsPerBlock * DIM;
+    SHARED int    sm_gridlineIndices[gridlineIndicesSize];
+    SHARED float2 sm_splineParams[splineParamsSize]; /* Theta/dtheta pairs  as .x/.y */
 
     /* Spline Y/Z coordinates */
     const int ithy = threadIdx.y;
@@ -351,7 +365,7 @@ KERNEL_FUNC void pme_gather_kernel(const PmeGpuCudaKernelParams    kernelParams)
     }
 
     // Reduction of partial force contributions
-    __shared__ float3 sm_forces[atomsPerBlock];
+    SHARED float3 sm_forces[atomsPerBlock]; //FIXME float3
     reduce_atom_forces<order, atomDataSize, blockSize>(sm_forces,
                                                        atomIndexLocal, splineIndex, lineIndex,
                                                        kernelParams.grid.realGridSizeFP,
