@@ -259,30 +259,28 @@ KERNEL_FUNC void pme_gather_kernel(const PmeGpuCudaKernelParams       kernelPara
     const int    blockSize      = atomsPerBlock * atomDataSize;
 
     /* These are the atom indices - for the shared and global memory */
-    const int         atomIndexLocal    = threadIdx.z;
-    const int         atomIndexOffset   = blockIdx.x * atomsPerBlock;
+    const int         atomIndexLocal    = getThreadLocalIndex(ZZ);
+    const int         atomIndexOffset   = getBlockIndex(XX) * atomsPerBlock;
     const int         atomIndexGlobal   = atomIndexOffset + atomIndexLocal;
 
     const int         splineParamsSize             = atomsPerBlock * DIM * order;
-    constexpr int         gridlineIndicesSize          = atomsPerBlock * DIM;
+    constexpr int     gridlineIndicesSize          = atomsPerBlock * DIM;
     SHARED int    sm_gridlineIndices[gridlineIndicesSize];
     SHARED float2 sm_splineParams[splineParamsSize]; /* Theta/dtheta pairs  as .x/.y */
 
     /* Spline Y/Z coordinates */
-    const int ithy = threadIdx.y;
-    const int ithz = threadIdx.x;
+    const int ithy = getThreadLocalIndex(YY);
+    const int ithz = getThreadLocalIndex(XX);
+
+    const int threadLocalId = getThreadLocalIndex3d();
 
     /* These are the spline contribution indices in shared memory */
-    const int splineIndex = threadIdx.y * blockDim.x + threadIdx.x;                  /* Relative to the current particle , 0..15 for order 4 */
-    const int lineIndex   = (threadIdx.z * (blockDim.x * blockDim.y)) + splineIndex; /* And to all the block's particles */
-
-    int       threadLocalId = (threadIdx.z * (blockDim.x * blockDim.y))
-        + (threadIdx.y * blockDim.x)
-        + threadIdx.x;
+    const int splineIndex = getThreadLocalIndex2d();  /* Relative to the current particle , 0..15 for order 4 */
+    const int lineIndex   = threadLocalId;           /* And to all the block's particles */
 
     /* Staging the atom gridline indices, DIM * atomsPerBlock threads */
     const int localGridlineIndicesIndex  = threadLocalId;
-    const int globalGridlineIndicesIndex = blockIdx.x * gridlineIndicesSize + localGridlineIndicesIndex;
+    const int globalGridlineIndicesIndex = getBlockIndex(XX) * gridlineIndicesSize + localGridlineIndicesIndex;
     const int globalCheckIndices         = pme_gpu_check_atom_data_index(globalGridlineIndicesIndex, kernelParams.atoms.nAtoms * DIM);
     if ((localGridlineIndicesIndex < gridlineIndicesSize) & globalCheckIndices)
     {
@@ -291,7 +289,7 @@ KERNEL_FUNC void pme_gather_kernel(const PmeGpuCudaKernelParams       kernelPara
     }
     /* Staging the spline parameters, DIM * order * atomsPerBlock threads */
     const int localSplineParamsIndex  = threadLocalId;
-    const int globalSplineParamsIndex = blockIdx.x * splineParamsSize + localSplineParamsIndex;
+    const int globalSplineParamsIndex = getBlockIndex(XX) * splineParamsSize + localSplineParamsIndex;
     const int globalCheckSplineParams = pme_gpu_check_atom_data_index(globalSplineParamsIndex, kernelParams.atoms.nAtoms * DIM * order);
     if ((localSplineParamsIndex < splineParamsSize) && globalCheckSplineParams)
     {
@@ -400,7 +398,7 @@ KERNEL_FUNC void pme_gather_kernel(const PmeGpuCudaKernelParams       kernelPara
         for (int i = 0; i < numIter; i++)
         {
             int         outputIndexLocal  = i * iterThreads + threadLocalId;
-            int         outputIndexGlobal = blockIdx.x * blockForcesSize + outputIndexLocal;
+            int         outputIndexGlobal = getBlockIndex(XX) * blockForcesSize + outputIndexLocal;
             const int   globalOutputCheck = pme_gpu_check_atom_data_index(outputIndexGlobal, kernelParams.atoms.nAtoms * DIM);
             if (globalOutputCheck)
             {

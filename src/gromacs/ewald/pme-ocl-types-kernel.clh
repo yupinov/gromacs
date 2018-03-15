@@ -86,7 +86,11 @@ DEVICE_INLINE size_t getThreadLocalIndex3d()
     return (get_local_id(2) * get_local_size(1) + get_local_id(1)) * get_local_size(0) + get_local_id(0);
 }
 
-
+DEVICE_INLINE size_t getThreadLocalIndex2d()
+{
+    //(threadIdx.y * blockDim.x) + threadIdx.x;
+    return get_local_id(1) * get_local_size(0) + get_local_id(0);
+}
 
 //#include "../gpu_utils/devicebuffer_ocl.h" //FIXME stumbles on gpu_utils.h
 
