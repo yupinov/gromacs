@@ -81,7 +81,7 @@ template <
     const int blockSize
     >
 #endif
-DEVICE_INLINE void reduce_atom_forces(float3 * __restrict__ sm_forces,
+DEVICE_INLINE void reduce_atom_forces(SHARED float3 * __restrict__ sm_forces,
                                                    const int             atomIndexLocal,
                                                    const int             splineIndex,
                                                    const int             lineIndex,
@@ -263,8 +263,13 @@ KERNEL_FUNC void pme_gather_kernel(const PmeGpuCudaKernelParams       kernelPara
     const int         atomIndexOffset   = getBlockIndex(XX) * atomsPerBlock;
     const int         atomIndexGlobal   = atomIndexOffset + atomIndexLocal;
 
-    const int         splineParamsSize             = atomsPerBlock * DIM * order;
-    constexpr int     gridlineIndicesSize          = atomsPerBlock * DIM;
+#if USE_C99_ONLY
+#define gridlineIndicesSize (atomsPerBlock * DIM)
+#define splineParamsSize (atomsPerBlock * DIM * order)
+#else
+    constexpr int splineParamsSize             = atomsPerBlock * DIM * order;
+    constexpr int gridlineIndicesSize          = atomsPerBlock * DIM;
+#endif
     SHARED int    sm_gridlineIndices[gridlineIndicesSize];
     SHARED float2 sm_splineParams[splineParamsSize]; /* Theta/dtheta pairs  as .x/.y */
 
@@ -363,7 +368,7 @@ KERNEL_FUNC void pme_gather_kernel(const PmeGpuCudaKernelParams       kernelPara
     }
 
     // Reduction of partial force contributions
-    SHARED float3 sm_forces[atomsPerBlock]; //FIXME float3
+    SHARED float3 sm_forces[atomsPerBlock]; //FIXME float3?
     reduce_atom_forces TEMPLATE_PARAMETERS3(order, atomDataSize, blockSize) (sm_forces,
                                                        atomIndexLocal, splineIndex, lineIndex,
                                                        kernelParams.grid.realGridSizeFP,
@@ -402,7 +407,7 @@ KERNEL_FUNC void pme_gather_kernel(const PmeGpuCudaKernelParams       kernelPara
             const int   globalOutputCheck = pme_gpu_check_atom_data_index(outputIndexGlobal, kernelParams.atoms.nAtoms * DIM);
             if (globalOutputCheck)
             {
-                const float outputForceComponent = ((float *)sm_forces)[outputIndexLocal];
+                const float outputForceComponent = ((SHARED float *)sm_forces)[outputIndexLocal];
                 if (overwriteForces)
                 {
                     gm_forces[outputIndexGlobal] = outputForceComponent;
