@@ -68,6 +68,8 @@ class GpuParallel3dFft;
 //! Spreading max block size in threads
 constexpr int c_spreadMaxThreadsPerBlock = c_spreadMaxWarpsPerBlock * warp_size;
 
+//! Gathering max block size in threads
+constexpr int c_gatherMaxThreadsPerBlock = c_gatherMaxWarpsPerBlock * warp_size;
 
 /* Some defines for PME behaviour follow */
 

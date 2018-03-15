@@ -102,6 +102,12 @@ constexpr int c_spreadMaxWarpsPerBlock = 8;
  * This has been tried on architectures up to Maxwell (GTX 750) and it would be good to revisit this.
  */
 
+//! Gathering max block width in warps - picked empirically among 2, 4, 8, 16 for max. occupancy and min. runtime
+constexpr int c_gatherMaxWarpsPerBlock = 4;
+//! Gathering min blocks per CUDA multiprocessor - for CC2.x, we just take the CUDA limit of 8 to avoid the warning
+//constexpr int c_gatherMinBlocksPerMP = (GMX_PTX_ARCH < 300) ? GMX_CUDA_MAX_BLOCKS_PER_MP : (GMX_CUDA_MAX_THREADS_PER_MP / c_gatherMaxThreadsPerBlock);
+//FIXME dont forget the launch bounds
+
 /* A block of GPU-only functions that live in pme.cu/pme-ocl.cpp */
 
 /*! \libinternal \brief

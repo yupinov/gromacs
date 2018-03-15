@@ -80,10 +80,10 @@ CUDA_FUNC_QUALIFIER void pme_gpu_solve(const PmeGpu    *CUDA_FUNC_ARGUMENT(pmeGp
  *                                 TODO: determine efficiency/balance of host/device-side reductions.
  * \param[in]     h_grid           The host-side grid buffer (used only in testing mode)
  */
-CUDA_FUNC_QUALIFIER void pme_gpu_gather(PmeGpu                *CUDA_FUNC_ARGUMENT(pmeGpu),
-                                        PmeForceOutputHandling CUDA_FUNC_ARGUMENT(forceTreatment),
-                                        const float           *CUDA_FUNC_ARGUMENT(h_grid)
-                                        ) CUDA_FUNC_TERM
+GPU_FUNC_QUALIFIER void pme_gpu_gather(PmeGpu                *GPU_FUNC_ARGUMENT(pmeGpu),
+                                        PmeForceOutputHandling GPU_FUNC_ARGUMENT(forceTreatment),
+                                        const float           *GPU_FUNC_ARGUMENT(h_grid)
+                                        ) GPU_FUNC_TERM
 
 
 gmx::ArrayRef<gmx::RVec> pme_gpu_get_forces(PmeGpu *pmeGpu);
