@@ -74,18 +74,14 @@ void pme_gpu_gather(PmeGpu                *pmeGpu,
     }
     else
     {
-        launchGpuKernel(config, kernel, kernelParamsPtr
-                        /*,
-          &kernelParamsPtr->atoms.d_theta,
-          &kernelParamsPtr->atoms.d_dtheta,
-          &kernelParamsPtr->atoms.d_gridlineIndices,
-          &kernelParamsPtr->grid.d_realGrid,
-          &kernelParamsPtr->grid.d_fractShiftsTable,
-          &kernelParamsPtr->grid.d_gridlineIndicesTable,
-          &kernelParamsPtr->atoms.d_coefficients,
-          &kernelParamsPtr->atoms.d_coordinates
-                          */
-              );
+        launchGpuKernel(config, kernel, kernelParamsPtr,
+                        &kernelParamsPtr->atoms.d_coefficients,
+                        &kernelParamsPtr->grid.d_realGrid,
+                        &kernelParamsPtr->atoms.d_theta,
+                        &kernelParamsPtr->atoms.d_dtheta,
+                        &kernelParamsPtr->atoms.d_gridlineIndices,
+                        &kernelParamsPtr->atoms.d_forces
+                        );
     }
     //CU_LAUNCH_ERR("pme_gather_kernel");
     pme_gpu_stop_timing(pmeGpu, gtPME_GATHER);
