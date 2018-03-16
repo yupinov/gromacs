@@ -220,7 +220,7 @@ DEVICE_INLINE void reduce_atom_forces(SHARED float3 * __restrict__ sm_forces,
             const int   atomIndex = sourceIndex / minStride;
             if (sourceIndex == minStride * atomIndex)
             {
-                *((float *)(&sm_forces[atomIndex]) + dimIndex) = (sm_forceTemp[dimIndex][sourceIndex] + sm_forceTemp[dimIndex][sourceIndex + 1]) * n;
+                *((SHARED float *)(&sm_forces[atomIndex]) + dimIndex) = (sm_forceTemp[dimIndex][sourceIndex] + sm_forceTemp[dimIndex][sourceIndex + 1]) * n;
             }
         }
     }
