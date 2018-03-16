@@ -86,9 +86,10 @@ DEVICE_INLINE void reduce_atom_forces(SHARED float3 * __restrict__ sm_forces,
                                                    const int             splineIndex,
                                                    const int             lineIndex,
                                                    const float          *realGridSizeFP,
-                                                   float                &fx,
-                                                   float                &fy,
-                                                   float                &fz)
+                                                   float                fx,
+                                                   float                fy,
+                                                   float                fz)
+                                                   //FIXME these 3 guys were references in CUDA, which is not alright in C99, only pointers would work.
 {
 #if (GMX_PTX_ARCH >= 300) && defined(FIXME)
     if (!(order & (order - 1))) // Only for orders of power of 2
