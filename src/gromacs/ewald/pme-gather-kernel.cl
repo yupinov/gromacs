@@ -174,6 +174,8 @@ DEVICE_INLINE void reduce_atom_forces(SHARED float3 * __restrict__ sm_forces,
             int elementIndex = smemReserved + lineIndex;
             // Store input force contributions
             sm_forceReduction[elementIndex] = (dimIndex == XX) ? fx : (dimIndex == YY) ? fy : fz;
+            sharedMemoryBarrier(); //FIXME why is this needed?
+
             // Reduce to fit into smemPerDim (warp size)
 #pragma unroll
             for (int redStride = atomDataSize / 2; redStride > minStride; redStride >>= 1)
