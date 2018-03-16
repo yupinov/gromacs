@@ -142,8 +142,8 @@ DEVICE_INLINE void reduce_atom_forces(SHARED float3 * __restrict__ sm_forces,
         // which are stored separately (first 2 dimensions only)
         const int         smemPerDim   = warp_size;
         const int         smemReserved = (DIM - 1) * smemPerDim;
-        __shared__ float  sm_forceReduction[smemReserved + blockSize];
-        __shared__ float *sm_forceTemp[DIM];
+        SHARED float  sm_forceReduction[smemReserved + blockSize];
+        SHARED float *sm_forceTemp[DIM];
 
         const int         numWarps  = blockSize / smemPerDim;
         const int         minStride = max(1, atomDataSize / numWarps); // order 4: 128 threads => 4, 256 threads => 2, etc
