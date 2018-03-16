@@ -163,7 +163,7 @@ DEVICE_INLINE void reduce_atom_forces(SHARED float3 * __restrict__ sm_forces,
                     sm_forceReduction[elementIndex] += sm_forceReduction[elementIndex + redStride];
                 }
             }
-            __syncthreads();
+            sharedMemoryBarrier();
             // Last iteration - packing everything to be nearby, storing convenience pointer
             sm_forceTemp[dimIndex] = sm_forceReduction + dimIndex * smemPerDim;
             int redStride = minStride;
@@ -174,7 +174,7 @@ DEVICE_INLINE void reduce_atom_forces(SHARED float3 * __restrict__ sm_forces,
             }
         }
 
-        __syncthreads();
+        sharedMemoryBarrier();
 
         assert ((blockSize / warp_size) >= DIM);
         //assert (atomsPerBlock <= warp_size);
@@ -303,7 +303,7 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_gather_kernel)(const PmeGpuCudaKerne
         assert(isfinite(sm_splineParams[localSplineParamsIndex].x));
         assert(isfinite(sm_splineParams[localSplineParamsIndex].y));
     }
-    __syncthreads();
+    sharedMemoryBarrier();
 
     float           fx = 0.0f;
     float           fy = 0.0f;
@@ -373,7 +373,7 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_gather_kernel)(const PmeGpuCudaKerne
                                                        atomIndexLocal, splineIndex, lineIndex,
                                                        kernelParams.grid.realGridSizeFP,
                                                        fx, fy, fz);
-    __syncthreads();
+    sharedMemoryBarrier();
 
     /* Calculating the final forces with no component branching, atomsPerBlock threads */
     const int forceIndexLocal  = threadLocalId;

@@ -52,12 +52,26 @@
 // variadic macros, so whatever
 //#define __launch_bounds__ (x, y)
 //#define __launch_bounds__ (x)
+
+DEVICE_INLINE void sharedMemoryBarrier()
+{
+    barrier(CLK_LOCAL_MEM_FENCE);
+}
+
+#define SHARED_MEMORY_BARRIER() barrier(CLK_LOCAL_MEM_FENCE)
+
 #elif CUDA_COMPILATION
 // variable memory spaces
 #define SHARED  __shared__
 #define GLOBAL
 // function attributes
 #define KERNEL_FUNC __global
+
+DEVICE_INLINE void sharedMemoryBarrier()
+{
+    __syncthreads();
+}
+
 #endif
 
 
