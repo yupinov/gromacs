@@ -41,8 +41,8 @@
 
 #include "../../ewald/pme-ocl-types-kernel.clh"
 
-#ifndef COMPILE_HELPERS_ONCE
-#define COMPILE_HELPERS_ONCE
+#ifndef COMPILE_GATHER_HELPERS_ONCE //FIXME
+#define COMPILE_GATHER_HELPERS_ONCE
 
 /*! \brief
  * An inline CUDA function: unroll the dynamic index accesses to the constant grid sizes to avoid local memory operations.
@@ -206,7 +206,7 @@ DEVICE_INLINE void reduce_atom_forces(SHARED float3 * __restrict__ sm_forces,
     }
 }
 
-#endif //COMPILE_HELPERS_ONCE
+#endif //COMPILE_GATHER_HELPERS_ONCE
 
 /*! \brief
  * A CUDA kernel which gathers the atom forces from the grid.
