@@ -91,6 +91,13 @@ DEVICE_INLINE void reduce_atom_forces(SHARED float3 * __restrict__ sm_forces,
                                                    float                fz)
                                                    //FIXME these 3 guys were references in CUDA, which is not alright in C99, only pointers would work.
 {
+#if !CAN_USE_TEMPLATES
+        //FIXME define or whatever
+        #define atomDataSize PME_SPREADGATHER_THREADS_PER_ATOM
+        /* Number of data components and threads for a single atom */
+#endif
+
+
 #if (GMX_PTX_ARCH >= 300) && defined(FIXME)
     if (!(order & (order - 1))) // Only for orders of power of 2
     {
@@ -139,11 +146,23 @@ DEVICE_INLINE void reduce_atom_forces(SHARED float3 * __restrict__ sm_forces,
     else
 #endif
     {
+        //const int    blockSize      = atomsPerBlock * atomDataSize;
+        #define blockSize (atomsPerBlock * atomDataSize)
+
+        #define smemPerDim warp_size
+        #define smemReserved  ((DIM - 1) * smemPerDim)
+
+        #define totalSharedMemory (smemReserved + blockSize)
+
+        //FIXME
+
         // We use blockSize shared memory elements to read fx, or fy, or fz, and then reduce them to fit into smemPerDim elements
         // which are stored separately (first 2 dimensions only)
+        /*
         const int         smemPerDim   = warp_size;
         const int         smemReserved = (DIM - 1) * smemPerDim;
-        SHARED float  sm_forceReduction[smemReserved + blockSize];
+        */
+        SHARED float  sm_forceReduction[totalSharedMemory];
         SHARED float *sm_forceTemp[DIM];
 
         const int         numWarps  = blockSize / smemPerDim;
@@ -256,8 +275,8 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_gather_kernel)(const PmeGpuCudaKerne
 #if CAN_USE_TEMPLATES
     const int    atomsPerBlock  = (c_gatherMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM);
 #endif
-    const int    atomDataSize   = PME_SPREADGATHER_THREADS_PER_ATOM; /* Number of data components and threads for a single atom */
-    const int    blockSize      = atomsPerBlock * atomDataSize;
+    //const int    atomDataSize   = PME_SPREADGATHER_THREADS_PER_ATOM; /* Number of data components and threads for a single atom */
+    //const int    blockSize      = atomsPerBlock * atomDataSize; //FIXME move into reduction
 
     /* These are the atom indices - for the shared and global memory */
     const int         atomIndexLocal    = getThreadLocalIndex(ZZ);
