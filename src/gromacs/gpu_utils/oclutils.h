@@ -174,8 +174,10 @@ static inline void gpuStreamSynchronize(cl_command_queue s)
  */
 static inline bool haveStreamTasksCompleted(cl_command_queue gmx_unused s)
 {
-    GMX_RELEASE_ASSERT(false, "haveStreamTasksCompleted is not implemented for OpenCL");
-    return false;
+    //FIXME thsi function needs a support flag/trait? c_streamQuerySupported?
+    throwUponFailure(clFinish(s));
+    //GMX_RELEASE_ASSERT(false, "haveStreamTasksCompleted is not implemented for OpenCL");
+    return true;
 }
 
 /* Kernel launch helpers */
