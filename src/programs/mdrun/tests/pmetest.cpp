@@ -208,14 +208,14 @@ TEST_F(PmeTest, ReproducesEnergies)
     //TODO test all proper/improper combinations in more thorough way?
     RunModesList runModes;
     runModes["PmeOnCpu"]         = {"-pme", "cpu"};
-    runModes["PmeAuto"]          = {"-pme", "auto"};
+    //runModes["PmeAuto"]          = {"-pme", "auto"};
     runModes["PmeOnGpuFftOnCpu"] = {"-pme", "gpu", "-pmefft", "cpu"};
-    runModes["PmeOnGpuFftOnGpu"] = {"-pme", "gpu", "-pmefft", "gpu"};
-    runModes["PmeOnGpuFftAuto"]  = {"-pme", "gpu", "-pmefft", "auto"};
+    //runModes["PmeOnGpuFftOnGpu"] = {"-pme", "gpu", "-pmefft", "gpu"};
+    //runModes["PmeOnGpuFftAuto"]  = {"-pme", "gpu", "-pmefft", "auto"};
     // same manual modes but marked for PME tuning
     runModes["PmeOnCpuTune"]         = {"-pme", "cpu"};
     runModes["PmeOnGpuFftOnCpuTune"] = {"-pme", "gpu", "-pmefft", "cpu"};
-    runModes["PmeOnGpuFftOnGpuTune"] = {"-pme", "gpu", "-pmefft", "gpu"};
+    //runModes["PmeOnGpuFftOnGpuTune"] = {"-pme", "gpu", "-pmefft", "gpu"};
 
     runTest(runModes);
 }
