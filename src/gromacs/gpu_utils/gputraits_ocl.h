@@ -112,11 +112,7 @@ class SyncEvent
         inline void markSyncEvent(CommandStream stream)
         {
             cl_int clError;
-#ifdef CL_VERSION_1_2
             clError = clEnqueueMarkerWithWaitList(stream, 0, nullptr, &event_);
-#else
-            clError = clEnqueueMarker(stream, &event_);
-#endif
             GMX_ASSERT(CL_SUCCESS == clError, ocl_get_error_string(clError).c_str());
         }
 
@@ -126,23 +122,18 @@ class SyncEvent
          * Don't use this function when more than one wait will be issued for the event.
          * Equivalent to Cuda Stream Sync.
         */
-        // copied from sync_ocl_event
-        inline void waitForSyncEvent(CommandStream stream)
+        // copied from sync_ocl_event - but that was wrong, because that does a different thing!
+        inline void waitForSyncEvent(CommandStream stream) //FIXME name OnHost?
         {
-            cl_int clError;
-
-            /* Enqueue wait */
-        #ifdef CL_VERSION_1_2
-            clError = clEnqueueBarrierWithWaitList(stream, 1, &event_, nullptr);
-        #else
-            clEerror = clEnqueueWaitForEvents(stream, 1, &event_);
-        #endif
+            cl_int clError = clWaitForEvents(1, &event_);
             GMX_ASSERT(CL_SUCCESS == clError, ocl_get_error_string(clError).c_str());
+
+            //clFinish(stream); //FIXME this shoudl not be here, but somehow teh rest of teh code does not work without it?
 
             /* Release event and reset it to 0. It is ok to release it as enqueuewaitforevents performs implicit retain for events. */
             clError = clReleaseEvent(event_);
             GMX_ASSERT(CL_SUCCESS == clError, ocl_get_error_string(clError).c_str());
-            event_ = nullptr; //FIXME is thsi correct&
+            event_ = nullptr;
         }
 
     private:

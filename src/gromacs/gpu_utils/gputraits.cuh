@@ -85,12 +85,8 @@ class SyncEvent
         }
 
         /*! \brief Enqueues a wait for event completion.
-         *
-         * Then it releases the event and sets it to 0.
-         * Don't use this function when more than one wait will be issued for the event.
-         * Equivalent to Cuda Stream Sync.
         */
-        // copied from sync_ocl_event
+        // copied from sync_ocl_event - FIXME synchronize/OnHost?
         inline void waitForSyncEvent(CommandStream stream)
         {
             cudaError_t stat = cudaStreamWaitEvent(stream, event_, 0);
