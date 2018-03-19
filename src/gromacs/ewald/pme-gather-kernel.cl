@@ -429,7 +429,7 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_gather_kernel)(const PmeGpuCudaKerne
             const int   globalOutputCheck = pme_gpu_check_atom_data_index(outputIndexGlobal, kernelParams.atoms.nAtoms * DIM);
             if (globalOutputCheck)
             {
-                const float outputForceComponent = ((SHARED float *)sm_forces)[outputIndexLocal];
+                const float outputForceComponent = ((SHARED float *)sm_forces)[outputIndexLocal * 4 / 3]; //FIXME
                 if (overwriteForces)
                 {
                     gm_forces[outputIndexGlobal] = outputForceComponent;
