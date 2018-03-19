@@ -169,12 +169,13 @@ DEVICE_INLINE void reduce_atom_forces(SHARED float3 * __restrict__ sm_forces,
         const int         minStride = max(1, atomDataSize / numWarps); // order 4: 128 threads => 4, 256 threads => 2, etc
 
 #pragma unroll
+//FIXME __attribute__((opencl_unroll_hint))
         for (int dimIndex = 0; dimIndex < DIM; dimIndex++)
         {
             int elementIndex = smemReserved + lineIndex;
             // Store input force contributions
             sm_forceReduction[elementIndex] = (dimIndex == XX) ? fx : (dimIndex == YY) ? fy : fz;
-            sharedMemoryBarrier(); //FIXME why is this needed?
+            sharedMemoryBarrier(); //FIXME why is this needed? unroll?
 
             // Reduce to fit into smemPerDim (warp size)
 #pragma unroll
