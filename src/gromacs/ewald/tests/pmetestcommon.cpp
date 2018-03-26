@@ -45,9 +45,13 @@
 
 #include <cstring>
 
+//FIXME resolve opencl encapsulation
+#include "gromacs/gpu_utils/devicebuffer_ocl.h"
+
 #include "gromacs/ewald/pme-gather.h"
 #include "gromacs/ewald/pme-grid.h"
 #include "gromacs/ewald/pme-internal.h"
+#include "gromacs/ewald/pme-gpu-internal.h"
 #include "gromacs/ewald/pme-solve.h"
 #include "gromacs/ewald/pme-spread.h"
 #include "gromacs/fft/parallel_3dfft.h"
