@@ -482,6 +482,10 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_spline_and_spread_kernel)(const PmeG
     SHARED float sm_coefficients[atomsPerBlock];
     // Spline values
     SHARED float sm_theta[atomsPerBlock * DIM * order];
+    // Fractional coordinates - only for spline computation
+    SHARED float sm_fractCoords[atomsPerBlock * DIM];
+    // Staging coordinates - only for spline computation
+    SHARED float sm_coordinates[DIM * atomsPerBlock];
 
     const int        atomIndexOffset = getBlockIndex(XX) * atomsPerBlock;
 
@@ -491,10 +495,7 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_spline_and_spread_kernel)(const PmeG
     if (computeSplines)
     {
         /* Staging coordinates */
-        SHARED float sm_coordinates[DIM * atomsPerBlock];
         pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, DIM) (kernelParams, sm_coordinates, gm_coordinates, DIM);
-
-	SHARED float sm_fractCoords[atomsPerBlock * DIM];
 
         barrier(CLK_LOCAL_MEM_FENCE); //TODO LOCAL here because we stage into shared mem?
         //__syncthreads(); //FIXME wrap this?
