@@ -4,7 +4,10 @@
 
 /* SPREAD/SPLINE */
 
-#define atomsPerBlock 16 //FIXME si having this here better than renaming it?
+
+#define c_spreadMaxWarpsPerBlock 8
+#define c_spreadMaxThreadsPerBlock (c_spreadMaxWarpsPerBlock * warp_size)
+#define atomsPerBlock  (c_spreadMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM)
 
 
 // splineAndSpread
@@ -40,7 +43,12 @@
 
 /* GATHER */
 
-#define atomsPerBlock 8
+// FIXME these are duplicates of host-side consts
+// moreover, c_gatherMaxWarpsPerBlock should be defien through c_gatherMaxThreadsPerBlock, probably
+// same for spread
+#define c_gatherMaxWarpsPerBlock 4
+#define c_gatherMaxThreadsPerBlock (c_gatherMaxWarpsPerBlock * warp_size)
+#define atomsPerBlock (c_gatherMaxThreadsPerBlock / PME_SPREADGATHER_THREADS_PER_ATOM)
 
 
 // gather
