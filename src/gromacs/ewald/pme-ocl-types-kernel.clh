@@ -11,8 +11,11 @@
 
 #define PACKED  __attribute__ ((aligned(8)))
 
-#define OPENCL_COMPILATION defined(__OPENCL_C_VERSION__)
-
+#if defined __OPENCL_C_VERSION__
+#define OPENCL_COMPILATION 1
+#else
+#define OPENCL_COMPILATION 0
+#endif
 
 //FIXME try opencl 2.2 or remove version check?
 #define USE_C99_ONLY (OPENCL_COMPILATION && (__OPENCL_C_VERSION__ <= 200))
