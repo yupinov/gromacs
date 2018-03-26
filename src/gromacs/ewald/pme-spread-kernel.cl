@@ -21,7 +21,7 @@
 //#include "../../ewald/pme-types-ocl.h"
 
 //FIXME redefeinition
-#define warp_size WARP_SIZE_TEST
+//#define warp_size WARP_SIZE_TEST
 //FIXME there is also WARP_SIZE_TEST
 
 

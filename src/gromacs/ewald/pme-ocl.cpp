@@ -460,6 +460,7 @@ void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
 
         const std::string spreadGatherDefines = gmx::formatString(
                     //All those are not needed for solve, but whatever
+                    "-Dwarp_size=%d "								  
                     "-Dorder=%d "
                     "-DPME_SPREADGATHER_ATOMS_PER_WARP=%d "
                     "-DPME_SPREADGATHER_THREADS_PER_ATOM=%d "
@@ -467,6 +468,7 @@ void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
                     "-Dc_usePadding=%d "
                     "-Dc_skipNeutralAtoms=%d "  //TODO stringify
                     ,
+		    warp_size,
                     order,
                     PME_SPREADGATHER_ATOMS_PER_WARP,
                     PME_SPREADGATHER_THREADS_PER_ATOM,
@@ -826,6 +828,7 @@ void pme_gpu_transform_spline_atom_data(const PmeGpu *pmeGpu, const pme_atomcomm
     {
         auto atomWarpIndex = atomIndex % atomsPerWarp;
         auto warpIndex     = atomIndex / atomsPerWarp;
+       
         for (auto orderIndex = 0; orderIndex < pmeOrder; orderIndex++)
         {
             const auto gpuValueIndex = ((pmeOrder * warpIndex + orderIndex) * DIM + dimIndex) * atomsPerWarp + atomWarpIndex;

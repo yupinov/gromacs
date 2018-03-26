@@ -57,7 +57,7 @@
 //#include "gromacs/gpu_utils/cuda_arch_utils.cuh" // for warp_size
 //FIXME do not let this be less than 16 (PM_SPREADGATHER_THREADS_PER_ATOM)
 //16 works on inte!
-#define warp_size 16 //FIXME this is for PME OpenCL only! thsi shoud lalso be dynamic
+#define warp_size 32 //FIXME this is for PME OpenCL only! thsi shoud lalso be dynamic
 
 #include "pme-gpu-internal.h"                    // for the general PME GPU behaviour defines
 #include "pme-timings-ocl.h"
