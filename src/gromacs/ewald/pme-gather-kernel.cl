@@ -432,7 +432,9 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_gather_kernel)(const PmeGpuCudaKerne
         sm_forces[forceIndexLocal] = result;
     }
 
-    gmx_syncwarp();
+    //TODO this is to make "warp_size" of 32 wrk on intel
+    sharedMemoryBarrier();
+    //gmx_syncwarp();
     assert(atomsPerBlock <= warp_size);
 
     /* Writing or adding the final forces component-wise, single warp */

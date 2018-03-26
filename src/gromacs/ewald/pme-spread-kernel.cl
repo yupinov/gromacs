@@ -506,6 +506,9 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_spline_and_spread_kernel)(const PmeG
 #endif
 );
         gmx_syncwarp();
+
+	//FIXME this is only here for execution of e.g. 32-sized warps on 16-wide hardware
+      	barrier(CLK_LOCAL_MEM_FENCE);
     }
     else
     {
