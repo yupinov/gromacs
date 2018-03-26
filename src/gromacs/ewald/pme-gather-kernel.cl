@@ -88,8 +88,12 @@ DEVICE_INLINE void reduce_atom_forces(SHARED float3 * __restrict__ sm_forces,
                                                    const float          *realGridSizeFP,
                                                    float                fx,
                                                    float                fy,
-                                                   float                fz)
+                                                   float                fz,
                                                    //FIXME these 3 guys were references in CUDA, which is not alright in C99, only pointers would work.
+						  SHARED float * __restrict__ sm_forceReduction,
+						   SHARED float ** __restrict__ sm_forceTemp
+						   )
+                                                   
 {
 #if !CAN_USE_TEMPLATES
         //FIXME define or whatever
@@ -162,8 +166,11 @@ DEVICE_INLINE void reduce_atom_forces(SHARED float3 * __restrict__ sm_forces,
         const int         smemPerDim   = warp_size;
         const int         smemReserved = (DIM - 1) * smemPerDim;
         */
+
+        /* //FIXME moved outside - can't be defined here on Intel
         SHARED float  sm_forceReduction[totalSharedMemory];
         SHARED float *sm_forceTemp[DIM];
+        */
 
         const int         numWarps  = blockSize / smemPerDim;
         const int         minStride = max(1, atomDataSize / numWarps); // order 4: 128 threads => 4, 256 threads => 2, etc
@@ -392,10 +399,22 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_gather_kernel)(const PmeGpuCudaKerne
 
     // Reduction of partial force contributions
     SHARED float3 sm_forces[atomsPerBlock]; //FIXME float3?
+
+
+    //FIXME moved from reduction function 
+    #define blockSize (atomsPerBlock * atomDataSize)
+    #define smemPerDim warp_size
+    #define smemReserved  ((DIM - 1) * smemPerDim)
+    #define totalSharedMemory (smemReserved + blockSize)
+    SHARED float  sm_forceReduction[totalSharedMemory];
+    SHARED float *sm_forceTemp[DIM];
+
     reduce_atom_forces TEMPLATE_PARAMETERS3(order, atomDataSize, blockSize) (sm_forces,
                                                        atomIndexLocal, splineIndex, lineIndex,
                                                        kernelParams.grid.realGridSizeFP,
-                                                       fx, fy, fz);
+                                                       fx, fy, fz,
+						       sm_forceReduction,
+						       sm_forceTemp);
     sharedMemoryBarrier();
 
     /* Calculating the final forces with no component branching, atomsPerBlock threads */

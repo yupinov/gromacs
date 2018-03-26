@@ -131,7 +131,8 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
                                          SHARED const float * __restrict__            sm_coordinates,
                                          SHARED const float * __restrict__             sm_coefficients,
                                          SHARED float * __restrict__                   sm_theta,
-                                          SHARED int * __restrict__                     sm_gridlineIndices
+                                          SHARED int * __restrict__                     sm_gridlineIndices,
+					  SHARED float * __restrict__   sm_fractCoords  //FIXME moved for Intel
 #if !CAN_USE_BUFFERS_IN_STRUCTS //FIXME doc
                     ,
                                             GLOBAL float * __restrict__ gm_theta,
@@ -151,7 +152,7 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
     GLOBAL const int * __restrict__ gm_gridlineIndicesTable = kernelParams.grid.d_gridlineIndicesTable;
 #endif
     /* Fractional coordinates */
-    SHARED float sm_fractCoords[atomsPerBlock * DIM];
+    //FIXME moved outside for Intel SHARED float sm_fractCoords[atomsPerBlock * DIM];
 
     /* Thread index w.r.t. block */
     const int threadLocalIndex = getThreadLocalIndex3d();
@@ -493,10 +494,13 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_spline_and_spread_kernel)(const PmeG
         SHARED float sm_coordinates[DIM * atomsPerBlock];
         pme_gpu_stage_atom_data TEMPLATE_PARAMETERS3(float, atomsPerBlock, DIM) (kernelParams, sm_coordinates, gm_coordinates, DIM);
 
+	SHARED float sm_fractCoords[atomsPerBlock * DIM];
+
         barrier(CLK_LOCAL_MEM_FENCE); //TODO LOCAL here because we stage into shared mem?
         //__syncthreads(); //FIXME wrap this?
         calculate_splines TEMPLATE_PARAMETERS2(order, atomsPerBlock)(kernelParams, atomIndexOffset, sm_coordinates, //FIXME CUDA had a type cast (SHARED const float3 *)sm_coordinates,
-                                                sm_coefficients, sm_theta, sm_gridlineIndices
+                                                sm_coefficients, sm_theta, sm_gridlineIndices,
+                                                sm_fractCoords
 #if !CAN_USE_BUFFERS_IN_STRUCTS
          , gm_theta, gm_dtheta, gm_gridlineIndices, gm_fractShiftsTable, gm_gridlineIndicesTable
 #endif
