@@ -6,6 +6,7 @@
 #include "gromacs/utility/gmxassert.h"
 
 #include "gromacs/gpu_utils/gputraits_ocl.h"
+#include "gromacs/gpu_utils/devicebuffer_ocl.h"
 //#include "gromacs/ewald/pme-ocl-types-kernel.clh"
 //#include "gromacs/ewald/pme-ocl.h"
 #include "pme-types-ocl.h"
@@ -20,11 +21,11 @@ void pme_gpu_solve(PmeGpu *pmeGpu, t_complex *h_grid,
     const bool   copyInputAndOutputGrid = pme_gpu_is_testing(pmeGpu) || !pme_gpu_performs_FFT(pmeGpu);
 
     CommandStream stream = pmeGpu->archSpecific->pmeStream;
-    const auto  *kernelParamsPtr = pmeGpu->kernelParams.get();
+    auto  *kernelParamsPtr = pmeGpu->kernelParams.get();
 
     if (copyInputAndOutputGrid)
     {
-        copyToDeviceBuffer(&kernelParamsPtr->grid.d_fourierGrid, (const float *)(h_grid), 0, pmeGpu->archSpecific->complexGridSize,
+        copyToDeviceBuffer(&kernelParamsPtr->grid.d_fourierGrid, (float *)(h_grid), 0, pmeGpu->archSpecific->complexGridSize,
                     stream, pmeGpu->settings.transferKind, nullptr);
     }
 
@@ -105,7 +106,7 @@ void pme_gpu_solve(PmeGpu *pmeGpu, t_complex *h_grid,
 
     if (copyInputAndOutputGrid)
     {
-        copyFromDeviceBuffer(h_grid, &kernelParamsPtr->grid.d_fourierGrid,
+        copyFromDeviceBuffer( (float *)h_grid, &kernelParamsPtr->grid.d_fourierGrid,
                              0, pmeGpu->archSpecific->complexGridSize, stream, pmeGpu->settings.transferKind, nullptr);
     }
 }
