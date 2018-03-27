@@ -328,6 +328,7 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_solve_kernel)(const PmeGpuCudaKernel
         }
         sharedMemoryBarrier();
 
+        //FIXME make multiple iterations for wide warps
         assert(activeWarps >= c_virialAndEnergyCount); // we need to cover all components, or have multiple iterations otherwise
         const int componentIndex = warpIndex;
         if (componentIndex < c_virialAndEnergyCount)
@@ -339,6 +340,8 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_solve_kernel)(const PmeGpuCudaKernel
                 if (lane < reductionStride)
                 {
                     sm_virialAndEnergy[targetIndex] += sm_virialAndEnergy[targetIndex + reductionStride];
+                    //FIXME thsi added barrrier makes OpenCL correct
+                    sharedMemoryBarrier();
                 }
             }
             if (lane == 0)
