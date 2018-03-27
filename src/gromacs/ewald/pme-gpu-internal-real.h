@@ -66,10 +66,10 @@ void pme_gpu_get_energy_virial(const PmeGpu *pmeGpu, real *energy, matrix virial
  * \param[in]     gridOrdering            Specifies the dimenion ordering of the complex grid. TODO: store this information?
  * \param[in]     computeEnergyAndVirial  Tells if the energy and virial computation should also be performed.
  */
-CUDA_FUNC_QUALIFIER void pme_gpu_solve(const PmeGpu    *CUDA_FUNC_ARGUMENT(pmeGpu),
-                                       t_complex       *CUDA_FUNC_ARGUMENT(h_grid),
-                                       GridOrdering     CUDA_FUNC_ARGUMENT(gridOrdering),
-                                       bool             CUDA_FUNC_ARGUMENT(computeEnergyAndVirial)) CUDA_FUNC_TERM
+GPU_FUNC_QUALIFIER void pme_gpu_solve(PmeGpu    *GPU_FUNC_ARGUMENT(pmeGpu),
+                                       t_complex       *GPU_FUNC_ARGUMENT(h_grid),
+                                       GridOrdering     GPU_FUNC_ARGUMENT(gridOrdering),
+                                       bool             GPU_FUNC_ARGUMENT(computeEnergyAndVirial)) GPU_FUNC_TERM
 
 
 /*! \libinternal \brief
