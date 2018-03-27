@@ -1,4 +1,4 @@
-#include "gromacs/ewald/pme-ocl-types-kernel.clh"
+#include "../../ewald/pme-ocl-types-kernel.clh"
 
 /*! \brief
  * PME complex grid solver kernel function.
@@ -7,12 +7,21 @@
  * \tparam[in] computeEnergyAndVirial   Tells if the reciprocal energy and virial should be computed.
  * \param[in]  kernelParams             Input PME CUDA data in constant memory.
  */
+/*
 template<
     GridOrderingInternal gridOrdering,
     bool computeEnergyAndVirial
     >
 __launch_bounds__(c_solveMaxThreadsPerBlock)
-__global__ void pme_solve_kernel(const struct PmeGpuCudaKernelParams kernelParams)
+*/
+KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_solve_kernel)(const PmeGpuCudaKernelParams kernelParams
+#if !CAN_USE_BUFFERS_IN_STRUCTS
+                    ,
+                    GLOBAL const float * __restrict__ gm_splineModuli,
+                    GLOBAL float * __restrict__       gm_virialAndEnergy,
+                    GLOBAL float2 * __restrict__      gm_grid
+#endif
+)
 {
     /* This kernel supports 2 different grid dimension orderings: YZX and XYZ */
     int majorDim, middleDim, minorDim;
@@ -33,13 +42,19 @@ __global__ void pme_solve_kernel(const struct PmeGpuCudaKernelParams kernelParam
         default:
             assert(false);
     }
-
+#if CAN_USE_BUFFERS_IN_STRUCTS
     /* Global memory pointers */
-    const float * __restrict__ gm_splineValueMajor    = kernelParams.grid.d_splineModuli + kernelParams.grid.splineValuesOffset[majorDim];
-    const float * __restrict__ gm_splineValueMiddle   = kernelParams.grid.d_splineModuli + kernelParams.grid.splineValuesOffset[middleDim];
-    const float * __restrict__ gm_splineValueMinor    = kernelParams.grid.d_splineModuli + kernelParams.grid.splineValuesOffset[minorDim];
-    float * __restrict__       gm_virialAndEnergy     = kernelParams.constants.d_virialAndEnergy;
-    float2 * __restrict__      gm_grid                = (float2 *)kernelParams.grid.d_fourierGrid;
+    GLOBAL const float * __restrict__ gm_splineModuli       = kernelParams.grid.d_splineModuli;
+    GLOBAL float * __restrict__       gm_virialAndEnergy    = kernelParams.constants.d_virialAndEnergy;
+    GLOBAL float2 * __restrict__      gm_grid               = (float2 *)kernelParams.grid.d_fourierGrid;
+#endif
+
+    GLOBAL const float * __restrict__ gm_splineValueMajor   = gm_splineModuli + kernelParams.grid.splineValuesOffset[majorDim];
+    GLOBAL const float * __restrict__ gm_splineValueMiddle  = gm_splineModuli + kernelParams.grid.splineValuesOffset[middleDim];
+    GLOBAL const float * __restrict__ gm_splineValueMinor   = gm_splineModuli + kernelParams.grid.splineValuesOffset[minorDim];
+
+
+
 
     /* Various grid sizes and indices */
     const int localOffsetMinor = 0, localOffsetMajor = 0, localOffsetMiddle = 0; //unused
@@ -59,15 +74,15 @@ __global__ void pme_solve_kernel(const struct PmeGpuCudaKernelParams kernelParam
      * depending on the grid contiguous dimension size,
      * that can range from a part of a single gridline to several complete gridlines.
      */
-    const int threadLocalId     = threadIdx.x;
+    const int threadLocalId     = getThreadLocalIndex(XX);
     const int gridLineSize      = localCountMinor;
     const int gridLineIndex     = threadLocalId / gridLineSize;
     const int gridLineCellIndex = threadLocalId - gridLineSize * gridLineIndex;
-    const int gridLinesPerBlock = blockDim.x / gridLineSize;
-    const int activeWarps       = (blockDim.x / warp_size);
-    const int indexMinor        = blockIdx.x * blockDim.x + gridLineCellIndex;
-    const int indexMiddle       = blockIdx.y * gridLinesPerBlock + gridLineIndex;
-    const int indexMajor        = blockIdx.z;
+    const int gridLinesPerBlock = getBlockSize(XX) / gridLineSize;
+    const int activeWarps       = (getBlockSize(XX) / warp_size);
+    const int indexMinor        = getBlockIndex(XX) * getBlockSize(XX) + gridLineCellIndex;
+    const int indexMiddle       = getBlockIndex(YY) * gridLinesPerBlock + gridLineIndex;
+    const int indexMajor        = getBlockIndex(ZZ);
 
     /* Optional outputs */
     float energy = 0.0f;
@@ -83,7 +98,7 @@ __global__ void pme_solve_kernel(const struct PmeGpuCudaKernelParams kernelParam
     {
         /* The offset should be equal to the global thread index for coalesced access */
         const int             gridIndex     = (indexMajor * localSizeMiddle + indexMiddle) * localSizeMinor + indexMinor;
-        float2 * __restrict__ gm_gridCell   = gm_grid + gridIndex;
+        GLOBAL float2 * __restrict__ gm_gridCell   = gm_grid + gridIndex;
 
         const int             kMajor  = indexMajor + localOffsetMajor;
         /* Checking either X in XYZ, or Y in YZX cases */
@@ -191,7 +206,7 @@ __global__ void pme_solve_kernel(const struct PmeGpuCudaKernelParams kernelParam
     /* Optional energy/virial reduction */
     if (computeEnergyAndVirial)
     {
-#if (GMX_PTX_ARCH >= 300)
+#if (GMX_PTX_ARCH >= 300)  && 0 //FIXME
         /* A tricky shuffle reduction inspired by reduce_force_j_warp_shfl.
          * The idea is to reduce 7 energy/virial components into a single variable (aligned by 8).
          * We will reduce everything into virxx.
@@ -289,6 +304,9 @@ __global__ void pme_solve_kernel(const struct PmeGpuCudaKernelParams kernelParam
             }
         }
 #else
+
+
+
         /* Shared memory reduction with atomics for compute capability < 3.0.
          * Each component is first reduced into warp_size positions in the shared memory;
          * Then first c_virialAndEnergyCount warps reduce everything further and add to the global memory.
@@ -301,7 +319,7 @@ __global__ void pme_solve_kernel(const struct PmeGpuCudaKernelParams kernelParam
         const int        lane      = threadLocalId & (warp_size - 1);
         const int        warpIndex = threadLocalId / warp_size;
         const bool       firstWarp = (warpIndex == 0);
-        __shared__ float sm_virialAndEnergy[c_virialAndEnergyCount * warp_size];
+        SHARED float sm_virialAndEnergy[c_virialAndEnergyCount * warp_size];
         if (firstWarp)
         {
             sm_virialAndEnergy[0 * warp_size + lane] = virxx;
@@ -312,18 +330,18 @@ __global__ void pme_solve_kernel(const struct PmeGpuCudaKernelParams kernelParam
             sm_virialAndEnergy[5 * warp_size + lane] = viryz;
             sm_virialAndEnergy[6 * warp_size + lane] = energy;
         }
-        __syncthreads();
+        sharedMemoryBarrier();
         if (!firstWarp)
         {
-            atomicAdd(sm_virialAndEnergy + 0 * warp_size + lane, virxx);
-            atomicAdd(sm_virialAndEnergy + 1 * warp_size + lane, viryy);
-            atomicAdd(sm_virialAndEnergy + 2 * warp_size + lane, virzz);
-            atomicAdd(sm_virialAndEnergy + 3 * warp_size + lane, virxy);
-            atomicAdd(sm_virialAndEnergy + 4 * warp_size + lane, virxz);
-            atomicAdd(sm_virialAndEnergy + 5 * warp_size + lane, viryz);
-            atomicAdd(sm_virialAndEnergy + 6 * warp_size + lane, energy);
+            atomicAdd_l_f(sm_virialAndEnergy + 0 * warp_size + lane, virxx);
+            atomicAdd_l_f(sm_virialAndEnergy + 1 * warp_size + lane, viryy);
+            atomicAdd_l_f(sm_virialAndEnergy + 2 * warp_size + lane, virzz);
+            atomicAdd_l_f(sm_virialAndEnergy + 3 * warp_size + lane, virxy);
+            atomicAdd_l_f(sm_virialAndEnergy + 4 * warp_size + lane, virxz);
+            atomicAdd_l_f(sm_virialAndEnergy + 5 * warp_size + lane, viryz);
+            atomicAdd_l_f(sm_virialAndEnergy + 6 * warp_size + lane, energy);
         }
-        __syncthreads();
+        sharedMemoryBarrier();
 
         GMX_UNUSED_VALUE(activeWarps);
         assert(activeWarps >= c_virialAndEnergyCount); // we need to cover all components, or have multiple iterations otherwise

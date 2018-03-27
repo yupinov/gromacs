@@ -567,7 +567,15 @@ void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
       pmeGpu->archSpecific->gatherKernel = kernel;
     if (!strcmp(kernelNamesBuffer.data(), "pmeGatherReduceWithInputKernel"))
       pmeGpu->archSpecific->gatherReduceWithInputKernel = kernel;
-	throwUponFailure(status);
+    if (!strcmp(kernelNamesBuffer.data(), "pmeSolveYZXKernel"))
+      pmeGpu->archSpecific->solveYZXKernel = kernel;
+    if (!strcmp(kernelNamesBuffer.data(), "pmeSolveYZXEnergyKernel"))
+      pmeGpu->archSpecific->solveYZXEnergyKernel = kernel;
+    if (!strcmp(kernelNamesBuffer.data(), "pmeSolveXYZKernel"))
+      pmeGpu->archSpecific->solveXYZKernel = kernel;
+    if (!strcmp(kernelNamesBuffer.data(), "pmeSolveXYZEnergyKernel"))
+      pmeGpu->archSpecific->solveXYZEnergyKernel = kernel;
+    throwUponFailure(status);
     }
 	    
     //TODO put those guys in a map with string name as a key

@@ -46,6 +46,8 @@
 #ifndef GMX_EWALD_PME_GPU_INTERNAL_H
 #define GMX_EWALD_PME_GPU_INTERNAL_H
 
+#include "pme-ocl-definitely-common.h"
+
 #include "gromacs/fft/fft.h"                   // for the gmx_fft_direction enum
 #include "gromacs/gpu_utils/gpu_macros.h"      // for the GPU_FUNC_ macros
 #include "gromacs/utility/arrayref.h"
@@ -91,7 +93,7 @@ const bool c_skipNeutralAtoms = false;
  * Number of PME solve output floating point numbers.
  * 6 for symmetric virial matrix + 1 for reciprocal energy.
  */
-const int c_virialAndEnergyCount = 7;
+//const int c_virialAndEnergyCount = 7;
 
 //FIXME this is a copy!
 //! Spreading max block width in warps picked among powers of 2 (2, 4, 8, 16) for max. occupancy and min. runtime in most cases
