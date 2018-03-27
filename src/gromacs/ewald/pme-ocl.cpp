@@ -541,7 +541,7 @@ void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
     pmeGpu->archSpecific->program = program;
 
     std::vector<cl_kernel> kernels;
-    cl_uint justEnough = 8; //?
+    cl_uint justEnough = 9; //?
     kernels.resize(justEnough);
     cl_uint actualKernelCount = 0;
     cl_int status = clCreateKernelsInProgram(program, justEnough,
