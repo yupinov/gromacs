@@ -71,14 +71,12 @@
 //#undef warp_size
 #include "../../ewald/pme-ocl-definitely-common.h"
 
-enum GridOrderingInternal //FIXME
-{
-   YZX,
-   XYZ
-} ;
+//GRID orderings
+#define YZX 1
+#define XYZ 2
 
 // solve, YZX dimension order
-#define gridOrdering GridOrderingInternal::YZX
+#define gridOrdering YZX
 #define computeEnergyAndVirial 0
 #define CUSTOMIZED_KERNEL_NAME(x) pmeSolveYZXKernel
 #include "../../ewald/pme-solve-kernel.cl"
@@ -87,7 +85,7 @@ enum GridOrderingInternal //FIXME
 #undef CUSTOMIZED_KERNEL_NAME
 
 // solve with reduction, YZX dimension order
-#define gridOrdering GridOrderingInternal::YZX
+#define gridOrdering YZX
 #define computeEnergyAndVirial 1
 #define CUSTOMIZED_KERNEL_NAME(x) pmeSolveYZXEnergyKernel
 #include "../../ewald/pme-solve-kernel.cl"

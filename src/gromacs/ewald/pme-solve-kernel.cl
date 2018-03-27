@@ -25,22 +25,17 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_solve_kernel)(const PmeGpuCudaKernel
 {
     /* This kernel supports 2 different grid dimension orderings: YZX and XYZ */
     int majorDim, middleDim, minorDim;
-    switch (gridOrdering)
+    if (gridOrdering == YZX)
     {
-        case GridOrderingInternal::YZX:
             majorDim  = YY;
             middleDim = ZZ;
             minorDim  = XX;
-            break;
-
-        case GridOrderingInternal::XYZ:
+    }
+        if (gridOrdering == XYZ)
+        {
             majorDim  = XX;
             middleDim = YY;
             minorDim  = ZZ;
-            break;
-
-        default:
-            assert(false);
     }
 #if CAN_USE_BUFFERS_IN_STRUCTS
     /* Global memory pointers */
@@ -107,14 +102,14 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_solve_kernel)(const PmeGpuCudaKernel
         const int             kMiddle = indexMiddle + localOffsetMiddle;
         float                 mMiddle = kMiddle;
         /* Checking Y in XYZ case */
-        if (gridOrdering == GridOrderingInternal::XYZ)
+        if (gridOrdering == XYZ)
         {
             mMiddle = (kMiddle < maxkMiddle) ? kMiddle : (kMiddle - nMiddle);
         }
         const int             kMinor  = localOffsetMinor + indexMinor;
         float                 mMinor  = kMinor;
         /* Checking X in YZX case */
-        if (gridOrdering == GridOrderingInternal::YZX)
+        if (gridOrdering == YZX)
         {
             mMinor = (kMinor < maxkMinor) ? kMinor : (kMinor - nMinor);
         }
@@ -122,44 +117,34 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_solve_kernel)(const PmeGpuCudaKernel
         const bool notZeroPoint  = (kMinor > 0) | (kMajor > 0) | (kMiddle > 0);
 
         float      mX, mY, mZ;
-        switch (gridOrdering)
+        if (gridOrdering == YZX)
         {
-            case GridOrderingInternal::YZX:
                 mX = mMinor;
                 mY = mMajor;
                 mZ = mMiddle;
-                break;
-
-            case GridOrderingInternal::XYZ:
-                mX = mMajor;
-                mY = mMiddle;
-                mZ = mMinor;
-                break;
-
-            default:
-                assert(false);
+        }
+        if (gridOrdering == XYZ)
+        {
+            mX = mMajor;
+            mY = mMiddle;
+            mZ = mMinor;
         }
 
         /* 0.5 correction factor for the first and last components of a Z dimension */
         float corner_fac = 1.0f;
-        switch (gridOrdering)
+        if (gridOrdering == YZX)
         {
-            case GridOrderingInternal::YZX:
                 if ((kMiddle == 0) | (kMiddle == maxkMiddle))
                 {
                     corner_fac = 0.5f;
                 }
-                break;
-
-            case GridOrderingInternal::XYZ:
+        }
+        if (gridOrdering == XYZ)
+        {
                 if ((kMinor == 0) | (kMinor == maxkMinor))
                 {
                     corner_fac = 0.5f;
                 }
-                break;
-
-            default:
-                assert(false);
         }
 
         if (notZeroPoint)
