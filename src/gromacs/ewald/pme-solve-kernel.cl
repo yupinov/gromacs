@@ -156,7 +156,7 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_solve_kernel)(const PmeGpuCudaKernel
             const float m2k        = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
             assert(m2k != 0.0f);
             //TODO: use LDG/textures for gm_splineValue
-            float       denom = m2k * float(M_PI) * kernelParams.current.boxVolume * gm_splineValueMajor[kMajor] * gm_splineValueMiddle[kMiddle] * gm_splineValueMinor[kMinor];
+            float       denom = m2k * M_PI * kernelParams.current.boxVolume * gm_splineValueMajor[kMajor] * gm_splineValueMiddle[kMiddle] * gm_splineValueMinor[kMinor];
             assert(isfinite(denom));
             assert(denom != 0.0f);
             const float   tmp1   = expf(-kernelParams.grid.ewaldFactor * m2k);
@@ -328,7 +328,6 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_solve_kernel)(const PmeGpuCudaKernel
         }
         sharedMemoryBarrier();
 
-        GMX_UNUSED_VALUE(activeWarps);
         assert(activeWarps >= c_virialAndEnergyCount); // we need to cover all components, or have multiple iterations otherwise
         const int componentIndex = warpIndex;
         if (componentIndex < c_virialAndEnergyCount)

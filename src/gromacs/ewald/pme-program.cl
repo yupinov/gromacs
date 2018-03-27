@@ -93,4 +93,22 @@
 #undef computeEnergyAndVirial
 #undef CUSTOMIZED_KERNEL_NAME
 
+// solve, XYZ dimension order
+#define gridOrdering XYZ
+#define computeEnergyAndVirial 0
+#define CUSTOMIZED_KERNEL_NAME(x) pmeSolveXYZKernel
+#include "../../ewald/pme-solve-kernel.cl"
+#undef gridOrdering
+#undef computeEnergyAndVirial
+#undef CUSTOMIZED_KERNEL_NAME
+
+// solve with reduction, XYZ dimension order
+#define gridOrdering XYZ
+#define computeEnergyAndVirial 1
+#define CUSTOMIZED_KERNEL_NAME(x) pmeSolveXYZEnergyKernel
+#include "../../ewald/pme-solve-kernel.cl"
+#undef gridOrdering
+#undef computeEnergyAndVirial
+#undef CUSTOMIZED_KERNEL_NAME
+
 #undef atomsPerBlock
