@@ -159,7 +159,7 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_solve_kernel)(const PmeGpuCudaKernel
             float       denom = m2k * M_PI * kernelParams.current.boxVolume * gm_splineValueMajor[kMajor] * gm_splineValueMiddle[kMiddle] * gm_splineValueMinor[kMinor];
             assert(isfinite(denom));
             assert(denom != 0.0f);
-            const float   tmp1   = expf(-kernelParams.grid.ewaldFactor * m2k);
+            const float   tmp1   = exp(-kernelParams.grid.ewaldFactor * m2k); //FIXME was expf in CUDA
             const float   etermk = kernelParams.constants.elFactor * tmp1 / denom;
 
             float2        gridValue    = *gm_gridCell;
