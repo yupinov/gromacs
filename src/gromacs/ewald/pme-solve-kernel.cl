@@ -249,14 +249,14 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_solve_kernel)(const PmeGpuCudaKernel
         const int        stride              = 8; // this is c_virialAndEnergyCount==7 rounded up to power of 2 for convenience, hence the assert
         assert(c_virialAndEnergyCount == 7);
         const int        reductionBufferSize = (c_solveMaxThreadsPerBlock / warp_size) * stride;
-        __shared__ float sm_virialAndEnergy[reductionBufferSize];
+        SHARED float sm_virialAndEnergy[reductionBufferSize];
 
         if (validComponentIndex)
         {
             const int warpIndex = threadLocalId / warp_size;
             sm_virialAndEnergy[warpIndex * stride + componentIndex] = virxx;
         }
-        __syncthreads();
+        sharedMemoryBarrier();
 
         /* Reduce to the single warp size */
         const int targetIndex = threadLocalId;
