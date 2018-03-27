@@ -188,6 +188,9 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_solve_kernel)(const PmeGpuCudaKernel
         }
     }
 
+    //FIXME thsi is onl for reduction though
+    SHARED float sm_virialAndEnergy[c_virialAndEnergyCount * warp_size];
+
     /* Optional energy/virial reduction */
     if (computeEnergyAndVirial)
     {
@@ -304,7 +307,6 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_solve_kernel)(const PmeGpuCudaKernel
         const int        lane      = threadLocalId & (warp_size - 1);
         const int        warpIndex = threadLocalId / warp_size;
         const bool       firstWarp = (warpIndex == 0);
-        SHARED float sm_virialAndEnergy[c_virialAndEnergyCount * warp_size];
         if (firstWarp)
         {
             sm_virialAndEnergy[0 * warp_size + lane] = virxx;
