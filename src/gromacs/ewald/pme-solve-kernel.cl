@@ -156,7 +156,7 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_solve_kernel)(const PmeGpuCudaKernel
             const float m2k        = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
             assert(m2k != 0.0f);
             //TODO: use LDG/textures for gm_splineValue
-            float       denom = m2k * M_PI * kernelParams.current.boxVolume * gm_splineValueMajor[kMajor] * gm_splineValueMiddle[kMiddle] * gm_splineValueMinor[kMinor];
+            float       denom = m2k * M_PI_F * kernelParams.current.boxVolume * gm_splineValueMajor[kMajor] * gm_splineValueMiddle[kMiddle] * gm_splineValueMinor[kMinor];
             assert(isfinite(denom));
             assert(denom != 0.0f);
             const float   tmp1   = exp(-kernelParams.grid.ewaldFactor * m2k); //FIXME was expf in CUDA
