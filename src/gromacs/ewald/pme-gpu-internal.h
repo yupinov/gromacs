@@ -95,6 +95,7 @@ const int c_virialAndEnergyCount = 7;
 
 //FIXME this is a copy!
 //! Spreading max block width in warps picked among powers of 2 (2, 4, 8, 16) for max. occupancy and min. runtime in most cases
+//FIXME thsi  should account for max block size (e.g. only 4 with OpenCL "warps" of 64  when max work group size is 256)
 constexpr int c_spreadMaxWarpsPerBlock = 8;
 /* TODO: it has been observed that the kernel can be faster with smaller block sizes (2 or 4 warps)
  * only on some GPUs (660Ti) with large enough grid (>= 48^3) due to load/store units being overloaded
