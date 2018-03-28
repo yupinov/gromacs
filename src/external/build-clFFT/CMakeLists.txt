@@ -34,7 +34,47 @@
 
 # Build a suitable copy of clFFT.
 
-if (FALSE)
+#FIXME should not be needed in master
+set (OpenCL_INCLUDE_DIR ${OPENCL_INCLUDE_DIR})
+set (OpenCL_LIBRARY ${OPENCL_LIBRARY})
+
+#TODO disable boost/fftw detection
+
+message (STATUS "hello clFFT " ${OPENCL_LIBRARY} " " ${OPENCL_INCLUDE_DIR})
+
+# Dumping all cmake args to pass them to clFFT build - UNUSED
+#[[
+get_cmake_property(vars CACHE_VARIABLES)
+foreach(var ${vars})
+  get_property(currentHelpString CACHE "${var}" PROPERTY HELPSTRING)
+    if("${currentHelpString}" MATCHES "No help, variable specified on the command line." OR "${currentHelpString}" STREQUAL "")
+        message("${var} = [${${var}}]  --  ${currentHelpString}") # uncomment to see the variables being processed
+        list(APPEND CL_ARGS "-D${var}=${${var}}")
+    endif()
+  endforeach()
+]]
+
+set(EXTERNAL_CLFFT_BUILD_TARGET clFFTBuild)
+include(ExternalProject)
+ExternalProject_add(${EXTERNAL_CLFFT_BUILD_TARGET}
+  #        URL "${url}" URL_MD5 ${GMX_BUILD_OWN_FFTW_MD5}
+  SOURCE_DIR ${PROJECT_SOURCE_DIR}/src/external/clFFT/src
+  INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR} #???
+  
+  CMAKE_ARGS -DOpenCL_INCLUDE_DIR=${OpenCL_INCLUDE_DIR} -DOpenCL_LIBRARY=${OpenCL_LIBRARY} -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}
+  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+  #CMAKE_ARGS ${CL_ARGS}
+  #INSTALL_COMMAND "" # FIXME
+  )
+
+ExternalProject_get_property(${EXTERNAL_CLFFT_BUILD_TARGET} INSTALL_DIR)
+message("Install dir: ${INSTALL_DIR}")
+
+
+
+
+
+if (FALSE) # unused FFTW code, remove
 
 string(TOUPPER "${FFTW}" UPPERFFTW)
 string(TOLOWER "${FFTW}" LOWERFFTW)
@@ -152,5 +192,3 @@ add_dependencies(gmxfftw ${EXTERNAL_FFTW_BUILD_TARGET})
 message(STATUS "The GROMACS-managed build of FFTW 3 will configure with the following optimizations: ${GMX_BUILD_OWN_FFTW_OPTIMIZATION_CONFIGURATION}")
 
 endif() #FALSE
-
-message (STATUS "hello clFFT")
