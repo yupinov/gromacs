@@ -55,12 +55,10 @@ struct PmeGpu;
  */
 class GpuParallel3dFft
 {
-#if 0
-  cufftHandle   planR2C_;
-    cufftHandle   planC2R_;
-    cufftReal    *realGrid_;
-    cufftComplex *complexGrid_;
-
+    clfftPlanHandle   planR2C_;
+    clfftPlanHandle   planC2R_;
+    //    clfftReal    *realGrid_;
+    // clfftComplex *complexGrid_;
     public:
         /*! \brief
          * Constructs CUDA FFT plans for performing 3D FFT on a PME grid.
@@ -68,6 +66,7 @@ class GpuParallel3dFft
          * \param[in] pmeGpu                  The PME GPU structure.
          */
         GpuParallel3dFft(const PmeGpu *pmeGpu);
+#if 0
         /*! \brief Destroys CUDA FFT plans. */
         ~GpuParallel3dFft();
         /*! \brief Performs the FFT transform in given direction */

@@ -46,21 +46,26 @@
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/gmxassert.h"
 
-#if 0
-#include "pme.cuh"
-#include "pme-gpu-types.h"
+#include "gromacs/gpu_utils/oclutils.h"
 
-static void handleCufftError(cufftResult_t status, const char *msg)
+//#include "pme.cuh"
+#include "pme-types-ocl.h"
+
+static void handleClfftError(clfftStatus status, const char *msg = nullptr)
 {
-    if (status != CUFFT_SUCCESS)
-    {
-        gmx_fatal(FARGS, "%s (error code %d)\n", msg, status);
-    }
+  //suppsoedly it's just a superset of standard opencl errors
+  throwUponFailure(status);
+  // FIXME  if (status != CUFFT_SUCCESS)
+  //  {
+  //      gmx_fatal(FARGS, "%s (error code %d)\n", msg, status);
+  //  }
 }
 
 GpuParallel3dFft::GpuParallel3dFft(const PmeGpu *pmeGpu)
 {
-    const PmeGpuCudaKernelParams *kernelParamsPtr = pmeGpu->kernelParams.get();
+  handleClfftError(clfftSetup(nullptr));
+#if 0
+  const PmeGpuCudaKernelParams *kernelParamsPtr = pmeGpu->kernelParams.get();
     ivec realGridSize, realGridSizePadded, complexGridSizePadded;
     for (int i = 0; i < DIM; i++)
     {
@@ -112,8 +117,10 @@ GpuParallel3dFft::GpuParallel3dFft(const PmeGpu *pmeGpu)
 
     result = cufftSetStream(planC2R_, stream);
     handleCufftError(result, "cufftSetStream C2R failure");
+#endif    
 }
 
+#if 0
 GpuParallel3dFft::~GpuParallel3dFft()
 {
     cufftResult_t result;

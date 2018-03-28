@@ -199,6 +199,8 @@ endif()
 
 gmx_setup_tng_for_libgromacs()
 
+SET(FIXME_CLFFT_LIB "${CMAKE_BINARY_DIR}/lib/libclFFT.a")
+
 target_link_libraries(libgromacs
                       PRIVATE
                       ${EXTRAE_LIBRARIES}
@@ -206,7 +208,7 @@ target_link_libraries(libgromacs
                       ${GMX_COMMON_LIBRARIES}
                       ${FFT_LIBRARIES} ${LINEAR_ALGEBRA_LIBRARIES}
                       ${LMFIT_LIBRARIES_TO_LINK}
-                      ${THREAD_LIB} ${GMX_SHARED_LINKER_FLAGS} ${OPENCL_LIBRARIES}
+                      ${THREAD_LIB} ${GMX_SHARED_LINKER_FLAGS} ${OPENCL_LIBRARIES} ${FIXME_CLFFT_LIB}
                       ${GMX_STDLIB_LIBRARIES}
                       PUBLIC
                       ${GMX_PUBLIC_LIBRARIES}
