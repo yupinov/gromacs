@@ -34,15 +34,15 @@
  */
 
 /*! \libinternal \file
- *  \brief Defines the CUDA 3D-FFT functions for PME.
+ *  \brief Defines the OpenCL 3D-FFT functions for PME.
  *
  *  \author Aleksei Iupinov <a.yupinov@gmail.com>
  */
 
-#ifndef GMX_EWALD_PME_3DFFT_CUH
-#define GMX_EWALD_PME_3DFFT_CUH
+#ifndef GMX_EWALD_PME_3DFFT_OCL_H
+#define GMX_EWALD_PME_3DFFT_OCL_H
 
-#include <cufft.h>                  // for the cufft types
+//#include <cufft.h>                  // for the cufft types
 
 #include "gromacs/fft/fft.h"        // for the enum gmx_fft_direction
 
@@ -53,7 +53,8 @@ struct PmeGpu;
  */
 class GpuParallel3dFft
 {
-    cufftHandle   planR2C_;
+#if 0
+  cufftHandle   planR2C_;
     cufftHandle   planC2R_;
     cufftReal    *realGrid_;
     cufftComplex *complexGrid_;
@@ -69,6 +70,7 @@ class GpuParallel3dFft
         ~GpuParallel3dFft();
         /*! \brief Performs the FFT transform in given direction */
         void perform3dFft(gmx_fft_direction dir);
+#endif	
 };
 
 #endif

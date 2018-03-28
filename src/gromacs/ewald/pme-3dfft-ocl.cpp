@@ -34,18 +34,19 @@
  */
 
 /*! \internal \file
- *  \brief Implements CUDA FFT routines for PME GPU.
+ *  \brief Implements OpenCL 3DFFT routines for PME GPU.
  *
  *  \author Aleksei Iupinov <a.yupinov@gmail.com>
  */
 
 #include "gmxpre.h"
 
-#include "pme-3dfft.cuh"
+#include "pme-3dfft-ocl.h"
 
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/gmxassert.h"
 
+#if 0
 #include "pme.cuh"
 #include "pme-gpu-types.h"
 
@@ -144,3 +145,4 @@ void pme_gpu_3dfft(const PmeGpu *pmeGpu, gmx_fft_direction dir, int grid_index)
     pmeGpu->archSpecific->fftSetup[grid_index]->perform3dFft(dir);
     pme_gpu_stop_timing(pmeGpu, timerId);
 }
+#endif
