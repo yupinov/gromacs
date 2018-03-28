@@ -42,7 +42,9 @@
 #ifndef GMX_EWALD_PME_3DFFT_OCL_H
 #define GMX_EWALD_PME_3DFFT_OCL_H
 
-//#include <cufft.h>                  // for the cufft types
+#include "external/clFFT/src/include/clFFT.h"
+//FIXME
+//#include "src/external/build-clFFT/clFFTBuild-prefix/src/clFFTBuild-build/include/clFFT.h"
 
 #include "gromacs/fft/fft.h"        // for the enum gmx_fft_direction
 
