@@ -71,8 +71,8 @@ public:
         /*! \brief Performs the FFT transform in given direction */
         void perform3dFft(gmx_fft_direction dir);
 private:
-        /*! A snigle plan for R2C/C2R */
-        clfftPlanHandle plan_;
+        clfftPlanHandle planR2C_;
+        clfftPlanHandle planC2R_;
         std::vector<cl_command_queue> commandStreams_; //TODO mark as const?
         cl_mem realGrid_;
         cl_mem complexGrid_;

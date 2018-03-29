@@ -68,31 +68,40 @@ GpuParallel3dFft::GpuParallel3dFft(const PmeGpu *pmeGpu)
     // Extracting all the data from PME GPU
     GMX_RELEASE_ASSERT(!pme_gpu_uses_dd(pmeGpu), "FFT decomposition not implemented");
     PmeGpuCudaKernelParams *kernelParamsPtr = pmeGpu->kernelParams.get();
-    std::array<size_t, DIM> realGridSize, realGridSizePadded, complexGridSizePadded;
+    std::array<size_t, DIM> realGridSize, realGridSizePadded;//, complexGridSizePadded;
     for (int i = 0; i < DIM; i++)
     {
         realGridSize[i]          = kernelParamsPtr->grid.realGridSize[i];
         realGridSizePadded[i]    = kernelParamsPtr->grid.realGridSizePadded[i];
-        complexGridSizePadded[i] = kernelParamsPtr->grid.complexGridSizePadded[i];
+        //complexGridSizePadded[i] = kernelParamsPtr->grid.complexGridSizePadded[i];
+        GMX_ASSERT(kernelParamsPtr->grid.complexGridSizePadded[i] == kernelParamsPtr->grid.complexGridSize[i], "Complex padding not implemented");
     }
     cl_context context = pmeGpu->archSpecific->context;
     commandStreams_.push_back(pmeGpu->archSpecific->pmeStream);
     realGrid_ = kernelParamsPtr->grid.d_realGrid;
     complexGrid_ = kernelParamsPtr->grid.d_fourierGrid;
+    const bool performOutOfPlaceFFT = pmeGpu->archSpecific->performOutOfPlaceFFT;
 
     // Setup
     clfftSetupData fftSetup;
     handleClfftError(clfftInitSetupData(&fftSetup), "clFFT data initialization failure");
     handleClfftError(clfftSetup(&fftSetup), "clFFT initialization failure");
 
-    const clfftDim dim = CLFFT_3D;
-    handleClfftError(clfftCreateDefaultPlan(&plan_, context, dim, realGridSize.data()), "clFFT planning failure");
+    constexpr auto dims = CLFFT_3D;
+    handleClfftError(clfftCreateDefaultPlan(&planR2C_, context, dims, realGridSize.data()), "clFFT planning failure");
+    handleClfftError(clfftSetResultLocation(planR2C_, performOutOfPlaceFFT ? CLFFT_OUTOFPLACE : CLFFT_INPLACE), "clFFT planning failure");
+    handleClfftError(clfftSetPlanPrecision(planR2C_, CLFFT_SINGLE), "clFFT planning failure"); //there is also CLFFT_SINGLE_FAST which is not implemented :/
 
+    std::array<size_t, DIM> realGridStrides = {1, realGridSizePadded[XX], realGridSizePadded[XX] * realGridSizePadded[YY]};
 
     // THe only difference between 2 plans is direction
-    //handleClfftError(clfftCopyPlan(&planC2R_, context, planR2C_));
+    handleClfftError(clfftCopyPlan(&planC2R_, context, planR2C_), "clFFT plan copying failure");
+    handleClfftError(clfftSetLayout(planR2C_, CLFFT_REAL, CLFFT_HERMITIAN_INTERLEAVED), "clFFT R2C layout failure");
+    handleClfftError(clfftSetLayout(planC2R_, CLFFT_HERMITIAN_INTERLEAVED, CLFFT_REAL), "clFFT C2R layout failure");
+    handleClfftError(clfftSetPlanInStride(planR2C_, dims, realGridStrides.data())); // TODO just use single plan instead?
+    handleClfftError(clfftSetPlanOutStride(planC2R_, dims, realGridStrides.data()));
 
-
+    //TODO bake
 #if 0
 
 
@@ -131,26 +140,42 @@ GpuParallel3dFft::GpuParallel3dFft(const PmeGpu *pmeGpu)
 
 GpuParallel3dFft::~GpuParallel3dFft()
 {
-    handleClfftError(clfftDestroyPlan(&plan_));
-    //handleClfftError(clfftDestroyPlan(&planC2R_));
+    //FIXME
+    /*
+    handleClfftError(clfftDestroyPlan(&planR2C_));
+    handleClfftError(clfftDestroyPlan(&planC2R_));
     handleClfftError(clfftTeardown());
+    */
 }
 
 void GpuParallel3dFft::perform3dFft(gmx_fft_direction dir)
 {
-    //TODO inline/template
-    const clfftDirection clfftDir = (dir == GMX_FFT_REAL_TO_COMPLEX) ? CLFFT_FORWARD : CLFFT_BACKWARD;
-    cl_mem *inputBuffers = &realGrid_; //TODO swap
-    cl_mem *outputBuffers = &complexGrid_;
     // Custom temp buffer could be interesting
     constexpr cl_mem tempBuffer = nullptr;
-
     constexpr std::array<cl_event, 0> waitEvents;
     constexpr cl_event *outEvents = nullptr;
-    handleClfftError(clfftEnqueueTransform(plan_, clfftDir,
+
+    clfftPlanHandle plan;
+    switch (dir)
+    {
+        case GMX_FFT_REAL_TO_COMPLEX:
+        plan = planR2C_;
+        break;
+
+        break;
+        case GMX_FFT_COMPLEX_TO_REAL:
+        plan = planC2R_;
+        break;
+
+    default:
+        GMX_ASSERT(false, "Not implemented");
+        break;
+    }
+
+    handleClfftError(clfftEnqueueTransform(plan, CLFFT_FORWARD, //or backward?
                                            commandStreams_.size(), commandStreams_.data(),
                                            waitEvents.size(), waitEvents.data(), outEvents,
-                                          inputBuffers, outputBuffers, tempBuffer), "clFFT execution failure");
+                                           &realGrid_, &complexGrid_, tempBuffer), "clFFT execution failure");
 }
 
 //FIXME move to common
