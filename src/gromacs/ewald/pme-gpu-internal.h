@@ -378,18 +378,18 @@ GPU_FUNC_QUALIFIER void pme_gpu_init_internal(PmeGpu *GPU_FUNC_ARGUMENT(pmeGpu))
 GPU_FUNC_QUALIFIER void pme_gpu_destroy_specific(const PmeGpu *GPU_FUNC_ARGUMENT(pmeGpu)) GPU_FUNC_TERM
 
 /*! \libinternal \brief
- * Initializes the CUDA FFT structures.
+ * Initializes the GPU FFT structures.
  *
  * \param[in] pmeGpu  The PME GPU structure.
  */
-CUDA_FUNC_QUALIFIER void pme_gpu_reinit_3dfft(const PmeGpu *CUDA_FUNC_ARGUMENT(pmeGpu)) CUDA_FUNC_TERM
+GPU_FUNC_QUALIFIER void pme_gpu_reinit_3dfft(const PmeGpu *GPU_FUNC_ARGUMENT(pmeGpu)) GPU_FUNC_TERM
 
 /*! \libinternal \brief
- * Destroys the CUDA FFT structures.
+ * Destroys the GPU FFT structures.
  *
  * \param[in] pmeGpu  The PME GPU structure.
  */
-CUDA_FUNC_QUALIFIER void pme_gpu_destroy_3dfft(const PmeGpu *CUDA_FUNC_ARGUMENT(pmeGpu)) CUDA_FUNC_TERM
+GPU_FUNC_QUALIFIER void pme_gpu_destroy_3dfft(const PmeGpu *GPU_FUNC_ARGUMENT(pmeGpu)) GPU_FUNC_TERM
 
 /* Several CUDA event-based timing functions that live in pme-timings.cu */
 

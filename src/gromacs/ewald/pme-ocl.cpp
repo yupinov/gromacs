@@ -55,7 +55,7 @@
 #include "gromacs/utility/smalloc.h"
 
 #include "pme-types-ocl.h"
-//#include "pme-3dfft.cuh"
+#include "pme-3dfft-ocl.h"
 #include "pme-grid.h"
 
 int pme_gpu_get_atom_data_alignment(const PmeGpu *pmeGpu)
@@ -681,7 +681,6 @@ void pme_gpu_destroy_specific(const PmeGpu *pmeGpu)
     //GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "PME context destruction error");
 }
 
-#ifdef CLFFTFOUND
 void pme_gpu_reinit_3dfft(const PmeGpu *pmeGpu)
 {
     if (pme_gpu_performs_FFT(pmeGpu))
@@ -698,12 +697,6 @@ void pme_gpu_destroy_3dfft(const PmeGpu *pmeGpu)
 {
     pmeGpu->archSpecific->fftSetup.resize(0);
 }
-#else
-struct GpuParallel3dFft
-{
-    //hello I am dummy!
-};
-#endif
 
 //FIXME: these guys are here because they need to be instantiated for pme.cpp calls
 
