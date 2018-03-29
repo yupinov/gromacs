@@ -41,6 +41,8 @@
 
 #include "gmxpre.h"
 
+#include <array>
+
 #include "pme-3dfft-ocl.h"
 
 #include "gromacs/utility/fatalerror.h"
@@ -63,34 +65,44 @@ static void handleClfftError(clfftStatus status, const char *msg = nullptr)
 
 GpuParallel3dFft::GpuParallel3dFft(const PmeGpu *pmeGpu)
 {
-    clfftSetupData fftSetup;
-    handleClfftError(clfftInitSetupData(&fftSetup));
-    handleClfftError(clfftSetup(&fftSetup));
-#if 0
-
-    clfftDim dim = CLFFT_3D;
-
-
-  const PmeGpuCudaKernelParams *kernelParamsPtr = pmeGpu->kernelParams.get();
-    ivec realGridSize, realGridSizePadded, complexGridSizePadded;
+    // Extracting all the data from PME GPU
+    GMX_RELEASE_ASSERT(!pme_gpu_uses_dd(pmeGpu), "FFT decomposition not implemented");
+    PmeGpuCudaKernelParams *kernelParamsPtr = pmeGpu->kernelParams.get();
+    std::array<size_t, DIM> realGridSize, realGridSizePadded, complexGridSizePadded;
     for (int i = 0; i < DIM; i++)
     {
         realGridSize[i]          = kernelParamsPtr->grid.realGridSize[i];
         realGridSizePadded[i]    = kernelParamsPtr->grid.realGridSizePadded[i];
         complexGridSizePadded[i] = kernelParamsPtr->grid.complexGridSizePadded[i];
     }
+    cl_context context = pmeGpu->archSpecific->context;
+    commandStreams_.push_back(pmeGpu->archSpecific->pmeStream);
+    realGrid_ = kernelParamsPtr->grid.d_realGrid;
+    complexGrid_ = kernelParamsPtr->grid.d_fourierGrid;
 
-    GMX_RELEASE_ASSERT(!pme_gpu_uses_dd(pmeGpu), "FFT decomposition not implemented");
+    // Setup
+    clfftSetupData fftSetup;
+    handleClfftError(clfftInitSetupData(&fftSetup), "clFFT data initialization failure");
+    handleClfftError(clfftSetup(&fftSetup), "clFFT initialization failure");
+
+    const clfftDim dim = CLFFT_3D;
+    handleClfftError(clfftCreateDefaultPlan(&plan_, context, dim, realGridSize.data()), "clFFT planning failure");
+
+
+    // THe only difference between 2 plans is direction
+    //handleClfftError(clfftCopyPlan(&planC2R_, context, planR2C_));
+
+
+#if 0
+
+
+
+
+
 
     const int complexGridSizePaddedTotal = complexGridSizePadded[XX] * complexGridSizePadded[YY] * complexGridSizePadded[ZZ];
     const int realGridSizePaddedTotal    = realGridSizePadded[XX] * realGridSizePadded[YY] * realGridSizePadded[ZZ];
 
-    realGrid_ = (cufftReal *)kernelParamsPtr->grid.d_realGrid;
-    GMX_RELEASE_ASSERT(realGrid_, "Bad (null) input real-space grid");
-    complexGrid_ = (cufftComplex *)kernelParamsPtr->grid.d_fourierGrid;
-    GMX_RELEASE_ASSERT(complexGrid_, "Bad (null) input complex grid");
-
-    cufftResult_t result;
     /* Commented code for a simple 3D grid with no padding */
     /*
        result = cufftPlan3d(&planR2C_, realGridSize[XX], realGridSize[YY], realGridSize[ZZ], CUFFT_R2C);
@@ -114,41 +126,34 @@ GpuParallel3dFft::GpuParallel3dFft(const PmeGpu *pmeGpu)
                            CUFFT_C2R,
                            batch);
     handleCufftError(result, "cufftPlanMany C2R plan failure");
-
-    cudaStream_t stream = pmeGpu->archSpecific->pmeStream;
-    GMX_RELEASE_ASSERT(stream, "Using the default CUDA stream for PME cuFFT");
-
-    result = cufftSetStream(planR2C_, stream);
-    handleCufftError(result, "cufftSetStream R2C failure");
-
-    result = cufftSetStream(planC2R_, stream);
-    handleCufftError(result, "cufftSetStream C2R failure");
 #endif    
 }
 
 GpuParallel3dFft::~GpuParallel3dFft()
 {
-    handleClfftError(clfftDestroyPlan(&planR2C_));
-    handleClfftError(clfftDestroyPlan(&planC2R_));
+    handleClfftError(clfftDestroyPlan(&plan_));
+    //handleClfftError(clfftDestroyPlan(&planC2R_));
     handleClfftError(clfftTeardown());
 }
 
-#if 0
 void GpuParallel3dFft::perform3dFft(gmx_fft_direction dir)
 {
-    cufftResult_t result;
-    if (dir == GMX_FFT_REAL_TO_COMPLEX)
-    {
-        result = cufftExecR2C(planR2C_, realGrid_, complexGrid_);
-        handleCufftError(result, "cuFFT R2C execution failure");
-    }
-    else
-    {
-        result = cufftExecC2R(planC2R_, complexGrid_, realGrid_);
-        handleCufftError(result, "cuFFT C2R execution failure");
-    }
+    //TODO inline/template
+    const clfftDirection clfftDir = (dir == GMX_FFT_REAL_TO_COMPLEX) ? CLFFT_FORWARD : CLFFT_BACKWARD;
+    cl_mem *inputBuffers = &realGrid_; //TODO swap
+    cl_mem *outputBuffers = &complexGrid_;
+    // Custom temp buffer could be interesting
+    constexpr cl_mem tempBuffer = nullptr;
+
+    constexpr std::array<cl_event, 0> waitEvents;
+    constexpr cl_event *outEvents = nullptr;
+    handleClfftError(clfftEnqueueTransform(plan_, clfftDir,
+                                           commandStreams_.size(), commandStreams_.data(),
+                                           waitEvents.size(), waitEvents.data(), outEvents,
+                                          inputBuffers, outputBuffers, tempBuffer), "clFFT execution failure");
 }
 
+//FIXME move to common
 void pme_gpu_3dfft(const PmeGpu *pmeGpu, gmx_fft_direction dir, int grid_index)
 {
     int timerId = (dir == GMX_FFT_REAL_TO_COMPLEX) ? gtPME_FFT_R2C : gtPME_FFT_C2R;
@@ -156,4 +161,3 @@ void pme_gpu_3dfft(const PmeGpu *pmeGpu, gmx_fft_direction dir, int grid_index)
     pmeGpu->archSpecific->fftSetup[grid_index]->perform3dFft(dir);
     pme_gpu_stop_timing(pmeGpu, timerId);
 }
-#endif

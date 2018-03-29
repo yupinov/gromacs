@@ -48,6 +48,10 @@
 
 #include "gromacs/fft/fft.h"        // for the enum gmx_fft_direction
 
+#include <vector>
+
+#include "gromacs/gpu_utils/gmxopencl.h"
+
 struct PmeGpu;
 
 /*! \brief \internal A 3D FFT class for performing R2C/C2R transforms
@@ -55,11 +59,7 @@ struct PmeGpu;
  */
 class GpuParallel3dFft
 {
-    clfftPlanHandle   planR2C_;
-    clfftPlanHandle   planC2R_;
-    //    clfftReal    *realGrid_;
-    // clfftComplex *complexGrid_;
-    public:
+public:
         /*! \brief
          * Constructs CLFFT plans for performing 3D FFT on a PME grid.
          *
@@ -68,10 +68,14 @@ class GpuParallel3dFft
         GpuParallel3dFft(const PmeGpu *pmeGpu);
         /*! \brief Destroys CLFFT plans. */
         ~GpuParallel3dFft();
-#if 0
         /*! \brief Performs the FFT transform in given direction */
         void perform3dFft(gmx_fft_direction dir);
-#endif	
+private:
+        /*! A snigle plan for R2C/C2R */
+        clfftPlanHandle plan_;
+        std::vector<cl_command_queue> commandStreams_; //TODO mark as const?
+        cl_mem realGrid_;
+        cl_mem complexGrid_;
 };
 
 #endif
