@@ -63,8 +63,14 @@ static void handleClfftError(clfftStatus status, const char *msg = nullptr)
 
 GpuParallel3dFft::GpuParallel3dFft(const PmeGpu *pmeGpu)
 {
-  handleClfftError(clfftSetup(nullptr));
+    clfftSetupData fftSetup;
+    handleClfftError(clfftInitSetupData(&fftSetup));
+    handleClfftError(clfftSetup(&fftSetup));
 #if 0
+
+    clfftDim dim = CLFFT_3D;
+
+
   const PmeGpuCudaKernelParams *kernelParamsPtr = pmeGpu->kernelParams.get();
     ivec realGridSize, realGridSizePadded, complexGridSizePadded;
     for (int i = 0; i < DIM; i++)
@@ -120,16 +126,14 @@ GpuParallel3dFft::GpuParallel3dFft(const PmeGpu *pmeGpu)
 #endif    
 }
 
-#if 0
 GpuParallel3dFft::~GpuParallel3dFft()
 {
-    cufftResult_t result;
-    result = cufftDestroy(planR2C_);
-    handleCufftError(result, "cufftDestroy R2C failure");
-    result = cufftDestroy(planC2R_);
-    handleCufftError(result, "cufftDestroy C2R failure");
+    handleClfftError(clfftDestroyPlan(&planR2C_));
+    handleClfftError(clfftDestroyPlan(&planC2R_));
+    handleClfftError(clfftTeardown());
 }
 
+#if 0
 void GpuParallel3dFft::perform3dFft(gmx_fft_direction dir)
 {
     cufftResult_t result;

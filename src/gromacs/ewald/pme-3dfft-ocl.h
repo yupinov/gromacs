@@ -61,14 +61,14 @@ class GpuParallel3dFft
     // clfftComplex *complexGrid_;
     public:
         /*! \brief
-         * Constructs CUDA FFT plans for performing 3D FFT on a PME grid.
+         * Constructs CLFFT plans for performing 3D FFT on a PME grid.
          *
          * \param[in] pmeGpu                  The PME GPU structure.
          */
         GpuParallel3dFft(const PmeGpu *pmeGpu);
-#if 0
-        /*! \brief Destroys CUDA FFT plans. */
+        /*! \brief Destroys CLFFT plans. */
         ~GpuParallel3dFft();
+#if 0
         /*! \brief Performs the FFT transform in given direction */
         void perform3dFft(gmx_fft_direction dir);
 #endif	
