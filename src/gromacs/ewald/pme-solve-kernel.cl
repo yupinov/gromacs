@@ -169,7 +169,7 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_solve_kernel)(const PmeGpuCudaKernel
             //bool indexFilter = (gridIndex < 500);
             bool indexFilter = ((int)mZ == 5) && ((int)mY == 7);
             if (valueFilter && indexFilter)
-                printf("grid %d %d %d %f %f\n", (int)mX, (int)mY, (int)mZ, gridValue.x, gridValue.y);
+                ;//printf("grid %d %d %d %f %f\n", (int)mX, (int)mY, (int)mZ, gridValue.x, gridValue.y);
             gridValue.x   *= etermk;
             gridValue.y   *= etermk;
             *gm_gridCell   = gridValue;
