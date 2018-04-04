@@ -88,49 +88,29 @@ GpuParallel3dFft::GpuParallel3dFft(const PmeGpu *pmeGpu)
     handleClfftError(clfftSetup(&fftSetup), "clFFT initialization failure");
 
     constexpr auto dims = CLFFT_3D;
-    handleClfftError(clfftCreateDefaultPlan(&planR2C_, context, dims, realGridSize.data()), "clFFT planning failure");
+
+    // clFFT expects row-major, so this is reversed, as well as strides below
+    std::array<size_t, DIM> realGridDims = {realGridSize[ZZ], realGridSize[YY], realGridSize[XX]};
+    std::array<size_t, DIM> realGridStrides = {1, realGridSizePadded[ZZ], realGridSizePadded[YY] * realGridSizePadded[ZZ]};
+    std::array<size_t, DIM> complexGridStrides = {1, complexGridSizePadded[ZZ], complexGridSizePadded[YY] * complexGridSizePadded[ZZ]};
+
+    handleClfftError(clfftCreateDefaultPlan(&planR2C_, context, dims, realGridDims.data()), "clFFT planning failure");
     handleClfftError(clfftSetResultLocation(planR2C_, performOutOfPlaceFFT ? CLFFT_OUTOFPLACE : CLFFT_INPLACE), "clFFT planning failure");
-    handleClfftError(clfftSetPlanPrecision(planR2C_, CLFFT_SINGLE), "clFFT planning failure"); //there is also CLFFT_SINGLE_FAST which is not implemented :/
+    handleClfftError(clfftSetPlanPrecision(planR2C_, CLFFT_SINGLE), "clFFT planning failure");
 
-    /*
-    std::array<size_t, DIM> realGridStrides = {1, realGridSizePadded[YY], realGridSizePadded[XX] * realGridSizePadded[YY]};
-    std::array<size_t, DIM> complexGridStrides = {1, complexGridSizePadded[YY], complexGridSizePadded[XX] * complexGridSizePadded[YY]};
-    */
-
-    /*
-    std::array<size_t, DIM> realGridStrides = {realGridSizePadded[YY] * realGridSizePadded[ZZ], realGridSizePadded[ZZ], 1};
-    std::array<size_t, DIM> complexGridStrides = {complexGridSizePadded[YY] * complexGridSizePadded[ZZ], complexGridSizePadded[ZZ], 1};
-    */
-
-
-
-
-
-    //printf ("grids %zu %zu %zu\n", realGridSizePadded[XX], realGridSizePadded[YY], realGridSizePadded[ZZ]);
 
     // THe only difference between 2 plans is direction
     handleClfftError(clfftCopyPlan(&planC2R_, context, planR2C_), "clFFT plan copying failure");
     handleClfftError(clfftSetLayout(planR2C_, CLFFT_REAL, CLFFT_HERMITIAN_INTERLEAVED), "clFFT R2C layout failure");
     handleClfftError(clfftSetLayout(planC2R_, CLFFT_HERMITIAN_INTERLEAVED, CLFFT_REAL), "clFFT C2R layout failure");
 
-    printf ("real apdding ");
-    for (int i =0; i < DIM; i++)
-     printf ("%zu %zu ", realGridSize[i], realGridSizePadded[i] - realGridSize[i]);
-    printf ("\n");
-
-    printf ("complex apdding ");
-    for (int i =0; i < DIM; i++)
-     printf ("%zu %zu ", kernelParamsPtr->grid.complexGridSize[i], kernelParamsPtr->grid.complexGridSizePadded[i] - kernelParamsPtr->grid.complexGridSize[i]);
-    printf ("\n");
-
-
-    std::array<size_t, DIM> realGridStrides = {realGridSizePadded[YY] * realGridSizePadded[ZZ], realGridSizePadded[ZZ], 1};
-    std::array<size_t, DIM> complexGridStrides = {complexGridSizePadded[YY] * complexGridSizePadded[ZZ], complexGridSizePadded[ZZ], 1};
-
-
     std::array<size_t, DIM> test;
-    //handleClfftError(clfftGetPlanOutStride(planR2C_, dims, test.data()));
-    //printf ("before  %zu %zu %zu\n", test[XX], test[YY], test[ZZ]);
+
+
+    handleClfftError(clfftGetPlanInStride(planR2C_, dims, test.data()));
+    printf ("before %zu %zu %zu real\n", test[XX], test[YY], test[ZZ]);
+    handleClfftError(clfftGetPlanOutStride(planR2C_, dims, test.data()));
+    printf ("before %zu %zu %zu complex\n", test[XX], test[YY], test[ZZ]);
 
     handleClfftError(clfftSetPlanInStride(planR2C_, dims, realGridStrides.data())); // TODO just use single plan instead?
     handleClfftError(clfftSetPlanOutStride(planR2C_, dims, complexGridStrides.data())); // TODO just use single plan instead?
@@ -140,54 +120,31 @@ GpuParallel3dFft::GpuParallel3dFft(const PmeGpu *pmeGpu)
     handleClfftError(clfftGetPlanOutStride(planR2C_, dims, test.data()));
     printf ("after %zu %zu %zu complex\n", test[XX], test[YY], test[ZZ]);
 
-    handleClfftError(clfftSetPlanInStride(planC2R_, dims, complexGridStrides.data())); // TODO just use single plan instead?
+    //TODO: find out if thsi can be slimmed down
+
+    handleClfftError(clfftGetPlanInStride(planC2R_, dims, test.data()));
+    printf ("before %zu %zu %zu in\n", test[XX], test[YY], test[ZZ]);
+    handleClfftError(clfftGetPlanOutStride(planC2R_, dims, test.data()));
+    printf ("before %zu %zu %zu out\n", test[XX], test[YY], test[ZZ]);
+
+    handleClfftError(clfftSetPlanInStride(planC2R_, dims, complexGridStrides.data()));
     handleClfftError(clfftSetPlanOutStride(planC2R_, dims, realGridStrides.data()));
 
+    handleClfftError(clfftGetPlanInStride(planC2R_, dims, test.data()));
+    printf ("after %zu %zu %zu in\n", test[XX], test[YY], test[ZZ]);
+    handleClfftError(clfftGetPlanOutStride(planC2R_, dims, test.data()));
+    printf ("after %zu %zu %zu out\n", test[XX], test[YY], test[ZZ]);
+
+
     //TODO bake
-#if 0
-
-
-
-
-
-
-    const int complexGridSizePaddedTotal = complexGridSizePadded[XX] * complexGridSizePadded[YY] * complexGridSizePadded[ZZ];
-    const int realGridSizePaddedTotal    = realGridSizePadded[XX] * realGridSizePadded[YY] * realGridSizePadded[ZZ];
-
-    /* Commented code for a simple 3D grid with no padding */
-    /*
-       result = cufftPlan3d(&planR2C_, realGridSize[XX], realGridSize[YY], realGridSize[ZZ], CUFFT_R2C);
-       handleCufftError(result, "cufftPlan3d R2C plan failure");
-
-       result = cufftPlan3d(&planC2R_, realGridSize[XX], realGridSize[YY], realGridSize[ZZ], CUFFT_C2R);
-       handleCufftError(result, "cufftPlan3d C2R plan failure");
-     */
-
-    const int                 rank = 3, batch = 1;
-    result = cufftPlanMany(&planR2C_, rank, realGridSize,
-                           realGridSizePadded, 1, realGridSizePaddedTotal,
-                           complexGridSizePadded, 1, complexGridSizePaddedTotal,
-                           CUFFT_R2C,
-                           batch);
-    handleCufftError(result, "cufftPlanMany R2C plan failure");
-
-    result = cufftPlanMany(&planC2R_, rank, realGridSize,
-                           complexGridSizePadded, 1, complexGridSizePaddedTotal,
-                           realGridSizePadded, 1, realGridSizePaddedTotal,
-                           CUFFT_C2R,
-                           batch);
-    handleCufftError(result, "cufftPlanMany C2R plan failure");
-#endif    
+    //TODO: solve kernel as R2C FFT callback!
 }
 
 GpuParallel3dFft::~GpuParallel3dFft()
 {
-    //FIXME
-    /*
     handleClfftError(clfftDestroyPlan(&planR2C_));
     handleClfftError(clfftDestroyPlan(&planC2R_));
-    handleClfftError(clfftTeardown());
-    */
+    //FIXME only do this once: handleClfftError(clfftTeardown());
 }
 
 void GpuParallel3dFft::perform3dFft(gmx_fft_direction dir)
@@ -213,8 +170,7 @@ void GpuParallel3dFft::perform3dFft(gmx_fft_direction dir)
         GMX_ASSERT(false, "Not implemented");
         break;
     }
-
-    handleClfftError(clfftEnqueueTransform(plan, CLFFT_FORWARD, //or backward?
+    handleClfftError(clfftEnqueueTransform(plan, CLFFT_FORWARD,
                                            commandStreams_.size(), commandStreams_.data(),
                                            waitEvents.size(), waitEvents.data(), outEvents,
                                            &realGrid_, &complexGrid_, tempBuffer), "clFFT execution failure");
