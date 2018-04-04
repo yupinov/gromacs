@@ -69,17 +69,14 @@ ExternalProject_add(${EXTERNAL_CLFFT_BUILD_TARGET}
   -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER} -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
   -DCMAKE_CXX_FLAGS=-fPIC -DCMAKE_C_FLAGS=-fPIC
   #CMAKE_ARGS ${CL_ARGS}
-  INSTALL_COMMAND cp ./library/libclFFT.a ../../../../../../lib/
+  INSTALL_COMMAND ""
+  #cp ./library/libclFFT.a ../../../../../../lib/
   #FIXME
-  #  INSTALL_COMMAND "cp  ./src/external/build-clFFT/clFFTBuild-prefix/src/clFFTBuild-build/library/libclFFT.a ./lib/"
+  # ./src/external/build-clFFT/clFFTBuild-prefix/src/clFFTBuild-build/library/libclFFT.a
   )
 
 ExternalProject_get_property(${EXTERNAL_CLFFT_BUILD_TARGET} INSTALL_DIR)
 message("Install dir: ${INSTALL_DIR}")
-
-
-
-
 
 if (FALSE) # unused FFTW code, remove
 

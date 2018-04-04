@@ -199,7 +199,8 @@ endif()
 
 gmx_setup_tng_for_libgromacs()
 
-SET(FIXME_CLFFT_LIB "${CMAKE_BINARY_DIR}/lib/libclFFT.a")
+add_dependencies(libgromacs clFFTBuild)
+SET(FIXME_CLFFT_LIB "${CMAKE_BINARY_DIR}/src/external/build-clFFT/clFFTBuild-prefix/src/clFFTBuild-build/library/libclFFT.a")
 
 target_link_libraries(libgromacs
                       PRIVATE
