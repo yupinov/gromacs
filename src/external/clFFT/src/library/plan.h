@@ -330,6 +330,8 @@ class FFTAction
 public:
     FFTAction(FFTPlan * plan, clfftStatus & err);
 
+    virtual ~FFTAction();
+
     virtual clfftStatus enqueue(clfftPlanHandle plHandle,
                                 clfftDirection dir,
                                 cl_uint numQueuesAndEvents,
@@ -619,6 +621,14 @@ static bool Is1DPossible(size_t length, size_t large1DThreshold)
 	
 	// radix 13 & 2 is ok, anything else we cannot do in 1 kernel
 	if ( (length % 13 == 0) && ((length % 11 == 0) || (length % 7 == 0) || (length % 5 == 0) || (length % 3 == 0)) )
+		return false;
+
+	// radix 17 & 2 is ok, anything else we cannot do in 1 kernel
+	if ( (length % 17 == 0) && ((length % 13 == 0) || (length % 11 == 0) || (length % 7 == 0) || (length % 5 == 0) || (length % 3 == 0)) )
+		return false;
+
+	// radix 19 & 2 is ok, anything else we cannot do in 1 kernel
+	if ( (length % 19 == 0) && ((length % 17 == 0) || (length % 13 == 0) || (length % 11 == 0) || (length % 7 == 0) || (length % 5 == 0) || (length % 3 == 0)) )
 		return false;
 
 	return true;
