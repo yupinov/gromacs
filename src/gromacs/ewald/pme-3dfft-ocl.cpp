@@ -87,10 +87,8 @@ GpuParallel3dFft::GpuParallel3dFft(const PmeGpu *pmeGpu)
     handleClfftError(clfftInitSetupData(&fftSetup), "clFFT data initialization failure");
     handleClfftError(clfftSetup(&fftSetup), "clFFT initialization failure");
 
-    constexpr auto dims = CLFFT_3D;
-
     // clFFT expects row-major, so dimensions/strides are reversed (ZYX insteaf of XYZ)
-    std::array<size_t, DIM> realGridDims = {realGridSize[ZZ],
+    std::array<size_t, DIM> realGridDimensions = {realGridSize[ZZ],
                                                   realGridSize[YY],
                                                   realGridSize[XX]};
     std::array<size_t, DIM> realGridStrides = {1,
@@ -100,49 +98,25 @@ GpuParallel3dFft::GpuParallel3dFft(const PmeGpu *pmeGpu)
                                                         complexGridSizePadded[ZZ],
                                                         complexGridSizePadded[YY] * complexGridSizePadded[ZZ]};
 
-    handleClfftError(clfftCreateDefaultPlan(&planR2C_, context, dims, realGridDims.data()), "clFFT planning failure");
+    constexpr clfftDim dims = CLFFT_3D;
+    handleClfftError(clfftCreateDefaultPlan(&planR2C_, context, dims, realGridDimensions.data()), "clFFT planning failure");
     handleClfftError(clfftSetResultLocation(planR2C_, performOutOfPlaceFFT ? CLFFT_OUTOFPLACE : CLFFT_INPLACE), "clFFT planning failure");
     handleClfftError(clfftSetPlanPrecision(planR2C_, CLFFT_SINGLE), "clFFT planning failure");
-
     constexpr cl_float scale = 1.0;
     handleClfftError(clfftSetPlanScale(planR2C_, CLFFT_FORWARD, scale));
     handleClfftError(clfftSetPlanScale(planR2C_, CLFFT_BACKWARD, scale));
 
-    // THe only difference between 2 plans is direction
+    // The only difference between 2 plans is direction
     handleClfftError(clfftCopyPlan(&planC2R_, context, planR2C_), "clFFT plan copying failure");
+
     handleClfftError(clfftSetLayout(planR2C_, CLFFT_REAL, CLFFT_HERMITIAN_INTERLEAVED), "clFFT R2C layout failure");
     handleClfftError(clfftSetLayout(planC2R_, CLFFT_HERMITIAN_INTERLEAVED, CLFFT_REAL), "clFFT C2R layout failure");
 
-    std::array<size_t, DIM> test;
-
-
-    handleClfftError(clfftGetPlanInStride(planR2C_, dims, test.data()));
-    printf ("before %zu %zu %zu real\n", test[XX], test[YY], test[ZZ]);
-    handleClfftError(clfftGetPlanOutStride(planR2C_, dims, test.data()));
-    printf ("before %zu %zu %zu complex\n", test[XX], test[YY], test[ZZ]);
-
-    handleClfftError(clfftSetPlanInStride(planR2C_, dims, realGridStrides.data())); // TODO just use single plan instead?
-    handleClfftError(clfftSetPlanOutStride(planR2C_, dims, complexGridStrides.data())); // TODO just use single plan instead?
-
-    handleClfftError(clfftGetPlanInStride(planR2C_, dims, test.data()));
-    printf ("after %zu %zu %zu real\n", test[XX], test[YY], test[ZZ]);
-    handleClfftError(clfftGetPlanOutStride(planR2C_, dims, test.data()));
-    printf ("after %zu %zu %zu complex\n", test[XX], test[YY], test[ZZ]);
-
-    //TODO: find out if thsi can be slimmed down
-
-    handleClfftError(clfftGetPlanInStride(planC2R_, dims, test.data()));
-    printf ("before %zu %zu %zu in\n", test[XX], test[YY], test[ZZ]);
-    handleClfftError(clfftGetPlanOutStride(planC2R_, dims, test.data()));
-    printf ("before %zu %zu %zu out\n", test[XX], test[YY], test[ZZ]);
+    handleClfftError(clfftSetPlanInStride(planR2C_, dims, realGridStrides.data()));
+    handleClfftError(clfftSetPlanOutStride(planR2C_, dims, complexGridStrides.data()));
 
     handleClfftError(clfftSetPlanInStride(planC2R_, dims, complexGridStrides.data()));
     handleClfftError(clfftSetPlanOutStride(planC2R_, dims, realGridStrides.data()));
-
-    handleClfftError(clfftGetPlanInStride(planC2R_, dims, test.data()));
-    printf ("after %zu %zu %zu in\n", test[XX], test[YY], test[ZZ]);
-    handleClfftError(clfftGetPlanOutStride(planC2R_, dims, test.data()));
-    printf ("after %zu %zu %zu out\n", test[XX], test[YY], test[ZZ]);
 
     handleClfftError(clfftBakePlan(planR2C_, commandStreams_.size(), commandStreams_.data(), nullptr, nullptr));
     handleClfftError(clfftBakePlan(planC2R_, commandStreams_.size(), commandStreams_.data(), nullptr, nullptr));
@@ -194,7 +168,6 @@ void GpuParallel3dFft::perform3dFft(gmx_fft_direction dir)
                                            commandStreams_.size(), commandStreams_.data(),
                                            waitEvents.size(), waitEvents.data(), outEvents,
                                            inputGrids, outputGrids, tempBuffer), "clFFT execution failure");
-    //FIXME
 }
 
 //FIXME move to common
