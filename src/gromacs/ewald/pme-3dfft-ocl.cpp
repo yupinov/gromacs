@@ -89,10 +89,16 @@ GpuParallel3dFft::GpuParallel3dFft(const PmeGpu *pmeGpu)
 
     constexpr auto dims = CLFFT_3D;
 
-    // clFFT expects row-major, so this is reversed, as well as strides below
-    std::array<size_t, DIM> realGridDims = {realGridSize[ZZ], realGridSize[YY], realGridSize[XX]};
-    std::array<size_t, DIM> realGridStrides = {1, realGridSizePadded[ZZ], realGridSizePadded[YY] * realGridSizePadded[ZZ]};
-    std::array<size_t, DIM> complexGridStrides = {1, complexGridSizePadded[ZZ], complexGridSizePadded[YY] * complexGridSizePadded[ZZ]};
+    // clFFT expects row-major, so dimensions/strides are reversed (ZYX insteaf of XYZ)
+    std::array<size_t, DIM> realGridDims = {realGridSize[ZZ],
+                                                  realGridSize[YY],
+                                                  realGridSize[XX]};
+    std::array<size_t, DIM> realGridStrides = {1,
+                                                     realGridSizePadded[ZZ],
+                                                     realGridSizePadded[YY] * realGridSizePadded[ZZ]};
+    std::array<size_t, DIM> complexGridStrides = {1,
+                                                        complexGridSizePadded[ZZ],
+                                                        complexGridSizePadded[YY] * complexGridSizePadded[ZZ]};
 
     handleClfftError(clfftCreateDefaultPlan(&planR2C_, context, dims, realGridDims.data()), "clFFT planning failure");
     handleClfftError(clfftSetResultLocation(planR2C_, performOutOfPlaceFFT ? CLFFT_OUTOFPLACE : CLFFT_INPLACE), "clFFT planning failure");
@@ -138,9 +144,11 @@ GpuParallel3dFft::GpuParallel3dFft(const PmeGpu *pmeGpu)
     handleClfftError(clfftGetPlanOutStride(planC2R_, dims, test.data()));
     printf ("after %zu %zu %zu out\n", test[XX], test[YY], test[ZZ]);
 
+    handleClfftError(clfftBakePlan(planR2C_, commandStreams_.size(), commandStreams_.data(), nullptr, nullptr));
+    handleClfftError(clfftBakePlan(planC2R_, commandStreams_.size(), commandStreams_.data(), nullptr, nullptr));
 
-    //TODO bake
-    //TODO: solve kernel as R2C FFT callback!
+    //TODO: implement solve kernel as R2C FFT callback
+    //TODO: disable last transpose (clfftSetPlanTransposeResult)
 }
 
 GpuParallel3dFft::~GpuParallel3dFft()
