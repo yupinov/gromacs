@@ -155,25 +155,34 @@ void GpuParallel3dFft::perform3dFft(gmx_fft_direction dir)
     constexpr cl_event *outEvents = nullptr;
 
     clfftPlanHandle plan;
+    clfftDirection direction;
+    cl_mem *inputGrids, *outputGrids;
+
     switch (dir)
     {
         case GMX_FFT_REAL_TO_COMPLEX:
         plan = planR2C_;
+        direction = CLFFT_FORWARD;
+        inputGrids = &realGrid_;
+        outputGrids = &complexGrid_;
         break;
 
         break;
         case GMX_FFT_COMPLEX_TO_REAL:
         plan = planC2R_;
+        direction = CLFFT_BACKWARD;
+        inputGrids = &complexGrid_;
+        outputGrids = &realGrid_;
         break;
 
     default:
         GMX_ASSERT(false, "Not implemented");
         break;
     }
-    handleClfftError(clfftEnqueueTransform(plan, CLFFT_FORWARD,
+    handleClfftError(clfftEnqueueTransform(plan, direction,
                                            commandStreams_.size(), commandStreams_.data(),
                                            waitEvents.size(), waitEvents.data(), outEvents,
-                                           &realGrid_, &complexGrid_, tempBuffer), "clFFT execution failure");
+                                           inputGrids, outputGrids, tempBuffer), "clFFT execution failure");
     //FIXME
 }
 
