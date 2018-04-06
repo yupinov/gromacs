@@ -437,7 +437,7 @@ KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_gather_kernel)(const PmeGpuCudaKerne
     //gmx_syncwarp();
     assert(atomsPerBlock <= warp_size);
 
-    /* Writing or adding the final forces component-wise, single warp */
+    /* Writing or adding the final forces component-wise, single warp */ //FIXME is this correct?
     const int blockForcesSize = atomsPerBlock * DIM;
     const int numIter         = (blockForcesSize + warp_size - 1) / warp_size;
     const int iterThreads     = blockForcesSize / numIter;
