@@ -98,6 +98,9 @@ GpuParallel3dFft::GpuParallel3dFft(const PmeGpu *pmeGpu)
     handleClfftError(clfftSetResultLocation(planR2C_, performOutOfPlaceFFT ? CLFFT_OUTOFPLACE : CLFFT_INPLACE), "clFFT planning failure");
     handleClfftError(clfftSetPlanPrecision(planR2C_, CLFFT_SINGLE), "clFFT planning failure");
 
+    constexpr cl_float scale = 1.0;
+    handleClfftError(clfftSetPlanScale(planR2C_, CLFFT_FORWARD, scale));
+    handleClfftError(clfftSetPlanScale(planR2C_, CLFFT_BACKWARD, scale));
 
     // THe only difference between 2 plans is direction
     handleClfftError(clfftCopyPlan(&planC2R_, context, planR2C_), "clFFT plan copying failure");
