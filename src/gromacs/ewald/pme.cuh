@@ -52,6 +52,7 @@
 
 #include "gromacs/gpu_utils/gputraits.cuh"
 #include "gromacs/gpu_utils/devicebuffer.cuh"
+#include "gromacs/gpu_utils/gpuhostsynchronizer.cuh"
 
 //#include "gromacs/gpu_utils/cuda_arch_utils.cuh" // for warp_size
 
@@ -152,7 +153,7 @@ struct PmeGpuCuda
 
     /* Synchronization events */
     /*! \brief Triggered after the grid has been copied to the host (after the spreading stage). */
-    SyncEvent syncSpreadGridD2H;
+    GpuHostSynchronizer syncSpreadGridD2H;
 
     // TODO: consider moving some things below into the non-CUDA struct.
 

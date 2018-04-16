@@ -386,7 +386,7 @@ void pme_gpu_copy_output_spread_grid(const PmeGpu *pmeGpu, float *h_grid)
     copyFromDeviceBuffer(h_grid, &pmeGpu->kernelParams->grid.d_realGrid, 0, pmeGpu->archSpecific->realGridSize,
                          pmeGpu->archSpecific->pmeStream, pmeGpu->settings.transferKind, nullptr);
     //FIXME just pass it directly into API instead?
-    pmeGpu->archSpecific->syncSpreadGridD2H.markSyncEvent(pmeGpu->archSpecific->pmeStream);
+    pmeGpu->archSpecific->syncSpreadGridD2H.markSyncPoint(pmeGpu->archSpecific->pmeStream);
 }
 
 void pme_gpu_copy_output_spread_atom_data(PmeGpu *pmeGpu)
@@ -431,7 +431,7 @@ void pme_gpu_copy_input_gather_atom_data(const PmeGpu *pmeGpu)
 
 void pme_gpu_sync_spread_grid(const PmeGpu *pmeGpu)
 {
-    pmeGpu->archSpecific->syncSpreadGridD2H.waitForSyncEvent(pmeGpu->archSpecific->pmeStream);
+    pmeGpu->archSpecific->syncSpreadGridD2H.waitForSyncPoint();
 }
 
 #if GMX_GPU == GMX_GPU_OPENCL

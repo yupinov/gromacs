@@ -60,41 +60,4 @@ struct KernelLaunchConfig
     CommandStream stream;           //!< Stream to launch kernel in
 };
 
-#include "gromacs/utility/gmxassert.h"
-class SyncEvent
-{
-    public:
-        SyncEvent()
-        {
-            cudaError_t stat = cudaEventCreateWithFlags(&event_, cudaEventDisableTiming);
-            GMX_RELEASE_ASSERT(stat == cudaSuccess, "cudaEventCreate failed");
-        }
-
-        ~SyncEvent()
-        {
-            stat = cudaEventDestroy(&event_);
-            GMX_RELEASE_ASSERT(stat == cudaSuccess, "cudaEventDestroy failed");
-        }
-
-        //FIXME disable copy
-
-        inline void markSyncEvent(CommandStream stream)
-        {
-            cudaError_t stat = cudaEventRecord(event_, stream);
-            GMX_ASSERT(stat == cudaSuccess, "cudaEventRecord failed");
-        }
-
-        /*! \brief Enqueues a wait for event completion.
-        */
-        // copied from sync_ocl_event - FIXME synchronize/OnHost?
-        inline void waitForSyncEvent(CommandStream stream)
-        {
-            cudaError_t stat = cudaStreamWaitEvent(stream, event_, 0);
-            GMX_ASSERT(stat == cudaSuccess, "cudaStreamWaitEvent failed");
-        }
-
-    private:
-       cudaEvent_t event_;
-};
-
 #endif
