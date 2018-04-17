@@ -14,7 +14,7 @@ template<
     >
 __launch_bounds__(c_solveMaxThreadsPerBlock)
 */
-KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_solve_kernel)(const PmeGpuCudaKernelParams kernelParams
+KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_solve_kernel)(const struct PmeGpuCudaKernelParams kernelParams
 #if !CAN_USE_BUFFERS_IN_STRUCTS
                     ,
                     GLOBAL const float * __restrict__ gm_splineModuli,

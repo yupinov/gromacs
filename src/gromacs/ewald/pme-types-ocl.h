@@ -252,7 +252,7 @@ struct PmeGpuCuda
 #endif
 };
 
-
+#if 0
 /*! \brief \internal
  * A single structure encompassing all the PME data used in CUDA kernels.
  * This inherits from PmeGpuKernelParamsBase and adds a couple cudaTextureObject_t handles,
@@ -269,5 +269,6 @@ struct PmeGpuCudaKernelParams : PmeGpuKernelParamsBase
     /*! \brief CUDA texture object for accessing grid.d_gridlineIndicesTable */
     cudaTextureObject_t gridlineIndicesTableTexture;
 };
+#endif
 
 #endif

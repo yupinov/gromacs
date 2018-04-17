@@ -60,7 +60,7 @@ template<typename T,
          const int dataCountPerAtom>
 #endif
 DEVICE_INLINE
-void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
+void pme_gpu_stage_atom_data(const struct PmeGpuCudaKernelParams       kernelParams,
                              SHARED T * __restrict__            sm_destination,
                              GLOBAL const T * __restrict__      gm_source
 )
@@ -84,7 +84,7 @@ void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
 //TODO: stringify?
 
 DEVICE_INLINE
-void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
+void pme_gpu_stage_atom_data(const struct PmeGpuCudaKernelParams       kernelParams,
                              SHARED float * __restrict__        sm_destination,
                              GLOBAL const float * __restrict__  gm_source,
                              const int dataCountPerAtom)              //FIXME template parameter - maybe inline is just fine?!
@@ -126,7 +126,7 @@ void pme_gpu_stage_atom_data(const PmeGpuCudaKernelParams       kernelParams,
 template <const int order,
           const int atomsPerBlock>
 #endif
-DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kernelParams,
+DEVICE_INLINE void calculate_splines(const struct PmeGpuCudaKernelParams           kernelParams,
                                           const int                              atomIndexOffset,
                                          SHARED const float * __restrict__            sm_coordinates,
                                          SHARED const float * __restrict__             sm_coefficients,
@@ -350,7 +350,7 @@ DEVICE_INLINE void calculate_splines(const PmeGpuCudaKernelParams           kern
 template <
     const int order, const bool wrapX, const bool wrapY>
 #endif
-DEVICE_INLINE void spread_charges(const PmeGpuCudaKernelParams           kernelParams,
+DEVICE_INLINE void spread_charges(const struct PmeGpuCudaKernelParams           kernelParams,
                                                int                                    atomIndexOffset,
                                                SHARED const float * __restrict__             sm_coefficients,
                                                SHARED const int * __restrict__               sm_gridlineIndices,
@@ -452,7 +452,7 @@ template <
 #if defined(GMX_PTX_ARCH) //FIXME icnldue config.h and verify - also __attribute__((reqd_work_group_size(CL_SIZE, CL_SIZE, 1)))???
 __launch_bounds__(c_spreadMaxThreadsPerBlock)
 #endif
-KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_spline_and_spread_kernel)(const PmeGpuCudaKernelParams kernelParams
+KERNEL_FUNC void CUSTOMIZED_KERNEL_NAME(pme_spline_and_spread_kernel)(const struct PmeGpuCudaKernelParams kernelParams
 #if !CAN_USE_BUFFERS_IN_STRUCTS
             ,
             GLOBAL float * __restrict__ gm_theta,

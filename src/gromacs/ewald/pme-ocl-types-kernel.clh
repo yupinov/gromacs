@@ -78,10 +78,7 @@ DEVICE_INLINE void sharedMemoryBarrier()
 #endif
 
 
-//FIXME
-#define POINTER_SIZE 8
-
-
+#if OPENCL_COMPILATION
 //Device help helpers
 //int or uint?????
 
@@ -114,6 +111,14 @@ DEVICE_INLINE size_t getBlockSize(size_t dimIndex)
     //blockDim.x
     return get_local_size(dimIndex);
 }
+
+#endif
+
+
+//FIXME
+#define POINTER_SIZE 8
+
+
 
 //#include "../gpu_utils/devicebuffer_ocl.h" //FIXME stumbles on gpu_utils.h
 
@@ -251,7 +256,7 @@ struct PACKED PmeGpuDynamicParams
  * This way, most code preparing the kernel parameters can be GPU-agnostic by casting
  * the kernel parameter data pointer to PmeGpuKernelParamsBase.
  */
-struct PACKED PmeGpuKernelParamsBase
+struct PACKED PmeGpuCudaKernelParams
 {
     /*! \brief Constant data that is set once. */
     struct PmeGpuConstParams   constants;
@@ -270,12 +275,13 @@ struct PACKED PmeGpuKernelParamsBase
 
 };
 
-
 // this is stupid and wrong
-
-typedef struct PmeGpuKernelParamsBase PmeGpuCudaKernelParams;
+#define PmeGpuKernelParamsBase PmeGpuCudaKernelParams
 
 // more copies
+
+//FIXME copied from vectype_ops.clh
+#if OPENCL_COMPILATION
 
 /*! \brief \internal
  * An inline CUDA function for checking the global atom data indices against the atom data array sizes.
@@ -299,8 +305,6 @@ int DEVICE_INLINE pme_gpu_check_atom_charge(const float coefficient)
 }
 
 #define fetchFromParamLookupTable(d_ptr, somebodyKillMePlease, index) d_ptr[index]
-
-//FIXME copied from vectype_ops.clh
 
 void DEVICE_INLINE atomicAdd_g_f(volatile __global float *addr, float val)
 {
@@ -332,6 +336,6 @@ void DEVICE_INLINE atomicAdd_l_f(volatile __local float *addr, float val)
 }
 
 #define atomicAdd atomicAdd_g_f
-
+#endif
 
 #endif // PMEOCLTYPESKERNEL_CLH
