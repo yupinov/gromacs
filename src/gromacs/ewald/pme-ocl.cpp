@@ -442,9 +442,9 @@ void pme_gpu_sync_spread_grid(const PmeGpu *pmeGpu)
 #include <vector>
 
 // based on nbnxn_gpu_compile_kernels
-void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
+void PmeGpuPersistentData::pme_gpu_compile_kernels(PmeGpu *pmeGpu)
 {
-    cl_program program  = nullptr;
+    program  = nullptr;
     /* Need to catch std::bad_alloc here and during compilation string
        handling. */
     try
@@ -536,10 +536,6 @@ void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
     }
     GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
 
-    //this is technically a separate function already
-    // also, clCreateKernelsInProgram?
-    pmeGpu->archSpecific->program = program;
-
     std::vector<cl_kernel> kernels;
     cl_uint justEnough = 9; //?
     kernels.resize(justEnough);
@@ -558,23 +554,23 @@ void pme_gpu_compile_kernels(PmeGpu *pmeGpu)
 	throwUponFailure(status);
     //FIXME fprintf(stderr, "got a nice kernel: %s\n", kernelNamesBuffer.data());
 	if (!strcmp(kernelNamesBuffer.data(), "pmeSplineKernel"))
-	  pmeGpu->archSpecific->splineKernel = kernel;
+      splineKernel = kernel;
 	if (!strcmp(kernelNamesBuffer.data(), "pmeSplineAndSpreadKernel"))
-	  pmeGpu->archSpecific->splineAndSpreadKernel = kernel;
+      splineAndSpreadKernel = kernel;
 	if (!strcmp(kernelNamesBuffer.data(), "pmeSpreadKernel"))
-	  pmeGpu->archSpecific->spreadKernel = kernel;
+      spreadKernel = kernel;
     if (!strcmp(kernelNamesBuffer.data(), "pmeGatherKernel"))
-      pmeGpu->archSpecific->gatherKernel = kernel;
+      gatherKernel = kernel;
     if (!strcmp(kernelNamesBuffer.data(), "pmeGatherReduceWithInputKernel"))
-      pmeGpu->archSpecific->gatherReduceWithInputKernel = kernel;
+      gatherReduceWithInputKernel = kernel;
     if (!strcmp(kernelNamesBuffer.data(), "pmeSolveYZXKernel"))
-      pmeGpu->archSpecific->solveYZXKernel = kernel;
+      solveYZXKernel = kernel;
     if (!strcmp(kernelNamesBuffer.data(), "pmeSolveYZXEnergyKernel"))
-      pmeGpu->archSpecific->solveYZXEnergyKernel = kernel;
+      solveYZXEnergyKernel = kernel;
     if (!strcmp(kernelNamesBuffer.data(), "pmeSolveXYZKernel"))
-      pmeGpu->archSpecific->solveXYZKernel = kernel;
+      solveXYZKernel = kernel;
     if (!strcmp(kernelNamesBuffer.data(), "pmeSolveXYZEnergyKernel"))
-      pmeGpu->archSpecific->solveXYZEnergyKernel = kernel;
+      solveXYZEnergyKernel = kernel;
     throwUponFailure(status);
     }
 	    
@@ -647,8 +643,28 @@ void pme_gpu_init_internal(PmeGpu *pmeGpu)
 #endif
 
 #if GMX_GPU == GMX_GPU_OPENCL
-    pme_gpu_compile_kernels(pmeGpu);
+    pmeGpu->archSpecific->persistent = std::make_shared<PmeGpuPersistentData>(pmeGpu);
 #endif
+}
+
+PmeGpuPersistentData::PmeGpuPersistentData(PmeGpu *pmeGpu)
+{
+    pme_gpu_compile_kernels(pmeGpu); //FIXME make a constructor
+}
+
+PmeGpuPersistentData::~PmeGpuPersistentData()
+{
+    printf("die die die");
+    clReleaseKernel(splineAndSpreadKernel);
+    clReleaseKernel(splineKernel);
+    clReleaseKernel(spreadKernel);
+    clReleaseKernel(gatherKernel);
+    clReleaseKernel(gatherReduceWithInputKernel);
+    clReleaseKernel(solveXYZKernel);
+    clReleaseKernel(solveXYZEnergyKernel);
+    clReleaseKernel(solveYZXKernel);
+    clReleaseKernel(solveYZXEnergyKernel);
+    clReleaseProgram(program);
 }
 
 void pme_gpu_destroy_specific(const PmeGpu *pmeGpu)
@@ -656,15 +672,8 @@ void pme_gpu_destroy_specific(const PmeGpu *pmeGpu)
     //FIXME do we care abotu errors here at all?
     //FIXME retain all the stuff for the unit tests???
 
-    clReleaseKernel(pmeGpu->archSpecific->splineAndSpreadKernel);
-    clReleaseKernel(pmeGpu->archSpecific->splineKernel);
-    clReleaseKernel(pmeGpu->archSpecific->spreadKernel);
-    clReleaseKernel(pmeGpu->archSpecific->gatherKernel);
-    clReleaseKernel(pmeGpu->archSpecific->gatherReduceWithInputKernel);
-
-
-    clReleaseProgram(pmeGpu->archSpecific->program);
-
+    /*
+    */
 
     /* Free command queues */
     cl_int clError = clReleaseCommandQueue(pmeGpu->archSpecific->pmeStream);

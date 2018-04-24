@@ -60,7 +60,7 @@ void pme_gpu_gather(PmeGpu                *pmeGpu,
     GMX_UNUSED_VALUE(wrapX);
     GMX_UNUSED_VALUE(wrapY);
 
-    const auto &kernel = (forceTreatment == PmeForceOutputHandling::Set) ? pmeGpu->archSpecific->gatherKernel : pmeGpu->archSpecific->gatherReduceWithInputKernel;
+    const auto &kernel = (forceTreatment == PmeForceOutputHandling::Set) ? pmeGpu->archSpecific->persistent->gatherKernel : pmeGpu->archSpecific->persistent->gatherReduceWithInputKernel;
 
     if (order != 4)
     {

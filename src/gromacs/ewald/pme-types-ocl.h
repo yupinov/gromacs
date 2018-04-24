@@ -157,12 +157,58 @@ int DEVICE_INLINE pme_gpu_check_atom_charge(const float coefficient)
 }
 
 /*! \brief \internal
+ * PME GPU persistent host data, which is initialized once for the whole lifetime.
+ * Will help to not recompilekernels for each OpenCL unit test.
+ * //TODO - move the stream/context here as well?
+ */
+struct PmeGpuPersistentData
+{
+    //! Conveniently all the PME kernels use the same single argument type
+#if GMX_GPU == GMX_GPU_OPENCL
+    using PmeKernelHandle = cl_kernel;
+
+    cl_program program;
+#elif GMX_GPU == GMX_GPU_CUDA
+    using PmeProgramHandle = void *;
+#endif
+    // TODO: All these kernels are compiled during pme_gpu_init() only for the given PME order!
+    // (and only order of 4 is supported now, anyway).
+    // spreading kernels also have hardcoded X/Y indices wrapping parameters as a placeholder for implementing
+    // 1/2D decomposition.
+    PmeKernelHandle splineKernel;
+    PmeKernelHandle spreadKernel;
+    PmeKernelHandle splineAndSpreadKernel;
+    // Same for gather: hardcoded X/Y unwrap parameters, order of 4,
+    // + it can reduce with previous forces in the host buffer, or ignore it.
+    PmeKernelHandle gatherReduceWithInputKernel;
+    PmeKernelHandle gatherKernel;
+    // solve kernel doesn't care about spline order, but can optionally compute energy and virial,
+    // and supports XYZ and YZX grid orderings.
+    PmeKernelHandle solveYZXKernel;
+    PmeKernelHandle solveXYZKernel;
+    PmeKernelHandle solveYZXEnergyKernel;
+    PmeKernelHandle solveXYZEnergyKernel;
+    // There are also FFT kernels which are managed entirely by cu/clFFT
+
+    PmeGpuPersistentData() = delete;
+    explicit PmeGpuPersistentData(PmeGpu *pmeGpu);
+    ~PmeGpuPersistentData();
+
+private:
+    void pme_gpu_compile_kernels(PmeGpu *pmeGpu);
+};
+
+/*! \brief \internal
  * The main PME CUDA-specific host data structure, included in the PME GPU structure by the archSpecific pointer.
  */
 struct PmeGpuCuda
 {
     /*! \brief The CUDA stream where everything related to the PME happens. */
     CommandStream pmeStream;
+
+    Context context;
+
+    std::shared_ptr<PmeGpuPersistentData> persistent;
 
     /* Synchronization events */
     /*! \brief Triggered after the grid has been copied to the host (after the spreading stage). */
@@ -226,31 +272,6 @@ struct PmeGpuCuda
     int complexGridSize;
     /*! \brief The kernelParams.grid.fourierGrid float (not float2!) element count (reserved) */
     int complexGridSizeAlloc;
-
-    Context context; //FIXME
-
-    //The only -non-CUDA thing!
-#if GMX_GPU == GMX_GPU_OPENCL
-    cl_program program;
-    // TODO: All these kernels are compiled during pme_gpu_init() only for the given PME order!
-    // (and only order of 4 is supported now, anyway).
-    // spreading kernels also have hardcoded X/Y indices wrapping parameters as a placeholder for implementing
-    // 1/2D decomposition.
-    cl_kernel splineKernel;
-    cl_kernel spreadKernel;
-    cl_kernel splineAndSpreadKernel;
-    // Same for gather: hardcoded X/Y unwrap parameters, order of 4,
-    // + it can reduce with previous forces in the host buffer, or ignore it.
-    cl_kernel gatherReduceWithInputKernel;
-    cl_kernel gatherKernel;
-    // solve kernel doesn't care about spline order, but can optionally compute energy and virial,
-    // and supports XYZ and YZX grid orderings.
-    cl_kernel solveYZXKernel;
-    cl_kernel solveXYZKernel;
-    cl_kernel solveYZXEnergyKernel;
-    cl_kernel solveXYZEnergyKernel;
-    // Not all of those kernels are used in mdrun, but all are covered with unit-tests.
-#endif
 };
 
 #if 0

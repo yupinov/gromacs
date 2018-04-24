@@ -113,18 +113,18 @@ void pme_gpu_spread(PmeGpu    *pmeGpu,
     {
         if (spreadCharges)
         {
-	    kernel = pmeGpu->archSpecific->splineAndSpreadKernel;
+        kernel = pmeGpu->archSpecific->persistent->splineAndSpreadKernel;
 	    timingId = gtPME_SPLINEANDSPREAD;
         }
         else
         {
-            kernel = pmeGpu->archSpecific->splineKernel;
+            kernel = pmeGpu->archSpecific->persistent->splineKernel;
             timingId = gtPME_SPLINE;
         }
     }
     else
     {
-        kernel = pmeGpu->archSpecific->spreadKernel;
+        kernel = pmeGpu->archSpecific->persistent->spreadKernel;
         timingId = gtPME_SPREAD;
     }
 

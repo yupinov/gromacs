@@ -69,22 +69,22 @@ void pme_gpu_solve(PmeGpu *pmeGpu, t_complex *h_grid,
     {
         if (computeEnergyAndVirial)
         {
-            kernel = pmeGpu->archSpecific->solveYZXEnergyKernel;
+            kernel = pmeGpu->archSpecific->persistent->solveYZXEnergyKernel;
         }
         else
         {
-            kernel = pmeGpu->archSpecific->solveYZXKernel;
+            kernel = pmeGpu->archSpecific->persistent->solveYZXKernel;
         }
     }
     else if (gridOrdering == GridOrdering::XYZ)
     {
         if (computeEnergyAndVirial)
         {
-            kernel = pmeGpu->archSpecific->solveXYZEnergyKernel;
+            kernel = pmeGpu->archSpecific->persistent->solveXYZEnergyKernel;
         }
         else
         {
-            kernel = pmeGpu->archSpecific->solveXYZKernel;
+            kernel = pmeGpu->archSpecific->persistent->solveXYZKernel;
         }
     }
 
