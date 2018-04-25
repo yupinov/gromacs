@@ -130,7 +130,7 @@ class PmeSplineAndSpreadTest : public ::testing::TestWithParam<SplineAndSpreadIn
                 if (!supportedInput)
                 {
                     /* Testing the failure for the unsupported input */
-                    EXPECT_THROW(pmeInitAtoms(&inputRec, mode.first, nullptr, coordinates, charges, box), NotImplementedError);
+		  EXPECT_THROW(pmeInitAtoms(&inputRec, mode.first, nullptr, nullptr, coordinates, charges, box), NotImplementedError);
                     continue;
                 }
 
@@ -151,7 +151,9 @@ class PmeSplineAndSpreadTest : public ::testing::TestWithParam<SplineAndSpreadIn
 
                         /* Running the test */
 
-                        PmeSafePointer pmeSafe = pmeInitAtoms(&inputRec, mode.first, context.getDeviceInfo(), coordinates, charges, box);
+                        PmeSafePointer pmeSafe = pmeInitAtoms(&inputRec, mode.first,
+							      context.getDeviceInfo(), context.getPersistentData(),
+							      coordinates, charges, box);
 
                         const bool     computeSplines = (option.first == PmeSplineAndSpreadOptions::SplineOnly) || (option.first == PmeSplineAndSpreadOptions::SplineAndSpreadUnified);
                         const bool     spreadCharges  = (option.first == PmeSplineAndSpreadOptions::SpreadOnly) || (option.first == PmeSplineAndSpreadOptions::SplineAndSpreadUnified);

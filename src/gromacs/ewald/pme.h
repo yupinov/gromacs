@@ -117,6 +117,10 @@ bool gmx_pme_check_restrictions(int pme_order,
                                 bool useThreads,
                                 bool errorsAreFatal);
 
+#include <memory>
+struct PmeGpuPersistentData;
+using PmePersistentDataHandle = std::shared_ptr<PmeGpuPersistentData>;
+
 /*! \brief Construct PME data
  *
  * \throws   gmx::InconsistentInputError if input grid sizes/PME order are inconsistent.
@@ -132,7 +136,8 @@ gmx_pme_t *gmx_pme_init(const t_commrec *cr,
                         PmeRunMode runMode,
                         PmeGpu *pmeGpu,
                         gmx_device_info_t *gpuInfo,
-                        const gmx::MDLogger &mdlog);
+                        const gmx::MDLogger &mdlog,
+			PmePersistentDataHandle persistent = nullptr);
 
 /*! \brief Destroys the PME data structure.*/
 void gmx_pme_destroy(gmx_pme_t *pme);

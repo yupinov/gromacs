@@ -93,4 +93,8 @@ gmx::ArrayRef<const gmx::IVec> pmeGpuGetGridlineIndices(const PmeGpu *pmeGpu);
 void pmeGpuSetGridlineIndices(PmeGpu *pmeGpu, gmx::ArrayRef<const gmx::IVec> gridlineIndices);
 
 
+struct PmeGpuPersistentData;
+using PmePersistentDataHandle = std::shared_ptr<PmeGpuPersistentData>;
+GPU_FUNC_QUALIFIER PmePersistentDataHandle pmeGpuAcquirePersistentData(PmeGpu *GPU_FUNC_ARGUMENT(pmeGpu)) GPU_FUNC_TERM_WITH_RETURN(nullptr)
+
 #endif // PMEGPUINTERNALREAL_H

@@ -649,12 +649,13 @@ void pme_gpu_init_internal(PmeGpu *pmeGpu)
 
 PmeGpuPersistentData::PmeGpuPersistentData(PmeGpu *pmeGpu)
 {
+  printf("hello consstructor\n");
     pme_gpu_compile_kernels(pmeGpu); //FIXME make a constructor
 }
 
 PmeGpuPersistentData::~PmeGpuPersistentData()
 {
-    printf("die die die");
+    printf("die die die\n");
     clReleaseKernel(splineAndSpreadKernel);
     clReleaseKernel(splineKernel);
     clReleaseKernel(spreadKernel);
@@ -730,7 +731,7 @@ void pme_gpu_destroy(PmeGpu *pmeGpu)
     delete pmeGpu;
 }
 
-void pme_gpu_reinit(gmx_pme_t *pme, gmx_device_info_t *gpuInfo)
+void pme_gpu_reinit(gmx_pme_t *pme, gmx_device_info_t *gpuInfo, PmePersistentDataHandle persistent)
 {
     if (!pme_gpu_active(pme))
     {
@@ -740,7 +741,7 @@ void pme_gpu_reinit(gmx_pme_t *pme, gmx_device_info_t *gpuInfo)
     if (!pme->gpu)
     {
         /* First-time initialization */
-        pme_gpu_init(pme, gpuInfo);
+      pme_gpu_init(pme, gpuInfo, persistent);
     }
     else
     {
@@ -871,4 +872,11 @@ gmx::ArrayRef<const gmx::IVec> pmeGpuGetGridlineIndices(const PmeGpu *pmeGpu)
 void pmeGpuSetGridlineIndices(PmeGpu *pmeGpu, gmx::ArrayRef<const gmx::IVec> gridlineIndices)
 {
     memcpy(pmeGpu->staging.h_gridlineIndices, gridlineIndices.data(), gridlineIndices.size() * sizeof(gridlineIndices[0]));
+}
+
+//struct PmeGpuPersistentData;
+using PmePersistentDataHandle = std::shared_ptr<PmeGpuPersistentData>;
+PmePersistentDataHandle pmeGpuAcquirePersistentData(PmeGpu *pmeGpu)
+{
+  return pmeGpu->archSpecific->persistent;
 }
