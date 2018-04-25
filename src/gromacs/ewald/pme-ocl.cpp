@@ -80,7 +80,7 @@ void pme_gpu_synchronize(const PmeGpu *pmeGpu)
 void pme_gpu_alloc_energy_virial(const PmeGpu *pmeGpu)
 {
     const size_t energyAndVirialSize = c_virialAndEnergyCount * sizeof(float);
-    allocateDeviceBuffer(&pmeGpu->kernelParams->constants.d_virialAndEnergy, c_virialAndEnergyCount, pmeGpu->archSpecific->context);
+    allocateDeviceBuffer(&pmeGpu->kernelParams->constants.d_virialAndEnergy, c_virialAndEnergyCount, pmeGpu->archSpecific->persistent->context);
     ocl_pmalloc((void **)&pmeGpu->staging.h_virialAndEnergy, energyAndVirialSize);
 }
 
@@ -111,7 +111,7 @@ void pme_gpu_realloc_and_copy_bspline_values(const PmeGpu *pmeGpu)
         pmeGpu->kernelParams->grid.realGridSize[ZZ];
     const bool shouldRealloc = (newSplineValuesSize > pmeGpu->archSpecific->splineValuesSize);
     reallocateDeviceBuffer(&pmeGpu->kernelParams->grid.d_splineModuli, newSplineValuesSize,
-                           &pmeGpu->archSpecific->splineValuesSize, &pmeGpu->archSpecific->splineValuesSizeAlloc, pmeGpu->archSpecific->context);
+                           &pmeGpu->archSpecific->splineValuesSize, &pmeGpu->archSpecific->splineValuesSizeAlloc, pmeGpu->archSpecific->persistent->context);
     if (shouldRealloc)
     {
         /* Reallocate the host buffer */
@@ -138,7 +138,7 @@ void pme_gpu_realloc_forces(PmeGpu *pmeGpu)
     const size_t newForcesSize = pmeGpu->nAtomsAlloc * DIM;
     GMX_ASSERT(newForcesSize > 0, "Bad number of atoms in PME GPU");
     reallocateDeviceBuffer(&pmeGpu->kernelParams->atoms.d_forces, newForcesSize,
-                           &pmeGpu->archSpecific->forcesSize, &pmeGpu->archSpecific->forcesSizeAlloc, pmeGpu->archSpecific->context);
+                           &pmeGpu->archSpecific->forcesSize, &pmeGpu->archSpecific->forcesSizeAlloc, pmeGpu->archSpecific->persistent->context);
     pmeGpu->staging.h_forces.reserve(pmeGpu->nAtomsAlloc);
     pmeGpu->staging.h_forces.resize(pmeGpu->kernelParams->atoms.nAtoms);
 }
@@ -175,7 +175,7 @@ void pme_gpu_realloc_coordinates(const PmeGpu *pmeGpu)
     const size_t newCoordinatesSize = pmeGpu->nAtomsAlloc * DIM;
     GMX_ASSERT(newCoordinatesSize > 0, "Bad number of atoms in PME GPU");
     reallocateDeviceBuffer(&pmeGpu->kernelParams->atoms.d_coordinates, newCoordinatesSize,
-                           &pmeGpu->archSpecific->coordinatesSize, &pmeGpu->archSpecific->coordinatesSizeAlloc, pmeGpu->archSpecific->context);
+                           &pmeGpu->archSpecific->coordinatesSize, &pmeGpu->archSpecific->coordinatesSizeAlloc, pmeGpu->archSpecific->persistent->context);
     if (c_usePadding)
     {
         const size_t paddingIndex = DIM * pmeGpu->kernelParams->atoms.nAtoms;
@@ -211,7 +211,7 @@ void pme_gpu_realloc_and_copy_input_coefficients(const PmeGpu *pmeGpu, const flo
     const size_t newCoefficientsSize = pmeGpu->nAtomsAlloc;
     GMX_ASSERT(newCoefficientsSize > 0, "Bad number of atoms in PME GPU");
     reallocateDeviceBuffer(&pmeGpu->kernelParams->atoms.d_coefficients, newCoefficientsSize,
-                           &pmeGpu->archSpecific->coefficientsSize, &pmeGpu->archSpecific->coefficientsSizeAlloc, pmeGpu->archSpecific->context);
+                           &pmeGpu->archSpecific->coefficientsSize, &pmeGpu->archSpecific->coefficientsSizeAlloc, pmeGpu->archSpecific->persistent->context);
     copyToDeviceBuffer(&pmeGpu->kernelParams->atoms.d_coefficients, FIXMEcast(h_coefficients), 0,
                 pmeGpu->kernelParams->atoms.nAtoms, pmeGpu->archSpecific->pmeStream, pmeGpu->settings.transferKind, nullptr);
     if (c_usePadding)
@@ -243,9 +243,9 @@ void pme_gpu_realloc_spline_data(const PmeGpu *pmeGpu)
     int        currentSizeTemp      = pmeGpu->archSpecific->splineDataSize;
     int        currentSizeTempAlloc = pmeGpu->archSpecific->splineDataSizeAlloc;
     reallocateDeviceBuffer(&pmeGpu->kernelParams->atoms.d_theta, newSplineDataSize,
-                           &currentSizeTemp, &currentSizeTempAlloc, pmeGpu->archSpecific->context);
+                           &currentSizeTemp, &currentSizeTempAlloc, pmeGpu->archSpecific->persistent->context);
     reallocateDeviceBuffer(&pmeGpu->kernelParams->atoms.d_dtheta, newSplineDataSize,
-                           &pmeGpu->archSpecific->splineDataSize, &pmeGpu->archSpecific->splineDataSizeAlloc, pmeGpu->archSpecific->context);
+                           &pmeGpu->archSpecific->splineDataSize, &pmeGpu->archSpecific->splineDataSizeAlloc, pmeGpu->archSpecific->persistent->context);
     // the host side reallocation
     if (shouldRealloc)
     {
@@ -270,7 +270,7 @@ void pme_gpu_realloc_grid_indices(const PmeGpu *pmeGpu)
     const size_t newIndicesSize = DIM * pmeGpu->nAtomsAlloc;
     GMX_ASSERT(newIndicesSize > 0, "Bad number of atoms in PME GPU");
     reallocateDeviceBuffer(&pmeGpu->kernelParams->atoms.d_gridlineIndices, newIndicesSize,
-                           &pmeGpu->archSpecific->gridlineIndicesSize, &pmeGpu->archSpecific->gridlineIndicesSizeAlloc, pmeGpu->archSpecific->context);
+                           &pmeGpu->archSpecific->gridlineIndicesSize, &pmeGpu->archSpecific->gridlineIndicesSizeAlloc, pmeGpu->archSpecific->persistent->context);
     ocl_pfree(pmeGpu->staging.h_gridlineIndices);
     ocl_pmalloc((void **)&pmeGpu->staging.h_gridlineIndices, newIndicesSize * sizeof(int));
 }
@@ -295,16 +295,16 @@ void pme_gpu_realloc_grids(PmeGpu *pmeGpu)
     {
         /* 2 separate grids */
         reallocateDeviceBuffer(&kernelParamsPtr->grid.d_fourierGrid, newComplexGridSize,
-                               &pmeGpu->archSpecific->complexGridSize, &pmeGpu->archSpecific->complexGridSizeAlloc, pmeGpu->archSpecific->context);
+                               &pmeGpu->archSpecific->complexGridSize, &pmeGpu->archSpecific->complexGridSizeAlloc, pmeGpu->archSpecific->persistent->context);
         reallocateDeviceBuffer(&kernelParamsPtr->grid.d_realGrid, newRealGridSize,
-                               &pmeGpu->archSpecific->realGridSize, &pmeGpu->archSpecific->realGridSizeAlloc, pmeGpu->archSpecific->context);
+                               &pmeGpu->archSpecific->realGridSize, &pmeGpu->archSpecific->realGridSizeAlloc, pmeGpu->archSpecific->persistent->context);
     }
     else
     {
         /* A single buffer so that any grid will fit */
         const int newGridsSize = std::max(newRealGridSize, newComplexGridSize);
         reallocateDeviceBuffer(&kernelParamsPtr->grid.d_realGrid, newGridsSize,
-                               &pmeGpu->archSpecific->realGridSize, &pmeGpu->archSpecific->realGridSizeAlloc, pmeGpu->archSpecific->context);
+                               &pmeGpu->archSpecific->realGridSize, &pmeGpu->archSpecific->realGridSizeAlloc, pmeGpu->archSpecific->persistent->context);
         kernelParamsPtr->grid.d_fourierGrid   = kernelParamsPtr->grid.d_realGrid;
         pmeGpu->archSpecific->complexGridSize = pmeGpu->archSpecific->realGridSize;
         // the size might get used later for copying the grid
@@ -347,7 +347,7 @@ void pme_gpu_realloc_and_copy_fract_shifts(PmeGpu *pmeGpu)
                          pmeGpu->common->fsh.data(),
                          newFractShiftsSize,
                          pmeGpu->deviceInfo,
-                         pmeGpu->archSpecific->context,
+                         pmeGpu->archSpecific->persistent->context,
 			 pmeGpu->archSpecific->pmeStream);
 
     initParamLookupTable(&kernelParamsPtr->grid.d_gridlineIndicesTable,
@@ -355,7 +355,7 @@ void pme_gpu_realloc_and_copy_fract_shifts(PmeGpu *pmeGpu)
                          pmeGpu->common->nn.data(),
                          newFractShiftsSize,
                          pmeGpu->deviceInfo,
-                         pmeGpu->archSpecific->context,
+                         pmeGpu->archSpecific->persistent->context,
 			 pmeGpu->archSpecific->pmeStream);
 }
 
@@ -523,7 +523,7 @@ void PmeGpuPersistentData::pme_gpu_compile_kernels(PmeGpu *pmeGpu)
             program = gmx::ocl::compileProgram(stderr,
                                                "../../ewald/pme-program.cl", //FIXME
                                                spreadDefines,
-                                               pmeGpu->archSpecific->context,
+                                               context,
                                                pmeGpu->deviceInfo->ocl_gpu_id.ocl_device_id,
                                                pmeGpu->deviceInfo->vendor_e);
         }
@@ -592,33 +592,18 @@ void pme_gpu_init_internal(PmeGpu *pmeGpu, PmePersistentDataHandle persistent)
      * TODO: PME could also try to pick up nice grid sizes (with factors of 2, 3, 5, 7).
      */
 
-    //FIXME all this code borrowed from nbnxn_
-    cl_context_properties     context_properties[3];
-    cl_platform_id            platform_id;
-    cl_device_id              device_id;
-    cl_int                    clError;
-
-    platform_id      = pmeGpu->deviceInfo->ocl_gpu_id.ocl_platform_id;
-    device_id        = pmeGpu->deviceInfo->ocl_gpu_id.ocl_device_id;
-
-    context_properties[0] = CL_CONTEXT_PLATFORM;
-    context_properties[1] = (cl_context_properties) platform_id;
-    context_properties[2] = 0; /* Terminates the list of properties */
-
-    pmeGpu->archSpecific->context = clCreateContext(context_properties, 1, &device_id, NULL, NULL, &clError);
-    throwUponFailure(clError);
-    //GMX_RELEASE_ASSERT(CL_SUCCESS == clError, "whatever");
-                     /*
-                       gmx::formatString("Failed to create context for PME on GPU #%s:\n OpenCL error %d: %s",
-                  pmeGpu->deviceInfo->device_name,
-                  clError, ocl_get_error_string(clError).c_str())*/
-
-    /* WARNING: CUDA timings are incorrect with multiple streams.
+      /* WARNING: CUDA timings are incorrect with multiple streams.
      *          This is the main reason why they are disabled by default.
      */
     // TODO: Consider turning on by default when we can detect nr of streams.
     pmeGpu->archSpecific->useTiming = (getenv("GMX_ENABLE_GPU_TIMING") != nullptr); //FIXME: DISABLE for OpenCL?
 
+
+   pmeGpu->archSpecific->persistent = persistent;
+    if (!pmeGpu->archSpecific->persistent)
+    pmeGpu->archSpecific->persistent = std::make_shared<PmeGpuPersistentData>(pmeGpu);
+
+    
     /* Creating a GPU stream */
 
     // TODO wrapper;
@@ -626,8 +611,17 @@ void pme_gpu_init_internal(PmeGpu *pmeGpu, PmePersistentDataHandle persistent)
 #if GMX_GPU == GMX_GPU_OPENCL
     cl_command_queue_properties queueProperties = pmeGpu->archSpecific->useTiming ? CL_QUEUE_PROFILING_ENABLE : 0;
 
+    //FIXME copypaste
+    cl_platform_id            platform_id;
+    cl_device_id              device_id;
+    cl_int                    clError;
+
+    platform_id      = pmeGpu->deviceInfo->ocl_gpu_id.ocl_platform_id;
+    device_id        = pmeGpu->deviceInfo->ocl_gpu_id.ocl_device_id;
+
+    
     /* local/non-local GPU streams */
-    pmeGpu->archSpecific->pmeStream = clCreateCommandQueue(pmeGpu->archSpecific->context,
+    pmeGpu->archSpecific->pmeStream = clCreateCommandQueue(pmeGpu->archSpecific->persistent->context,
                                                            device_id, queueProperties, &clError);
     GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "Failed to create command queue");
 #endif
@@ -641,15 +635,34 @@ void pme_gpu_init_internal(PmeGpu *pmeGpu, PmePersistentDataHandle persistent)
                                         highest_priority);
     CU_RET_ERR(stat, "cudaStreamCreateWithPriority on the PME stream failed");
 #endif
-
-    pmeGpu->archSpecific->persistent = persistent;
-    if (!pmeGpu->archSpecific->persistent)
-    pmeGpu->archSpecific->persistent = std::make_shared<PmeGpuPersistentData>(pmeGpu);
 }
 
 PmeGpuPersistentData::PmeGpuPersistentData(PmeGpu *pmeGpu)
 {
   printf("hello consstructor\n");
+
+    cl_context_properties     context_properties[3];
+    cl_platform_id            platform_id;
+    cl_device_id              device_id;
+    cl_int                    clError;
+
+    platform_id      = pmeGpu->deviceInfo->ocl_gpu_id.ocl_platform_id;
+    device_id        = pmeGpu->deviceInfo->ocl_gpu_id.ocl_device_id;
+
+    context_properties[0] = CL_CONTEXT_PLATFORM;
+    context_properties[1] = (cl_context_properties) platform_id;
+    context_properties[2] = 0; /* Terminates the list of properties */
+
+    context = clCreateContext(context_properties, 1, &device_id, nullptr, nullptr, &clError);
+    throwUponFailure(clError);
+
+     //GMX_RELEASE_ASSERT(CL_SUCCESS == clError, "whatever");
+                     /*
+                       gmx::formatString("Failed to create context for PME on GPU #%s:\n OpenCL error %d: %s",
+                  pmeGpu->deviceInfo->device_name,
+                  clError, ocl_get_error_string(clError).c_str())*/
+
+  
     pme_gpu_compile_kernels(pmeGpu); //FIXME make a constructor
 }
 
@@ -666,6 +679,9 @@ PmeGpuPersistentData::~PmeGpuPersistentData()
     clReleaseKernel(solveYZXKernel);
     clReleaseKernel(solveYZXEnergyKernel);
     clReleaseProgram(program);
+    clReleaseContext(context);
+    //throwUponFailure(clError);
+    //GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "PME context destruction error");
 }
 
 void pme_gpu_destroy_specific(const PmeGpu *pmeGpu)
@@ -686,9 +702,6 @@ void pme_gpu_destroy_specific(const PmeGpu *pmeGpu)
     free_gpu_device_runtime_data(nb->dev_rundata);
     sfree(nb->dev_rundata);
     */
-    clError = clReleaseContext(pmeGpu->archSpecific->context);
-    //throwUponFailure(clError);
-    //GMX_RELEASE_ASSERT(clError == CL_SUCCESS, "PME context destruction error");
 }
 
 void pme_gpu_reinit_3dfft(const PmeGpu *pmeGpu)

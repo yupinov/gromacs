@@ -76,7 +76,7 @@ GpuParallel3dFft::GpuParallel3dFft(const PmeGpu *pmeGpu)
         complexGridSizePadded[i] = kernelParamsPtr->grid.complexGridSizePadded[i];
         GMX_ASSERT(kernelParamsPtr->grid.complexGridSizePadded[i] == kernelParamsPtr->grid.complexGridSize[i], "Complex padding not implemented");
     }
-    cl_context context = pmeGpu->archSpecific->context;
+    cl_context context = pmeGpu->archSpecific->persistent->context;
     commandStreams_.push_back(pmeGpu->archSpecific->pmeStream);
     realGrid_ = kernelParamsPtr->grid.d_realGrid;
     complexGrid_ = kernelParamsPtr->grid.d_fourierGrid;

@@ -163,11 +163,13 @@ int DEVICE_INLINE pme_gpu_check_atom_charge(const float coefficient)
  */
 struct PmeGpuPersistentData
 {
-    //! Conveniently all the PME kernels use the same single argument type
+    Context context;
+
+  //! Conveniently all the PME kernels use the same single argument type
 #if GMX_GPU == GMX_GPU_OPENCL
     using PmeKernelHandle = cl_kernel;
 
-    cl_program program;
+      cl_program program;
 #elif GMX_GPU == GMX_GPU_CUDA
     using PmeProgramHandle = void *;
 #endif
@@ -205,8 +207,6 @@ struct PmeGpuCuda
 {
     /*! \brief The CUDA stream where everything related to the PME happens. */
     CommandStream pmeStream;
-
-    Context context;
 
     std::shared_ptr<PmeGpuPersistentData> persistent;
 
