@@ -580,7 +580,7 @@ void PmeGpuPersistentData::pme_gpu_compile_kernels(PmeGpu *pmeGpu)
 }
 #endif
 
-void pme_gpu_init_internal(PmeGpu *pmeGpu)
+void pme_gpu_init_internal(PmeGpu *pmeGpu, PmePersistentDataHandle persistent)
 {
     /* Allocate the target-specific structures */
     pmeGpu->archSpecific.reset(new PmeGpuSpecific());
@@ -642,9 +642,9 @@ void pme_gpu_init_internal(PmeGpu *pmeGpu)
     CU_RET_ERR(stat, "cudaStreamCreateWithPriority on the PME stream failed");
 #endif
 
-#if GMX_GPU == GMX_GPU_OPENCL
+    pmeGpu->archSpecific->persistent = persistent;
+    if (!pmeGpu->archSpecific->persistent)
     pmeGpu->archSpecific->persistent = std::make_shared<PmeGpuPersistentData>(pmeGpu);
-#endif
 }
 
 PmeGpuPersistentData::PmeGpuPersistentData(PmeGpu *pmeGpu)

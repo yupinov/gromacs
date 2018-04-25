@@ -367,7 +367,8 @@ GPU_FUNC_QUALIFIER void pme_gpu_sync_spread_grid(const PmeGpu *GPU_FUNC_ARGUMENT
  *
  * \param[in] pmeGpu  The PME GPU structure.
  */
-GPU_FUNC_QUALIFIER void pme_gpu_init_internal(PmeGpu *GPU_FUNC_ARGUMENT(pmeGpu)) GPU_FUNC_TERM
+GPU_FUNC_QUALIFIER void pme_gpu_init_internal(PmeGpu *GPU_FUNC_ARGUMENT(pmeGpu),
+					      PmePersistentDataHandle persistent) GPU_FUNC_TERM
 
 /*! \libinternal \brief
  * Destroys the PME GPU-framework specific data.
@@ -792,7 +793,7 @@ static void pme_gpu_init(gmx_pme_t *pme, gmx_device_info_t *gpuInfo, PmePersiste
 
     pmeGpu->deviceInfo = gpuInfo;
 
-    pme_gpu_init_internal(pmeGpu);
+    pme_gpu_init_internal(pmeGpu, persistent);
     pme_gpu_alloc_energy_virial(pmeGpu);
 
     pme_gpu_copy_common_data_from(pme);
