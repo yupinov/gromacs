@@ -52,12 +52,7 @@
 #include "gromacs/hardware/detecthardware.h"
 #include "gromacs/hardware/gpu_hw_info.h"
 
-//FIXME
-//#include "pmetestcommon.h"
-//struct PmeGpuPersistentData;
-//using PmePersistentDataHandle = std::shared_ptr<PmeGpuPersistentData>; //FIXME not just Gpu
-
-#include "gromacs/ewald/pme-gpu-internal-real.h" //for persistent data
+#include "gromacs/ewald/pme-persistent-data.h"
 
 
 namespace gmx

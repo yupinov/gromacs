@@ -56,6 +56,8 @@
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
 
+#include "gromacs/ewald/pme-persistent-data.h"
+
 struct interaction_const_t;
 struct t_commrec;
 struct t_inputrec;
@@ -116,10 +118,6 @@ bool gmx_pme_check_restrictions(int pme_order,
                                 int nnodes_major,
                                 bool useThreads,
                                 bool errorsAreFatal);
-
-#include <memory>
-struct PmeGpuPersistentData;
-using PmePersistentDataHandle = std::shared_ptr<PmeGpuPersistentData>;
 
 /*! \brief Construct PME data
  *
